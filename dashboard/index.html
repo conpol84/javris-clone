@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Jarvis Command Center</title>
+<style>
+:root{--bg:#050b14;--panel:#0a1626;--line:#12344d;--cyan:#22d3ee;--cyan2:#67e8f9;--text:#d7eefa;--mute:#6f93a8;--ok:#34d399;--warn:#fbbf24;--bad:#f87171;--vio:#a78bfa}
+*{box-sizing:border-box;margin:0}
+body{background:radial-gradient(1200px 600px at 50% 0,#0a2540 0,var(--bg) 60%);color:var(--text);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif;min-height:100vh}
+.app{display:grid;grid-template-columns:220px 1fr 300px;gap:14px;padding:14px;max-width:1500px;margin:0 auto}
+.panel{background:linear-gradient(180deg,#0b1a2d,var(--panel));border:1px solid var(--line);border-radius:12px;padding:14px;box-shadow:0 0 18px #06b6d41a inset}
+h2{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--cyan2);margin-bottom:10px;font-weight:600}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:16px;font-weight:700;letter-spacing:.3em;color:var(--cyan2)}
+.brand i{width:26px;height:26px;border-radius:50%;border:2px solid var(--cyan);box-shadow:0 0 12px var(--cyan)}
+nav a{display:flex;justify-content:space-between;padding:9px 10px;border-radius:8px;color:var(--mute);text-decoration:none;margin-bottom:2px}
+nav a.on,nav a:hover{background:#0f2a42;color:var(--text)}
+nav b{background:#0e3a55;color:var(--cyan2);border-radius:10px;padding:0 7px;font-size:11px}
+.mic{margin-top:16px;text-align:center}
+.mic button{width:74px;height:74px;border-radius:50%;border:2px solid var(--cyan);background:#06202f;color:var(--cyan2);box-shadow:0 0 22px #22d3ee55;cursor:pointer;font-size:26px}
+.main{display:grid;gap:14px;grid-template-rows:auto auto auto}
+.top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.status{border:1px solid var(--line);border-radius:20px;padding:5px 12px;font-size:12px;color:var(--mute)}
+.status u{color:var(--ok);text-decoration:none}
+.clock{font-size:22px;color:var(--cyan2);font-weight:600;text-align:center}
+.clock small{display:block;font-size:12px;color:var(--mute);font-weight:400}
+.demo{font-size:11px;color:var(--warn);border:1px solid #fbbf2455;border-radius:20px;padding:3px 10px}
+.hero{display:grid;grid-template-columns:230px 1fr;gap:14px}
+.list div{display:flex;justify-content:space-between;padding:7px 9px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;font-size:13px}
+.list span{color:var(--mute);font-size:12px}
+.core{display:grid;place-items:center;min-height:220px;position:relative}
+.orb{width:190px;height:190px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#67e8f9 0,#0e7490 35%,#06202f 70%);box-shadow:0 0 60px #22d3ee66;animation:pulse 4s ease-in-out infinite}
+.core h1{position:absolute;letter-spacing:.35em;font-size:26px;color:#e0faff;text-shadow:0 0 14px var(--cyan)}
+.core p{position:absolute;bottom:6px;color:var(--mute);font-size:12px}
+@keyframes pulse{50%{transform:scale(1.05);box-shadow:0 0 90px #22d3ee88}}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.agent{border:1px solid var(--line);border-radius:10px;padding:10px}
+.agent b{display:block;font-size:13px}
+.tag{font-size:11px}.on-t{color:var(--ok)}.idle-t{color:var(--warn)}
+.row2{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
+.tl div{display:flex;gap:10px;padding:6px 0;border-bottom:1px solid #0e2338;font-size:13px}
+.tl span{color:var(--mute);width:64px}
+.tl em{margin-left:auto;font-style:normal;color:var(--mute);font-size:12px}
+.qc button{display:block;width:100%;text-align:left;background:#0a2033;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:9px;margin-bottom:6px;cursor:pointer}
+.qc button:hover{border-color:var(--cyan)}
+.feed div{padding:8px 0;border-bottom:1px solid #0e2338;font-size:13px}
+.feed small{display:block;color:var(--mute);font-size:11px}
+.tagb{float:right;font-size:10px;padding:1px 7px;border-radius:5px;border:1px solid}
+.info{color:var(--cyan2)}.warn{color:var(--warn)}.tip{color:var(--ok)}.bad{color:var(--bad)}
+.gauges{display:flex;justify-content:space-around;text-align:center}
+.g{width:84px;height:84px;border-radius:50%;display:grid;place-items:center;background:conic-gradient(var(--cyan) calc(var(--v)*1%),#0d2a3f 0);position:relative}
+.g::after{content:"";position:absolute;inset:8px;background:var(--panel);border-radius:50%}
+.g b{position:relative;z-index:1;font-size:15px}
+.g-l{font-size:11px;color:var(--mute);margin-top:4px}
+.llm{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+.llm div{border:1px solid var(--line);border-radius:8px;padding:7px 9px;font-size:12px}
+.llm span{display:block;font-size:11px}
+.ok{color:var(--ok)}.off{color:var(--mute)}
+.bottom{grid-column:1/-1;display:flex;justify-content:center}
+.talk{background:linear-gradient(90deg,#0a2a40,#0b3a55);border:1px solid var(--cyan);border-radius:14px;padding:12px 60px;text-align:center;box-shadow:0 0 24px #22d3ee44;color:var(--cyan2);font-weight:700;letter-spacing:.15em}
+.talk small{display:block;font-weight:400;letter-spacing:0;color:var(--mute)}
+.right{display:flex;flex-direction:column;gap:14px}
+@media(max-width:1100px){.app{grid-template-columns:1fr}.hero,.row2{grid-template-columns:1fr}.grid3{grid-template-columns:repeat(2,1fr)}nav{display:flex;flex-wrap:wrap;gap:4px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="panel">
+    <div class="brand"><i></i>JARVIS</div>
+    <nav>
+      <a class="on" href="#">Command Center</a><a href="#">AI Core</a><a href="#">Agents</a>
+      <a href="#">Tasks <b>3</b></a><a href="#">Calendar</a><a href="#">Memory</a>
+      <a href="#">Conversations <b>12</b></a><a href="#">Knowledge Base</a><a href="#">Tools &amp; Skills <b>18</b></a><a href="#">Workflows</a>
+    </nav>
+    <div class="mic"><h2>Voice status</h2><button aria-label="Tap to speak">🎙</button><div class="g-l">Tap to speak</div></div>
+  </aside>
+
+  <main class="main">
+    <div class="top">
+      <span class="status">SYSTEM STATUS <u>● OPTIMAL</u></span>
+      <div class="clock"><span id="time">--:--:--</span><small id="date"></small></div>
+      <span class="demo">DEMO DATA</span>
+    </div>
+
+    <section class="hero">
+      <div class="panel"><h2>AI Core overview</h2>
+        <div class="list">
+          <div>AI Core <span class="ok">Active</span></div><div>Memory <span>3,380 stored</span></div>
+          <div>Voice <span class="ok">Online</span></div><div>Agents <span>2 running</span></div>
+          <div>LLMs <span>4 connected</span></div><div>System <span class="ok">Optimal</span></div>
+        </div></div>
+      <div class="panel core"><div class="orb"></div><h1>JARVIS</h1><p>AI CORE · OpenJarvis</p></div>
+    </section>
+
+    <section class="panel"><h2>Active agents</h2>
+      <div class="grid3">
+        <div class="agent"><b>Coding Agent</b><span class="tag on-t">● Active</span></div>
+        <div class="agent"><b>Research Agent</b><span class="tag on-t">● Active</span></div>
+        <div class="agent"><b>Memory Agent</b><span class="tag idle-t">● Standby</span></div>
+        <div class="agent"><b>Browser Agent</b><span class="tag idle-t">● Standby</span></div>
+        <div class="agent"><b>Task Agent</b><span class="tag idle-t">● Standby</span></div>
+        <div class="agent"><b>System Agent</b><span class="tag idle-t">● Standby</span></div>
+      </div></section>
+
+    <div class="row2">
+      <section class="panel tl"><h2>Mission timeline</h2>
+        <div><span>09:30</span>Daily standup<em>Done</em></div>
+        <div><span>12:00</span>Finalize dashboard<em>In 42 min</em></div>
+        <div><span>14:00</span>Deep-work block<em>In 2h 42m</em></div>
+        <div><span>16:30</span>Design review<em>In 5h 12m</em></div></section>
+      <section class="panel qc"><h2>Quick commands</h2>
+        <button>＋ Start new task</button><button>▦ Open calendar</button><button>🎙 Start voice chat</button><button>▶ Run workflow</button></section>
+    </div>
+
+    <div class="row2">
+      <section class="panel"><h2>System monitor</h2>
+        <div class="gauges">
+          <div><div class="g" style="--v:15"><b id="cpu">15%</b></div><div class="g-l">CPU</div></div>
+          <div><div class="g" style="--v:54"><b>54%</b></div><div class="g-l">RAM</div></div>
+          <div><div class="g" style="--v:40"><b>40%</b></div><div class="g-l">Disk</div></div>
+        </div></section>
+      <section class="panel"><h2>LLM status</h2>
+        <div class="llm">
+          <div>Claude<span class="off">Not linked</span></div><div>OpenAI<span class="off">Not linked</span></div>
+          <div>Ollama<span class="off">No models</span></div><div>OpenRouter<span class="off">Not linked</span></div>
+          <div>Claude Code<span class="ok">Connected</span></div><div>Copilot<span class="ok">Connected</span></div>
+        </div></section>
+    </div>
+  </main>
+
+  <aside class="right">
+    <section class="panel feed"><h2>Live intelligence feed</h2>
+      <div>Design review with the product team <span class="tagb info">INFO</span><small>Meeting</small></div>
+      <div>2 tasks are overdue <span class="tagb warn">WARN</span><small>Tasks</small></div>
+      <div>3 pull requests awaiting review <span class="tagb tip">TIP</span><small>GitHub</small></div>
+      <div>Deep-work block 2–4 PM <span class="tagb tip">TIP</span><small>Focus</small></div>
+      <div>CPU usage nominal <span class="tagb info">LIVE</span><small>System</small></div></section>
+    <section class="panel"><h2>Memory insights</h2>
+      <div class="list"><div>Memories <span>3,380</span></div><div>Session turns <span>22</span></div><div>Tool calls <span>14</span></div></div></section>
+  </aside>
+
+  <div class="bottom"><div class="talk">TALK TO JARVIS<small>I am listening…</small></div></div>
+</div>
+<script>
+function tick(){var d=new Date();document.getElementById('time').textContent=d.toLocaleTimeString();document.getElementById('date').textContent=d.toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+tick();setInterval(tick,1000);
+</script>
+</body>
+</html>
