@@ -396,6 +396,11 @@ const es: Dictionary = {
   'drawer.toolPolicyAria': 'Política de {tool}',
   'drawer.noTools': 'Este agente no tiene herramientas.',
   'drawer.readonly': 'Solo responsables, administradores y propietarios pueden cambiar estos ajustes.',
+  'drawer.model': 'Modelo de IA',
+  'drawer.modelHint': 'Formato proveedor:modelo, p. ej. anthropic:claude-sonnet-5-5. "auto" usa el valor por defecto de tu proyecto. Usa los nombres de modelo del panel de tu proveedor.',
+  'drawer.modelAria': 'Modelo de IA (proveedor:modelo)',
+  'drawer.modelSaved': 'Modelo guardado',
+  'drawer.modelInvalid': 'Usa "auto" o proveedor:nombre-del-modelo (sin espacios).',
   'drawer.saveError': 'No se pudo guardar',
 
   'inbox.eyebrow': 'Con una persona al mando',

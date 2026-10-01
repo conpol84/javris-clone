@@ -417,6 +417,11 @@ const ar: Dictionary = {
   'drawer.toolPolicyAria': 'سياسة {tool}',
   'drawer.noTools': 'ليست لدى هذا الوكيل أي أدوات.',
   'drawer.readonly': 'يمكن للمديرين والمسؤولين والمالكين فقط تغيير هذه الإعدادات.',
+  'drawer.model': 'نموذج الذكاء الاصطناعي',
+  'drawer.modelHint': 'الصيغة مزوّد:نموذج، مثل anthropic:claude-sonnet-5-5. يستخدم "auto" الإعداد الافتراضي لمشروعك. استخدم أسماء النماذج من لوحة تحكم مزوّدك.',
+  'drawer.modelAria': 'نموذج الذكاء الاصطناعي (مزوّد:نموذج)',
+  'drawer.modelSaved': 'تم حفظ النموذج',
+  'drawer.modelInvalid': 'استخدم "auto" أو مزوّد:اسم-النموذج (بلا مسافات).',
   'drawer.saveError': 'تعذّر الحفظ',
 
   'inbox.eyebrow': 'الإنسان في الحلقة',

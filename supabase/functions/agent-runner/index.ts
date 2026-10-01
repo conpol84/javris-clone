@@ -5,8 +5,11 @@
 //  - monthly budget and an hourly circuit breaker are checked BEFORE any model call
 //  - the agent can never send/publish/pay: every outward step becomes a pending approval for a human
 //  - every proposed outward step is marked AI-generated (EU AI Act Art. 50 transparency)
-//  - the model key lives only in Edge Function secrets: LLM_BASE_URL, LLM_API_KEY (+ optional LLM_MODEL,
-//    LLM_PRICE_IN_PER_M, LLM_PRICE_OUT_PER_M)
+//  - model keys live only in Edge Function secrets. An agent's model is "provider:model" (e.g. "openai:<model>",
+//    "anthropic:claude-sonnet-5-5", "kimi:<model>", "glm:<model>", "mimo:<model>"); "auto" uses LLM_DEFAULT.
+//    Each provider NAME needs NAME_API_KEY (and NAME_BASE_URL unless it has a built-in default).
+//    LLM_FALLBACK="provider:model,provider:model" is tried in order when the first choice fails.
+//    Optional per provider: NAME_PRICE_IN_PER_M / NAME_PRICE_OUT_PER_M (cost estimate for budgets).
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -36,6 +39,39 @@ const DISCLOSURE: Record<string, string> = {
   'zh-CN': '本内容由 AI 助手（Firbo AI）协助生成。',
   ar: 'أُعدّ بمساعدة مساعد ذكاء اصطناعي (Firbo AI).',
 };
+
+const BASE_URLS: Record<string, string> = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com/v1',
+  kimi: 'https://api.moonshot.ai/v1',
+  glm: 'https://api.z.ai/api/paas/v4',
+};
+
+interface Target {
+  provider: string;
+  model: string;
+  base: string;
+  key: string;
+}
+
+/** "provider:model" -> a configured endpoint, or null when its secrets are missing. */
+function resolveTarget(spec: string): Target | null {
+  const i = spec.indexOf(':');
+  const provider = (i > 0 ? spec.slice(0, i) : 'custom').toLowerCase();
+  const model = i > 0 ? spec.slice(i + 1) : spec;
+  if (!/^[a-z0-9_-]{1,32}$/.test(provider) || !model) return null;
+  const env = provider.toUpperCase().replace(/-/g, '_');
+  const key = Deno.env.get(provider === 'custom' ? 'LLM_API_KEY' : `${env}_API_KEY`);
+  const base = Deno.env.get(provider === 'custom' ? 'LLM_BASE_URL' : `${env}_BASE_URL`) ?? BASE_URLS[provider];
+  if (!key || !base) return null;
+  return { provider, model, base: base.replace(/\/+$/, ''), key };
+}
+
+function priceOf(provider: string, which: 'IN' | 'OUT'): number {
+  const env = provider.toUpperCase().replace(/-/g, '_');
+  const v = Deno.env.get(`${env}_PRICE_${which}_PER_M`) ?? Deno.env.get(`LLM_PRICE_${which}_PER_M`);
+  return Number(v ?? (which === 'IN' ? 3 : 15));
+}
 
 type Action = { action: string; risk: 'low' | 'medium' | 'high'; payload: Record<string, unknown> };
 
@@ -102,10 +138,6 @@ Deno.serve(async (req) => {
   if (!RUNNABLE.includes(task.status)) return json(409, { error: 'not_runnable', status: task.status });
   if (!task.assigned_agent_id) return json(422, { error: 'no_agent' });
 
-  const llmBase = Deno.env.get('LLM_BASE_URL');
-  const llmKey = Deno.env.get('LLM_API_KEY');
-  if (!llmBase || !llmKey) return json(503, { error: 'not_configured' });
-
   const admin = createClient(url, service);
   const { data: agent } = await admin
     .from('agents')
@@ -115,6 +147,12 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
+
+  // ---- which models may answer: the agent's own choice, then the shared fallbacks
+  const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
+  const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map((x) => x.trim())].filter(Boolean);
+  const targets = specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (targets.length === 0) return json(503, { error: 'not_configured' });
 
   // ---- cost guards, before any model call
   const monthStart = new Date();
@@ -158,36 +196,43 @@ Deno.serve(async (req) => {
     `Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown: the actual work product), "actions": [{"action": string (short name such as send_email), "risk": "low"|"medium"|"high", "payload": object}]} with at most ${MAX_ACTIONS} actions. Use an empty actions array when nothing needs to leave the company.`,
   ].join('\n\n');
   const userMsg = `<task>\nTitle: ${task.title}\nPriority: ${task.priority}\nDescription: ${task.description ?? ''}\n</task>`;
-  const model = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_MODEL') ?? 'auto';
 
   const t0 = Date.now();
-  let completion: any;
-  try {
-    const res = await fetch(`${llmBase.replace(/\/+$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${llmKey}` },
-      body: JSON.stringify({
-        model,
-        temperature: Number(agent.temperature ?? 0.4),
-        max_tokens: 1800,
-        messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }],
-      }),
-      signal: AbortSignal.timeout(90_000),
-    });
-    if (!res.ok) throw new Error(`model_http_${res.status}`);
-    completion = await res.json();
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'model_error';
-    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: message.slice(0, 120) } }).eq('id', task.id);
+  let completion: any = null;
+  let used: Target | null = null;
+  let lastError = 'model_error';
+  for (const target of targets) {
+    try {
+      const openai = target.provider === 'openai'; // newer OpenAI models reject max_tokens and custom temperature
+      const res = await fetch(`${target.base}/chat/completions`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
+        body: JSON.stringify({
+          model: target.model,
+          ...(openai ? { max_completion_tokens: 1800 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
+          messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }],
+        }),
+        signal: AbortSignal.timeout(90_000),
+      });
+      if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
+      completion = await res.json();
+      if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
+      used = target;
+      break;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : 'model_error';
+    }
+  }
+  if (!completion || !used) {
+    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError.slice(0, 120) } }).eq('id', task.id);
     return json(502, { error: 'model_error' });
   }
+  const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
-  const text: string = completion?.choices?.[0]?.message?.content ?? '';
+  const text: string = completion.choices[0].message.content;
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
-  const priceIn = Number(Deno.env.get('LLM_PRICE_IN_PER_M') ?? 3);
-  const priceOut = Number(Deno.env.get('LLM_PRICE_OUT_PER_M') ?? 15);
-  const cost = Math.round(((inTok * priceIn + outTok * priceOut) / 1e6) * 1e6) / 1e6; // estimate unless prices are configured
+  const cost = Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6; // estimate unless prices are configured
 
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
@@ -226,7 +271,7 @@ Deno.serve(async (req) => {
     organization_id: task.organization_id,
     user_id: user.id,
     agent_id: agent.id,
-    model: String(completion?.model ?? model),
+    model,
     input_tokens: inTok,
     output_tokens: outTok,
     cost_usd: cost,
@@ -246,7 +291,7 @@ Deno.serve(async (req) => {
         actions: marked,
         queued: queue.length,
         dropped,
-        model: String(completion?.model ?? model),
+        model,
         tokens: { input: inTok, output: outTok },
         cost_usd: cost,
         lang,

@@ -397,6 +397,11 @@ const zhCN: Dictionary = {
   'drawer.toolPolicyAria': '{tool} 的策略',
   'drawer.noTools': '这个智能体没有工具。',
   'drawer.readonly': '只有经理、管理员和所有者可以更改这些设置。',
+  'drawer.model': 'AI 模型',
+  'drawer.modelHint': '格式为 服务商:模型，例如 anthropic:claude-sonnet-5-5。“auto”使用项目的默认设置。请使用服务商控制台中的模型名称。',
+  'drawer.modelAria': 'AI 模型（服务商:模型）',
+  'drawer.modelSaved': '模型已保存',
+  'drawer.modelInvalid': '请使用 "auto" 或 服务商:模型名称（不含空格）。',
   'drawer.saveError': '无法保存',
 
   'inbox.eyebrow': '人工把关',

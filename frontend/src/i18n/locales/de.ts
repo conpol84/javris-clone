@@ -396,6 +396,11 @@ const de: Dictionary = {
   'drawer.toolPolicyAria': 'Richtlinie für {tool}',
   'drawer.noTools': 'Dieser Agent hat keine Tools.',
   'drawer.readonly': 'Nur Manager, Admins und Inhaber können diese Einstellungen ändern.',
+  'drawer.model': 'KI-Modell',
+  'drawer.modelHint': 'Format Anbieter:Modell, z. B. anthropic:claude-sonnet-5-5. „auto“ nutzt den Standard Ihres Projekts. Verwenden Sie die Modellnamen aus dem Dashboard Ihres Anbieters.',
+  'drawer.modelAria': 'KI-Modell (Anbieter:Modell)',
+  'drawer.modelSaved': 'Modell gespeichert',
+  'drawer.modelInvalid': 'Verwenden Sie "auto" oder Anbieter:Modellname (ohne Leerzeichen).',
   'drawer.saveError': 'Speichern nicht möglich',
 
   'inbox.eyebrow': 'Mensch in der Schleife',

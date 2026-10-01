@@ -396,6 +396,11 @@ const fr: Dictionary = {
   'drawer.toolPolicyAria': 'Politique pour {tool}',
   'drawer.noTools': 'Cet agent n’a aucun outil.',
   'drawer.readonly': 'Seuls les responsables, administrateurs et propriétaires peuvent modifier ces paramètres.',
+  'drawer.model': 'Modèle d’IA',
+  'drawer.modelHint': 'Format fournisseur:modèle, p. ex. anthropic:claude-sonnet-5-5. « auto » utilise la valeur par défaut de votre projet. Utilisez les noms de modèles du tableau de bord de votre fournisseur.',
+  'drawer.modelAria': 'Modèle d’IA (fournisseur:modèle)',
+  'drawer.modelSaved': 'Modèle enregistré',
+  'drawer.modelInvalid': 'Utilisez "auto" ou fournisseur:nom-du-modèle (sans espaces).',
   'drawer.saveError': 'Impossible d’enregistrer',
 
   'inbox.eyebrow': 'L’humain dans la boucle',

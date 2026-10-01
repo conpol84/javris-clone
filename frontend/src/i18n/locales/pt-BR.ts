@@ -396,6 +396,11 @@ const ptBR: Dictionary = {
   'drawer.toolPolicyAria': 'Política de {tool}',
   'drawer.noTools': 'Este agente não tem ferramentas.',
   'drawer.readonly': 'Somente gestores, administradores e proprietários podem alterar estas configurações.',
+  'drawer.model': 'Modelo de IA',
+  'drawer.modelHint': 'Formato provedor:modelo, ex.: anthropic:claude-sonnet-5-5. "auto" usa o padrão do seu projeto. Use os nomes de modelo do painel do seu provedor.',
+  'drawer.modelAria': 'Modelo de IA (provedor:modelo)',
+  'drawer.modelSaved': 'Modelo salvo',
+  'drawer.modelInvalid': 'Use "auto" ou provedor:nome-do-modelo (sem espaços).',
   'drawer.saveError': 'Não foi possível salvar',
 
   'inbox.eyebrow': 'Com uma pessoa no controle',

@@ -411,6 +411,11 @@ export const en = {
   'drawer.toolPolicyAria': '{tool} policy',
   'drawer.noTools': 'This agent has no tools.',
   'drawer.readonly': 'Only managers, admins and owners can change these settings.',
+  'drawer.model': 'AI model',
+  'drawer.modelHint': 'Format provider:model, e.g. anthropic:claude-sonnet-5-5. "auto" uses the default of your project. Use model names from your provider’s dashboard.',
+  'drawer.modelAria': 'AI model (provider:model)',
+  'drawer.modelSaved': 'Model saved',
+  'drawer.modelInvalid': 'Use "auto" or provider:model-name (no spaces).',
   'drawer.saveError': 'Could not save',
 
   // ---- inbox

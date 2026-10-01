@@ -396,6 +396,11 @@ const el: Dictionary = {
   'drawer.toolPolicyAria': 'Πολιτική για {tool}',
   'drawer.noTools': 'Αυτός ο agent δεν έχει εργαλεία.',
   'drawer.readonly': 'Μόνο υπεύθυνοι, διαχειριστές και ιδιοκτήτες μπορούν να αλλάξουν αυτές τις ρυθμίσεις.',
+  'drawer.model': 'Μοντέλο AI',
+  'drawer.modelHint': 'Μορφή πάροχος:μοντέλο, π.χ. anthropic:claude-sonnet-5-5. Το "auto" χρησιμοποιεί την προεπιλογή του project. Χρησιμοποιήστε ονόματα μοντέλων από τον πίνακα του παρόχου σας.',
+  'drawer.modelAria': 'Μοντέλο AI (πάροχος:μοντέλο)',
+  'drawer.modelSaved': 'Το μοντέλο αποθηκεύτηκε',
+  'drawer.modelInvalid': 'Χρησιμοποιήστε "auto" ή πάροχος:όνομα-μοντέλου (χωρίς κενά).',
   'drawer.saveError': 'Δεν ήταν δυνατή η αποθήκευση',
 
   'inbox.eyebrow': 'Άνθρωπος στον βρόχο',

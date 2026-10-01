@@ -45,6 +45,7 @@ export function AgentDrawer({
   const label = agentLabel(agent, i18n);
   const color = agentColor(agent.type, agent.slug);
   const [budget, setBudget] = useState(agent.monthly_budget_usd?.toString() ?? '');
+  const [model, setModel] = useState(agent.model ?? 'auto');
   const suggestion = autonomySuggestion(stats, agent.autonomy);
 
   const run = async (fn: () => Promise<void>, ok?: string) => {
@@ -62,6 +63,12 @@ export function AgentDrawer({
     const v = budget.trim() === '' ? null : Number(budget);
     if (v !== null && (!Number.isFinite(v) || v < 0)) return toast.error(t('drawer.budgetInvalid'));
     void run(() => updateAgent(agent.id, { monthly_budget_usd: v }), t('drawer.budgetSaved'));
+  };
+
+  const saveModel = () => {
+    const v = model.trim() || 'auto';
+    if (!/^(auto|[a-z0-9_-]{1,32}:\S{1,100})$/i.test(v)) return toast.error(t('drawer.modelInvalid'));
+    void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved'));
   };
 
   const budgetValue = agent.monthly_budget_usd;
@@ -126,6 +133,29 @@ export function AgentDrawer({
           {suggestion.ready ? t('drawer.trust.ready') : suggestion.decisions < 10 ? t('drawer.trust.few') : t('drawer.trust.keep')}
         </p>
       )}
+
+      <div className="fb-eyebrow mb-2 mt-5">{t('drawer.model')}</div>
+      <div className="flex gap-2">
+        <input
+          className="fb-input font-mono text-xs"
+          list={`models-${agent.id}`}
+          value={model}
+          disabled={!canManage}
+          aria-label={t('drawer.modelAria')}
+          dir="ltr"
+          onChange={(e) => setModel(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && saveModel()}
+        />
+        <datalist id={`models-${agent.id}`}>
+          {['auto', 'openai:', 'anthropic:claude-sonnet-5-5', 'anthropic:claude-opus-5-5', 'anthropic:claude-haiku-4-5-20251001', 'kimi:', 'glm:', 'mimo:'].map((m) => (
+            <option key={m} value={m} />
+          ))}
+        </datalist>
+        <button className="fb-btn fb-btn--ghost" style={{ height: 42 }} disabled={!canManage} onClick={saveModel}>
+          {t('common.save')}
+        </button>
+      </div>
+      <p className="fb-dim mt-1 text-[11px]">{t('drawer.modelHint')}</p>
 
       <div className="fb-eyebrow mb-2 mt-5">{t('drawer.budget')}</div>
       <div className="flex gap-2">
