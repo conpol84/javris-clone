@@ -10,7 +10,7 @@ One server runs everything that cannot live on Vercel/Supabase:
 Web app = Vercel (firboai.app), database + login + agent runner = Supabase. This server only adds the AI gateway.
 
 ## 1. Buy and prepare the VPS (10 min)
-1. Hostinger → **VPS** → KVM 2 or bigger (≥ 4 GB RAM; the first build needs memory). Choose **Ubuntu 24.04**. Add your SSH key or note the root password.
+1. Hostinger → **VPS** → KVM 2 or bigger (≥ 4 GB RAM; the first build needs memory). Choose **Ubuntu 24.04 or newer**. Add your SSH key or note the root password.
 2. Note the server's **public IP**.
 3. DNS: create two **A records** → that IP:
    - `api.firboai.app`
@@ -18,11 +18,16 @@ Web app = Vercel (firboai.app), database + login + agent runner = Supabase. This
    (If firboai.app DNS is on Vercel: Vercel → Domains → firboai.app → DNS Records.)
 
 ## 2. Install (10 min)
+The repository is **private**, so the server needs a read-only *deploy key*:
 ```bash
 ssh root@SERVER_IP
-git clone https://github.com/conpol84/javris-clone.git
-cd javris-clone && git checkout claude/omniroute-engine
-cd deploy/hostinger
+ssh-keygen -t ed25519 -N "" -f ~/.ssh/firbo_deploy && cat ~/.ssh/firbo_deploy.pub
+```
+GitHub → repo `javris-clone` → Settings → **Deploy keys** → *Add deploy key* → paste the printed line, leave "Allow write access" **off**.
+```bash
+GIT_SSH_COMMAND="ssh -i ~/.ssh/firbo_deploy -o StrictHostKeyChecking=accept-new" \
+  git clone -b claude/omniroute-engine git@github.com:conpol84/javris-clone.git
+cd javris-clone/deploy/hostinger
 ./setup.sh                 # installs Docker, opens only ports 22/80/443, creates .env with random secrets
 nano .env                  # fill SUPABASE_PUBLISHABLE_KEY and INITIAL_PASSWORD (domains if different)
 docker compose up -d --build

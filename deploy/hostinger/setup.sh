@@ -3,9 +3,13 @@
 # Usage:  git clone <repo> && cd <repo>/deploy/hostinger && sudo ./setup.sh
 set -euo pipefail
 
-if ! command -v docker >/dev/null 2>&1; then
+if ! docker compose version >/dev/null 2>&1; then
   echo "==> Installing Docker"
-  curl -fsSL https://get.docker.com | sh
+  # Official script first; on a brand-new Ubuntu release fall back to the distro packages.
+  curl -fsSL https://get.docker.com | sh || {
+    apt-get update && apt-get install -y docker.io docker-compose-v2
+  }
+  systemctl enable --now docker
 fi
 
 if command -v ufw >/dev/null 2>&1; then
