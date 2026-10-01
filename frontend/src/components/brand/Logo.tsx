@@ -31,9 +31,9 @@ export function Wordmark({ size = 28 }: { size?: number }) {
       <LogoMark size={size} />
       <span
         className="font-semibold tracking-tight"
-        style={{ fontSize: size * 0.6, color: 'var(--color-text)' }}
+        style={{ fontSize: size * 0.6, color: 'var(--fb-text, var(--color-text))' }}
       >
-        Firbo <span style={{ color: 'var(--color-accent)' }}>AI</span>
+        Firbo <span style={{ color: 'var(--fb-accent, var(--color-accent))' }}>AI</span>
       </span>
     </span>
   );

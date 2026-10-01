@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router';
+import { Outlet, useLocation, useNavigate } from 'react-router';
+import { COMPANY_ENABLED } from '../lib/company/client';
 import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
@@ -8,7 +9,13 @@ import { checkHealth } from '../lib/api';
 
 export function Layout() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
+
+  // On phones the sidebar is an overlay: start collapsed so the page itself is visible.
+  useEffect(() => {
+    if (window.innerWidth < 768) setSidebarOpen(false);
+  }, [setSidebarOpen]);
 
   useEffect(() => {
     const check = () => checkHealth().then(setApiReachable);
@@ -23,6 +30,9 @@ export function Layout() {
   }, []);
 
   const navigate = useNavigate();
+  const { pathname } = useLocation();
+  // Company pages report their own status; the backend banner only matters for chat & legacy pages.
+  const ownsStatus = COMPANY_ENABLED && ['/', '/office', '/company', '/gateway'].includes(pathname);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
@@ -31,7 +41,7 @@ export function Layout() {
       <ApprovalBell />
 
       {/* Health check banner */}
-      {apiReachable === false && (
+      {apiReachable === false && !ownsStatus && (
         <div
           className="flex items-center gap-3 px-4 py-2 text-sm shrink-0"
           style={{

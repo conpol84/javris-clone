@@ -18,9 +18,13 @@ import {
   ScrollText,
   Database,
   Building2,
+  LayoutDashboard,
+  Box,
+  Waypoints,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import { LogoMark } from '../brand/Logo';
+import { CHAT_PATH } from '../../lib/company/routes';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
 
@@ -31,6 +35,7 @@ export function Sidebar() {
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const createConversation = useAppStore((s) => s.createConversation);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const serverInfo = useAppStore((s) => s.serverInfo);
@@ -48,18 +53,19 @@ export function Sidebar() {
   const handleNewChat = () => {
     // Don't create a new chat if the current one is empty
     if (messages.length === 0) {
-      navigate('/');
+      navigate(CHAT_PATH);
       return;
     }
     createConversation(selectedModel);
-    navigate('/');
+    navigate(CHAT_PATH);
   };
 
   const navItems = [
-    { path: '/', icon: MessageSquare, label: 'Chat' },
+    ...(COMPANY_ENABLED ? [{ path: '/', icon: LayoutDashboard, label: 'Command Center' }, { path: '/office', icon: Box, label: '3D Office' }, { path: '/gateway', icon: Waypoints, label: 'AI Gateway' }] : []),
+    { path: CHAT_PATH, icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    ...(COMPANY_ENABLED ? [{ path: '/company', icon: Building2, label: 'Company' }] : []),
+    ...(COMPANY_ENABLED ? [{ path: '/company', icon: Building2, label: 'Operations' }] : []),
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
@@ -208,7 +214,10 @@ export function Sidebar() {
               return (
                 <button
                   key={item.path}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => {
+                    navigate(item.path);
+                    if (window.innerWidth < 768) setSidebarOpen(false);
+                  }}
                   className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
                   style={{
                     background: isActive ? 'var(--color-accent-subtle)' : 'transparent',

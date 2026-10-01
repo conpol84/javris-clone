@@ -1,45 +1,44 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { LogoMark } from '../brand/Logo';
+import { LandingPage } from '../../pages/LandingPage';
+import '../../styles/firbo.css';
 
-const card = {
-  background: 'var(--color-bg-secondary)',
-  border: '1px solid var(--color-border)',
-  color: 'var(--color-text)',
-} as const;
+type Mode = 'signin' | 'signup';
 
-const field = {
-  background: 'var(--color-input-bg)',
-  border: '1px solid var(--color-input-border)',
-  color: 'var(--color-text)',
-} as const;
-
-function Shell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+function Shell({
+  title,
+  subtitle,
+  children,
+  onBack,
+}: {
+  title: string;
+  subtitle: string;
+  children: ReactNode;
+  onBack?: () => void;
+}) {
   return (
-    <div
-      className="flex h-full w-full items-center justify-center px-4"
-      style={{
-        background:
-          'radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 70%), var(--color-bg)',
-      }}
-    >
-      <div className="w-full max-w-sm rounded-2xl p-7" style={{ ...card, boxShadow: '0 20px 60px -20px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
+    <div className="fb-root flex h-full w-full items-center justify-center px-4">
+      <div className="fb-glass fb-fade-up w-full max-w-sm p-7" style={{ borderColor: 'var(--fb-border-strong)' }}>
+        {onBack && (
+          <button type="button" onClick={onBack} className="fb-link fb-muted mb-4 cursor-pointer text-xs hover:text-white">
+            ← Back
+          </button>
+        )}
         <div className="mb-5">
           <LogoMark size={44} />
         </div>
         <h1 className="text-xl font-semibold">{title}</h1>
-        <p className="mt-1 mb-5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-          {subtitle}
-        </p>
+        <p className="fb-muted mb-5 mt-1 text-sm">{subtitle}</p>
         {children}
       </div>
     </div>
   );
 }
 
-export function LoginScreen() {
+export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: Mode; onBack?: () => void }) {
   const { signIn, signUp } = useCompanyAuth();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -66,45 +65,44 @@ export function LoginScreen() {
   };
 
   return (
-    <Shell title="Firbo AI" subtitle={mode === 'signin' ? 'Sign in to your AI command center' : 'Create your Firbo AI account'}>
+    <Shell
+      title="Firbo AI"
+      subtitle={mode === 'signin' ? 'Sign in to your AI command center' : 'Create your Firbo AI account'}
+      onBack={onBack}
+    >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           type="email"
           required
           autoComplete="email"
+          aria-label="Email"
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="h-9 rounded-lg px-3 text-sm outline-none"
-          style={field}
+          className="fb-input"
         />
         <input
           type="password"
           required
           minLength={8}
           autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+          aria-label="Password"
           placeholder="Password (min 8 characters)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="h-9 rounded-lg px-3 text-sm outline-none"
-          style={field}
+          className="fb-input"
         />
         {error && (
-          <p role="alert" className="text-xs" style={{ color: 'var(--color-error)' }}>
+          <p role="alert" className="text-xs" style={{ color: 'var(--fb-err)' }}>
             {error}
           </p>
         )}
         {notice && (
-          <p className="text-xs" style={{ color: 'var(--color-success)' }}>
+          <p className="text-xs" style={{ color: 'var(--fb-ok)' }}>
             {notice}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy}
-          className="h-9 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
-        >
+        <button type="submit" disabled={busy} className="fb-btn fb-btn--primary disabled:opacity-50">
           {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
         </button>
       </form>
@@ -115,8 +113,7 @@ export function LoginScreen() {
           setError('');
           setNotice('');
         }}
-        className="mt-4 text-xs underline cursor-pointer"
-        style={{ color: 'var(--color-text-secondary)' }}
+        className="fb-link fb-muted mt-4 cursor-pointer text-xs underline"
       >
         {mode === 'signin' ? 'No account? Create one' : 'Already have an account? Sign in'}
       </button>
@@ -143,73 +140,68 @@ export function CreateOrgScreen() {
   };
 
   return (
-    <Shell title="Create your company" subtitle="Your AI team (CEO, Research, Sales, Marketing, Operations, Finance, Developer) is set up automatically.">
+    <Shell
+      title="Create your company"
+      subtitle="Your AI team (CEO, Research, Sales, Marketing, Operations, Finance, Developer) is set up automatically."
+    >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           required
           maxLength={120}
+          aria-label="Company name"
           placeholder="Company name"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          className="h-9 rounded-lg px-3 text-sm outline-none"
-          style={field}
+          className="fb-input"
         />
         {error && (
-          <p role="alert" className="text-xs" style={{ color: 'var(--color-error)' }}>
+          <p role="alert" className="text-xs" style={{ color: 'var(--fb-err)' }}>
             {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={busy || name.trim().length === 0}
-          className="h-9 rounded-lg text-sm font-medium cursor-pointer disabled:opacity-50"
-          style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
-        >
+        <button type="submit" disabled={busy || name.trim().length === 0} className="fb-btn fb-btn--primary disabled:opacity-50">
           {busy ? 'Creating…' : 'Create company'}
         </button>
       </form>
-      <button
-        type="button"
-        onClick={() => void signOut()}
-        className="mt-4 text-xs underline cursor-pointer"
-        style={{ color: 'var(--color-text-secondary)' }}
-      >
+      <button type="button" onClick={() => void signOut()} className="fb-link fb-muted mt-4 cursor-pointer text-xs underline">
         Sign out
       </button>
     </Shell>
   );
 }
 
-/** Renders children untouched unless the company workspace is configured. */
+/** Logged-out experience: public landing page, with sign-in / sign-up one click away. */
+function PublicSite() {
+  const path = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const initial: Mode | null = path === '/signup' ? 'signup' : path === '/login' ? 'signin' : null;
+  const [view, setView] = useState<Mode | null>(initial);
+  if (view) return <LoginScreen initialMode={view} onBack={() => setView(null)} />;
+  return <LandingPage onSignIn={() => setView('signin')} onSignUp={() => setView('signup')} />;
+}
+
+/**
+ * Renders children untouched unless the company workspace is configured.
+ * When it is, the app only works after login; logged-out visitors see the public site.
+ */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { enabled, loading, session, current, loadError, retry, signOut } = useCompanyAuth();
   if (!enabled) return <>{children}</>;
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>
-        Loading…
+      <div className="fb-root flex h-full w-full items-center justify-center text-sm fb-muted">
+        <span className="fb-dot fb-dot--live fb-dot--ok mr-2" /> Loading…
       </div>
     );
   }
-  if (!session) return <LoginScreen />;
+  if (!session) return <PublicSite />;
   if (loadError) {
     return (
       <Shell title="Can't load your workspace" subtitle={loadError}>
         <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={retry}
-            className="h-9 flex-1 rounded-lg text-sm font-medium cursor-pointer"
-            style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}
-          >
+          <button type="button" onClick={retry} className="fb-btn fb-btn--primary flex-1">
             Retry
           </button>
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            className="h-9 rounded-lg px-3 text-sm cursor-pointer"
-            style={field}
-          >
+          <button type="button" onClick={() => void signOut()} className="fb-btn fb-btn--ghost">
             Sign out
           </button>
         </div>

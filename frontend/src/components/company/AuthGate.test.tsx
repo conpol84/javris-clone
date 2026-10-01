@@ -47,9 +47,11 @@ describe('AuthGate', () => {
     expect(html).not.toContain('APP');
   });
 
-  it('requires sign in when there is no session', () => {
+  it('shows the public landing page (not the app) when there is no session', () => {
     const html = render({ session: null, current: null });
-    expect(html).toContain('Sign in to your AI command center');
+    expect(html).toContain('Run your company with a');
+    expect(html).toContain('Sign in');
+    expect(html).toContain('Create your company');
     expect(html).not.toContain('APP');
   });
 
