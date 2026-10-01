@@ -21,6 +21,7 @@ interface CompanyAuth {
   current: Membership | null;
   loadError: string;
   retry: () => void;
+  refresh: () => Promise<void>;
   selectOrg: (orgId: string) => void;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<{ needsConfirmation: boolean }>;
@@ -40,6 +41,7 @@ const Ctx = createContext<CompanyAuth>({
   current: null,
   loadError: '',
   retry: () => {},
+  refresh: async () => {},
   selectOrg: () => {},
   signIn: noop,
   signUp: async () => ({ needsConfirmation: false }),
@@ -119,6 +121,7 @@ export function CompanyAuthProvider({ children }: { children: ReactNode }) {
       memberships,
       current,
       loadError,
+      refresh,
       retry: () => {
         setLoading(true);
         void refresh();

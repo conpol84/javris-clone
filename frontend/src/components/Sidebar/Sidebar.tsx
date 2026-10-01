@@ -21,10 +21,16 @@ import {
   LayoutDashboard,
   Box,
   Waypoints,
+  Users,
+  Inbox,
+  ListChecks,
+  History,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import { LogoMark } from '../brand/Logo';
 import { CHAT_PATH } from '../../lib/company/routes';
+import { useCompanyAuth } from '../../lib/company/AuthProvider';
+import { usePendingCount } from '../../lib/company/usePendingCount';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
 
@@ -36,6 +42,8 @@ export function Sidebar() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const { current } = useCompanyAuth();
+  const pending = usePendingCount(current?.organization.id ?? '');
   const createConversation = useAppStore((s) => s.createConversation);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const serverInfo = useAppStore((s) => s.serverInfo);
@@ -60,13 +68,25 @@ export function Sidebar() {
     navigate(CHAT_PATH);
   };
 
-  const navItems = [
-    ...(COMPANY_ENABLED ? [{ path: '/', icon: LayoutDashboard, label: 'Command Center' }, { path: '/office', icon: Box, label: '3D Office' }, { path: '/gateway', icon: Waypoints, label: 'AI Gateway' }] : []),
+  type NavItem = { path: string; icon: typeof Bot; label: string; badge?: number };
+  const workspace: NavItem[] = COMPANY_ENABLED
+    ? [
+        { path: '/', icon: LayoutDashboard, label: 'Command Center' },
+        { path: '/office', icon: Box, label: '3D Office' },
+        { path: '/team', icon: Users, label: 'AI Team' },
+        { path: '/inbox', icon: Inbox, label: 'Inbox', badge: pending },
+        { path: '/tasks', icon: ListChecks, label: 'Tasks' },
+        { path: '/activity', icon: History, label: 'Activity' },
+        { path: '/people', icon: Building2, label: 'People' },
+        { path: '/gateway', icon: Waypoints, label: 'AI Gateway' },
+      ]
+    : [];
+  const navItems: NavItem[] = [
+    ...workspace,
     { path: CHAT_PATH, icon: MessageSquare, label: 'Chat' },
-    { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
+    { path: '/dashboard', icon: BarChart3, label: COMPANY_ENABLED ? 'Analytics' : 'Dashboard' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    ...(COMPANY_ENABLED ? [{ path: '/company', icon: Building2, label: 'Operations' }] : []),
-    { path: '/agents', icon: Bot, label: 'Agents' },
+    { path: '/agents', icon: Bot, label: COMPANY_ENABLED ? 'Agent Runtime' : 'Agents' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
     ...(COMPANY_ENABLED ? [] : [{ path: '/get-started', icon: Rocket, label: 'Get Started' }]),
@@ -208,7 +228,7 @@ export function Sidebar() {
           </div>
 
           {/* Bottom nav */}
-          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5 overflow-y-auto" style={{ borderTop: '1px solid var(--color-border)', maxHeight: '62%' }}>
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
@@ -243,6 +263,11 @@ export function Sidebar() {
                   )}
                   <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
                   {item.label}
+                  {item.badge ? (
+                    <span className="ml-auto min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-semibold" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}

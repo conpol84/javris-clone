@@ -32,7 +32,7 @@ export function Layout() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   // Company pages report their own status; the backend banner only matters for chat & legacy pages.
-  const ownsStatus = COMPANY_ENABLED && ['/', '/office', '/company', '/gateway'].includes(pathname);
+  const ownsStatus = COMPANY_ENABLED && ['/', '/office', '/tasks', '/gateway', '/team', '/inbox', '/activity', '/people'].includes(pathname);
 
   return (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>

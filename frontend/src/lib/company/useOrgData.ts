@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { listAgents, listPendingApprovals, listTasks, loadCounts } from './data';
+import { useRealtimeReload } from './useRealtime';
 import type { AgentRow, ApprovalRow, OrgCounts, TaskRow } from './types';
 
 export interface OrgData {
@@ -13,7 +14,7 @@ export interface OrgData {
 }
 
 /** Loads real company data and refreshes it in the background. */
-export function useOrgData(orgId: string, canSeeUsage: boolean, intervalMs = 20_000): OrgData {
+export function useOrgData(orgId: string, canSeeUsage: boolean, intervalMs = 60_000): OrgData {
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRow[]>([]);
@@ -44,6 +45,9 @@ export function useOrgData(orgId: string, canSeeUsage: boolean, intervalMs = 20_
       if (mine === seq.current) setLoading(false);
     }
   }, [orgId, canSeeUsage]);
+
+  // Live updates; the interval below is only a safety net.
+  useRealtimeReload(orgId, ['agents', 'tasks', 'approvals'], () => void reload());
 
   useEffect(() => {
     setLoading(true);

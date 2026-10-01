@@ -14,7 +14,19 @@ export const AGENT_COLORS: Record<string, string> = {
   custom: '#94a3b8',
 };
 
-export const agentColor = (type: string): string => AGENT_COLORS[type] ?? AGENT_COLORS.custom;
+import { AGENT_TEMPLATES } from './templates';
+
+const FALLBACK = ['#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#c084fc'];
+
+/** Known departments keep their colour; hired templates use theirs; anything else gets a stable colour. */
+export function agentColor(type: string, slug = ''): string {
+  if (AGENT_COLORS[type] && type !== 'custom') return AGENT_COLORS[type];
+  const tpl = AGENT_TEMPLATES.find((t) => slug === t.slug || slug.startsWith(`${t.slug}-`));
+  if (tpl) return tpl.color;
+  let h = 0;
+  for (const ch of slug || type) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return FALLBACK[h % FALLBACK.length];
+}
 
 /**
  * Derive a live state per agent from real task/approval rows:

@@ -14,7 +14,7 @@ const base = {
   enabled: true,
   loading: false,
   session: { access_token: 't' },
-  current: { role: 'owner', organization: { id: 'o', name: 'Acme', slug: 'acme' } },
+  current: { role: 'owner', organization: { id: 'o', name: 'Acme', slug: 'acme', profile: { onboarded: true } } },
   loadError: '',
   retry: vi.fn(),
   signOut: vi.fn(),
@@ -66,6 +66,13 @@ describe('AuthGate', () => {
     expect(html).toContain('network down');
     expect(html).toContain('Retry');
     expect(html).not.toContain('Create your company');
+  });
+
+  it('runs onboarding once for a new company owner, but never for plain members', () => {
+    const fresh = { role: 'owner', organization: { id: 'o', name: 'Acme', slug: 'acme', profile: {} } };
+    expect(render({ current: fresh })).toContain('What should your AI team help with first?');
+    expect(render({ current: fresh })).not.toContain('APP');
+    expect(render({ current: { ...fresh, role: 'member' } })).toContain('APP');
   });
 
   it('renders the app once signed in with a company', () => {

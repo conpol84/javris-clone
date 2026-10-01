@@ -12,6 +12,8 @@ const agent = (id: string, enabled = true): AgentRow => ({
   model: 'auto',
   enabled,
   autonomous: false,
+  autonomy: 'approval',
+  monthly_budget_usd: null,
   agent_tools: [],
 });
 const task = (over: Partial<TaskRow>): TaskRow => ({
@@ -33,6 +35,9 @@ const approval = (over: Partial<ApprovalRow>): ApprovalRow => ({
   requested_at: '2026-10-01T11:00:00Z',
   agent_id: null,
   task_id: null,
+  risk: 'medium',
+  decision_note: null,
+  decided_at: null,
   ...over,
 });
 

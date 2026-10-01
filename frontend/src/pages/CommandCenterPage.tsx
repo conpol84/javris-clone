@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Waypoints } from 'lucide-react';
+import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
 import { Panel, StatusDot, Wave } from '../components/command/Panel';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { buildFeed, timeAgo } from '../lib/company/feed';
@@ -39,7 +39,7 @@ export function CommandCenterPage() {
 
   const states = useMemo(() => deriveAgentStates(data.agents, data.tasks, data.approvals), [data.agents, data.tasks, data.approvals]);
   const satellites = useMemo(
-    () => data.agents.map((a) => ({ id: a.id, color: agentColor(a.type), active: states[a.id] === 'active' })),
+    () => data.agents.map((a) => ({ id: a.id, color: agentColor(a.type, a.slug), active: states[a.id] === 'active' })),
     [data.agents, states],
   );
   const feed = useMemo(() => buildFeed(data.tasks, data.approvals, data.agents), [data.tasks, data.approvals, data.agents]);
@@ -135,7 +135,7 @@ export function CommandCenterPage() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {feed.map((e) => (
-                  <li key={e.id} className="fb-row items-start">
+                  <li key={e.id} className="fb-row fb-start">
                     <span className="mt-1.5">
                       <StatusDot tone={LEVEL_TONE[e.level]} />
                     </span>
@@ -163,7 +163,7 @@ export function CommandCenterPage() {
             <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {data.agents.map((a) => {
                 const st = states[a.id] ?? 'idle';
-                const color = agentColor(a.type);
+                const color = agentColor(a.type, a.slug);
                 return (
                   <li key={a.id}>
                     <button
@@ -193,9 +193,10 @@ export function CommandCenterPage() {
           <Panel title="Quick commands" area="commands">
             <ul className="flex flex-col gap-2">
               {[
-                { icon: ListChecks, label: 'Start new task', to: '/company' },
+                { icon: ListChecks, label: 'Start new task', to: '/tasks' },
                 { icon: Box, label: 'Open 3D office', to: '/office' },
-                { icon: ShieldCheck, label: `Review approvals${data.approvals.length ? ` (${data.approvals.length})` : ''}`, to: '/company' },
+                { icon: ShieldCheck, label: `Review approvals${data.approvals.length ? ` (${data.approvals.length})` : ''}`, to: '/inbox' },
+                { icon: Users, label: 'Hire an AI employee', to: '/team' },
                 { icon: Waypoints, label: 'AI Gateway', to: '/gateway' },
                 { icon: MessageSquare, label: 'Chat with Firbo AI', to: CHAT_PATH },
               ].map(({ icon: Icon, label, to }) => (

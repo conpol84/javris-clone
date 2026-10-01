@@ -2,6 +2,7 @@ import { useState, type FormEvent, type ReactNode } from 'react';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { LogoMark } from '../brand/Logo';
 import { LandingPage } from '../../pages/LandingPage';
+import { OnboardingWizard } from './OnboardingWizard';
 import '../../styles/firbo.css';
 
 type Mode = 'signin' | 'signup';
@@ -209,5 +210,7 @@ export function AuthGate({ children }: { children: ReactNode }) {
     );
   }
   if (!current) return <CreateOrgScreen />;
+  const canOnboard = current.role === 'owner' || current.role === 'admin';
+  if (canOnboard && !current.organization.profile?.onboarded) return <OnboardingWizard />;
   return <>{children}</>;
 }

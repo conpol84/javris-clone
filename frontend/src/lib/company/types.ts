@@ -1,8 +1,26 @@
 export type Role = 'owner' | 'admin' | 'manager' | 'member' | 'viewer';
 
+export interface OrgProfile {
+  onboarded?: boolean;
+  goal?: string;
+  industry?: string;
+  website?: string;
+  summary?: string;
+}
+
 export interface Membership {
   role: Role;
-  organization: { id: string; name: string; slug: string };
+  organization: { id: string; name: string; slug: string; profile: OrgProfile };
+}
+
+export type Autonomy = 'suggest' | 'approval' | 'notify' | 'auto';
+export type ToolPolicy = 'allow' | 'approval' | 'block';
+
+export interface AgentToolRow {
+  id: string;
+  tool_name: string;
+  enabled: boolean;
+  policy: ToolPolicy;
 }
 
 export interface AgentRow {
@@ -14,7 +32,9 @@ export interface AgentRow {
   model: string;
   enabled: boolean;
   autonomous: boolean;
-  agent_tools: { tool_name: string; enabled: boolean }[];
+  autonomy: Autonomy;
+  monthly_budget_usd: number | null;
+  agent_tools: AgentToolRow[];
 }
 
 export type TaskStatus =
@@ -46,6 +66,26 @@ export interface ApprovalRow {
   requested_at: string;
   agent_id: string | null;
   task_id: string | null;
+  risk: 'low' | 'medium' | 'high';
+  decision_note: string | null;
+  decided_at: string | null;
+}
+
+export interface AuditRow {
+  id: string;
+  action: string;
+  entity: string | null;
+  actor_id: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface MemberRow {
+  user_id: string;
+  role: Role;
+  joined_at: string;
+  full_name: string | null;
+  email: string | null;
 }
 
 export interface OrgCounts {

@@ -42,7 +42,7 @@ describe('buildNodes', () => {
 });
 
 const agent = (id: string, type: string): AgentRow => ({
-  id, name: id, slug: id, type, description: null, model: 'auto', enabled: true, autonomous: false, agent_tools: [],
+  id, name: id, slug: id, type, description: null, model: 'auto', enabled: true, autonomous: false, autonomy: 'approval', monthly_budget_usd: null, agent_tools: [],
 });
 
 describe('layoutAgents', () => {
@@ -58,10 +58,10 @@ describe('layoutAgents', () => {
     expect(new Set(placed.map((p) => p.pos.join(','))).size).toBe(2);
   });
 
-  it('drops extras beyond the available rooms rather than overlapping', () => {
-    const many = Array.from({ length: 20 }, (_, i) => agent(`a${i}`, 'custom'));
+  it('gives every agent its own room however many are hired', () => {
+    const many = Array.from({ length: 40 }, (_, i) => agent(`a${i}`, 'custom'));
     const placed = layoutAgents(many);
-    expect(placed.length).toBeLessThanOrEqual(4);
-    expect(new Set(placed.map((p) => p.pos.join(','))).size).toBe(placed.length);
+    expect(placed).toHaveLength(40);
+    expect(new Set(placed.map((p) => p.pos.join(','))).size).toBe(40);
   });
 });

@@ -25,16 +25,16 @@ const SLOT_BY_TYPE: Record<string, [number, number]> = {
   finance: [-5.6, 5],
   developer: [5.6, 5],
 };
-const SPARE_SLOTS: [number, number][] = [
-  [0, 5],
-  [-5.6, 9.8],
-  [0, 9.8],
-  [5.6, 9.8],
-];
+/** Spare rooms: first the lounge slot, then an unbounded grid of rows behind the main floor. */
+export function spareSlot(i: number): [number, number] {
+  if (i === 0) return [0, 5];
+  const j = i - 1;
+  return [[-5.6, 0, 5.6][j % 3], 9.8 + 4.8 * Math.floor(j / 3)];
+}
 
 export function layoutAgents(agents: AgentRow[]): { agent: AgentRow; pos: [number, number] }[] {
   const taken = new Set<string>();
-  const spare = [...SPARE_SLOTS];
+  let spareIndex = 0;
   const placed: { agent: AgentRow; pos: [number, number] }[] = [];
   const leftovers: AgentRow[] = [];
   for (const agent of agents) {
@@ -46,10 +46,7 @@ export function layoutAgents(agents: AgentRow[]): { agent: AgentRow; pos: [numbe
       leftovers.push(agent);
     }
   }
-  for (const agent of leftovers) {
-    const pos = spare.shift();
-    if (pos) placed.push({ agent, pos }); // more agents than slots: extras are listed in the side panel only
-  }
+  for (const agent of leftovers) placed.push({ agent, pos: spareSlot(spareIndex++) });
   return placed;
 }
 
@@ -255,7 +252,7 @@ function Zone({
   selected: boolean;
   onSelect: (id: string | null) => void;
 }) {
-  const color = agentColor(agent.type);
+  const color = agentColor(agent.type, agent.slug);
   const [hover, setHover] = useState(false);
   const ring = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {

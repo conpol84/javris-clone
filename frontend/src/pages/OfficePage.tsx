@@ -77,7 +77,7 @@ export function OfficePage() {
               </button>
             }
           >
-            <div className="fb-chip mb-3" style={{ color: agentColor(selected.type) }}>
+            <div className="fb-chip mb-3" style={{ color: agentColor(selected.type, selected.slug) }}>
               <StatusDot tone={states[selected.id] === 'active' ? 'ok' : states[selected.id] === 'waiting' ? 'warn' : 'idle'} live={states[selected.id] === 'active'} />
               {STATE_LABEL[states[selected.id] ?? 'idle']}
             </div>
@@ -132,7 +132,7 @@ export function OfficePage() {
                 return (
                   <li key={a.id}>
                     <button onClick={() => select(a.id)} className="fb-row fb-glass--hover w-full cursor-pointer text-left">
-                      <span className="fb-dot" style={{ background: agentColor(a.type), boxShadow: `0 0 10px ${agentColor(a.type)}` }} />
+                      <span className="fb-dot" style={{ background: agentColor(a.type, a.slug), boxShadow: `0 0 10px ${agentColor(a.type, a.slug)}` }} />
                       <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.name}</span>
                       <span className="fb-dim text-xs">{STATE_LABEL[st]}</span>
                     </button>

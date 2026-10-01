@@ -8,10 +8,14 @@ import { GetStartedPage } from './pages/GetStartedPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
-import { CompanyPage } from './pages/CompanyPage';
+import { TasksPage } from './pages/TasksPage';
 import { CommandCenterPage } from './pages/CommandCenterPage';
 import { OfficePage } from './pages/OfficePage';
 import { GatewayPage } from './pages/GatewayPage';
+import { TeamPage } from './pages/TeamPage';
+import { InboxPage } from './pages/InboxPage';
+import { ActivityPage } from './pages/ActivityPage';
+import { PeoplePage } from './pages/PeoplePage';
 import { COMPANY_ENABLED } from './lib/company/client';
 import { CompanyAuthProvider } from './lib/company/AuthProvider';
 import { AuthGate } from './components/company/AuthGate';
@@ -195,6 +199,10 @@ function AuthedApp() {
           <Route path="chat" element={<ChatPage />} />
           <Route path="office" element={<OfficePage />} />
           <Route path="gateway" element={<GatewayPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="people" element={<PeoplePage />} />
           <Route path="login" element={<Navigate to="/" replace />} />
           <Route path="signup" element={<Navigate to="/" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
@@ -203,7 +211,8 @@ function AuthedApp() {
           <Route path="data-sources" element={<DataSourcesPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="logs" element={<LogsPage />} />
-          <Route path="company" element={<CompanyPage />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="company" element={<Navigate to="/tasks" replace />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />

@@ -130,7 +130,7 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
           {data && data.combos.length > 0 ? (
             <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {data.combos.map((c) => (
-                <li key={c.name} className="fb-row flex-col items-start gap-1">
+                <li key={c.name} className="fb-row fb-col gap-1">
                   <div className="flex w-full items-center justify-between gap-2">
                     <span className="truncate text-sm font-semibold">{c.name}</span>
                     <span className="fb-chip">{c.strategy}</span>
