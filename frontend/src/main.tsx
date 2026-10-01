@@ -1,7 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { ErrorBoundary, reloadOnStaleBuild } from './components/ErrorBoundary';
 import App from './App';
 import { I18nProvider } from './i18n/I18nProvider';
 import { initApiBase } from './lib/api';
@@ -24,6 +24,14 @@ function applyTheme() {
 }
 
 applyTheme();
+
+// After a new deploy, an already-open tab can't find its old lazy chunks: refresh into the new build.
+window.addEventListener('vite:preloadError', (e) => {
+  if (reloadOnStaleBuild(new Error('preload'))) e.preventDefault();
+});
+window.addEventListener('load', () => {
+  try { window.setTimeout(() => sessionStorage.removeItem('firbo-stale-reload'), 10_000); } catch { /* ignore */ }
+});
 
 // Fetch the API base URL from the Tauri backend before rendering.
 // This ensures JARVIS_PORT is defined in one place (the Rust backend).

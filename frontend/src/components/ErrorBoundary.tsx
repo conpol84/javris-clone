@@ -11,6 +11,18 @@ interface State {
   error: Error | null;
 }
 
+/** A tab left open across a deploy asks for chunks that no longer exist: load the new version once. */
+export function reloadOnStaleBuild(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  if (!/dynamically imported module|Importing a module script failed|Loading chunk|preload/i.test(msg)) return false;
+  try {
+    if (sessionStorage.getItem('firbo-stale-reload')) return false;
+    sessionStorage.setItem('firbo-stale-reload', '1');
+  } catch { /* still reload once below */ }
+  window.location.reload();
+  return true;
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props);
@@ -23,6 +35,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('ErrorBoundary caught:', error, info);
+    reloadOnStaleBuild(error);
   }
 
   render() {
