@@ -8,6 +8,9 @@ import { GetStartedPage } from './pages/GetStartedPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
+import { CompanyPage } from './pages/CompanyPage';
+import { CompanyAuthProvider } from './lib/company/AuthProvider';
+import { AuthGate } from './components/company/AuthGate';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -179,7 +182,8 @@ export default function App() {
   }
 
   return (
-    <>
+    <CompanyAuthProvider>
+      <AuthGate>
       <UpdateChecker />
       <Routes>
         <Route element={<Layout />}>
@@ -190,6 +194,7 @@ export default function App() {
           <Route path="data-sources" element={<DataSourcesPage />} />
           <Route path="agents" element={<AgentsPage />} />
           <Route path="logs" element={<LogsPage />} />
+          <Route path="company" element={<CompanyPage />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
@@ -197,6 +202,7 @@ export default function App() {
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />
       )}
-    </>
+      </AuthGate>
+    </CompanyAuthProvider>
   );
 }

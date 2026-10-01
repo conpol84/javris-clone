@@ -1,0 +1,77 @@
+export type Role = 'owner' | 'admin' | 'manager' | 'member' | 'viewer';
+
+export interface Membership {
+  role: Role;
+  organization: { id: string; name: string; slug: string };
+}
+
+export interface AgentRow {
+  id: string;
+  name: string;
+  slug: string;
+  type: string;
+  description: string | null;
+  model: string;
+  enabled: boolean;
+  autonomous: boolean;
+  agent_tools: { tool_name: string; enabled: boolean }[];
+}
+
+export type TaskStatus =
+  | 'pending'
+  | 'running'
+  | 'blocked'
+  | 'awaiting_approval'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface TaskRow {
+  id: string;
+  title: string;
+  description: string | null;
+  status: TaskStatus;
+  priority: TaskPriority;
+  assigned_agent_id: string | null;
+  due_at: string | null;
+  created_at: string;
+}
+
+export interface ApprovalRow {
+  id: string;
+  action: string;
+  payload: Record<string, unknown>;
+  status: 'pending' | 'approved' | 'rejected' | 'expired';
+  requested_at: string;
+  agent_id: string | null;
+  task_id: string | null;
+}
+
+export interface OrgCounts {
+  memories: number;
+  knowledgeSources: number;
+  workflows: number;
+  tokens30d: number;
+  cost30d: number;
+}
+
+export const MANAGER_ROLES: Role[] = ['owner', 'admin', 'manager'];
+export const WRITER_ROLES: Role[] = ['owner', 'admin', 'manager', 'member'];
+export const OPEN_TASK_STATUSES: TaskStatus[] = [
+  'pending',
+  'running',
+  'blocked',
+  'awaiting_approval',
+];
+
+export function slugify(name: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return base.length >= 2 ? base : 'company';
+}

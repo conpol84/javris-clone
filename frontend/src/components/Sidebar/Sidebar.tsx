@@ -17,7 +17,9 @@ import {
   Loader2,
   ScrollText,
   Database,
+  Building2,
 } from 'lucide-react';
+import { COMPANY_ENABLED } from '../../lib/company/client';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
 
@@ -56,6 +58,7 @@ export function Sidebar() {
     { path: '/', icon: MessageSquare, label: 'Chat' },
     { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
     { path: '/data-sources', icon: Database, label: 'Data Sources' },
+    ...(COMPANY_ENABLED ? [{ path: '/company', icon: Building2, label: 'Company' }] : []),
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
