@@ -473,6 +473,13 @@ class LemonadeEngineConfig:
     host: str = "http://localhost:13305"
 
 
+@dataclass(slots=True)
+class OmniRouteEngineConfig:
+    """Per-engine config for the OmniRoute AI gateway."""
+
+    host: str = "http://localhost:20128"
+
+
 @dataclass
 class EngineConfig:
     """Inference engine settings with nested per-engine configs."""
@@ -491,6 +498,7 @@ class EngineConfig:
     afm: AfmEngineConfig = field(default_factory=AfmEngineConfig)
     gemma_cpp: GemmaCppEngineConfig = field(default_factory=GemmaCppEngineConfig)
     lemonade: LemonadeEngineConfig = field(default_factory=LemonadeEngineConfig)
+    omniroute: OmniRouteEngineConfig = field(default_factory=OmniRouteEngineConfig)
 
     # Backward-compat properties for old flat attribute names
     @property
@@ -600,6 +608,15 @@ class EngineConfig:
     @lemonade_host.setter
     def lemonade_host(self, value: str) -> None:
         self.lemonade.host = value
+
+    @property
+    def omniroute_host(self) -> str:
+        """Deprecated: use ``engine.omniroute.host``."""
+        return self.omniroute.host
+
+    @omniroute_host.setter
+    def omniroute_host(self, value: str) -> None:
+        self.omniroute.host = value
 
 
 @dataclass(slots=True)
