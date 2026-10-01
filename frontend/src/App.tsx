@@ -223,7 +223,7 @@ function AuthedApp() {
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
-      {commandPaletteOpen && <CommandPalette />}
+      {!COMPANY_ENABLED && commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />
       )}
