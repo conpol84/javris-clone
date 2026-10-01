@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
+import { CommandDialog } from '../components/command/CommandDialog';
 import { Panel, StatusDot, Wave } from '../components/command/Panel';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { buildFeed, timeAgo } from '../lib/company/feed';
@@ -41,6 +42,7 @@ export function CommandCenterPage() {
   const data = useOrgData(orgId, MANAGER_ROLES.includes(role));
   const gateway = useGateway();
   const now = useClock();
+  const [commanding, setCommanding] = useState(false);
 
   const states = useMemo(() => deriveAgentStates(data.agents, data.tasks, data.approvals), [data.agents, data.tasks, data.approvals]);
   const satellites = useMemo(
@@ -302,12 +304,13 @@ export function CommandCenterPage() {
 
       </div>
       <div className="relative z-10 flex shrink-0 justify-center px-4 pb-4 pt-1">
-        <button className="fb-talk" onClick={() => navigate(CHAT_PATH)}>
+        <button className="fb-talk" onClick={() => setCommanding(true)}>
           <Wave color="var(--fb-accent)" />
           {t('cc.talk')}
           <Wave color="var(--fb-accent)" />
         </button>
       </div>
+      {commanding && <CommandDialog agents={data.agents} onClose={() => setCommanding(false)} />}
     </div>
   );
 }

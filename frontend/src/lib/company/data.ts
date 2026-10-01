@@ -63,7 +63,7 @@ export async function setAgentEnabled(agentId: string, enabled: boolean): Promis
 export async function listTasks(orgId: string): Promise<TaskRow[]> {
   const { data, error } = await requireClient()
     .from('tasks')
-    .select('id, title, description, status, priority, assigned_agent_id, due_at, created_at')
+    .select('id, title, description, status, priority, assigned_agent_id, due_at, created_at, result')
     .eq('organization_id', orgId)
     .order('created_at', { ascending: false })
     .limit(100);
@@ -78,8 +78,8 @@ export async function createTask(input: {
   priority: TaskPriority;
   agentId: string | null;
   dueAt?: string | null;
-}): Promise<void> {
-  const { error } = await requireClient().from('tasks').insert({
+}): Promise<string> {
+  const { data, error } = await requireClient().from('tasks').insert({
     organization_id: input.orgId,
     created_by: input.userId,
     title: input.title.trim(),
@@ -87,8 +87,8 @@ export async function createTask(input: {
     priority: input.priority,
     assigned_agent_id: input.agentId,
     due_at: input.dueAt || null,
-  });
-  fail(error, null);
+  }).select('id').single();
+  return (fail(error, data) as { id: string }).id;
 }
 
 export async function setTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
@@ -116,10 +116,18 @@ export async function decideApproval(
   userId: string,
   status: 'approved' | 'rejected',
   note?: string,
+  /** Reviewer-edited details; saved together with the decision so the audit trail matches what was approved. */
+  payload?: Record<string, unknown>,
 ): Promise<void> {
   const { error } = await requireClient()
     .from('approvals')
-    .update({ status, decided_by: userId, decided_at: new Date().toISOString(), decision_note: note?.trim() || null })
+    .update({
+      status,
+      decided_by: userId,
+      decided_at: new Date().toISOString(),
+      decision_note: note?.trim() || null,
+      ...(payload ? { payload } : {}),
+    })
     .eq('id', id)
     .eq('status', 'pending');
   fail(error, null);

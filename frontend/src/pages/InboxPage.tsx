@@ -46,6 +46,7 @@ export function InboxPage() {
   const [history, setHistory] = useState<ApprovalRow[]>([]);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
 
   const agentName = (id: string | null) => data.agents.find((a) => a.id === id);
 
@@ -63,9 +64,20 @@ export function InboxPage() {
 
   const decide = async (a: ApprovalRow, status: 'approved' | 'rejected') => {
     if (!user) return;
+    let payload: Record<string, unknown> | undefined;
+    if (status === 'approved' && edits[a.id] !== undefined) {
+      try {
+        const parsed = JSON.parse(edits[a.id]);
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('shape');
+        payload = parsed;
+      } catch {
+        toast.error(t('inbox.editInvalid'));
+        return;
+      }
+    }
     setBusy(a.id);
     try {
-      await decideApproval(a.id, user.id, status, notes[a.id]);
+      await decideApproval(a.id, user.id, status, notes[a.id], payload);
       toast.success(status === 'approved' ? t('inbox.approved') : t('inbox.rejected'));
       await data.reload();
     } catch (err) {
@@ -128,6 +140,7 @@ export function InboxPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {a.payload?.ai_generated === true && <span className="fb-chip">{t('inbox.aiBadge')}</span>}
                       <span className="fb-chip" style={{ color: RISK_COLOR[a.risk] }}>{t('inbox.risk', { risk: t(`risk.${a.risk}` as TKey) })}</span>
                       {a.status !== 'pending' && (
                         <span className="fb-chip" style={{ color: a.status === 'approved' ? 'var(--fb-ok)' : 'var(--fb-err)' }}>{t(`inbox.${a.status}` as TKey)}</span>
@@ -135,7 +148,23 @@ export function InboxPage() {
                     </div>
                   </div>
                   <div className="mt-3">
-                    <Payload payload={a.payload} />
+                    {edits[a.id] !== undefined ? (
+                      <textarea
+                        className="fb-input font-mono text-xs"
+                        style={{ height: 180, padding: 12 }}
+                        spellCheck={false}
+                        aria-label={t('inbox.editAria')}
+                        value={edits[a.id]}
+                        onChange={(e) => setEdits({ ...edits, [a.id]: e.target.value })}
+                      />
+                    ) : (
+                      <Payload payload={a.payload} />
+                    )}
+                    {a.status === 'pending' && canDecide && edits[a.id] === undefined && Object.keys(a.payload ?? {}).length > 0 && (
+                      <button className="fb-link fb-muted mt-1 cursor-pointer text-xs underline" onClick={() => setEdits({ ...edits, [a.id]: JSON.stringify(a.payload, null, 2) })}>
+                        {t('inbox.edit')}
+                      </button>
+                    )}
                   </div>
                   {a.status === 'pending' ? (
                     canDecide ? (

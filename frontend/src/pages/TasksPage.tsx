@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { StatusDot } from '../components/command/Panel';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask, setTaskStatus } from '../lib/company/data';
+import { RunError, runTask } from '../lib/company/runner';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -24,7 +25,7 @@ type Filter = 'open' | 'done' | 'all';
 
 export function TasksPage() {
   const i18n = useI18n();
-  const { t, fmt } = i18n;
+  const { t, fmt, lang } = i18n;
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const role = current?.role ?? 'viewer';
@@ -36,6 +37,8 @@ export function TasksPage() {
   const [due, setDue] = useState('');
   const [filter, setFilter] = useState<Filter>('open');
   const [busy, setBusy] = useState(false);
+  const [runningId, setRunningId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const now = Date.now();
   const shown = useMemo(
@@ -64,6 +67,21 @@ export function TasksPage() {
       toast.error(t('tasks.createError'));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const run = async (id: string) => {
+    setRunningId(id);
+    try {
+      const out = await runTask(id, lang);
+      toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
+      setOpenId(id);
+    } catch (err) {
+      const code = err instanceof RunError ? err.code : 'unknown';
+      toast.error(t(`run.err.${code}` as TKey));
+    } finally {
+      setRunningId(null);
+      await data.reload();
     }
   };
 
@@ -158,6 +176,16 @@ export function TasksPage() {
                       )}
                     </div>
                   </div>
+                  {task.result && (task.result.report || task.result.error) && (
+                    <button className="fb-link fb-muted cursor-pointer text-xs underline" onClick={() => setOpenId(openId === task.id ? null : task.id)}>
+                      {openId === task.id ? t('run.hide') : t('run.show')}
+                    </button>
+                  )}
+                  {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
+                    <button className="fb-btn fb-btn--primary" style={{ height: 32, padding: '0 14px', fontSize: 13 }} disabled={runningId !== null} onClick={() => void run(task.id)}>
+                      {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
+                    </button>
+                  )}
                   <select
                     className="fb-input"
                     style={{ width: 'auto', height: 32, fontSize: 12 }}
@@ -172,6 +200,30 @@ export function TasksPage() {
                       </option>
                     ))}
                   </select>
+                  {openId === task.id && task.result && (
+                    <div className="w-full rounded-xl p-3 text-sm" style={{ background: 'rgba(5,10,20,.7)', border: '1px solid var(--fb-border)' }}>
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="fb-eyebrow">{t('run.result')}</span>
+                        {task.result.ai_generated && <span className="fb-chip">{t('run.ai')}</span>}
+                      </div>
+                      {task.result.summary && <p className="mb-2 font-medium">{task.result.summary}</p>}
+                      {task.result.report && <div className="fb-muted whitespace-pre-wrap break-words text-[13px] leading-relaxed">{task.result.report}</div>}
+                      {task.result.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${task.result.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
+                      {task.result.actions && task.result.actions.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fb-eyebrow mb-1">{t(task.result.queued ? 'run.actions' : 'run.suggested')}</div>
+                          <ul className="flex flex-wrap gap-1.5">
+                            {task.result.actions.map((x, i) => (
+                              <li key={i} className="fb-chip">{x.action}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {task.result.dropped && task.result.dropped.length > 0 && (
+                        <p className="fb-dim mt-2 text-xs">{t('run.dropped', { list: task.result.dropped.join(', ') })}</p>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}

@@ -47,6 +47,17 @@ export type TaskStatus =
   | 'cancelled';
 export type TaskPriority = 'low' | 'normal' | 'high' | 'urgent';
 
+/** What the agent runner stores on a finished task. */
+export interface TaskResult {
+  ai_generated?: boolean;
+  summary?: string;
+  report?: string;
+  actions?: { action: string; risk: string; payload: Record<string, unknown> }[];
+  queued?: number;
+  dropped?: string[];
+  error?: string;
+}
+
 export interface TaskRow {
   id: string;
   title: string;
@@ -56,6 +67,7 @@ export interface TaskRow {
   assigned_agent_id: string | null;
   due_at: string | null;
   created_at: string;
+  result?: TaskResult | null;
 }
 
 export interface ApprovalRow {
