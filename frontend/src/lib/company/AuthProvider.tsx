@@ -28,7 +28,7 @@ interface CompanyAuth {
   createOrg: (name: string) => Promise<void>;
 }
 
-const ORG_KEY = 'jarvis-company-org';
+const ORG_KEY = 'firbo-company-org';
 const noop = async () => {};
 
 const Ctx = createContext<CompanyAuth>({

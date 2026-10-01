@@ -56,7 +56,7 @@ export function LoginScreen() {
   };
 
   return (
-    <Shell title="JARVIS Command Center" subtitle={mode === 'signin' ? 'Sign in to your workspace' : 'Create your account'}>
+    <Shell title="Firbo" subtitle={mode === 'signin' ? 'Sign in to your workspace' : 'Create your account'}>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           type="email"

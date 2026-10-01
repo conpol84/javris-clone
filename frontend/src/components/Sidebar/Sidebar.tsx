@@ -62,7 +62,7 @@ export function Sidebar() {
     { path: '/agents', icon: Bot, label: 'Agents' },
     { path: '/logs', icon: ScrollText, label: 'Logs' },
     { path: '/settings', icon: Settings, label: 'Settings' },
-    { path: '/get-started', icon: Rocket, label: 'Get Started' },
+    ...(COMPANY_ENABLED ? [] : [{ path: '/get-started', icon: Rocket, label: 'Get Started' }]),
   ];
 
   return (
