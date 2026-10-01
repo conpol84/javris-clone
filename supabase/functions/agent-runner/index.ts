@@ -216,13 +216,13 @@ Deno.serve(async (req) => {
   let lastError = 'model_error';
   for (const target of targets) {
     try {
-      const openai = target.provider === 'openai'; // newer OpenAI models reject max_tokens and custom temperature
+      const openai = target.provider === 'openai'; // newer OpenAI models reject max_tokens/custom temperature and spend part of this budget on hidden reasoning
       const res = await fetch(`${target.base}/chat/completions`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
         body: JSON.stringify({
           model: target.model,
-          ...(openai ? { max_completion_tokens: 1800 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
+          ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
           messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }],
         }),
         signal: AbortSignal.timeout(90_000),
