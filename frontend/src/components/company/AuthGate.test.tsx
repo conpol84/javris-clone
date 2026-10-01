@@ -49,7 +49,7 @@ describe('AuthGate', () => {
 
   it('requires sign in when there is no session', () => {
     const html = render({ session: null, current: null });
-    expect(html).toContain('Sign in to your workspace');
+    expect(html).toContain('Sign in to your AI command center');
     expect(html).not.toContain('APP');
   });
 

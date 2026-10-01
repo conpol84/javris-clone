@@ -20,6 +20,7 @@ import {
   Building2,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
+import { LogoMark } from '../brand/Logo';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
 
@@ -95,7 +96,13 @@ export function Sidebar() {
       >
         <div className="flex flex-col h-full w-[260px]">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 pt-3 pb-2">
+          <div className="flex items-center gap-2 px-4 pt-3.5">
+            <LogoMark size={22} />
+            <span className="text-sm font-semibold tracking-tight" style={{ color: 'var(--color-text)' }}>
+              Firbo <span style={{ color: 'var(--color-accent)' }}>AI</span>
+            </span>
+          </div>
+          <div className="flex items-center justify-between px-3 pt-2 pb-2">
             <button
               onClick={toggleSidebar}
               className="p-2 rounded-lg transition-colors cursor-pointer"

@@ -478,7 +478,7 @@ export function SettingsPage() {
         <div className="flex flex-col gap-4">
           {/* Appearance */}
           <Section title="Appearance">
-            <SettingRow label="Theme" description="Choose how Firbo looks">
+            <SettingRow label="Theme" description="Choose how Firbo AI looks">
               <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
                 {themeOptions.map((opt) => {
                   const isActive = settings.theme === opt.value;
@@ -956,7 +956,7 @@ export function SettingsPage() {
           <Section title="About">
             <div className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               <p className="mb-2">
-                <span className="font-semibold" style={{ color: 'var(--color-text)' }}>Firbo</span> — the AI command center for your company.
+                <span className="font-semibold" style={{ color: 'var(--color-text)' }}>Firbo AI</span> — the AI command center for your company.
               </p>
             </div>
           </Section>

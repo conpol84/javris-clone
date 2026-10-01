@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
+import { LogoMark } from '../brand/Logo';
 
 const card = {
   background: 'var(--color-bg-secondary)',
@@ -15,9 +16,18 @@ const field = {
 
 function Shell({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
   return (
-    <div className="flex h-full w-full items-center justify-center px-4" style={{ background: 'var(--color-bg)' }}>
-      <div className="w-full max-w-sm rounded-xl p-6" style={card}>
-        <h1 className="text-lg font-semibold">{title}</h1>
+    <div
+      className="flex h-full w-full items-center justify-center px-4"
+      style={{
+        background:
+          'radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 70%), var(--color-bg)',
+      }}
+    >
+      <div className="w-full max-w-sm rounded-2xl p-7" style={{ ...card, boxShadow: '0 20px 60px -20px color-mix(in srgb, var(--color-accent) 35%, transparent)' }}>
+        <div className="mb-5">
+          <LogoMark size={44} />
+        </div>
+        <h1 className="text-xl font-semibold">{title}</h1>
         <p className="mt-1 mb-5 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
           {subtitle}
         </p>
@@ -56,7 +66,7 @@ export function LoginScreen() {
   };
 
   return (
-    <Shell title="Firbo" subtitle={mode === 'signin' ? 'Sign in to your workspace' : 'Create your account'}>
+    <Shell title="Firbo AI" subtitle={mode === 'signin' ? 'Sign in to your AI command center' : 'Create your Firbo AI account'}>
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           type="email"
