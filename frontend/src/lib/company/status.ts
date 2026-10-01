@@ -14,6 +14,7 @@ export const AGENT_COLORS: Record<string, string> = {
   custom: '#94a3b8',
 };
 
+import type { TKey } from '../../i18n/locales/en';
 import { AGENT_TEMPLATES } from './templates';
 
 const FALLBACK = ['#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#c084fc'];
@@ -60,9 +61,9 @@ export function deriveAgentStates(
   return out;
 }
 
-export const STATE_LABEL: Record<AgentState, string> = {
-  active: 'Active',
-  waiting: 'Awaiting approval',
-  idle: 'Standby',
-  disabled: 'Disabled',
-};
+export const STATE_KEY = {
+  active: 'state.active',
+  waiting: 'state.waiting',
+  idle: 'state.idle',
+  disabled: 'state.disabled',
+} as const satisfies Record<AgentState, TKey>;

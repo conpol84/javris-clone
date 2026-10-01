@@ -2,6 +2,8 @@ import { RefreshCw } from 'lucide-react';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { ProviderTopology } from '../components/command/ProviderTopology';
 import { STRATEGY_INFO, useGateway } from '../lib/gateway';
+import { useI18n } from '../i18n/I18nProvider';
+import type { TKey } from '../i18n/locales/en';
 import '../styles/firbo.css';
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
@@ -14,9 +16,10 @@ function Stat({ label, value, hint }: { label: string; value: string | number; h
   );
 }
 
-const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : n.toLocaleString());
-
 export function GatewayPage() {
+  const { t, fmt: f } = useI18n();
+  const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : f.number(n));
+  const strategyText = (k: string) => (t(`strategy.${k}` as TKey) === `strategy.${k}` ? STRATEGY_INFO[k] ?? t('gw.combo.custom') : t(`strategy.${k}` as TKey));
   const gw = useGateway();
   const data = gw.status === 'ready' ? gw.data : null;
   const online = !!data?.connected;
@@ -30,33 +33,33 @@ export function GatewayPage() {
       <div className="mx-auto max-w-[1300px] space-y-4 px-4 pb-6 pt-14 md:px-6 md:pt-6">
         <header className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="fb-eyebrow">Model routing</div>
-            <h1 className="mt-1 text-2xl font-semibold">AI Gateway</h1>
-            <p className="fb-muted mt-1 text-sm">One endpoint for every model — routing, fallback and cost control for all your agents.</p>
+            <div className="fb-eyebrow">{t('gw.eyebrow')}</div>
+            <h1 className="mt-1 text-2xl font-semibold">{t('gw.title')}</h1>
+            <p className="fb-muted mt-1 text-sm">{t('gw.sub')}</p>
           </div>
           <div className="flex items-center gap-2">
             <span className="fb-chip">
               <StatusDot tone={gw.status === 'loading' ? 'idle' : online ? 'ok' : 'err'} live={online} />
-              {gw.status === 'loading' ? 'CHECKING' : gw.status === 'unreachable' ? 'BACKEND UNREACHABLE' : online ? 'CONNECTED' : 'OFFLINE'}
+              {gw.status === 'loading' ? t('gw.status.checking') : gw.status === 'unreachable' ? t('gw.status.unreachable') : online ? t('gw.status.connected') : t('gw.status.offline')}
             </span>
-            <button className="fb-btn fb-btn--ghost" style={{ height: 34, padding: '0 12px' }} onClick={gw.reload} aria-label="Refresh">
+            <button className="fb-btn fb-btn--ghost" style={{ height: 34, padding: '0 12px' }} onClick={gw.reload} aria-label={t('common.refresh')}>
               <RefreshCw size={14} />
             </button>
           </div>
         </header>
 
         {gw.status === 'unreachable' && (
-          <Panel title="Backend not reachable">
+          <Panel title={t('gw.backendTitle')}>
             <p className="fb-muted text-sm">
-              This page reads the gateway through the Firbo backend ({gw.reason}). Make sure the backend is running and its URL is configured, then refresh.
+              {t('gw.backendText', { reason: gw.reason })}
             </p>
           </Panel>
         )}
 
         {data && !online && (
-          <Panel title="Gateway offline">
+          <Panel title={t('gw.offlineTitle')}>
             <p className="fb-muted text-sm">
-              The backend can't reach the gateway at <code>{data.host}</code>. Start it and set these on the backend:
+              {t('gw.offlineText', { host: data.host })}
             </p>
             <pre className="mt-3 overflow-x-auto rounded-xl p-3 text-xs" style={{ background: 'rgba(5,10,20,.8)', border: '1px solid var(--fb-border)' }}>
 {`OMNIROUTE_HOST=http://localhost:20128
@@ -67,34 +70,34 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
 
         {data && online && Object.keys(data.errors).length > 0 && (
           <p className="fb-chip" style={{ color: 'var(--fb-warn)' }}>
-            Some data is unavailable: {Object.entries(data.errors).map(([k, v]) => `${k} (${v})`).join(', ')}.
-            {data.errors.providers === 'unauthorized' && ' Set OMNIROUTE_MANAGEMENT_KEY to a key with manage scope.'}
+            {t('gw.partial', { list: Object.entries(data.errors).map(([k, v]) => `${k} (${v})`).join(', ') })}
+            {data.errors.providers === 'unauthorized' && ` ${t('gw.needKey')}`}
           </p>
         )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Stat label="Providers connected" value={data ? data.connections.length : '–'} />
-          <Stat label="Models available" value={data ? fmt(data.models.total) : '–'} />
-          <Stat label="Combos" value={data ? data.combos.length : '–'} hint="Routing chains" />
-          <Stat label="Requests routed" value={data ? fmt(requests) : '–'} />
+          <Stat label={t('gw.stat.providers')} value={data ? data.connections.length : '–'} />
+          <Stat label={t('gw.stat.models')} value={data ? fmt(data.models.total) : '–'} />
+          <Stat label={t('gw.stat.combos')} value={data ? data.combos.length : '–'} hint={t('gw.stat.combosHint')} />
+          <Stat label={t('gw.stat.requests')} value={data ? fmt(requests) : '–'} />
         </section>
 
-        <Panel title="Provider topology" className="!p-2">
+        <Panel title={t('gw.topology')} className="!p-2">
           <div className="h-[420px] md:h-[500px]">
             <ProviderTopology data={data} online={online} />
           </div>
         </Panel>
 
-        <Panel title="Providers">
+        <Panel title={t('gw.providers')}>
           {!data || data.connections.length === 0 ? (
-            <p className="fb-dim text-sm">{online ? 'No providers connected yet. Connect one in the gateway dashboard.' : 'Connect the gateway to see providers.'}</p>
+            <p className="fb-dim text-sm">{online ? t('gw.providers.empty') : t('gw.providers.connectFirst')}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="fb-table">
                 <thead>
                   <tr>
-                    {['Provider', 'Accounts', 'Healthy', 'Limited', 'Models', 'Requests', 'Success', 'Latency', 'Tokens'].map((h) => (
-                      <th key={h}>{h}</th>
+                    {(['provider', 'accounts', 'healthy', 'limited', 'models', 'requests', 'success', 'latency', 'tokens'] as const).map((h) => (
+                      <th key={h}>{t(`gw.col.${h}` as TKey)}</th>
                     ))}
                   </tr>
                 </thead>
@@ -114,8 +117,8 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
                         <td style={{ color: c.limited ? 'var(--fb-warn)' : undefined }}>{c.limited}</td>
                         <td>{fmt(modelsByProvider.get(c.provider))}</td>
                         <td>{fmt(s?.requests)}</td>
-                        <td>{s?.success_rate == null ? '–' : `${Math.round(s.success_rate * 100)}%`}</td>
-                        <td>{s?.avg_latency_ms == null ? '–' : `${s.avg_latency_ms} ms`}</td>
+                        <td>{s?.success_rate == null ? '–' : f.number(s.success_rate, { style: 'percent', maximumFractionDigits: 0 })}</td>
+                        <td>{s?.avg_latency_ms == null ? '–' : `${f.number(s.avg_latency_ms)} ms`}</td>
                         <td>{s ? fmt(s.tokens_in + s.tokens_out) : '–'}</td>
                       </tr>
                     );
@@ -126,7 +129,7 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
           )}
         </Panel>
 
-        <Panel title="Combos (routing chains)">
+        <Panel title={t('gw.combos')}>
           {data && data.combos.length > 0 ? (
             <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {data.combos.map((c) => (
@@ -136,25 +139,25 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
                     <span className="fb-chip">{c.strategy}</span>
                   </div>
                   <div className="fb-dim text-xs">
-                    {c.steps} step{c.steps === 1 ? '' : 's'} · {STRATEGY_INFO[c.strategy] ?? 'Custom strategy'}
+                    {t('gw.combo.steps', { count: c.steps })} · {strategyText(c.strategy)}
                   </div>
                 </li>
               ))}
             </ul>
           ) : (
             <p className="fb-dim text-sm">
-              {online ? 'No custom combos yet. The built-in "auto" route picks the best available model for each request.' : 'Connect the gateway to see combos.'}
+              {online ? t('gw.combos.empty') : t('gw.combos.connectFirst')}
             </p>
           )}
         </Panel>
 
-        <Panel title="Routing strategies supported">
+        <Panel title={t('gw.strategies')}>
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {Object.entries(STRATEGY_INFO).map(([k, v]) => (
+            {Object.keys(STRATEGY_INFO).map((k) => (
               <li key={k} className="fb-row py-2">
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold">{k}</div>
-                  <div className="fb-dim truncate text-xs">{v}</div>
+                  <div className="fb-dim truncate text-xs">{strategyText(k)}</div>
                 </div>
               </li>
             ))}

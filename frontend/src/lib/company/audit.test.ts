@@ -24,7 +24,7 @@ describe('describeAudit', () => {
 
   it('summarises agent setting changes', () => {
     const d = describeAudit(row('agent.updated', { name: 'Sales', changed: ['autonomy', 'budget', 'enabled'], autonomy: 'notify', budget: 50, enabled: false }), who);
-    expect(d.text).toBe('Ana updated Sales: autonomy → notify, budget → $50, disabled');
+    expect(d.text).toBe('Ana updated Sales: autonomy → Act & notify, budget → $50.00, disabled');
     expect(describeAudit(row('agent.updated', { name: 'S', changed: ['budget'], budget: null }), who).text).toContain('no limit');
   });
 

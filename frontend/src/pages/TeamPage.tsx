@@ -6,13 +6,17 @@ import { AgentDrawer } from '../components/team/AgentDrawer';
 import { HireDialog } from '../components/team/HireDialog';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { loadDecisionStats, loadMonthlySpend } from '../lib/company/data';
-import { agentColor, deriveAgentStates, STATE_LABEL } from '../lib/company/status';
-import { AUTONOMY_LEVELS } from '../lib/company/templates';
+import { agentLabel } from '../lib/company/labels';
+import { agentColor, deriveAgentStates, STATE_KEY } from '../lib/company/status';
+import { useI18n } from '../i18n/I18nProvider';
+import type { TKey } from '../i18n/locales/en';
 import { MANAGER_ROLES } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import '../styles/firbo.css';
 
 export function TeamPage() {
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
   const { current } = useCompanyAuth();
   const [params, setParams] = useSearchParams();
   const orgId = current?.organization.id ?? '';
@@ -55,12 +59,12 @@ export function TeamPage() {
         <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
           <div>
             <div className="fb-eyebrow">{current?.organization.name}</div>
-            <h1 className="mt-1 text-2xl font-semibold">AI Team</h1>
-            <p className="fb-muted mt-1 text-sm">{data.agents.length} employees · decide what each one may do on its own.</p>
+            <h1 className="mt-1 text-2xl font-semibold">{t('team.title')}</h1>
+            <p className="fb-muted mt-1 text-sm">{t('team.subtitle', { count: data.agents.length })}</p>
           </div>
           {canManage && (
             <button className="fb-btn fb-btn--primary" onClick={() => setHiring(true)}>
-              <Plus size={16} /> Hire an AI employee
+              <Plus size={16} /> {t('team.hire')}
             </button>
           )}
         </header>
@@ -76,14 +80,13 @@ export function TeamPage() {
             {data.agents.map((a) => {
               const st = states[a.id] ?? 'idle';
               const color = agentColor(a.type, a.slug);
-              const ask = a.agent_tools.filter((t) => t.policy === 'approval').length;
-              const blocked = a.agent_tools.filter((t) => t.policy === 'block').length;
-              const lvl = AUTONOMY_LEVELS.find((l) => l.id === a.autonomy);
+              const ask = a.agent_tools.filter((x) => x.policy === 'approval').length;
+              const blocked = a.agent_tools.filter((x) => x.policy === 'block').length;
               return (
                 <li key={a.id}>
                   <button
                     onClick={() => select(a.id === selected?.id ? null : a.id)}
-                    className="fb-glass fb-glass--hover w-full cursor-pointer p-4 text-left"
+                    className="fb-glass fb-glass--hover w-full cursor-pointer p-4 text-start"
                     style={{ borderColor: selected?.id === a.id ? color : undefined, opacity: a.enabled ? 1 : 0.55 }}
                   >
                     <div className="flex items-center gap-3">
@@ -91,26 +94,26 @@ export function TeamPage() {
                         <span className="fb-dot" style={{ background: color, boxShadow: `0 0 12px ${color}` }} />
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold">{a.name}</div>
+                        <div className="truncate text-sm font-semibold">{agentLabel(a, i18n).name}</div>
                         <div className="fb-dim flex items-center gap-1.5 text-xs">
                           <StatusDot tone={st === 'active' ? 'ok' : st === 'waiting' ? 'warn' : 'idle'} live={st === 'active'} />
-                          {STATE_LABEL[st]}
+                          {t(STATE_KEY[st])}
                         </div>
                       </div>
                       <Wave color={color} active={st === 'active'} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      <span className="fb-chip">{lvl?.short ?? a.autonomy}</span>
-                      <span className="fb-chip">{a.agent_tools.filter((t) => t.enabled).length} tools</span>
-                      {ask > 0 && <span className="fb-chip" style={{ color: 'var(--fb-warn)' }}>{ask} ask first</span>}
-                      {blocked > 0 && <span className="fb-chip" style={{ color: 'var(--fb-err)' }}>{blocked} blocked</span>}
-                      {a.monthly_budget_usd != null && <span className="fb-chip">${(spend[a.id] ?? 0).toFixed(2)} / ${a.monthly_budget_usd.toFixed(0)}</span>}
+                      <span className="fb-chip">{t(`autonomy.${a.autonomy}.short` as TKey)}</span>
+                      <span className="fb-chip">{t('chip.tools', { count: a.agent_tools.filter((x) => x.enabled).length })}</span>
+                      {ask > 0 && <span className="fb-chip" style={{ color: 'var(--fb-warn)' }}>{t('chip.ask', { count: ask })}</span>}
+                      {blocked > 0 && <span className="fb-chip" style={{ color: 'var(--fb-err)' }}>{t('chip.blocked', { count: blocked })}</span>}
+                      {a.monthly_budget_usd != null && <span className="fb-chip">{fmt.currency(spend[a.id] ?? 0)} / {fmt.currency(a.monthly_budget_usd)}</span>}
                     </div>
                   </button>
                 </li>
               );
             })}
-            {data.agents.length === 0 && !data.loading && <li className="fb-dim text-sm">No agents yet.</li>}
+            {data.agents.length === 0 && !data.loading && <li className="fb-dim text-sm">{t('team.noAgents')}</li>}
           </ul>
 
           {selected && (

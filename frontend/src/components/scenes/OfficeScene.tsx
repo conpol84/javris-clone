@@ -3,7 +3,7 @@ import { Canvas, useFrame } from '@react-three/fiber';
 import { Edges, Grid, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AgentRow } from '../../lib/company/types';
-import { agentColor, STATE_LABEL, type AgentState } from '../../lib/company/status';
+import { agentColor, type AgentState } from '../../lib/company/status';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export interface OfficeProps {
@@ -13,6 +13,14 @@ export interface OfficeProps {
   onSelect: (id: string | null) => void;
   openTasks: number;
   pendingApprovals: number;
+  /** Pre-translated text: the WebGL canvas is a separate React root and cannot read i18n context. */
+  labels: {
+    agentName: (agent: AgentRow) => string;
+    state: Record<AgentState, string>;
+    tableOpen: string;
+    tableApprovals: string;
+    noWebgl: string;
+  };
 }
 
 /** Fixed floor plan: department -> slot. Unknown/custom agents fill the spare slots. */
@@ -71,7 +79,9 @@ function Label3D({
 }) {
   const label = useMemo(() => {
     const H = 72;
-    const font = (w: number) => `${w} 28px system-ui, -apple-system, Segoe UI, sans-serif`;
+    const font = (w: number) =>
+      `${w} 28px system-ui, -apple-system, 'Segoe UI', 'Noto Sans', 'Noto Sans Arabic', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif`;
+    const rtl = /[\u0590-\u08FF]/.test(text + (sub ?? ''));
     const probe = document.createElement('canvas').getContext('2d')!;
     probe.font = font(600);
     const w1 = probe.measureText(text).width;
@@ -95,6 +105,8 @@ function Label3D({
     g.fillStyle = dot;
     g.fill();
     g.textBaseline = 'middle';
+    g.textAlign = 'left';
+    g.direction = rtl ? 'rtl' : 'ltr';
     g.font = font(600);
     g.fillStyle = '#e6f1ff';
     g.fillText(text, padX + 26, H / 2 + 1);
@@ -245,7 +257,9 @@ function Zone({
   state,
   selected,
   onSelect,
+  labels,
 }: {
+  labels: OfficeProps['labels'];
   agent: AgentRow;
   pos: [number, number];
   state: AgentState;
@@ -319,8 +333,8 @@ function Zone({
       </mesh>
       <Label3D
         position={[0, 2.35, 0]}
-        text={agent.name.replace(' Agent', '')}
-        sub={STATE_LABEL[state]}
+        text={labels.agentName(agent)}
+        sub={labels.state[state]}
         dot={state === 'waiting' ? '#fbbf24' : state === 'active' ? '#34d399' : state === 'disabled' ? '#64748b' : color}
         border={selected ? color : 'rgba(56,189,248,0.3)'}
         glow={selected}
@@ -329,7 +343,7 @@ function Zone({
   );
 }
 
-function CommandTable({ open, approvals }: { open: number; approvals: number }) {
+function CommandTable({ open, approvals, labels }: { open: number; approvals: number; labels: OfficeProps['labels'] }) {
   const ring = useRef<THREE.Mesh>(null);
   const core = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
@@ -358,8 +372,8 @@ function CommandTable({ open, approvals }: { open: number; approvals: number }) 
       <pointLight position={[0, 1.6, 0]} color="#22d3ee" intensity={5} distance={7} />
       <Label3D
         position={[0, 2.55, 0]}
-        text={`${open} open`}
-        sub={`${approvals} awaiting approval`}
+        text={labels.tableOpen}
+        sub={labels.tableApprovals}
         dot={approvals ? '#fbbf24' : '#34d399'}
         border="rgba(56,189,248,0.4)"
       />
@@ -367,7 +381,7 @@ function CommandTable({ open, approvals }: { open: number; approvals: number }) 
   );
 }
 
-function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprovals }: OfficeProps) {
+function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprovals, labels }: OfficeProps) {
   const [auto, setAuto] = useState(true);
   const reduced = usePrefersReducedMotion();
   const placed = useMemo(() => layoutAgents(agents), [agents]);
@@ -391,7 +405,7 @@ function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprova
         fadeStrength={1.5}
         infiniteGrid
       />
-      <CommandTable open={openTasks} approvals={pendingApprovals} />
+      <CommandTable open={openTasks} approvals={pendingApprovals} labels={labels} />
       {placed.map(({ agent, pos }) => (
         <Zone
           key={agent.id}
@@ -400,6 +414,7 @@ function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprova
           state={states[agent.id] ?? 'idle'}
           selected={selectedId === agent.id}
           onSelect={onSelect}
+          labels={labels}
         />
       ))}
       <OrbitControls
@@ -425,7 +440,7 @@ export function OfficeScene(props: OfficeProps) {
   if (!supportsWebGL()) {
     return (
       <div className="fb-muted grid h-full w-full place-items-center p-6 text-center text-sm">
-        3D view needs WebGL, which isn't available in this browser. Your agents are listed on the right.
+        {props.labels.noWebgl}
       </div>
     );
   }

@@ -1,3 +1,4 @@
+import { useI18n } from '../../i18n/I18nProvider';
 import type { GatewayOverview } from '../../lib/gateway';
 
 interface Node {
@@ -31,11 +32,12 @@ export function buildNodes(data: GatewayOverview, max = 14): Node[] {
 
 /** Animated gateway map: the hub in the middle, one node per provider, flow along live connections. */
 export function ProviderTopology({ data, online }: { data: GatewayOverview | null; online: boolean }) {
+  const { t } = useI18n();
   const nodes = data && online ? buildNodes(data) : [];
   const RX = 330;
   const RY = 185;
   return (
-    <svg viewBox="-450 -250 900 500" role="img" aria-label="Gateway provider topology" className="h-full w-full">
+    <svg viewBox="-450 -250 900 500" role="img" aria-label={t('gw.topology.aria')} className="h-full w-full">
       <defs>
         <radialGradient id="hubGlow">
           <stop offset="0" stopColor="#22d3ee" stopOpacity="0.55" />
@@ -77,7 +79,7 @@ export function ProviderTopology({ data, online }: { data: GatewayOverview | nul
             </text>
             {n.models > 0 && (
               <text x={x} y={y + (y > 0 ? 39 : -17)} textAnchor="middle" fontSize="9.5" fill="#5b7494">
-                {n.models} models
+                {t('gw.node.models', { count: n.models })}
               </text>
             )}
           </g>
@@ -87,10 +89,10 @@ export function ProviderTopology({ data, online }: { data: GatewayOverview | nul
       <circle r={44} fill="#07101d" stroke={online ? '#22d3ee' : '#f87171'} strokeWidth={2.5} />
       <circle r={52} fill="none" stroke={online ? '#22d3ee' : '#f87171'} strokeOpacity={0.35} strokeDasharray="4 8" style={{ animation: 'fb-spin 24s linear infinite', transformOrigin: 'center', transformBox: 'fill-box' }} />
       <text y={-3} textAnchor="middle" fontSize="13" fontWeight="700" fill="#e6f1ff">
-        Firbo
+        {t('gw.hub.name')}
       </text>
       <text y={13} textAnchor="middle" fontSize="11" fontWeight="600" fill={online ? '#22d3ee' : '#f87171'}>
-        {online ? 'Gateway' : 'Offline'}
+        {online ? t('gw.hub.online') : t('gw.hub.offline')}
       </text>
     </svg>
   );

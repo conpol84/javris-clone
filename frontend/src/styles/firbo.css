@@ -190,3 +190,18 @@
   transition: box-shadow .2s, transform .2s;
 }
 .fb-talk:hover { box-shadow: 0 0 60px -6px rgba(34, 211, 238, .8); transform: translateY(-1px); }
+
+/* ---- language switcher + internationalisation ---- */
+.fb-lang { display: inline-flex; align-items: center; gap: 6px; color: var(--fb-muted, #8aa4c4); font-size: 12px; }
+.fb-lang select {
+  background: rgba(255, 255, 255, 0.04); color: inherit; border: 1px solid rgba(56, 189, 248, 0.16);
+  border-radius: 8px; padding: 4px 8px; font-size: 12px; cursor: pointer; max-width: 150px;
+}
+.fb-lang select option { background: #0a1424; color: #e6f1ff; }
+.fb-lang:focus-within select { outline: 2px solid #22d3ee; outline-offset: 1px; }
+.fb-table th { text-align: start; }
+/* Tracking and forced capitals break cursive/CJK scripts: switch both off. */
+html[lang='ar'] .fb-root *, html[lang='zh-CN'] .fb-root * { letter-spacing: normal !important; }
+html[lang='ar'] .fb-eyebrow, html[lang='zh-CN'] .fb-eyebrow, html[lang='ar'] .uppercase, html[lang='zh-CN'] .uppercase { text-transform: none; }
+html[lang='ar'] body { font-family: system-ui, 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif; }
+html[lang='zh-CN'] body { font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }

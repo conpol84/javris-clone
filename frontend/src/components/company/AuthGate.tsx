@@ -1,6 +1,8 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { LogoMark } from '../brand/Logo';
+import { LanguageSwitcher } from '../brand/LanguageSwitcher';
+import { useI18n } from '../../i18n/I18nProvider';
 import { LandingPage } from '../../pages/LandingPage';
 import { OnboardingWizard } from './OnboardingWizard';
 import '../../styles/firbo.css';
@@ -18,12 +20,14 @@ function Shell({
   children: ReactNode;
   onBack?: () => void;
 }) {
+  const { t } = useI18n();
   return (
     <div className="fb-root flex h-full w-full items-center justify-center px-4">
+      <LanguageSwitcher className="absolute end-4 top-4" />
       <div className="fb-glass fb-fade-up w-full max-w-sm p-7" style={{ borderColor: 'var(--fb-border-strong)' }}>
         {onBack && (
           <button type="button" onClick={onBack} className="fb-link fb-muted mb-4 cursor-pointer text-xs hover:text-white">
-            ← Back
+            <span className="inline-block rtl:rotate-180">←</span> {t('common.back')}
           </button>
         )}
         <div className="mb-5">
@@ -39,6 +43,7 @@ function Shell({
 
 export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: Mode; onBack?: () => void }) {
   const { signIn, signUp } = useCompanyAuth();
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -56,10 +61,10 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
         await signIn(email, password);
       } else {
         const { needsConfirmation } = await signUp(email, password);
-        if (needsConfirmation) setNotice('Check your email to confirm your account, then sign in.');
+        if (needsConfirmation) setNotice(t('auth.confirmEmail'));
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Something went wrong');
+      setError(err instanceof Error ? err.message : t('auth.genericError'));
     } finally {
       setBusy(false);
     }
@@ -68,7 +73,7 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
   return (
     <Shell
       title="Firbo AI"
-      subtitle={mode === 'signin' ? 'Sign in to your AI command center' : 'Create your Firbo AI account'}
+      subtitle={mode === 'signin' ? t('auth.subtitle.signin') : t('auth.subtitle.signup')}
       onBack={onBack}
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
@@ -76,8 +81,8 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
           type="email"
           required
           autoComplete="email"
-          aria-label="Email"
-          placeholder="Email"
+          aria-label={t('auth.email')}
+          placeholder={t('auth.email')}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="fb-input"
@@ -87,8 +92,8 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
           required
           minLength={8}
           autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-          aria-label="Password"
-          placeholder="Password (min 8 characters)"
+          aria-label={t('auth.password')}
+          placeholder={t('auth.password')}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="fb-input"
@@ -104,7 +109,7 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
           </p>
         )}
         <button type="submit" disabled={busy} className="fb-btn fb-btn--primary disabled:opacity-50">
-          {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+          {busy ? t('auth.wait') : mode === 'signin' ? t('auth.signIn') : t('auth.createAccount')}
         </button>
       </form>
       <button
@@ -116,7 +121,7 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
         }}
         className="fb-link fb-muted mt-4 cursor-pointer text-xs underline"
       >
-        {mode === 'signin' ? 'No account? Create one' : 'Already have an account? Sign in'}
+        {mode === 'signin' ? t('auth.toSignup') : t('auth.toSignin')}
       </button>
     </Shell>
   );
@@ -124,6 +129,7 @@ export function LoginScreen({ initialMode = 'signin', onBack }: { initialMode?: 
 
 export function CreateOrgScreen() {
   const { createOrg, signOut } = useCompanyAuth();
+  const { t } = useI18n();
   const [name, setName] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -135,22 +141,22 @@ export function CreateOrgScreen() {
     try {
       await createOrg(name);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not create the company');
+      setError(err instanceof Error ? err.message : t('org.create.error'));
       setBusy(false);
     }
   };
 
   return (
     <Shell
-      title="Create your company"
-      subtitle="Your AI team (CEO, Research, Sales, Marketing, Operations, Finance, Developer) is set up automatically."
+      title={t('org.create.title')}
+      subtitle={t('org.create.subtitle')}
     >
       <form onSubmit={submit} className="flex flex-col gap-3">
         <input
           required
           maxLength={120}
-          aria-label="Company name"
-          placeholder="Company name"
+          aria-label={t('org.create.name')}
+          placeholder={t('org.create.name')}
           value={name}
           onChange={(e) => setName(e.target.value)}
           className="fb-input"
@@ -161,11 +167,11 @@ export function CreateOrgScreen() {
           </p>
         )}
         <button type="submit" disabled={busy || name.trim().length === 0} className="fb-btn fb-btn--primary disabled:opacity-50">
-          {busy ? 'Creating…' : 'Create company'}
+          {busy ? t('org.create.busy') : t('org.create.submit')}
         </button>
       </form>
       <button type="button" onClick={() => void signOut()} className="fb-link fb-muted mt-4 cursor-pointer text-xs underline">
-        Sign out
+        {t('common.signOut')}
       </button>
     </Shell>
   );
@@ -186,24 +192,25 @@ function PublicSite() {
  */
 export function AuthGate({ children }: { children: ReactNode }) {
   const { enabled, loading, session, current, loadError, retry, signOut } = useCompanyAuth();
+  const { t } = useI18n();
   if (!enabled) return <>{children}</>;
   if (loading) {
     return (
       <div className="fb-root flex h-full w-full items-center justify-center text-sm fb-muted">
-        <span className="fb-dot fb-dot--live fb-dot--ok mr-2" /> Loading…
+        <span className="fb-dot fb-dot--live fb-dot--ok me-2" /> {t('common.loading')}
       </div>
     );
   }
   if (!session) return <PublicSite />;
   if (loadError) {
     return (
-      <Shell title="Can't load your workspace" subtitle={loadError}>
+      <Shell title={t('auth.loadError.title')} subtitle={loadError}>
         <div className="flex gap-2">
           <button type="button" onClick={retry} className="fb-btn fb-btn--primary flex-1">
-            Retry
+            {t('common.retry')}
           </button>
           <button type="button" onClick={() => void signOut()} className="fb-btn fb-btn--ghost">
-            Sign out
+            {t('common.signOut')}
           </button>
         </div>
       </Shell>

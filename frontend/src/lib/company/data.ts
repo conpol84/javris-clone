@@ -256,15 +256,10 @@ export async function listMembers(orgId: string): Promise<MemberRow[]> {
   return fail(error, data) as unknown as MemberRow[];
 }
 
-const MEMBER_ERRORS: Record<string, string> = {
-  no_account: 'No Firbo AI account uses that email yet. Ask them to sign up first, then add them.',
-  already_member: 'That person is already in this company.',
-  'not allowed': 'Only owners and admins can do that.',
-};
-
+/** The RPC raises stable codes (no_account, already_member, not allowed); the UI translates them. */
 export async function addMemberByEmail(orgId: string, email: string, role: Role): Promise<void> {
   const { error } = await requireClient().rpc('add_member_by_email', { p_org: orgId, p_email: email, p_role: role });
-  if (error) throw new Error(MEMBER_ERRORS[error.message] ?? error.message);
+  if (error) throw new Error(error.message);
 }
 
 export async function setMemberRole(orgId: string, userId: string, role: Role): Promise<void> {

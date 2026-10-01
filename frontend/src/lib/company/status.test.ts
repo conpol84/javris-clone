@@ -83,14 +83,14 @@ describe('buildFeed', () => {
       [agent('1')],
       now,
     );
-    expect(feed.map((e) => e.tag)).toEqual(['APPROVAL', 'COMPLETED', 'OVERDUE']);
+    expect(feed.map((e) => e.tag)).toEqual(['Approval', 'Completed', 'Overdue']);
     expect(feed[0].level).toBe('warn');
     expect(feed[1].level).toBe('ok');
   });
 
   it('does not report completed tasks as overdue', () => {
     const feed = buildFeed([task({ status: 'completed', due_at: '2020-01-01T00:00:00Z' })], [], [], now);
-    expect(feed[0].tag).toBe('COMPLETED');
+    expect(feed[0].tag).toBe('Completed');
   });
 
   it('respects the limit', () => {
@@ -99,9 +99,9 @@ describe('buildFeed', () => {
   });
 
   it('formats relative time', () => {
-    expect(timeAgo(now - 10_000, now)).toBe('just now');
-    expect(timeAgo(now - 5 * 60_000, now)).toBe('5m ago');
-    expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3h ago');
-    expect(timeAgo(now - 2 * 86_400_000, now)).toBe('2d ago');
+    expect(timeAgo(now - 10_000, now)).toBe('now');
+    expect(timeAgo(now - 5 * 60_000, now)).toBe('5 min. ago');
+    expect(timeAgo(now - 3 * 3_600_000, now)).toBe('3 hr. ago');
+    expect(timeAgo(now - 2 * 86_400_000, now)).toBe('2 days ago');
   });
 });

@@ -28,6 +28,8 @@ import {
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import { LogoMark } from '../brand/Logo';
+import { LanguageSwitcher } from '../brand/LanguageSwitcher';
+import { useI18n } from '../../i18n/I18nProvider';
 import { CHAT_PATH } from '../../lib/company/routes';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { usePendingCount } from '../../lib/company/usePendingCount';
@@ -43,6 +45,7 @@ export function Sidebar() {
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const { current } = useCompanyAuth();
+  const { t } = useI18n();
   const pending = usePendingCount(current?.organization.id ?? '');
   const createConversation = useAppStore((s) => s.createConversation);
   const selectedModel = useAppStore((s) => s.selectedModel);
@@ -71,24 +74,24 @@ export function Sidebar() {
   type NavItem = { path: string; icon: typeof Bot; label: string; badge?: number };
   const workspace: NavItem[] = COMPANY_ENABLED
     ? [
-        { path: '/', icon: LayoutDashboard, label: 'Command Center' },
-        { path: '/office', icon: Box, label: '3D Office' },
-        { path: '/team', icon: Users, label: 'AI Team' },
-        { path: '/inbox', icon: Inbox, label: 'Inbox', badge: pending },
-        { path: '/tasks', icon: ListChecks, label: 'Tasks' },
-        { path: '/activity', icon: History, label: 'Activity' },
-        { path: '/people', icon: Building2, label: 'People' },
-        { path: '/gateway', icon: Waypoints, label: 'AI Gateway' },
+        { path: '/', icon: LayoutDashboard, label: t('nav.commandCenter') },
+        { path: '/office', icon: Box, label: t('nav.office') },
+        { path: '/team', icon: Users, label: t('nav.team') },
+        { path: '/inbox', icon: Inbox, label: t('nav.inbox'), badge: pending },
+        { path: '/tasks', icon: ListChecks, label: t('nav.tasks') },
+        { path: '/activity', icon: History, label: t('nav.activity') },
+        { path: '/people', icon: Building2, label: t('nav.people') },
+        { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
       ]
     : [];
   const navItems: NavItem[] = [
     ...workspace,
-    { path: CHAT_PATH, icon: MessageSquare, label: 'Chat' },
-    { path: '/dashboard', icon: BarChart3, label: COMPANY_ENABLED ? 'Analytics' : 'Dashboard' },
-    { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    { path: '/agents', icon: Bot, label: COMPANY_ENABLED ? 'Agent Runtime' : 'Agents' },
-    { path: '/logs', icon: ScrollText, label: 'Logs' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
+    { path: CHAT_PATH, icon: MessageSquare, label: t('nav.chat') },
+    { path: '/dashboard', icon: BarChart3, label: COMPANY_ENABLED ? t('nav.analytics') : 'Dashboard' },
+    { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
+    { path: '/agents', icon: Bot, label: COMPANY_ENABLED ? t('nav.runtime') : 'Agents' },
+    { path: '/logs', icon: ScrollText, label: t('nav.logs') },
+    { path: '/settings', icon: Settings, label: t('nav.settings') },
     ...(COMPANY_ENABLED ? [] : [{ path: '/get-started', icon: Rocket, label: 'Get Started' }]),
   ];
 
@@ -98,7 +101,7 @@ export function Sidebar() {
       {!sidebarOpen && (
         <button
           onClick={toggleSidebar}
-          className="fixed top-3 left-3 z-30 p-2 rounded-lg transition-colors cursor-pointer"
+          className="fixed top-3 start-3 z-30 p-2 rounded-lg transition-colors cursor-pointer"
           style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
@@ -117,7 +120,7 @@ export function Sidebar() {
           background: 'var(--color-sidebar)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderRight: sidebarOpen ? '1px solid var(--color-border)' : 'none',
+          borderInlineEnd: sidebarOpen ? '1px solid var(--color-border)' : 'none',
         }}
       >
         <div className="flex flex-col h-full w-[260px]">
@@ -238,7 +241,7 @@ export function Sidebar() {
                     navigate(item.path);
                     if (window.innerWidth < 768) setSidebarOpen(false);
                   }}
-                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
+                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-start cursor-pointer"
                   style={{
                     background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
                     color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -254,7 +257,7 @@ export function Sidebar() {
                   {isActive && (
                     <span
                       aria-hidden="true"
-                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
+                      className="absolute start-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
                       style={{
                         background: 'var(--color-accent)',
                         boxShadow: '0 0 8px var(--color-accent-glow)',
@@ -264,7 +267,7 @@ export function Sidebar() {
                   <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
                   {item.label}
                   {item.badge ? (
-                    <span className="ml-auto min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-semibold" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>
+                    <span dir="ltr" className="ms-auto min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-semibold" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>
                       {item.badge > 99 ? '99+' : item.badge}
                     </span>
                   ) : null}
@@ -272,6 +275,9 @@ export function Sidebar() {
               );
             })}
           </nav>
+          <div className="px-3 pb-3">
+            <LanguageSwitcher />
+          </div>
         </div>
       </aside>
     </>

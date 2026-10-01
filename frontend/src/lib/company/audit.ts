@@ -1,3 +1,6 @@
+import { defaultI18n } from '../../i18n/I18nProvider';
+import type { I18n } from '../../i18n/I18nProvider';
+import type { TKey } from '../../i18n/locales/en';
 import type { AuditRow } from './types';
 
 export type AuditGroup = 'approvals' | 'agents' | 'tasks' | 'people' | 'company';
@@ -11,54 +14,82 @@ export interface AuditLookup {
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' && v ? v : fallback);
 
 /** Turn a raw audit row into a human sentence. Unknown actions degrade to the raw action name. */
-export function describeAudit(row: AuditRow, who: AuditLookup): { text: string; tone: AuditTone; group: AuditGroup } {
+export function describeAudit(
+  row: AuditRow,
+  who: AuditLookup,
+  i18n: Pick<I18n, 't' | 'fmt'> = defaultI18n,
+): { text: string; tone: AuditTone; group: AuditGroup } {
+  const { t, fmt } = i18n;
   const m = row.metadata ?? {};
-  const actor = row.actor_id ? who.person(row.actor_id) : 'An agent';
+  const actor = row.actor_id ? who.person(row.actor_id) : t('audit.actor.agent');
+  const action = str(m.action, t('audit.action.fallback'));
+  const agentName = str(m.name, t('audit.agent.fallback'));
+  const roleOf = (r: unknown, fb = 'member') => t(`role.${str(r, fb)}` as TKey);
   switch (row.action) {
     case 'approval.requested':
-      return { group: 'approvals', tone: 'warn', text: `${who.agent(m.agent_id)} asked for approval: ${str(m.action, 'an action')}` };
+      return { group: 'approvals', tone: 'warn', text: t('audit.approval.requested', { agent: who.agent(m.agent_id), action }) };
     case 'approval.approved':
-      return { group: 'approvals', tone: 'ok', text: `${actor} approved "${str(m.action, 'an action')}"${m.note ? ` — “${str(m.note)}”` : ''}` };
-    case 'approval.rejected':
-      return { group: 'approvals', tone: 'err', text: `${actor} rejected "${str(m.action, 'an action')}"${m.note ? ` — “${str(m.note)}”` : ''}` };
+    case 'approval.rejected': {
+      const approved = row.action === 'approval.approved';
+      const base = approved ? 'audit.approval.approved' : 'audit.approval.rejected';
+      return {
+        group: 'approvals',
+        tone: approved ? 'ok' : 'err',
+        text: m.note ? t(`${base}Note` as TKey, { actor, action, note: str(m.note) }) : t(base as TKey, { actor, action }),
+      };
+    }
     case 'approval.expired':
-      return { group: 'approvals', tone: 'info', text: `Approval for "${str(m.action, 'an action')}" expired` };
+      return { group: 'approvals', tone: 'info', text: t('audit.approval.expired', { action }) };
     case 'agent.hired':
-      return { group: 'agents', tone: 'ok', text: `${actor} hired ${str(m.name, 'an agent')}` };
+      return { group: 'agents', tone: 'ok', text: t('audit.agent.hired', { actor, name: agentName }) };
     case 'agent.removed':
-      return { group: 'agents', tone: 'warn', text: `${actor} removed ${str(m.name, 'an agent')}` };
+      return { group: 'agents', tone: 'warn', text: t('audit.agent.removed', { actor, name: agentName }) };
     case 'agent.updated': {
       const changed = Array.isArray(m.changed) ? (m.changed as string[]) : [];
       const detail = changed
         .map((c) =>
-          c === 'enabled' ? (m.enabled ? 'enabled' : 'disabled') : c === 'autonomy' ? `autonomy → ${str(m.autonomy)}` : c === 'budget' ? `budget → ${m.budget == null ? 'no limit' : `$${m.budget}`}` : c,
+          c === 'enabled'
+            ? t(m.enabled ? 'audit.change.enabled' : 'audit.change.disabled')
+            : c === 'autonomy'
+              ? t('audit.change.autonomy', { value: t(`autonomy.${str(m.autonomy)}.short` as TKey) })
+              : c === 'budget'
+                ? t('audit.change.budget', { value: m.budget == null ? t('audit.change.noLimit') : fmt.currency(Number(m.budget)) })
+                : c === 'model' || c === 'prompt'
+                  ? t(`audit.change.${c}` as TKey)
+                  : c,
         )
         .join(', ');
-      return { group: 'agents', tone: 'info', text: `${actor} updated ${str(m.name, 'an agent')}: ${detail || 'settings'}` };
+      return { group: 'agents', tone: 'info', text: t('audit.agent.updated', { actor, name: agentName, detail: detail || t('audit.change.settings') }) };
     }
     case 'tool.updated':
       return {
         group: 'agents',
         tone: m.policy === 'block' ? 'warn' : 'info',
-        text: `${actor} set ${str(m.tool, 'a tool')} to ${m.enabled === false ? 'disabled' : str(m.policy, 'allow')} for ${who.agent(m.agent_id)}`,
+        text: t('audit.tool.updated', {
+          actor,
+          tool: str(m.tool, t('audit.tool.fallback')),
+          policy: m.enabled === false ? t('audit.tool.disabled') : t(`policy.${str(m.policy, 'allow')}` as TKey),
+          agent: who.agent(m.agent_id),
+        }),
       };
     case 'task.created':
-      return { group: 'tasks', tone: 'info', text: `${actor} created task “${str(m.title, 'Untitled')}”` };
+      return { group: 'tasks', tone: 'info', text: t('audit.task.created', { actor, title: str(m.title, t('audit.task.untitled')) }) };
     case 'org.created':
-      return { group: 'company', tone: 'ok', text: `${actor} created the company${m.name ? ` “${str(m.name)}”` : ''}` };
+      return { group: 'company', tone: 'ok', text: m.name ? t('audit.org.createdNamed', { actor, name: str(m.name) }) : t('audit.org.created', { actor }) };
     case 'member.added':
-      return { group: 'people', tone: 'ok', text: `${actor} added ${who.person(m.user_id)} as ${str(m.role, 'member')}` };
+      return { group: 'people', tone: 'ok', text: t('audit.member.added', { actor, person: who.person(m.user_id), role: roleOf(m.role) }) };
     case 'member.removed':
-      return { group: 'people', tone: 'warn', text: `${actor} removed ${who.person(m.user_id)} (${str(m.role, 'member')})` };
+      return { group: 'people', tone: 'warn', text: t('audit.member.removed', { actor, person: who.person(m.user_id), role: roleOf(m.role) }) };
     case 'member.role_changed':
-      return { group: 'people', tone: 'info', text: `${actor} changed ${who.person(m.user_id)} from ${str(m.from)} to ${str(m.to)}` };
+      return { group: 'people', tone: 'info', text: t('audit.member.roleChanged', { actor, person: who.person(m.user_id), from: roleOf(m.from), to: roleOf(m.to) }) };
     default:
       if (row.action.startsWith('task.')) {
-        const status = row.action.slice(5).replace('_', ' ');
+        const status = row.action.slice(5);
+        const key = `audit.taskstate.${status}` as TKey;
         return {
           group: 'tasks',
           tone: status === 'completed' ? 'ok' : status === 'failed' ? 'err' : 'info',
-          text: `Task “${str(m.title, 'Untitled')}” ${status}`,
+          text: t('audit.task.status', { title: str(m.title, t('audit.task.untitled')), status: i18n.t(key) === key ? status.replace('_', ' ') : t(key) }),
         };
       }
       return { group: 'company', tone: 'info', text: row.action };

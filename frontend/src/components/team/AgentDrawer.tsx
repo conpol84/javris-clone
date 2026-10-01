@@ -3,14 +3,13 @@ import { toast } from 'sonner';
 import { Panel, StatusDot } from '../command/Panel';
 import { updateAgent, updateTool } from '../../lib/company/data';
 import { AUTONOMY_LEVELS } from '../../lib/company/templates';
-import { agentColor, STATE_LABEL, type AgentState } from '../../lib/company/status';
+import { agentLabel } from '../../lib/company/labels';
+import { agentColor, STATE_KEY, type AgentState } from '../../lib/company/status';
+import { useI18n } from '../../i18n/I18nProvider';
+import type { TKey } from '../../i18n/locales/en';
 import type { AgentRow, Autonomy, ToolPolicy } from '../../lib/company/types';
 
-const POLICIES: { id: ToolPolicy; label: string; hint: string }[] = [
-  { id: 'allow', label: 'Allow', hint: 'Agent may use this tool freely' },
-  { id: 'approval', label: 'Ask', hint: 'Every use needs your approval' },
-  { id: 'block', label: 'Block', hint: 'Agent can never use this tool' },
-];
+const POLICIES: ToolPolicy[] = ['allow', 'approval', 'block'];
 
 /** Suggest more autonomy only when there is real evidence: >= 10 decisions and >= 85% approved. */
 export function autonomySuggestion(
@@ -41,6 +40,9 @@ export function AgentDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
+  const label = agentLabel(agent, i18n);
   const color = agentColor(agent.type, agent.slug);
   const [budget, setBudget] = useState(agent.monthly_budget_usd?.toString() ?? '');
   const suggestion = autonomySuggestion(stats, agent.autonomy);
@@ -51,14 +53,15 @@ export function AgentDrawer({
       if (ok) toast.success(ok);
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Could not save');
+      console.error(err);
+      toast.error(t('drawer.saveError'));
     }
   };
 
   const saveBudget = () => {
     const v = budget.trim() === '' ? null : Number(budget);
-    if (v !== null && (!Number.isFinite(v) || v < 0)) return toast.error('Budget must be a positive number');
-    void run(() => updateAgent(agent.id, { monthly_budget_usd: v }), 'Budget saved');
+    if (v !== null && (!Number.isFinite(v) || v < 0)) return toast.error(t('drawer.budgetInvalid'));
+    void run(() => updateAgent(agent.id, { monthly_budget_usd: v }), t('drawer.budgetSaved'));
   };
 
   const budgetValue = agent.monthly_budget_usd;
@@ -66,32 +69,32 @@ export function AgentDrawer({
 
   return (
     <Panel
-      title={agent.name}
+      title={label.name}
       right={
         <button className="fb-link fb-muted cursor-pointer text-xs hover:text-white" onClick={onClose}>
-          Close
+          {t('common.close')}
         </button>
       }
     >
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <span className="fb-chip" style={{ color }}>
           <StatusDot tone={state === 'active' ? 'ok' : state === 'waiting' ? 'warn' : 'idle'} live={state === 'active'} />
-          {STATE_LABEL[state]}
+          {t(STATE_KEY[state])}
         </span>
         <label className="fb-chip cursor-pointer">
           <input
             type="checkbox"
             checked={agent.enabled}
             disabled={!canManage}
-            onChange={(e) => void run(() => updateAgent(agent.id, { enabled: e.target.checked }), e.target.checked ? 'Agent enabled' : 'Agent disabled')}
+            onChange={(e) => void run(() => updateAgent(agent.id, { enabled: e.target.checked }), t(e.target.checked ? 'drawer.toast.enabled' : 'drawer.toast.disabled'))}
           />
-          {agent.enabled ? 'Enabled' : 'Disabled'}
+          {agent.enabled ? t('drawer.enabled') : t('drawer.disabled')}
         </label>
       </div>
-      {agent.description && <p className="fb-muted mb-4 text-sm">{agent.description}</p>}
+      {label.description && <p className="fb-muted mb-4 text-sm">{label.description}</p>}
 
-      <div className="fb-eyebrow mb-2">Autonomy</div>
-      <div role="radiogroup" aria-label="Autonomy level" className="grid gap-2">
+      <div className="fb-eyebrow mb-2">{t('drawer.autonomy')}</div>
+      <div role="radiogroup" aria-label={t('drawer.autonomyAria')} className="grid gap-2">
         {AUTONOMY_LEVELS.map((lvl) => {
           const on = agent.autonomy === lvl.id;
           return (
@@ -100,14 +103,14 @@ export function AgentDrawer({
               role="radio"
               aria-checked={on}
               disabled={!canManage}
-              onClick={() => !on && void run(() => updateAgent(agent.id, { autonomy: lvl.id }), `${agent.name}: ${lvl.label}`)}
-              className="fb-row cursor-pointer text-left disabled:cursor-not-allowed"
+              onClick={() => !on && void run(() => updateAgent(agent.id, { autonomy: lvl.id }), t('drawer.autonomyToast', { agent: label.name, level: t(`autonomy.${lvl.id}.label` as TKey) }))}
+              className="fb-row cursor-pointer text-start disabled:cursor-not-allowed"
               style={on ? { borderColor: color, background: `${color}14` } : undefined}
             >
               <span className="fb-dot" style={on ? { background: color, boxShadow: `0 0 10px ${color}` } : undefined} />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-medium">{lvl.label}</span>
-                <span className="fb-dim block text-xs">{lvl.text}</span>
+                <span className="block text-sm font-medium">{t(`autonomy.${lvl.id}.label` as TKey)}</span>
+                <span className="fb-dim block text-xs">{t(`autonomy.${lvl.id}.text` as TKey)}</span>
               </span>
             </button>
           );
@@ -119,29 +122,25 @@ export function AgentDrawer({
           className="mt-3 rounded-xl p-3 text-xs"
           style={{ border: '1px solid var(--fb-border)', background: suggestion.ready ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.02)' }}
         >
-          Your decisions: <b>{Math.round(suggestion.rate * 100)}%</b> approved over {suggestion.decisions} request{suggestion.decisions === 1 ? '' : 's'}.{' '}
-          {suggestion.ready
-            ? 'This agent has earned more trust — consider "Act, then tell me".'
-            : suggestion.decisions < 10
-              ? 'A track record builds after 10 decisions.'
-              : 'Keep it on approval until the acceptance rate is above 85%.'}
+          {t('drawer.trust', { rate: Math.round(suggestion.rate * 100), count: suggestion.decisions })}{' '}
+          {suggestion.ready ? t('drawer.trust.ready') : suggestion.decisions < 10 ? t('drawer.trust.few') : t('drawer.trust.keep')}
         </p>
       )}
 
-      <div className="fb-eyebrow mb-2 mt-5">Monthly budget (USD)</div>
+      <div className="fb-eyebrow mb-2 mt-5">{t('drawer.budget')}</div>
       <div className="flex gap-2">
         <input
           className="fb-input"
           inputMode="decimal"
-          placeholder="No limit"
+          placeholder={t('drawer.budgetPlaceholder')}
           value={budget}
           disabled={!canManage}
-          aria-label="Monthly budget in USD"
+          aria-label={t('drawer.budgetAria')}
           onChange={(e) => setBudget(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && saveBudget()}
         />
         <button className="fb-btn fb-btn--ghost" style={{ height: 42 }} disabled={!canManage} onClick={saveBudget}>
-          Save
+          {t('common.save')}
         </button>
       </div>
       {budgetValue != null && (
@@ -150,47 +149,47 @@ export function AgentDrawer({
             <div className="h-full rounded-full" style={{ width: `${pct}%`, background: pct > 90 ? 'var(--fb-err)' : pct > 70 ? 'var(--fb-warn)' : 'var(--fb-accent)' }} />
           </div>
           <div className="fb-dim mt-1 text-[11px]">
-            ${(spend ?? 0).toFixed(2)} of ${budgetValue.toFixed(2)} this month · enforced by the agent backend when connected
+            {t('drawer.budgetProgress', { spent: fmt.currency(spend ?? 0), budget: fmt.currency(budgetValue) })}
           </div>
         </div>
       )}
 
-      <div className="fb-eyebrow mb-2 mt-5">Tools & permissions</div>
+      <div className="fb-eyebrow mb-2 mt-5">{t('drawer.tools')}</div>
       <ul className="flex flex-col gap-2">
-        {agent.agent_tools.map((t) => (
-          <li key={t.id} className="fb-row flex-wrap py-2" style={!t.enabled ? { opacity: 0.55 } : undefined}>
+        {agent.agent_tools.map((tool) => (
+          <li key={tool.id} className="fb-row flex-wrap py-2" style={!tool.enabled ? { opacity: 0.55 } : undefined}>
             <input
               type="checkbox"
-              checked={t.enabled}
+              checked={tool.enabled}
               disabled={!canManage}
-              aria-label={`${t.tool_name} enabled`}
-              onChange={(e) => void run(() => updateTool(t.id, { enabled: e.target.checked }))}
+              aria-label={t('drawer.toolEnabledAria', { tool: tool.tool_name })}
+              onChange={(e) => void run(() => updateTool(tool.id, { enabled: e.target.checked }))}
             />
-            <span className="min-w-0 flex-1 truncate font-mono text-xs">{t.tool_name}</span>
-            <span role="radiogroup" aria-label={`${t.tool_name} policy`} className="inline-flex overflow-hidden rounded-lg" style={{ border: '1px solid var(--fb-border)' }}>
+            <span className="min-w-0 flex-1 truncate font-mono text-xs">{tool.tool_name}</span>
+            <span role="radiogroup" aria-label={t('drawer.toolPolicyAria', { tool: tool.tool_name })} className="inline-flex overflow-hidden rounded-lg" style={{ border: '1px solid var(--fb-border)' }}>
               {POLICIES.map((p) => (
                 <button
-                  key={p.id}
+                  key={p}
                   role="radio"
-                  aria-checked={t.policy === p.id}
-                  title={p.hint}
+                  aria-checked={tool.policy === p}
+                  title={t(`policy.${p}.hint` as TKey)}
                   disabled={!canManage}
-                  onClick={() => t.policy !== p.id && void run(() => updateTool(t.id, { policy: p.id }))}
+                  onClick={() => tool.policy !== p && void run(() => updateTool(tool.id, { policy: p }))}
                   className="cursor-pointer px-2.5 py-1 text-[11px] font-semibold disabled:cursor-not-allowed"
                   style={{
-                    background: t.policy === p.id ? (p.id === 'block' ? 'rgba(248,113,113,0.2)' : p.id === 'approval' ? 'rgba(251,191,36,0.18)' : 'rgba(52,211,153,0.16)') : 'transparent',
-                    color: t.policy === p.id ? (p.id === 'block' ? 'var(--fb-err)' : p.id === 'approval' ? 'var(--fb-warn)' : 'var(--fb-ok)') : 'var(--fb-dim)',
+                    background: tool.policy === p ? (p === 'block' ? 'rgba(248,113,113,0.2)' : p === 'approval' ? 'rgba(251,191,36,0.18)' : 'rgba(52,211,153,0.16)') : 'transparent',
+                    color: tool.policy === p ? (p === 'block' ? 'var(--fb-err)' : p === 'approval' ? 'var(--fb-warn)' : 'var(--fb-ok)') : 'var(--fb-dim)',
                   }}
                 >
-                  {p.label}
+                  {t(`policy.${p}` as TKey)}
                 </button>
               ))}
             </span>
           </li>
         ))}
-        {agent.agent_tools.length === 0 && <li className="fb-dim text-sm">This agent has no tools.</li>}
+        {agent.agent_tools.length === 0 && <li className="fb-dim text-sm">{t('drawer.noTools')}</li>}
       </ul>
-      {!canManage && <p className="fb-dim mt-3 text-xs">Only managers, admins and owners can change these settings.</p>}
+      {!canManage && <p className="fb-dim mt-3 text-xs">{t('drawer.readonly')}</p>}
     </Panel>
   );
 }

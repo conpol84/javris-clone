@@ -5,9 +5,11 @@ import { ApprovalBell } from './ApprovalBell';
 import { Sidebar } from './Sidebar/Sidebar';
 import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
+import { useI18n } from '../i18n/I18nProvider';
 import { checkHealth } from '../lib/api';
 
 export function Layout() {
+  const { t } = useI18n();
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
   const [apiReachable, setApiReachable] = useState<boolean | null>(null);
@@ -54,13 +56,13 @@ export function Layout() {
             className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ background: 'var(--color-error)' }}
           />
-          <span>Cannot reach Firbo AI backend</span>
+          <span>{t('layout.backendDown')}</span>
           <button
             onClick={() => navigate('/settings')}
-            className="text-sm underline cursor-pointer ml-auto shrink-0"
+            className="text-sm underline cursor-pointer ms-auto shrink-0"
             style={{ color: 'var(--color-accent)' }}
           >
-            Change URL
+            {t('layout.changeUrl')}
           </button>
         </div>
       )}

@@ -18,6 +18,7 @@ import { ActivityPage } from './pages/ActivityPage';
 import { PeoplePage } from './pages/PeoplePage';
 import { COMPANY_ENABLED } from './lib/company/client';
 import { CompanyAuthProvider } from './lib/company/AuthProvider';
+import { LocaleSync } from './components/company/LocaleSync';
 import { AuthGate } from './components/company/AuthGate';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
@@ -228,6 +229,7 @@ function AuthedApp() {
 export default function App() {
   return (
     <CompanyAuthProvider>
+      <LocaleSync />
       <AuthGate>
         <AuthedApp />
       </AuthGate>

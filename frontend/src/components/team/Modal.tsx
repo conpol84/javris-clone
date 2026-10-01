@@ -1,5 +1,6 @@
 import { useEffect, type ReactNode } from 'react';
 import { X } from 'lucide-react';
+import { useI18n } from '../../i18n/I18nProvider';
 
 /** Accessible overlay: Esc closes, backdrop click closes, body scroll stays put. */
 export function Modal({
@@ -13,6 +14,7 @@ export function Modal({
   children: ReactNode;
   wide?: boolean;
 }) {
+  const { t } = useI18n();
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
@@ -33,7 +35,7 @@ export function Modal({
       >
         <header className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">{title}</h2>
-          <button onClick={onClose} aria-label="Close" className="fb-link fb-muted cursor-pointer rounded-lg p-1.5 hover:text-white">
+          <button onClick={onClose} aria-label={t('common.close')} className="fb-link fb-muted cursor-pointer rounded-lg p-1.5 hover:text-white">
             <X size={18} />
           </button>
         </header>
