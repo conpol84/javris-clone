@@ -85,6 +85,10 @@ class AuthMiddleware(BaseHTTPMiddleware):
         endpoints. This only applies when an API key is configured at all, so
         keyless local use is unchanged.
         """
+        # The gateway overview verifies the caller's Supabase session itself
+        # (see gateway_routes.require_firbo_user) when SUPABASE_URL is set.
+        if path.startswith("/v1/gateway/") and os.environ.get("SUPABASE_URL", "").strip():
+            return False
         return (
             path.startswith("/v1/")
             or path.startswith("/api/")

@@ -6,6 +6,9 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import '../styles/firbo.css';
 
+/** Full OmniRoute dashboard (providers, keys, routes): set VITE_OMNIROUTE_URL to show the shortcut. */
+const GATEWAY_DASHBOARD = (import.meta.env.VITE_OMNIROUTE_URL as string | undefined) || '';
+
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
     <div className="fb-glass p-4">
@@ -73,6 +76,15 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
             {t('gw.partial', { list: Object.entries(data.errors).map(([k, v]) => `${k} (${v})`).join(', ') })}
             {data.errors.providers === 'unauthorized' && ` ${t('gw.needKey')}`}
           </p>
+        )}
+
+        {GATEWAY_DASHBOARD && (
+          <Panel title={t('gw.dashboardTitle')}>
+            <p className="fb-muted text-sm">{t('gw.dashboardHint')}</p>
+            <a className="fb-btn fb-btn--primary mt-3 inline-flex" href={GATEWAY_DASHBOARD} target="_blank" rel="noopener noreferrer">
+              {t('gw.openDashboard')} →
+            </a>
+          </Panel>
         )}
 
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">

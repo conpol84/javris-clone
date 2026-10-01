@@ -10,6 +10,8 @@
 //    Each provider NAME needs NAME_API_KEY (and NAME_BASE_URL unless it has a built-in default).
 //    LLM_FALLBACK="provider:model,provider:model" is tried in order when the first choice fails.
 //    Optional per provider: NAME_PRICE_IN_PER_M / NAME_PRICE_OUT_PER_M (cost estimate for budgets).
+//  - spend protection while signup is open: RUN_ALLOWED_EMAILS="a@x.com,@mycompany.com" limits who may run agents;
+//    ORG_DAILY_RUN_LIMIT (default 100) caps runs per company per 24 h.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const cors = {
@@ -135,6 +137,11 @@ Deno.serve(async (req) => {
     .eq('user_id', user.id)
     .maybeSingle();
   if (!member || !WRITERS.includes(member.role)) return json(403, { error: 'forbidden' });
+  const allowed = (Deno.env.get('RUN_ALLOWED_EMAILS') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const email = (user.email ?? '').toLowerCase();
+  if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) {
+    return json(403, { error: 'forbidden' });
+  }
   if (!RUNNABLE.includes(task.status)) return json(409, { error: 'not_runnable', status: task.status });
   if (!task.assigned_agent_id) return json(422, { error: 'no_agent' });
 
@@ -173,6 +180,12 @@ Deno.serve(async (req) => {
     .eq('agent_id', agent.id)
     .gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
   if ((lastHour ?? 0) >= HOURLY_RUN_LIMIT) return json(429, { error: 'rate_limited' });
+  const { count: orgDay } = await admin
+    .from('usage_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('organization_id', task.organization_id)
+    .gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
+  if ((orgDay ?? 0) >= Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? 100)) return json(429, { error: 'rate_limited' });
 
   // ---- atomically claim the task (two clicks must not run it twice)
   const { data: claimed } = await admin
@@ -237,7 +250,7 @@ Deno.serve(async (req) => {
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];
-  const allowed = parsed.actions.filter((a) => {
+  const allowedActions = parsed.actions.filter((a) => {
     const name = a.action.toLowerCase();
     const tool = tools.find((t) => name === t.tool_name || name.startsWith(`${t.tool_name}`));
     if (tool && (!tool.enabled || tool.policy === 'block')) {
@@ -246,7 +259,7 @@ Deno.serve(async (req) => {
     }
     return true;
   });
-  const marked = allowed.map((a) => ({
+  const marked = allowedActions.map((a) => ({
     ...a,
     payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] },
   }));

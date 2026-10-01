@@ -7,6 +7,9 @@ account names or e-mail addresses).
 Environment:
   OMNIROUTE_HOST            base URL of the gateway (default http://localhost:20128)
   OMNIROUTE_MANAGEMENT_KEY  API key with manage scope (falls back to OMNIROUTE_API_KEY)
+  SUPABASE_URL              when set, the overview is open to signed-in Firbo users:
+  SUPABASE_PUBLISHABLE_KEY  their Supabase access token is verified against Supabase
+                            (browsers never hold the server's API key)
 """
 
 from __future__ import annotations
@@ -19,11 +22,53 @@ from collections import Counter
 from typing import Any, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/v1/gateway", tags=["gateway"])
+_TOKEN_TTL_SECONDS = 60.0
+_tokens: Dict[str, float] = {}
+
+
+def supabase_auth_enabled() -> bool:
+    return bool(os.environ.get("SUPABASE_URL", "").strip())
+
+
+async def require_firbo_user(request: Request) -> None:
+    """Accept a valid Supabase access token (Firbo login) in place of the API key.
+
+    No-op when Supabase auth is not configured: the global API-key middleware
+    then governs this route exactly like every other ``/v1`` route.
+    """
+    if not supabase_auth_enabled():
+        return
+    scheme, _, token = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise HTTPException(status_code=401, detail="Sign in to Firbo AI first")
+    now = time.monotonic()
+    if _tokens.get(token, 0.0) > now:
+        return
+    base = os.environ["SUPABASE_URL"].rstrip("/")
+    apikey = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
+            resp = await client.get(
+                f"{base}/auth/v1/user",
+                headers={"Authorization": f"Bearer {token}", "apikey": apikey},
+            )
+    except httpx.HTTPError as exc:
+        logger.warning("Supabase token check failed: %s", type(exc).__name__)
+        raise HTTPException(status_code=503, detail="Auth service unreachable")
+    if resp.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid session")
+    if len(_tokens) > 512:
+        _tokens.clear()
+    _tokens[token] = now + _TOKEN_TTL_SECONDS
+
+
+router = APIRouter(
+    prefix="/v1/gateway", tags=["gateway"], dependencies=[Depends(require_firbo_user)]
+)
 
 _DEFAULT_HOST = "http://localhost:20128"
 _TIMEOUT = httpx.Timeout(4.0, connect=2.0)

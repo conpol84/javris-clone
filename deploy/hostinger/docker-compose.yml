@@ -1,0 +1,91 @@
+# Firbo AI server stack for a single VPS (Hostinger KVM + Docker).
+#
+#   Internet --443--> caddy --+--> api.<domain>      -> firbo-api  (FastAPI: gateway status, legacy chat/agents)
+#                             +--> gateway.<domain>  -> omniroute  (AI gateway dashboard + OpenAI-compatible /v1)
+#
+# Only Caddy publishes ports. Redis, OmniRoute and the API talk over the private compose network.
+# Start: cp .env.example .env && edit it, then `docker compose up -d --build`.
+
+services:
+  caddy:
+    image: caddy:2
+    container_name: firbo-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      API_DOMAIN: ${API_DOMAIN}
+      GATEWAY_DOMAIN: ${GATEWAY_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - firbo-api
+      - omniroute
+
+  redis:
+    image: docker.io/library/redis:8.6.5-alpine
+    container_name: firbo-redis
+    restart: unless-stopped
+    command: redis-server --save 60 1 --loglevel warning
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  omniroute:
+    image: diegosouzapw/omniroute:${OMNIROUTE_TAG:-latest}
+    container_name: firbo-omniroute
+    restart: unless-stopped
+    stop_grace_period: 40s
+    env_file: .env
+    environment:
+      DATA_DIR: /app/data
+      REDIS_URL: redis://redis:6379
+      REQUIRE_API_KEY: "true"
+      NEXT_PUBLIC_BASE_URL: https://${GATEWAY_DOMAIN}
+      BASE_URL: https://${GATEWAY_DOMAIN}
+      OMNIROUTE_MEMORY_MB: ${OMNIROUTE_MEMORY_MB:-2048}
+    volumes:
+      - ./data/omniroute:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.mjs"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  firbo-api:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+    container_name: firbo-api
+    restart: unless-stopped
+    command: ["serve", "--host", "0.0.0.0", "--port", "8000", "--engine", "omniroute", "--model", "auto"]
+    environment:
+      # Browsers never see this key: Firbo users authenticate with their own Supabase session instead.
+      OPENJARVIS_API_KEY: ${OPENJARVIS_API_KEY}
+      OPENJARVIS_CORS_ORIGINS: ${FRONTEND_ORIGINS:-https://firboai.app}
+      OMNIROUTE_HOST: http://omniroute:20128
+      OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-}
+      OMNIROUTE_MANAGEMENT_KEY: ${OMNIROUTE_MANAGEMENT_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+    volumes:
+      - ./data/firbo:/home/openjarvis
+    depends_on:
+      omniroute:
+        condition: service_healthy
+
+volumes:
+  caddy-data:
+  caddy-config:
+  redis-data:

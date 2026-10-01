@@ -162,3 +162,56 @@ def test_host_with_v1_suffix_is_normalized(
     monkeypatch.setenv("OMNIROUTE_HOST", HOST + "/v1")
     _mock_all()
     assert client.get("/v1/gateway/overview").json()["connected"] is True
+
+
+class TestSupabaseAuth:
+    """Browsers authenticate with their Firbo (Supabase) session, not the server API key."""
+
+    @pytest.fixture(autouse=True)
+    def _supabase(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("SUPABASE_URL", "https://proj.supabase.test")
+        monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_x")
+        gateway_routes._tokens.clear()
+        yield
+        gateway_routes._tokens.clear()
+
+    @respx.mock
+    def test_rejects_missing_token(self, client: TestClient):
+        assert client.get("/v1/gateway/overview").status_code == 401
+
+    @respx.mock
+    def test_rejects_invalid_token(self, client: TestClient):
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            return_value=httpx.Response(401, json={"msg": "bad"})
+        )
+        resp = client.get(
+            "/v1/gateway/overview", headers={"Authorization": "Bearer nope"}
+        )
+        assert resp.status_code == 401
+
+    @respx.mock
+    def test_accepts_valid_session_and_caches_it(self, client: TestClient):
+        route = respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            return_value=httpx.Response(200, json={"id": "u1"})
+        )
+        _mock_all()
+        headers = {"Authorization": "Bearer good"}
+        assert client.get("/v1/gateway/overview", headers=headers).status_code == 200
+        assert client.get("/v1/gateway/overview", headers=headers).status_code == 200
+        assert route.call_count == 1  # second call served from the 60s token cache
+
+    @respx.mock
+    def test_auth_service_down_is_503_not_open(self, client: TestClient):
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            side_effect=httpx.ConnectError("down")
+        )
+        resp = client.get(
+            "/v1/gateway/overview", headers={"Authorization": "Bearer good"}
+        )
+        assert resp.status_code == 503
+
+    def test_api_key_middleware_defers_to_supabase_for_gateway_only(self):
+        from openjarvis.server.auth_middleware import AuthMiddleware
+
+        assert AuthMiddleware._requires_auth("/v1/gateway/overview") is False
+        assert AuthMiddleware._requires_auth("/v1/chat/completions") is True

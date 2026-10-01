@@ -1,0 +1,10 @@
+# Automatic HTTPS (Let's Encrypt). Both names must have an A record pointing at this server first.
+{$API_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy firbo-api:8000
+}
+
+{$GATEWAY_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy omniroute:20128
+}

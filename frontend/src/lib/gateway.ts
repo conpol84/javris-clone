@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch } from './api';
+import { apiFetch, getBase } from './api';
+import { companyClient } from './company/client';
 
 export interface GatewayOverview {
   connected: boolean;
@@ -29,7 +30,11 @@ export type GatewayState =
   | { status: 'ready'; data: GatewayOverview };
 
 export async function fetchGatewayOverview(): Promise<GatewayOverview> {
-  const res = await apiFetch('/v1/gateway/overview');
+  // Signed-in Firbo users authenticate with their own session; the server's API key never reaches the browser.
+  const session = companyClient ? (await companyClient.auth.getSession()).data.session : null;
+  const res = session
+    ? await fetch(`${getBase()}/v1/gateway/overview`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+    : await apiFetch('/v1/gateway/overview');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const body = (await res.json()) as GatewayOverview;
   if (typeof body?.connected !== 'boolean') throw new Error('Unexpected response');

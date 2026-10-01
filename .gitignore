@@ -131,3 +131,7 @@ learning.db
 minion_logs/
 *.oj-debug.json
 oj-debug.*.json
+
+# server secrets and data
+deploy/hostinger/.env
+deploy/hostinger/data/
