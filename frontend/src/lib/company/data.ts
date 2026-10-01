@@ -235,6 +235,35 @@ export async function loadMonthlySpend(orgId: string): Promise<Record<string, nu
   return out;
 }
 
+export interface AgentUsage {
+  runs: number;
+  tokens: number;
+  cost: number;
+  avgLatencyMs: number;
+}
+
+/** This month's runs, tokens, cost and speed for one agent (managers and above). */
+export async function loadAgentUsage(orgId: string, agentId: string): Promise<AgentUsage> {
+  const start = new Date();
+  start.setUTCDate(1);
+  start.setUTCHours(0, 0, 0, 0);
+  const { data, error } = await requireClient()
+    .from('usage_events')
+    .select('input_tokens, output_tokens, cost_usd, latency_ms')
+    .eq('organization_id', orgId)
+    .eq('agent_id', agentId)
+    .gte('created_at', start.toISOString())
+    .limit(5000);
+  const rows = fail(error, data) as unknown as { input_tokens: number; output_tokens: number; cost_usd: number | string; latency_ms: number | null }[];
+  const timed = rows.filter((r) => r.latency_ms != null);
+  return {
+    runs: rows.length,
+    tokens: rows.reduce((n, r) => n + r.input_tokens + r.output_tokens, 0),
+    cost: rows.reduce((n, r) => n + Number(r.cost_usd), 0),
+    avgLatencyMs: timed.length ? timed.reduce((n, r) => n + (r.latency_ms ?? 0), 0) / timed.length : 0,
+  };
+}
+
 // ------------------------------------------------------------------ approvals
 export async function listApprovalHistory(orgId: string, limit = 50): Promise<ApprovalRow[]> {
   const { data, error } = await requireClient()

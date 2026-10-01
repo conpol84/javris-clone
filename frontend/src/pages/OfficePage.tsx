@@ -2,6 +2,7 @@ import { lazy, Suspense, useMemo, useState, type FormEvent } from 'react';
 import { useSearchParams } from 'react-router';
 import { toast } from 'sonner';
 import { Panel, StatusDot } from '../components/command/Panel';
+import { AgentDetail } from '../components/team/AgentDetail';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
@@ -53,9 +54,6 @@ export function OfficePage() {
     }
   };
 
-  const agentTasks = selected
-    ? data.tasks.filter((x) => x.assigned_agent_id === selected.id && OPEN_TASK_STATUSES.includes(x.status)).slice(0, 5)
-    : [];
   const open = data.tasks.filter((x) => OPEN_TASK_STATUSES.includes(x.status)).length;
 
   return (
@@ -99,34 +97,10 @@ export function OfficePage() {
               {stateText(states[selected.id] ?? 'idle')}
             </div>
             {selected.description && <p className="fb-muted text-sm">{agentLabel(selected, i18n).description}</p>}
-            <div className="fb-dim mt-3 text-xs">
-              {t('office.model')} <b className="text-[color:var(--fb-text)]">{selected.model}</b> ·{' '}
-              {selected.autonomous ? t('office.autonomous') : t('office.asksBefore')}
+            <div className="fb-dim mt-3 mb-4 text-xs">
+              {t('office.model')} <b className="text-[color:var(--fb-text)]">{selected.model}</b>
             </div>
-            <div className="fb-eyebrow mb-2 mt-4">{t('office.tools', { count: selected.agent_tools.filter((x) => x.enabled).length })}</div>
-            <div className="flex flex-wrap gap-1.5">
-              {selected.agent_tools
-                .filter((x) => x.enabled)
-                .map((x) => (
-                  <span key={x.tool_name} className="fb-chip">
-                    {x.tool_name}
-                  </span>
-                ))}
-            </div>
-            <div className="fb-eyebrow mb-2 mt-4">{t('office.openTasks')}</div>
-            {agentTasks.length === 0 ? (
-              <p className="fb-dim text-sm">{t('office.noneAssigned')}</p>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {agentTasks.map((task) => (
-                  <li key={task.id} className="fb-row py-2">
-                    <StatusDot tone={task.status === 'running' ? 'ok' : task.status === 'awaiting_approval' ? 'warn' : 'idle'} />
-                    <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
-                    <span className="fb-dim text-[11px]">{t(`status.${task.status}` as TKey)}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <AgentDetail orgId={orgId} agent={selected} tasks={data.tasks} canSeeUsage={MANAGER_ROLES.includes(role)} canRun={canWrite} onChanged={() => void data.reload()} />
             {canWrite && (
               <form onSubmit={assign} className="mt-4 flex gap-2">
                 <input className="fb-input" placeholder={t('office.assignPlaceholder', { agent: shortName(selected) })} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={200} aria-label={t('office.taskTitleAria')} />
