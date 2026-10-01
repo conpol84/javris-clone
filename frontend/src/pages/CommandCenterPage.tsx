@@ -61,11 +61,12 @@ export function CommandCenterPage() {
 
   const readyCount = data.agents.filter((a) => a.enabled).length;
   const rows = [
-    { icon: Brain, label: t('cc.row.core'), value: degraded ? t('cc.core.degraded') : data.loading ? t('cc.core.starting') : t('cc.core.online'), tone: degraded ? 'err' : 'ok' },
-    { icon: ListChecks, label: t('cc.row.agents'), value: t('cc.agents.summary', { active: activeCount, ready: readyCount }), tone: activeCount ? 'ok' : 'idle' },
-    { icon: ShieldCheck, label: t('cc.row.approvals'), value: t('cc.approvals.pending', { count: data.approvals.length }), tone: data.approvals.length ? 'warn' : 'ok' },
-    { icon: Brain, label: t('cc.row.memory'), value: t('cc.memory.stored', { count: data.counts?.memories ?? '–' }), tone: 'idle' },
+    { to: '/settings', icon: Brain, label: t('cc.row.core'), value: degraded ? t('cc.core.degraded') : data.loading ? t('cc.core.starting') : t('cc.core.online'), tone: degraded ? 'err' : 'ok' },
+    { to: '/team', icon: ListChecks, label: t('cc.row.agents'), value: t('cc.agents.summary', { active: activeCount, ready: readyCount }), tone: activeCount ? 'ok' : 'idle' },
+    { to: '/inbox', icon: ShieldCheck, label: t('cc.row.approvals'), value: t('cc.approvals.pending', { count: data.approvals.length }), tone: data.approvals.length ? 'warn' : 'ok' },
+    { to: '/activity', icon: Brain, label: t('cc.row.memory'), value: t('cc.memory.stored', { count: data.counts?.memories ?? '–' }), tone: 'idle' },
     {
+      to: '/gateway',
       icon: Waypoints,
       label: t('cc.row.gateway'),
       value: gateway.status === 'loading' ? t('cc.gw.checking') : gwOnline ? t('cc.gw.models', { count: gw!.models.total }) : t('cc.gw.notConnected'),
@@ -104,14 +105,16 @@ export function CommandCenterPage() {
         <div className="fb-cc">
           <Panel title={t('cc.overview')} area="overview">
             <ul className="flex flex-col gap-2">
-              {rows.map(({ icon: Icon, label, value, tone }) => (
-                <li key={label} className="fb-row">
-                  <Icon size={16} style={{ color: 'var(--fb-accent)' }} />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium">{label}</div>
-                    <div className="fb-dim truncate text-xs">{value}</div>
-                  </div>
-                  <StatusDot tone={tone} />
+              {rows.map(({ to, icon: Icon, label, value, tone }) => (
+                <li key={label}>
+                  <button className="fb-row fb-glass--hover w-full cursor-pointer text-start" onClick={() => navigate(to)}>
+                    <Icon size={16} style={{ color: 'var(--fb-accent)' }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium">{label}</div>
+                      <div className="fb-dim truncate text-xs">{value}</div>
+                    </div>
+                    <StatusDot tone={tone} />
+                  </button>
                 </li>
               ))}
             </ul>
@@ -120,7 +123,7 @@ export function CommandCenterPage() {
           <section className="fb-glass fb-a-hero relative min-h-[320px] overflow-hidden md:min-h-[440px]" style={{ padding: 0 }}>
             <div className="fb-scan" />
             <Suspense fallback={null}>
-              <CoreOrb satellites={satellites} className="absolute inset-0" />
+              <CoreOrb satellites={satellites} onSelect={(id) => navigate(`/office?agent=${id}`)} className="absolute inset-0" />
             </Suspense>
             <div className="pointer-events-none absolute inset-x-0 bottom-5 text-center">
               <div className="fb-grad-text text-2xl font-bold tracking-[0.35em] md:text-3xl">FIRBO AI</div>
@@ -142,16 +145,18 @@ export function CommandCenterPage() {
             ) : (
               <ul className="flex flex-col gap-2">
                 {feed.map((e) => (
-                  <li key={e.id} className="fb-row fb-start">
-                    <span className="mt-1.5">
-                      <StatusDot tone={LEVEL_TONE[e.level]} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{e.title}</div>
-                      <div className="fb-dim truncate text-xs">
-                        <b style={{ color: `var(--fb-${e.level === 'info' ? 'accent' : e.level})` }}><span className="uppercase">{e.tag}</span></b> · {e.detail} · {timeAgo(e.at, Date.now(), fmt)}
+                  <li key={e.id}>
+                    <button className="fb-row fb-start fb-glass--hover w-full cursor-pointer text-start" onClick={() => navigate(e.id.startsWith('ap-') ? '/inbox' : '/tasks')}>
+                      <span className="mt-1.5">
+                        <StatusDot tone={LEVEL_TONE[e.level]} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">{e.title}</div>
+                        <div className="fb-dim truncate text-xs">
+                          <b style={{ color: `var(--fb-${e.level === 'info' ? 'accent' : e.level})` }}><span className="uppercase">{e.tag}</span></b> · {e.detail} · {timeAgo(e.at, Date.now(), fmt)}
+                        </div>
                       </div>
-                    </div>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -226,7 +231,8 @@ export function CommandCenterPage() {
                 {timeline.map((task) => {
                   const overdue = task.due_at && Date.parse(task.due_at) < now.getTime();
                   return (
-                    <li key={task.id} className="flex items-start gap-3">
+                    <li key={task.id}>
+                      <button className="fb-glass--hover flex w-full cursor-pointer items-start gap-3 rounded-xl p-1.5 text-start" onClick={() => navigate('/tasks')}>
                       <span className="mt-1.5">
                         <StatusDot tone={overdue ? 'warn' : task.status === 'running' ? 'ok' : 'idle'} live={task.status === 'running'} />
                       </span>
@@ -236,6 +242,7 @@ export function CommandCenterPage() {
                           {task.due_at ? t(overdue ? 'cc.timeline.overdue' : 'cc.timeline.due', { date: fmt.dateTime(task.due_at) }) : t('cc.timeline.noDeadline')} · {t(`status.${task.status}` as TKey)}
                         </div>
                       </div>
+                      </button>
                     </li>
                   );
                 })}
@@ -246,14 +253,14 @@ export function CommandCenterPage() {
           <Panel title={t('cc.memory')} area="memory">
             <div className="grid grid-cols-3 gap-3 text-center">
               {[
-                [t('cc.mem.memories'), data.counts?.memories],
-                [t('cc.mem.sources'), data.counts?.knowledgeSources],
-                [t('cc.mem.workflows'), data.counts?.workflows],
-              ].map(([label, value]) => (
-                <div key={label as string} className="fb-row flex-col py-4">
+                [t('cc.mem.memories'), data.counts?.memories, '/activity'],
+                [t('cc.mem.sources'), data.counts?.knowledgeSources, '/settings'],
+                [t('cc.mem.workflows'), data.counts?.workflows, '/tasks'],
+              ].map(([label, value, to]) => (
+                <button key={label as string} className="fb-row fb-glass--hover cursor-pointer flex-col py-4" onClick={() => navigate(to as string)}>
                   <div className="fb-grad-text text-2xl font-bold tabular-nums">{value ?? '–'}</div>
                   <div className="fb-dim text-xs">{label}</div>
-                </div>
+                </button>
               ))}
             </div>
             {data.counts && MANAGER_ROLES.includes(role) && (
@@ -287,12 +294,14 @@ export function CommandCenterPage() {
             ) : (
               <ul className="grid grid-cols-2 gap-2">
                 {gw!.connections.slice(0, 8).map((c) => (
-                  <li key={c.provider} className="fb-row py-2">
-                    <StatusDot tone={c.limited ? 'warn' : c.healthy ? 'ok' : 'idle'} />
-                    <div className="min-w-0">
-                      <div className="truncate text-xs font-semibold">{c.provider}</div>
-                      <div className="fb-dim text-[11px]">{t('cc.gw.connected', { count: c.connections })}</div>
-                    </div>
+                  <li key={c.provider}>
+                    <button className="fb-row fb-glass--hover w-full cursor-pointer py-2 text-start" onClick={() => navigate('/gateway')}>
+                      <StatusDot tone={c.limited ? 'warn' : c.healthy ? 'ok' : 'idle'} />
+                      <div className="min-w-0">
+                        <div className="truncate text-xs font-semibold">{c.provider}</div>
+                        <div className="fb-dim text-[11px]">{t('cc.gw.connected', { count: c.connections })}</div>
+                      </div>
+                    </button>
                   </li>
                 ))}
               </ul>

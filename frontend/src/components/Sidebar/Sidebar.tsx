@@ -133,12 +133,12 @@ export function Sidebar() {
       >
         <div className="flex flex-col h-full w-[260px]">
           {/* Header */}
-          <div className="flex items-center gap-2 px-4 pt-3.5">
+          <button type="button" aria-label="Firbo AI" onClick={() => navigate('/')} className="flex cursor-pointer items-center gap-2 px-4 pt-3.5 text-start">
             <LogoMark size={22} />
             <span className="text-sm font-semibold tracking-tight" style={{ color: 'var(--color-text)' }}>
               Firbo <span style={{ color: 'var(--color-accent)' }}>AI</span>
             </span>
-          </div>
+          </button>
           <div className="flex items-center justify-between px-3 pt-2 pb-2">
             <button
               onClick={toggleSidebar}

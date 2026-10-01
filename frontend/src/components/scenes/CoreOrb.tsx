@@ -36,7 +36,7 @@ function glowTexture(): THREE.Texture {
   return new THREE.CanvasTexture(c);
 }
 
-function Satellite({ sat, index, total, motion }: { sat: OrbSatellite; index: number; total: number; motion: number }) {
+function Satellite({ sat, index, total, motion, onSelect }: { sat: OrbSatellite; index: number; total: number; motion: number; onSelect?: (id: string) => void }) {
   const ref = useRef<THREE.Mesh>(null);
   const radius = 1.9 + (index % 3) * 0.28;
   const tilt = (index % 3) * 0.55 + 0.25;
@@ -51,14 +51,25 @@ function Satellite({ sat, index, total, motion }: { sat: OrbSatellite; index: nu
     m.scale.setScalar(pulse);
   });
   return (
-    <mesh ref={ref}>
+    <mesh
+      ref={ref}
+      onClick={onSelect ? (e) => (e.stopPropagation(), onSelect(sat.id)) : undefined}
+      onPointerOver={onSelect ? () => (document.body.style.cursor = 'pointer') : undefined}
+      onPointerOut={onSelect ? () => (document.body.style.cursor = '') : undefined}
+    >
       <sphereGeometry args={[sat.active ? 0.075 : 0.05, 16, 16]} />
       <meshBasicMaterial color={sat.color} transparent opacity={sat.active ? 1 : 0.65} toneMapped={false} />
+      {onSelect && (
+        <mesh>
+          <sphereGeometry args={[0.17, 8, 8]} />
+          <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        </mesh>
+      )}
     </mesh>
   );
 }
 
-function Scene({ satellites, motion }: { satellites: OrbSatellite[]; motion: number }) {
+function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
   const points = useRef<THREE.Points>(null);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
@@ -120,7 +131,7 @@ function Scene({ satellites, motion }: { satellites: OrbSatellite[]; motion: num
         </mesh>
       ))}
       {satellites.map((s, i) => (
-        <Satellite key={s.id} sat={s} index={i} total={satellites.length} motion={motion} />
+        <Satellite key={s.id} sat={s} index={i} total={satellites.length} motion={motion} onSelect={onSelect} />
       ))}
     </group>
   );
@@ -137,7 +148,7 @@ function Fallback() {
 }
 
 /** Animated AI core. Falls back to CSS rings without WebGL. */
-export function CoreOrb({ satellites = [], className }: { satellites?: OrbSatellite[]; className?: string }) {
+export function CoreOrb({ satellites = [], className, onSelect }: { satellites?: OrbSatellite[]; className?: string; onSelect?: (id: string) => void }) {
   const reduced = usePrefersReducedMotion();
   if (!supportsWebGL()) {
     return (
@@ -155,7 +166,7 @@ export function CoreOrb({ satellites = [], className }: { satellites?: OrbSatell
         gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
         frameloop={reduced ? 'demand' : 'always'}
       >
-        <Scene satellites={satellites} motion={reduced ? 0 : 1} />
+        <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} />
       </Canvas>
     </div>
   );
