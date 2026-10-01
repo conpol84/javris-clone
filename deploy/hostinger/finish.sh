@@ -8,7 +8,7 @@ KEY="sb_publishable_tKMs6ANU1ywiwomvd-7wUg_hln8qSeu"   # public by design (same 
 sed -i "s|^SUPABASE_PUBLISHABLE_KEY=.*|SUPABASE_PUBLISHABLE_KEY=${KEY}|" .env
 
 # Keep an existing password (re-runs); otherwise generate a strong one.
-P="$(grep '^INITIAL_PASSWORD=' .env | cut -d= -f2- | tr -d ' ')"
+P="$(grep '^INITIAL_PASSWORD=' .env | cut -d= -f2- | sed 's/#.*//' | tr -d ' ')"
 if [ -z "$P" ]; then
   P="$(head -c 64 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | cut -c1-16)"
   sed -i "s|^INITIAL_PASSWORD=.*|INITIAL_PASSWORD=${P}|" .env
