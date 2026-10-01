@@ -1,11 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
-import { CommandDialog } from '../components/command/CommandDialog';
+import { useCommand } from '../components/command/CommandHost';
 import { Panel, StatusDot, Wave } from '../components/command/Panel';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { buildFeed, timeAgo } from '../lib/company/feed';
-import { CHAT_PATH } from '../lib/company/routes';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -42,7 +41,7 @@ export function CommandCenterPage() {
   const data = useOrgData(orgId, MANAGER_ROLES.includes(role));
   const gateway = useGateway();
   const now = useClock();
-  const [commanding, setCommanding] = useState(false);
+  const command = useCommand();
 
   const states = useMemo(() => deriveAgentStates(data.agents, data.tasks, data.approvals), [data.agents, data.tasks, data.approvals]);
   const satellites = useMemo(
@@ -206,10 +205,10 @@ export function CommandCenterPage() {
                 { icon: ShieldCheck, label: data.approvals.length ? t('cc.cmd.approvalsN', { count: data.approvals.length }) : t('cc.cmd.approvals'), to: '/inbox' },
                 { icon: Users, label: t('cc.cmd.hire'), to: '/team' },
                 { icon: Waypoints, label: t('cc.cmd.gateway'), to: '/gateway' },
-                { icon: MessageSquare, label: t('cc.cmd.chat'), to: CHAT_PATH },
+                { icon: MessageSquare, label: t('cc.cmd.chat'), to: '' },
               ].map(({ icon: Icon, label, to }) => (
                 <li key={label}>
-                  <button className="fb-row fb-glass--hover w-full cursor-pointer text-start" onClick={() => navigate(to)}>
+                  <button className="fb-row fb-glass--hover w-full cursor-pointer text-start" onClick={() => (to ? navigate(to) : command.open())}>
                     <Icon size={16} style={{ color: 'var(--fb-accent)' }} />
                     <span className="flex-1 text-sm font-medium">{label}</span>
                     <ArrowRight size={14} className="fb-dim rtl:rotate-180" />
@@ -304,13 +303,12 @@ export function CommandCenterPage() {
 
       </div>
       <div className="relative z-10 flex shrink-0 justify-center px-4 pb-4 pt-1">
-        <button className="fb-talk" onClick={() => setCommanding(true)}>
+        <button className="fb-talk" onClick={command.open}>
           <Wave color="var(--fb-accent)" />
           {t('cc.talk')}
           <Wave color="var(--fb-accent)" />
         </button>
       </div>
-      {commanding && <CommandDialog agents={data.agents} onClose={() => setCommanding(false)} />}
     </div>
   );
 }

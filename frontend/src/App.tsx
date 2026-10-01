@@ -16,6 +16,7 @@ import { TeamPage } from './pages/TeamPage';
 import { InboxPage } from './pages/InboxPage';
 import { ActivityPage } from './pages/ActivityPage';
 import { PeoplePage } from './pages/PeoplePage';
+import { FirboSettingsPage } from './pages/FirboSettingsPage';
 import { COMPANY_ENABLED } from './lib/company/client';
 import { CompanyAuthProvider } from './lib/company/AuthProvider';
 import { LocaleSync } from './components/company/LocaleSync';
@@ -77,8 +78,9 @@ function AuthedApp() {
     return () => clearInterval(interval);
   }, [importOverlay]);
 
-  // Fetch models on mount
+  // Fetch models on mount (legacy local-assistant backend: not used by the hosted workspace)
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchModels()
       .then((m) => {
         setModels(m);
@@ -89,11 +91,13 @@ function AuthedApp() {
 
   // Fetch server info
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchServerInfo().then(setServerInfo).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll savings and optionally share to Supabase
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     const refresh = () =>
       fetchSavings()
         .then((data) => {
@@ -173,7 +177,7 @@ function AuthedApp() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (!COMPANY_ENABLED && (e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);
       }
@@ -197,7 +201,7 @@ function AuthedApp() {
       <Routes>
         <Route element={<Layout />}>
           <Route index element={COMPANY_ENABLED ? <CommandCenterPage /> : <ChatPage />} />
-          <Route path="chat" element={<ChatPage />} />
+          <Route path="chat" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <ChatPage />} />
           <Route path="office" element={<OfficePage />} />
           <Route path="gateway" element={<GatewayPage />} />
           <Route path="team" element={<TeamPage />} />
@@ -206,12 +210,14 @@ function AuthedApp() {
           <Route path="people" element={<PeoplePage />} />
           <Route path="login" element={<Navigate to="/" replace />} />
           <Route path="signup" element={<Navigate to="/" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="get-started" element={<GetStartedPage />} />
-          <Route path="data-sources" element={<DataSourcesPage />} />
-          <Route path="agents" element={<AgentsPage />} />
-          <Route path="logs" element={<LogsPage />} />
+          {/* The local-assistant pages need the desktop backend; in the hosted workspace they land on the Command Center. */}
+          <Route path="dashboard" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DashboardPage />} />
+          <Route path="settings" element={COMPANY_ENABLED ? <FirboSettingsPage /> : <SettingsPage />} />
+          <Route path="get-started" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <GetStartedPage />} />
+          <Route path="data-sources" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DataSourcesPage />} />
+          <Route path="agents" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <AgentsPage />} />
+          <Route path="logs" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <LogsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
           <Route path="tasks" element={<TasksPage />} />
           <Route path="company" element={<Navigate to="/tasks" replace />} />
         </Route>

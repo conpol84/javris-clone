@@ -7,6 +7,7 @@ import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { useI18n } from '../i18n/I18nProvider';
 import { checkHealth } from '../lib/api';
+import { CommandProvider } from './command/CommandHost';
 
 export function Layout() {
   const { t } = useI18n();
@@ -20,6 +21,7 @@ export function Layout() {
   }, [setSidebarOpen]);
 
   useEffect(() => {
+    if (COMPANY_ENABLED) return; // the hosted workspace reports its own status per page
     const check = () => checkHealth().then(setApiReachable);
     check();
     const interval = setInterval(check, 30000);
@@ -36,11 +38,11 @@ export function Layout() {
   // Company pages report their own status; the backend banner only matters for chat & legacy pages.
   const ownsStatus = COMPANY_ENABLED && ['/', '/office', '/tasks', '/gateway', '/team', '/inbox', '/activity', '/people'].includes(pathname);
 
-  return (
+  const shell = (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
-      <SystemPulse apiReachable={apiReachable} />
-      <ApprovalBell />
+      {!COMPANY_ENABLED && <SystemPulse apiReachable={apiReachable} />}
+      {!COMPANY_ENABLED && <ApprovalBell />}
 
       {/* Health check banner */}
       {apiReachable === false && !ownsStatus && (
@@ -83,4 +85,5 @@ export function Layout() {
       </div>
     </div>
   );
+  return COMPANY_ENABLED ? <CommandProvider>{shell}</CommandProvider> : shell;
 }

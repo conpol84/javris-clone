@@ -18,6 +18,8 @@ import {
   ScrollText,
   Database,
   Building2,
+  LogOut,
+  Sparkles,
   LayoutDashboard,
   Box,
   Waypoints,
@@ -27,10 +29,12 @@ import {
   History,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
+import type { TKey } from '../../i18n/locales/en';
 import { LogoMark } from '../brand/Logo';
 import { LanguageSwitcher } from '../brand/LanguageSwitcher';
 import { useI18n } from '../../i18n/I18nProvider';
 import { CHAT_PATH } from '../../lib/company/routes';
+import { useCommand } from '../command/CommandHost';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { usePendingCount } from '../../lib/company/usePendingCount';
 import { ConversationList } from './ConversationList';
@@ -44,7 +48,8 @@ export function Sidebar() {
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
   const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
-  const { current } = useCompanyAuth();
+  const { current, user, signOut } = useCompanyAuth();
+  const command = useCommand();
   const { t } = useI18n();
   const pending = usePendingCount(current?.organization.id ?? '');
   const createConversation = useAppStore((s) => s.createConversation);
@@ -84,7 +89,10 @@ export function Sidebar() {
         { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
       ]
     : [];
-  const navItems: NavItem[] = [
+  // Company workspace: only pages that work in the hosted product. The legacy local-assistant pages stay for the desktop build.
+  const navItems: NavItem[] = COMPANY_ENABLED
+    ? [...workspace, { path: '/settings', icon: Settings, label: t('nav.settings') }]
+    : [
     ...workspace,
     { path: CHAT_PATH, icon: MessageSquare, label: t('nav.chat') },
     { path: '/dashboard', icon: BarChart3, label: COMPANY_ENABLED ? t('nav.analytics') : 'Dashboard' },
@@ -92,7 +100,7 @@ export function Sidebar() {
     { path: '/agents', icon: Bot, label: COMPANY_ENABLED ? t('nav.runtime') : 'Agents' },
     { path: '/logs', icon: ScrollText, label: t('nav.logs') },
     { path: '/settings', icon: Settings, label: t('nav.settings') },
-    ...(COMPANY_ENABLED ? [] : [{ path: '/get-started', icon: Rocket, label: 'Get Started' }]),
+    { path: '/get-started', icon: Rocket, label: 'Get Started' },
   ];
 
   return (
@@ -148,25 +156,44 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={`Theme: ${settings.theme} (click for ${nextTheme})`}
+                title={t('settings.themeToggle', { theme: t(`settings.theme.${settings.theme}` as TKey) })}
               >
                 <ThemeIcon size={16} />
               </button>
               <button
-                onClick={handleNewChat}
+                onClick={COMPANY_ENABLED ? command.open : handleNewChat}
                 className="p-2 rounded-lg transition-colors cursor-pointer"
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title="New chat"
+                title={COMPANY_ENABLED ? t('nav.newCommand') : 'New chat'}
               >
                 <Plus size={18} />
               </button>
             </div>
           </div>
 
+          {COMPANY_ENABLED && (
+            <>
+              <button
+                onClick={command.open}
+                className="mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              >
+                <Sparkles size={15} style={{ color: 'var(--color-accent)' }} />
+                <span className="flex-1 truncate text-start">{t('nav.newCommand')}</span>
+                <kbd className="rounded px-1.5 py-0.5 font-mono text-[10px]" dir="ltr" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}>
+                  ⌘K
+                </kbd>
+              </button>
+              <div className="mx-4 mb-2 truncate text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
+                {current?.organization.name}
+              </div>
+            </>
+          )}
+
           {/* Model badge */}
-          <button
+          {!COMPANY_ENABLED && (<button
             onClick={() => setCommandPaletteOpen(true)}
             className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer"
             style={{
@@ -205,10 +232,10 @@ export function Sidebar() {
                 ⌘K
               </kbd>
             )}
-          </button>
+          </button>)}
 
           {/* Search */}
-          <div className="px-3 mb-2">
+          {!COMPANY_ENABLED && (<div className="px-3 mb-2">
             <div
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
@@ -223,12 +250,16 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text)' }}
               />
             </div>
-          </div>
+          </div>)}
 
           {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto px-2">
-            <ConversationList searchQuery={searchQuery} />
-          </div>
+          {!COMPANY_ENABLED ? (
+            <div className="flex-1 overflow-y-auto px-2">
+              <ConversationList searchQuery={searchQuery} />
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
 
           {/* Bottom nav */}
           <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5 overflow-y-auto" style={{ borderTop: '1px solid var(--color-border)', maxHeight: '62%' }}>
@@ -275,8 +306,19 @@ export function Sidebar() {
               );
             })}
           </nav>
-          <div className="px-3 pb-3">
-            <LanguageSwitcher />
+          <div className="flex items-center justify-between gap-2 px-3 pb-3">
+            <LanguageSwitcher className="min-w-0 flex-1" />
+            {COMPANY_ENABLED && (
+              <button
+                onClick={() => void signOut()}
+                className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}
+                title={user?.email ?? t('common.signOut')}
+                aria-label={t('common.signOut')}
+              >
+                <LogOut size={16} className="rtl:-scale-x-100" />
+              </button>
+            )}
           </div>
         </div>
       </aside>

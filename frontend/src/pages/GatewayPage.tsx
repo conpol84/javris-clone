@@ -54,7 +54,7 @@ export function GatewayPage() {
         {gw.status === 'unreachable' && (
           <Panel title={t('gw.backendTitle')}>
             <p className="fb-muted text-sm">
-              {t('gw.backendText', { reason: gw.reason })}
+              {t('gw.backendText', { reason: gw.reason === 'not_json' ? t('gw.reason.notJson') : gw.reason })}
             </p>
           </Panel>
         )}

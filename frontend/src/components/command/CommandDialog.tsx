@@ -7,7 +7,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { Lang } from '../../i18n/core';
 import type { TKey } from '../../i18n/locales/en';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
-import { createTask } from '../../lib/company/data';
+import { createTask, listAgents } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
 import { RunError, runTask } from '../../lib/company/runner';
 import type { AgentRow } from '../../lib/company/types';
@@ -33,11 +33,12 @@ const recognitionCtor = (): RecognitionCtor | null => {
 };
 
 /** Type or speak a command: it becomes a task for the CEO agent, which plans it and queues outward steps for approval. */
-export function CommandDialog({ agents, onClose }: { agents: AgentRow[]; onClose: () => void }) {
+export function CommandDialog({ onClose }: { onClose: () => void }) {
   const i18n = useI18n();
   const { t, lang } = i18n;
   const navigate = useNavigate();
   const { current, user } = useCompanyAuth();
+  const [agents, setAgents] = useState<AgentRow[]>([]);
   const [text, setText] = useState('');
   const [listening, setListening] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -46,6 +47,15 @@ export function CommandDialog({ agents, onClose }: { agents: AgentRow[]; onClose
   const ceo = agents.find((a) => a.type === 'ceo' && a.enabled) ?? agents.find((a) => a.enabled) ?? null;
 
   useEffect(() => () => rec.current?.stop(), []);
+  useEffect(() => {
+    const orgId = current?.organization.id;
+    if (!orgId) return;
+    let live = true;
+    listAgents(orgId).then((a) => live && setAgents(a)).catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [current?.organization.id]);
 
   const toggleMic = () => {
     if (listening) return rec.current?.stop();

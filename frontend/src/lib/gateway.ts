@@ -36,6 +36,8 @@ export async function fetchGatewayOverview(): Promise<GatewayOverview> {
     ? await fetch(`${getBase()}/v1/gateway/overview`, { headers: { Authorization: `Bearer ${session.access_token}` } })
     : await apiFetch('/v1/gateway/overview');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // A static host answering with its index.html means the server address was never configured.
+  if (!(res.headers.get('content-type') ?? '').includes('json')) throw new Error('not_json');
   const body = (await res.json()) as GatewayOverview;
   if (typeof body?.connected !== 'boolean') throw new Error('Unexpected response');
   return body;
