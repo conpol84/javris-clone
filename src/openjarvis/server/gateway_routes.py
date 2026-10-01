@@ -241,4 +241,175 @@ async def gateway_overview() -> Dict[str, Any]:
     return value
 
 
+# ---------------------------------------------------------------- usage / calls / free models
+
+_USAGE_RANGES = {"1d", "7d", "30d", "90d"}
+_extra_cache: Dict[str, Any] = {}
+
+
+def _num(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _usage_summary(payload: Any) -> Dict[str, Any]:
+    p = payload if isinstance(payload, dict) else {}
+    summary = p.get("summary") if isinstance(p.get("summary"), dict) else {}
+    models = []
+    for row in (p.get("byModel") or [])[:8]:
+        if isinstance(row, dict):
+            models.append(
+                {
+                    "model": str(row.get("model") or "unknown"),
+                    "provider": str(row.get("provider") or ""),
+                    "requests": int(_num(row.get("requests"))),
+                    "tokens": int(_num(row.get("totalTokens"))),
+                    "cost": round(_num(row.get("cost")), 4),
+                    "avg_latency_ms": int(_num(row.get("avgLatencyMs"))),
+                }
+            )
+    providers = []
+    for row in (p.get("byProvider") or [])[:8]:
+        if isinstance(row, dict):
+            providers.append(
+                {
+                    "provider": str(
+                        row.get("provider") or row.get("name") or row.get("label") or ""
+                    ),
+                    "requests": int(_num(row.get("requests"))),
+                    "tokens": int(_num(row.get("totalTokens"))),
+                    "cost": round(_num(row.get("cost")), 4),
+                }
+            )
+    daily = []
+    for row in p.get("dailyTrend") or []:
+        if isinstance(row, dict) and row.get("date"):
+            daily.append(
+                {
+                    "date": str(row["date"]),
+                    "requests": int(_num(row.get("requests"))),
+                    "tokens": int(_num(row.get("totalTokens"))),
+                    "cost": round(_num(row.get("cost")), 4),
+                }
+            )
+    return {
+        "requests": int(_num(summary.get("totalRequests"))),
+        "tokens_in": int(_num(summary.get("promptTokens"))),
+        "tokens_out": int(_num(summary.get("completionTokens"))),
+        "success_rate": _num(summary.get("successRatePct")) / 100.0
+        if summary.get("totalRequests")
+        else None,
+        "avg_latency_ms": int(_num(summary.get("avgLatencyMs"))),
+        "cost": round(_num(summary.get("totalCost")), 4),
+        "fallbacks": int(_num(summary.get("fallbackCount"))),
+        "models": models,
+        "providers": providers,
+        "daily": daily[-31:],
+    }
+
+
+def _calls_summary(payload: Any, limit: int) -> List[Dict[str, Any]]:
+    rows = payload if isinstance(payload, list) else []
+    out: List[Dict[str, Any]] = []
+    for row in rows[:limit]:
+        if not isinstance(row, dict):
+            continue
+        tokens = row.get("tokens") if isinstance(row.get("tokens"), dict) else {}
+        out.append(
+            {
+                "id": str(row.get("id") or ""),
+                "at": str(row.get("timestamp") or ""),
+                "provider": str(row.get("providerDisplay") or row.get("provider") or ""),
+                "model": str(row.get("model") or ""),
+                "status": int(_num(row.get("status"))),
+                "duration_ms": int(_num(row.get("duration"))),
+                "tokens_in": int(_num(tokens.get("in"))),
+                "tokens_out": int(_num(tokens.get("out"))),
+                "combo": row.get("comboName") or None,
+                "failed": bool(row.get("error")) or _num(row.get("status")) >= 400,
+                "active": bool(row.get("active")),
+            }
+        )
+    return out
+
+
+def _free_summary(payload: Any) -> List[Dict[str, Any]]:
+    rows = payload.get("models", []) if isinstance(payload, dict) else []
+    out = []
+    for row in rows[:200]:
+        if isinstance(row, dict):
+            out.append(
+                {
+                    "provider": str(row.get("provider") or ""),
+                    "model": str(row.get("modelId") or ""),
+                    "name": str(row.get("displayName") or row.get("modelId") or ""),
+                    "monthly_tokens": int(_num(row.get("monthlyTokens")))
+                    if row.get("monthlyTokens") is not None
+                    else None,
+                    "free_type": str(row.get("freeType") or ""),
+                }
+            )
+    return out
+
+
+async def _cached(name: str, path: str, params: Dict[str, Any]) -> tuple[Any, Optional[str]]:
+    host, key = _settings()
+    cache_key = f"{name}|{host}|{sorted(params.items())}"
+    now = time.monotonic()
+    hit = _extra_cache.get(cache_key)
+    if hit and now - hit[0] < _CACHE_TTL_SECONDS * 2:
+        return hit[1], hit[2]
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    errors: Dict[str, str] = {}
+    async with httpx.AsyncClient(
+        base_url=host, headers=headers, timeout=httpx.Timeout(8.0, connect=2.0)
+    ) as client:
+        try:
+            resp = await client.get(path, params=params)
+            if resp.status_code in (401, 403):
+                errors[name] = "unauthorized"
+                data = None
+            else:
+                resp.raise_for_status()
+                data = resp.json()
+        except httpx.HTTPStatusError as exc:
+            errors[name] = f"http_{exc.response.status_code}"
+            data = None
+        except (httpx.HTTPError, ValueError) as exc:
+            errors[name] = type(exc).__name__
+            data = None
+    err = errors.get(name)
+    if len(_extra_cache) > 64:
+        _extra_cache.clear()
+    _extra_cache[cache_key] = (now, data, err)
+    return data, err
+
+
+@router.get("/usage")
+async def gateway_usage(range: str = "7d") -> Dict[str, Any]:
+    """Secret-free usage and cost summary for the AI gateway."""
+    chosen = range if range in _USAGE_RANGES else "7d"
+    data, err = await _cached("usage", "/api/usage/analytics", {"range": chosen})
+    return {"range": chosen, "available": data is not None, "error": err, **_usage_summary(data)}
+
+
+@router.get("/calls")
+async def gateway_calls(limit: int = 25) -> Dict[str, Any]:
+    """Most recent gateway calls (no prompts or responses, only metadata)."""
+    n = max(1, min(int(limit), 50))
+    data, err = await _cached(
+        "calls", "/api/usage/call-logs", {"limit": n, "excludeTests": 1}
+    )
+    return {"available": data is not None, "error": err, "calls": _calls_summary(data, n)}
+
+
+@router.get("/free-models")
+async def gateway_free_models() -> Dict[str, Any]:
+    """Free-tier model catalogue known to the gateway."""
+    data, err = await _cached("free", "/api/free-models", {})
+    return {"available": data is not None, "error": err, "models": _free_summary(data)}
+
+
 __all__ = ["router", "build_overview"]

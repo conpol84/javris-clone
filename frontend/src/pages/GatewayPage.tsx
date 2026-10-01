@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { CallsTab, FreeModelsTab, UsageTab } from '../components/gateway/GatewayExtras';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { ProviderTopology } from '../components/command/ProviderTopology';
 import { STRATEGY_INFO, useGateway } from '../lib/gateway';
@@ -24,6 +26,7 @@ export function GatewayPage() {
   const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : f.number(n));
   const strategyText = (k: string) => (t(`strategy.${k}` as TKey) === `strategy.${k}` ? STRATEGY_INFO[k] ?? t('gw.combo.custom') : t(`strategy.${k}` as TKey));
   const gw = useGateway();
+  const [tab, setTab] = useState<'overview' | 'usage' | 'calls' | 'free'>('overview');
   const data = gw.status === 'ready' ? gw.data : null;
   const online = !!data?.connected;
 
@@ -51,6 +54,21 @@ export function GatewayPage() {
           </div>
         </header>
 
+
+        <div className="flex flex-wrap gap-2" role="tablist">
+          {(['overview', 'usage', 'calls', 'free'] as const).map((k) => (
+            <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="fb-chip cursor-pointer"
+              style={tab === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
+              {t(`gw.tab.${k}` as TKey)}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'usage' && <UsageTab />}
+        {tab === 'calls' && <CallsTab />}
+        {tab === 'free' && <FreeModelsTab />}
+        {tab === 'overview' && (
+          <>
         {gw.status === 'unreachable' && (
           <Panel title={t('gw.backendTitle')}>
             <p className="fb-muted text-sm">
@@ -175,6 +193,8 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
             ))}
           </ul>
         </Panel>
+          </>
+        )}
       </div>
     </div>
   );

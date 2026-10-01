@@ -29,16 +29,78 @@ export type GatewayState =
   | { status: 'unreachable'; reason: string } // Firbo backend not reachable
   | { status: 'ready'; data: GatewayOverview };
 
-export async function fetchGatewayOverview(): Promise<GatewayOverview> {
-  // Signed-in Firbo users authenticate with their own session; the server's API key never reaches the browser.
+/** GET a gateway route on the Firbo API. Signed-in users authenticate with their own session; the server's API key never reaches the browser. */
+export async function gatewayGet<T>(path: string): Promise<T> {
   const session = companyClient ? (await companyClient.auth.getSession()).data.session : null;
   const res = session
-    ? await fetch(`${getBase()}/v1/gateway/overview`, { headers: { Authorization: `Bearer ${session.access_token}` } })
-    : await apiFetch('/v1/gateway/overview');
+    ? await fetch(`${getBase()}${path}`, { headers: { Authorization: `Bearer ${session.access_token}` } })
+    : await apiFetch(path);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   // A static host answering with its index.html means the server address was never configured.
   if (!(res.headers.get('content-type') ?? '').includes('json')) throw new Error('not_json');
-  const body = (await res.json()) as GatewayOverview;
+  return (await res.json()) as T;
+}
+
+export interface GatewayUsage {
+  range: string;
+  available: boolean;
+  error: string | null;
+  requests: number;
+  tokens_in: number;
+  tokens_out: number;
+  success_rate: number | null;
+  avg_latency_ms: number;
+  cost: number;
+  fallbacks: number;
+  models: { model: string; provider: string; requests: number; tokens: number; cost: number; avg_latency_ms: number }[];
+  providers: { provider: string; requests: number; tokens: number; cost: number }[];
+  daily: { date: string; requests: number; tokens: number; cost: number }[];
+}
+
+export interface GatewayCall {
+  id: string;
+  at: string;
+  provider: string;
+  model: string;
+  status: number;
+  duration_ms: number;
+  tokens_in: number;
+  tokens_out: number;
+  combo: string | null;
+  failed: boolean;
+  active: boolean;
+}
+
+export interface FreeModel {
+  provider: string;
+  model: string;
+  name: string;
+  monthly_tokens: number | null;
+  free_type: string;
+}
+
+/** Load a gateway route once and whenever `path` changes (refresh on demand with `reload`). */
+export function useGatewayData<T>(path: string, intervalMs = 0): { data: T | null; error: string; loading: boolean; reload: () => void } {
+  const [state, setState] = useState<{ data: T | null; error: string; loading: boolean }>({ data: null, error: '', loading: true });
+  const load = useCallback(async () => {
+    try {
+      setState({ data: await gatewayGet<T>(path), error: '', loading: false });
+    } catch (err) {
+      setState({ data: null, error: err instanceof Error ? err.message : 'error', loading: false });
+    }
+  }, [path]);
+  useEffect(() => {
+    setState((s) => ({ ...s, loading: true }));
+    void load();
+    if (!intervalMs) return;
+    const id = window.setInterval(() => !document.hidden && void load(), intervalMs);
+    return () => window.clearInterval(id);
+  }, [load, intervalMs]);
+  return { ...state, reload: () => void load() };
+}
+
+export async function fetchGatewayOverview(): Promise<GatewayOverview> {
+  const body = await gatewayGet<GatewayOverview>('/v1/gateway/overview');
   if (typeof body?.connected !== 'boolean') throw new Error('Unexpected response');
   return body;
 }

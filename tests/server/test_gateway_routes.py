@@ -215,3 +215,76 @@ class TestSupabaseAuth:
 
         assert AuthMiddleware._requires_auth("/v1/gateway/overview") is False
         assert AuthMiddleware._requires_auth("/v1/chat/completions") is True
+
+
+class TestExtraEndpoints:
+    @pytest.fixture(autouse=True)
+    def _clear(self):
+        gateway_routes._extra_cache.clear()
+        yield
+        gateway_routes._extra_cache.clear()
+
+    @respx.mock
+    def test_usage_is_normalized_and_secret_free(self, client: TestClient):
+        respx.get(f"{HOST}/api/usage/analytics").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "summary": {
+                        "totalRequests": 10,
+                        "promptTokens": 1000,
+                        "completionTokens": 500,
+                        "successRatePct": 90,
+                        "avgLatencyMs": 812.4,
+                        "totalCost": 0.1234567,
+                        "fallbackCount": 2,
+                    },
+                    "byModel": [
+                        {"model": "gpt-x", "provider": "openai", "requests": 6, "totalTokens": 900, "cost": 0.05, "avgLatencyMs": 700, "apiKeyName": "secret-name"}
+                    ],
+                    "byProvider": [{"provider": "openai", "requests": 6, "totalTokens": 900, "cost": 0.05}],
+                    "dailyTrend": [{"date": "2026-10-01", "requests": 4, "totalTokens": 400, "cost": 0.02}],
+                    "byApiKey": [{"name": "should-not-leak", "key": "sk-leak"}],
+                },
+            )
+        )
+        body = client.get("/v1/gateway/usage?range=30d").json()
+        assert body["available"] and body["range"] == "30d"
+        assert body["requests"] == 10 and body["tokens_in"] == 1000 and body["cost"] == 0.1235
+        assert body["success_rate"] == 0.9 and body["fallbacks"] == 2
+        assert body["models"][0] == {"model": "gpt-x", "provider": "openai", "requests": 6, "tokens": 900, "cost": 0.05, "avg_latency_ms": 700}
+        assert "sk-leak" not in str(body) and "should-not-leak" not in str(body)
+
+    @respx.mock
+    def test_usage_rejects_unknown_range_and_reports_unauthorized(self, client: TestClient):
+        route = respx.get(f"{HOST}/api/usage/analytics").mock(return_value=httpx.Response(401))
+        body = client.get("/v1/gateway/usage?range=bogus").json()
+        assert body["range"] == "7d" and body["available"] is False and body["error"] == "unauthorized"
+        assert route.calls[0].request.url.params["range"] == "7d"
+
+    @respx.mock
+    def test_calls_are_trimmed_to_metadata(self, client: TestClient):
+        respx.get(f"{HOST}/api/usage/call-logs").mock(
+            return_value=httpx.Response(
+                200,
+                json=[
+                    {"id": "1", "timestamp": "2026-10-01T10:00:00Z", "providerDisplay": "OpenAI", "provider": "openai", "model": "gpt-x", "status": 200, "duration": 900, "tokens": {"in": 10, "out": 20}, "comboName": None, "requestBody": {"secret": "prompt"}},
+                    {"id": "2", "timestamp": "2026-10-01T10:01:00Z", "provider": "groq", "model": "m", "status": 429, "duration": 50, "tokens": {"in": 1, "out": 0}, "error": "rate"},
+                ],
+            )
+        )
+        calls = client.get("/v1/gateway/calls?limit=999").json()["calls"]
+        assert [c["provider"] for c in calls] == ["OpenAI", "groq"]
+        assert calls[0]["tokens_out"] == 20 and calls[1]["failed"] is True
+        assert "prompt" not in str(calls)
+
+    @respx.mock
+    def test_free_models_listing(self, client: TestClient):
+        respx.get(f"{HOST}/api/free-models").mock(
+            return_value=httpx.Response(
+                200,
+                json={"models": [{"provider": "groq", "modelId": "llama", "displayName": "Llama", "monthlyTokens": 1000000, "freeType": "monthly", "tos": "x"}]},
+            )
+        )
+        body = client.get("/v1/gateway/free-models").json()
+        assert body["models"] == [{"provider": "groq", "model": "llama", "name": "Llama", "monthly_tokens": 1000000, "free_type": "monthly"}]
