@@ -480,6 +480,9 @@ const fr: Dictionary = {
   'shift.confirmDelete': 'Supprimer l\'équipe « {name} » ?',
   'shift.loadError': 'Impossible de charger vos équipes.',
   'shift.createError': 'Impossible d\'enregistrer l\'équipe.',
+  'adm.console.openTab': 'Ouvrir dans un nouvel onglet',
+  'adm.console.blocked': 'Si la console ci-dessous affiche « refused to connect », ouvrez-la dans un nouvel onglet. L\'intégration dans le site s\'active après la mise à jour du serveur.',
+  'adm.console.inSite': 'Ouvrir dans Firbo',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

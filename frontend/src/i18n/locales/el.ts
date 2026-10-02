@@ -480,6 +480,9 @@ const el: Dictionary = {
   'shift.confirmDelete': 'Διαγραφή της βάρδιας «{name}»;',
   'shift.loadError': 'Δεν φορτώθηκαν οι βάρδιες σου.',
   'shift.createError': 'Δεν αποθηκεύτηκε η βάρδια.',
+  'adm.console.openTab': 'Άνοιγμα σε νέο tab',
+  'adm.console.blocked': 'Αν η κονσόλα παρακάτω γράφει «refused to connect», άνοιξέ τη σε νέο tab. Η ενσωμάτωση μέσα στο site ενεργοποιείται αφού ενημερωθεί ο server.',
+  'adm.console.inSite': 'Άνοιγμα μέσα στο Firbo',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

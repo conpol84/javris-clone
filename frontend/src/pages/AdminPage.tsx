@@ -80,10 +80,16 @@ export function AdminPage() {
         <div className="mx-auto flex min-h-0 w-full max-w-[1300px] flex-1 flex-col px-4 pb-4 md:px-6">
           <div className="mb-2 flex items-center justify-between gap-2">
             <p className="fb-dim text-xs">{t('adm.console.hint')}</p>
-            <button className="fb-btn fb-btn--ghost" style={{ height: 30, padding: '0 12px', fontSize: 12 }} onClick={() => setFrameKey((k) => k + 1)}>
-              {t('adm.console.reload')}
-            </button>
+            <div className="flex shrink-0 gap-2">
+              <button className="fb-btn fb-btn--ghost" style={{ height: 30, padding: '0 12px', fontSize: 12 }} onClick={() => setFrameKey((k) => k + 1)}>
+                {t('adm.console.reload')}
+              </button>
+              <a className="fb-btn fb-btn--primary" style={{ height: 30, padding: '0 12px', fontSize: 12 }} href={CONSOLE_URL} target="_blank" rel="noopener noreferrer">
+                {t('adm.console.openTab')} ↗
+              </a>
+            </div>
           </div>
+          <p className="fb-dim mb-2 text-xs">{t('adm.console.blocked')}</p>
           <iframe
             key={frameKey}
             title={t('adm.tab.console')}

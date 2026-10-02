@@ -480,6 +480,9 @@ const de: Dictionary = {
   'shift.confirmDelete': 'Schicht „{name}“ löschen?',
   'shift.loadError': 'Deine Schichten konnten nicht geladen werden.',
   'shift.createError': 'Die Schicht konnte nicht gespeichert werden.',
+  'adm.console.openTab': 'In neuem Tab öffnen',
+  'adm.console.blocked': 'Wenn die Konsole unten „refused to connect“ anzeigt, öffne sie in einem neuen Tab. Die Einbettung auf der Seite wird nach dem Server-Update aktiv.',
+  'adm.console.inSite': 'In Firbo öffnen',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

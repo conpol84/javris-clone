@@ -488,6 +488,9 @@ export const en = {
   'shift.confirmDelete': 'Delete the shift "{name}"?',
   'shift.loadError': 'Could not load your shifts.',
   'shift.createError': 'Could not save the shift.',
+  'adm.console.openTab': 'Open in new tab',
+  'adm.console.blocked': 'If the console below says "refused to connect", open it in a new tab. In-site embedding turns on after the server is updated.',
+  'adm.console.inSite': 'Open inside Firbo',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

@@ -480,6 +480,9 @@ const es: Dictionary = {
   'shift.confirmDelete': '¿Eliminar el turno «{name}»?',
   'shift.loadError': 'No se pudieron cargar tus turnos.',
   'shift.createError': 'No se pudo guardar el turno.',
+  'adm.console.openTab': 'Abrir en nueva pestaña',
+  'adm.console.blocked': 'Si la consola de abajo dice «refused to connect», ábrela en una pestaña nueva. La integración en el sitio se activa tras actualizar el servidor.',
+  'adm.console.inSite': 'Abrir dentro de Firbo',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

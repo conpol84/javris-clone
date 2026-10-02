@@ -480,6 +480,9 @@ const ptBR: Dictionary = {
   'shift.confirmDelete': 'Excluir o turno "{name}"?',
   'shift.loadError': 'Não foi possível carregar seus turnos.',
   'shift.createError': 'Não foi possível salvar o turno.',
+  'adm.console.openTab': 'Abrir em nova aba',
+  'adm.console.blocked': 'Se o console abaixo disser «refused to connect», abra-o em uma nova aba. A incorporação no site é ativada depois que o servidor for atualizado.',
+  'adm.console.inSite': 'Abrir dentro do Firbo',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

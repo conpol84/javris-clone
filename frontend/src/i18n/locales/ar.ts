@@ -485,6 +485,9 @@ const ar: Dictionary = {
   'shift.confirmDelete': 'حذف المناوبة «{name}»؟',
   'shift.loadError': 'تعذّر تحميل مناوباتك.',
   'shift.createError': 'تعذّر حفظ المناوبة.',
+  'adm.console.openTab': 'فتح في علامة تبويب جديدة',
+  'adm.console.blocked': 'إذا ظهرت في وحدة التحكم أدناه عبارة «refused to connect» ففتحها في علامة تبويب جديدة. يعمل التضمين داخل الموقع بعد تحديث الخادم.',
+  'adm.console.inSite': 'فتح داخل Firbo',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

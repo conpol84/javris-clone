@@ -481,6 +481,9 @@ const zhCN: Dictionary = {
   'shift.confirmDelete': '删除班次“{name}”？',
   'shift.loadError': '无法加载你的班次。',
   'shift.createError': '无法保存班次。',
+  'adm.console.openTab': '在新标签页打开',
+  'adm.console.blocked': '如果下方控制台显示“refused to connect”，请在新标签页中打开。服务器更新后即可在站内嵌入显示。',
+  'adm.console.inSite': '在 Firbo 内打开',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

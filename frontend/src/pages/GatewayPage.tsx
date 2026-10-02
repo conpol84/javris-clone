@@ -105,9 +105,14 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
         {GATEWAY_DASHBOARD && isAdmin && (
           <Panel title={t('gw.dashboardTitle')}>
             <p className="fb-muted text-sm">{t('gw.dashboardHint')}</p>
-            <button className="fb-btn fb-btn--primary mt-3 inline-flex cursor-pointer" onClick={() => navigate('/admin?tab=console')}>
-              {t('gw.openDashboard')} →
-            </button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <a className="fb-btn fb-btn--primary inline-flex" href={GATEWAY_DASHBOARD} target="_blank" rel="noopener noreferrer">
+                {t('gw.openDashboard')} ↗
+              </a>
+              <button className="fb-btn fb-btn--ghost inline-flex cursor-pointer" onClick={() => navigate('/admin?tab=console')}>
+                {t('adm.console.inSite')}
+              </button>
+            </div>
           </Panel>
         )}
 
