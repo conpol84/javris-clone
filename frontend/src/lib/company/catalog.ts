@@ -58,9 +58,9 @@ export const CATALOG: CatalogItem[] = [
   ]),
   ...many('ai', 'openjarvis', 'engine', ['Local private models (Ollama)', 'NVIDIA NIM', 'LiteLLM bridge', 'Apple on-device models', 'Multi-engine routing']),
   // ---- coding agents that can run through the gateway on your own computer
-  ...many('coding', 'omniroute', 'planned', [
-    'Claude Code', 'Codex CLI', 'Gemini CLI', 'Cursor CLI', 'GitHub Copilot CLI', 'Cline', 'Aider', 'Goose', 'OpenCode', 'Continue', 'Kilo Code', 'Kiro', 'Windsurf', 'Open Interpreter', 'Warp AI', 'Grok Build', 'Factory Droid', 'Qwen CLI',
-  ]),
+  ...many('coding', 'omniroute', 'live', [
+    'Claude Code', 'Codex CLI', 'Gemini CLI', 'Cursor CLI', 'GitHub Copilot CLI', 'Cline', 'Aider', 'Goose', 'OpenCode', 'Continue', 'Kilo Code', 'Open Interpreter', 'Grok Build', 'Qwen CLI', 'Factory Droid', 'Warp AI', 'Windsurf', 'Kiro',
+  ], '/coding'),
 ];
 
 export const GROUPS: CatalogGroup[] = ['channels', 'work', 'data', 'tools', 'ai', 'coding'];
