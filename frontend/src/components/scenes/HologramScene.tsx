@@ -15,6 +15,7 @@ export interface Satellite {
   id: string;
   color: string;
   active: boolean;
+  name?: string;
 }
 
 const COLORS: Record<HoloState, string> = { idle: '#00d4ff', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };

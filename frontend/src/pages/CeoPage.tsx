@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
-import { HologramScene, type HoloState, type Satellite } from '../components/scenes/HologramScene';
+import type { Satellite } from '../components/scenes/HologramScene';
+import { CeoStage } from '../components/scenes/CeoStage';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { agentColor, deriveAgentStates } from '../lib/company/status';
-import { resolvePersona } from '../lib/company/persona';
 import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { useCeoSession } from '../lib/company/useCeoSession';
@@ -41,8 +41,8 @@ export function CeoPage() {
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
   const satellites: Satellite[] = useMemo(
-    () => org.agents.filter((a) => a.type !== 'ceo' && !a.slug.startsWith('ceo')).map((a) => ({ id: a.id, color: agentColor(a.type, a.slug), active: states[a.id] === 'active' || states[a.id] === 'waiting' })),
-    [org.agents, states],
+    () => org.agents.filter((a) => a.type !== 'ceo' && !a.slug.startsWith('ceo')).map((a) => ({ id: a.id, color: agentColor(a.type, a.slug), name: agentLabel(a, i18n).name.replace(' Agent', ''), active: states[a.id] === 'active' || states[a.id] === 'waiting' })),
+    [org.agents, states, i18n],
   );
   const lastCeo = [...lines].reverse().find((l) => l.who === 'ceo')?.text ?? '';
   const caption = useTypewriter(state === 'speaking' || state === 'idle' ? lastCeo : '');
@@ -70,10 +70,10 @@ export function CeoPage() {
         <div className="fb-glass p-6 text-sm">{t('ceo.none')}</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <section className="fb-glass relative overflow-hidden" style={{ minHeight: 440 }}>
+          <section className="fb-glass relative overflow-hidden" style={{ minHeight: 560 }}>
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
-              <HologramScene state={state} satellites={satellites} persona={ceo ? resolvePersona(ceo) : undefined} labels={{ noWebgl: t('office.noWebgl') }} />
+              <CeoStage state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
             </div>
             <div className="absolute start-4 top-4 flex items-center gap-2">
               <span className="fb-dot" style={{ background: 'var(--fb-accent)', boxShadow: '0 0 10px var(--fb-accent)' }} />
