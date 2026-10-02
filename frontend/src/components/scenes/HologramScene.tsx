@@ -6,7 +6,7 @@ import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export type HoloState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
-const COLORS: Record<HoloState, string> = { idle: '#4ade80', listening: '#34d399', thinking: '#a78bfa', speaking: '#86efac' };
+const COLORS: Record<HoloState, string> = { idle: '#00f58a', listening: '#00d97a', thinking: '#a78bfa', speaking: '#5dffb0' };
 
 function Hologram({ state, motion }: { state: HoloState; motion: number }) {
   const core = useRef<THREE.Mesh>(null);
@@ -73,7 +73,7 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
         {[1.9, 2.25, 2.6].map((r, i) => (
           <mesh key={r} rotation={[0, 0, i]}>
             <torusGeometry args={[r, 0.006, 8, 160]} />
-            <meshBasicMaterial color="#4ade80" transparent opacity={0.35 - i * 0.07} />
+            <meshBasicMaterial color="#00f58a" transparent opacity={0.35 - i * 0.07} />
           </mesh>
         ))}
       </group>
@@ -82,13 +82,13 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
         {Array.from({ length: 41 }, (_, i) => (
           <mesh key={i} position={[(i - 20) * 0.13, 0, 0]}>
             <boxGeometry args={[0.05, 0.5, 0.05]} />
-            <meshBasicMaterial color="#86efac" transparent opacity={0.65} />
+            <meshBasicMaterial color="#5dffb0" transparent opacity={0.65} />
           </mesh>
         ))}
       </group>
       <mesh position={[0, -2.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.2, 2.9, 64]} />
-        <meshBasicMaterial color="#4ade80" transparent opacity={0.08} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#00f58a" transparent opacity={0.08} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );

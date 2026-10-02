@@ -125,7 +125,7 @@ export function AnalyticsPage() {
                 <div className="flex h-36 items-end gap-[3px]" role="img" aria-label={t('an.daily')}>
                   {daily.map(([d, v]) => (
                     <div key={d} className="flex h-full flex-1 items-end" title={`${fmt.date(d)} · ${fmt.currency(v)}`}>
-                      <div className="w-full rounded-t" style={{ height: `${v ? Math.max(4, (v / maxDay) * 100) : 2}%`, background: v ? 'linear-gradient(180deg,var(--fb-accent),rgba(74, 222, 128,.25))' : 'rgba(255,255,255,.06)' }} />
+                      <div className="w-full rounded-t" style={{ height: `${v ? Math.max(4, (v / maxDay) * 100) : 2}%`, background: v ? 'linear-gradient(180deg,var(--fb-accent),rgba(0, 245, 138,.25))' : 'rgba(255,255,255,.06)' }} />
                     </div>
                   ))}
                 </div>

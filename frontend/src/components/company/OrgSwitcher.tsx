@@ -107,7 +107,7 @@ export function OrgSwitcher() {
                 className="min-w-0 flex-1 rounded-lg px-2 py-1.5 text-sm"
                 style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
               />
-              <button disabled={!name.trim() || busy} className="cursor-pointer rounded-lg px-2.5 text-sm font-medium disabled:opacity-50" style={{ background: 'var(--color-accent)', color: '#04121a' }}>
+              <button disabled={!name.trim() || busy} className="cursor-pointer rounded-lg px-2.5 text-sm font-medium disabled:opacity-50" style={{ background: 'var(--color-accent)', color: '#04150c' }}>
                 {busy ? '…' : t('org.add')}
               </button>
             </form>

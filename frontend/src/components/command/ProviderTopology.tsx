@@ -9,7 +9,7 @@ interface Node {
   connected: boolean;
 }
 
-const TONE = { ok: '#34d399', warn: '#fbbf24', idle: '#4ade80', off: '#628a73' } as const;
+const TONE = { ok: '#00d97a', warn: '#fbbf24', idle: '#00f58a', off: '#628a73' } as const;
 
 export function buildNodes(data: GatewayOverview, max = 14): Node[] {
   const models = new Map(data.models.providers.map((p) => [p.provider, p.models]));
@@ -40,12 +40,12 @@ export function ProviderTopology({ data, online }: { data: GatewayOverview | nul
     <svg viewBox="-450 -250 900 500" role="img" aria-label={t('gw.topology.aria')} className="h-full w-full">
       <defs>
         <radialGradient id="hubGlow">
-          <stop offset="0" stopColor="#4ade80" stopOpacity="0.55" />
-          <stop offset="1" stopColor="#4ade80" stopOpacity="0" />
+          <stop offset="0" stopColor="#00f58a" stopOpacity="0.55" />
+          <stop offset="1" stopColor="#00f58a" stopOpacity="0" />
         </radialGradient>
       </defs>
       {[0.45, 0.72, 1].map((k) => (
-        <ellipse key={k} rx={RX * k} ry={RY * k} fill="none" stroke="rgba(52, 211, 153,0.1)" strokeDasharray="2 6" />
+        <ellipse key={k} rx={RX * k} ry={RY * k} fill="none" stroke="rgba(0, 217, 122,0.1)" strokeDasharray="2 6" />
       ))}
       {nodes.map((n, i) => {
         const a = (i / nodes.length) * Math.PI * 2 - Math.PI / 2;
@@ -86,12 +86,12 @@ export function ProviderTopology({ data, online }: { data: GatewayOverview | nul
         );
       })}
       <circle r={86} fill="url(#hubGlow)" />
-      <circle r={44} fill="#07101d" stroke={online ? '#4ade80' : '#f87171'} strokeWidth={2.5} />
-      <circle r={52} fill="none" stroke={online ? '#4ade80' : '#f87171'} strokeOpacity={0.35} strokeDasharray="4 8" style={{ animation: 'fb-spin 24s linear infinite', transformOrigin: 'center', transformBox: 'fill-box' }} />
+      <circle r={44} fill="#07101d" stroke={online ? '#00f58a' : '#f87171'} strokeWidth={2.5} />
+      <circle r={52} fill="none" stroke={online ? '#00f58a' : '#f87171'} strokeOpacity={0.35} strokeDasharray="4 8" style={{ animation: 'fb-spin 24s linear infinite', transformOrigin: 'center', transformBox: 'fill-box' }} />
       <text y={-3} textAnchor="middle" fontSize="13" fontWeight="700" fill="#ecfdf3">
         {t('gw.hub.name')}
       </text>
-      <text y={13} textAnchor="middle" fontSize="11" fontWeight="600" fill={online ? '#4ade80' : '#f87171'}>
+      <text y={13} textAnchor="middle" fontSize="11" fontWeight="600" fill={online ? '#00f58a' : '#f87171'}>
         {online ? t('gw.hub.online') : t('gw.hub.offline')}
       </text>
     </svg>

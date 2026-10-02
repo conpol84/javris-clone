@@ -87,7 +87,7 @@ function Galaxy({ stars, types, selected, motion, onSelect }: Omit<MemoryScenePr
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[lines, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color="#4ade80" transparent opacity={0.16} />
+        <lineBasicMaterial color="#00f58a" transparent opacity={0.16} />
       </lineSegments>
       {types.map((t) => {
         const c = centers.get(t)!;

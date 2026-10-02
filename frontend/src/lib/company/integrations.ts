@@ -53,7 +53,7 @@ export const LIVE_APPS: LiveApp[] = [
   { kind: 'linear', name: 'Linear', color: '#5e6ad2', cat: 'work', fields: [f('api_key', 'lin_api_…', true), f('team_id', 'Team UUID')] },
   { kind: 'github', name: 'GitHub', color: '#e5e7eb', cat: 'work', fields: [f('token', 'ghp_… / github_pat_…', true), f('repo', 'owner/repository')] },
   { kind: 'mastodon', name: 'Mastodon', color: '#6364ff', cat: 'social', fields: [f('instance_url', 'https://mastodon.social'), f('access_token', '…', true)] },
-  { kind: 'webhook', name: 'Webhook', color: '#34d399', cat: 'automation', fields: [f('url', 'https://hooks.example.com/…', true)] },
+  { kind: 'webhook', name: 'Webhook', color: '#00d97a', cat: 'automation', fields: [f('url', 'https://hooks.example.com/…', true)] },
 ];
 
 export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'work', 'social', 'automation'];

@@ -29,8 +29,8 @@ function glowTexture(): THREE.Texture {
   const g = c.getContext('2d')!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0, 'rgba(200,255,220,1)');
-  grad.addColorStop(0.25, 'rgba(74, 222, 128,0.55)');
-  grad.addColorStop(1, 'rgba(74, 222, 128,0)');
+  grad.addColorStop(0.25, 'rgba(0, 245, 138,0.55)');
+  grad.addColorStop(1, 'rgba(0, 245, 138,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(c);
@@ -101,7 +101,7 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
           <bufferAttribute attach="attributes-position" args={[positions, 3]} />
         </bufferGeometry>
         <pointsMaterial
-          color="#86efac"
+          color="#5dffb0"
           size={0.026}
           sizeAttenuation
           transparent
@@ -112,11 +112,11 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
       </points>
       <mesh>
         <icosahedronGeometry args={[1.38, 2]} />
-        <meshBasicMaterial color="#4ade80" wireframe transparent opacity={0.13} />
+        <meshBasicMaterial color="#00f58a" wireframe transparent opacity={0.13} />
       </mesh>
       <mesh>
         <icosahedronGeometry args={[0.55, 1]} />
-        <meshBasicMaterial color="#bbf7d0" wireframe transparent opacity={0.55} toneMapped={false} />
+        <meshBasicMaterial color="#b9ffda" wireframe transparent opacity={0.55} toneMapped={false} />
       </mesh>
       {[1.9, 2.18, 2.46].map((r, i) => (
         <mesh
@@ -127,7 +127,7 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
           rotation={[Math.PI / 2 - (i * 0.55 + 0.25), 0, 0]}
         >
           <torusGeometry args={[r, 0.0035, 8, 160]} />
-          <meshBasicMaterial color={i === 1 ? '#bef264' : '#34d399'} transparent opacity={0.5} />
+          <meshBasicMaterial color={i === 1 ? '#d2ff6b' : '#00d97a'} transparent opacity={0.5} />
         </mesh>
       ))}
       {satellites.map((s, i) => (

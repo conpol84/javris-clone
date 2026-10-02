@@ -85,7 +85,7 @@ export function ReviewScene({ towers, selected, onSelect, labels }: ReviewSceneP
           <Tower key={tw.id} tower={tw} x={i * gap} selected={tw.id === selected} motion={reduced ? 0 : 1} onSelect={onSelect} />
         ))}
       </group>
-      <gridHelper args={[Math.max(10, width + 4), 20, '#4ade80', '#1f4a35']} position={[0, -1.41, 0]} />
+      <gridHelper args={[Math.max(10, width + 4), 20, '#00f58a', '#1f4a35']} position={[0, -1.41, 0]} />
     </Canvas>
   );
 }

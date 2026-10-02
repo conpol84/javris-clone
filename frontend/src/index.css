@@ -23,10 +23,10 @@
     --color-text-tertiary: #a1a1aa;
     --color-text-inverse: #fafafa;
 
-    --color-accent: #16a34a;
-    --color-accent-hover: #15803d;
-    --color-accent-subtle: rgba(22, 163, 74, 0.08);
-    --color-accent-glow: rgba(22, 163, 74, 0.25);
+    --color-accent: #00c46a;
+    --color-accent-hover: #00a257;
+    --color-accent-subtle: rgba(0, 196, 106, 0.08);
+    --color-accent-glow: rgba(0, 196, 106, 0.25);
 
     --color-accent-amber: #f59e0b;
     --color-accent-amber-hover: #d97706;
@@ -34,9 +34,9 @@
     --color-accent-purple: #8b5cf6;
     --color-accent-purple-hover: #7c3aed;
     --color-accent-purple-subtle: rgba(139, 92, 246, 0.1);
-    --color-accent-blue-subtle: rgba(22, 163, 74, 0.08);
+    --color-accent-blue-subtle: rgba(0, 196, 106, 0.08);
 
-    --color-success: #16a34a;
+    --color-success: #00c46a;
     --color-warning: #ca8a04;
     --color-error: #dc2626;
 
@@ -44,7 +44,7 @@
     --color-input-bg: #ffffff;
     --color-input-border: #d4d4d8;
 
-    --color-user-bubble: #16a34a;
+    --color-user-bubble: #00c46a;
     --color-user-bubble-text: #ffffff;
     --color-on-accent: #ffffff;
     --color-disabled-bg: #e4e4e7;
@@ -82,10 +82,10 @@
     --color-text-tertiary: #5c5c63;
     --color-text-inverse: #0a0a0b;
 
-    --color-accent: #4ade80;
-    --color-accent-hover: #86efac;
-    --color-accent-subtle: rgba(74, 222, 128, 0.1);
-    --color-accent-glow: rgba(74, 222, 128, 0.3);
+    --color-accent: #00f58a;
+    --color-accent-hover: #5dffb0;
+    --color-accent-subtle: rgba(0, 245, 138, 0.1);
+    --color-accent-glow: rgba(0, 245, 138, 0.3);
 
     --color-accent-amber: #f5a524;
     --color-accent-amber-hover: #fbbf24;
@@ -130,10 +130,10 @@
       --color-text-tertiary: #5c5c63;
       --color-text-inverse: #0a0a0b;
 
-      --color-accent: #4ade80;
-      --color-accent-hover: #86efac;
-      --color-accent-subtle: rgba(74, 222, 128, 0.1);
-      --color-accent-glow: rgba(74, 222, 128, 0.3);
+      --color-accent: #00f58a;
+      --color-accent-hover: #5dffb0;
+      --color-accent-subtle: rgba(0, 245, 138, 0.1);
+      --color-accent-glow: rgba(0, 245, 138, 0.3);
 
       --color-accent-amber: #f5a524;
       --color-accent-amber-hover: #fbbf24;
@@ -260,7 +260,7 @@
   .dark .hljs-addition,
   .dark .hljs-variable,
   .dark .hljs-template-tag,
-  .dark .hljs-template-variable { color: #34d399; }
+  .dark .hljs-template-variable { color: #00d97a; }
 
   .hljs-comment,
   .hljs-quote,
