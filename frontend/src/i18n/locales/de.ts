@@ -866,6 +866,7 @@ const de: Dictionary = {
   "studio.power.file_write": "Schreibt Dateien.",
   "studio.power.think": "Nimmt sich mehr Zeit zum Nachdenken vor der Antwort.",
   "studio.power.other": "Eine Werkzeug-Berechtigung für diesen Agenten.",
+  "ceo.live": "{agents} Mitarbeiter verbunden · {active} arbeiten gerade",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

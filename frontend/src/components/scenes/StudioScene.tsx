@@ -4,6 +4,7 @@ import { OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AgentRow } from '../../lib/company/types';
 import { agentColor, type AgentState } from '../../lib/company/status';
+import { Glow, Stars } from './fx';
 import { Label3D, Robot } from './OfficeScene';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
@@ -25,34 +26,6 @@ export interface StudioProps {
   agentName: (a: AgentRow) => string;
   canManage: boolean;
   noWebgl: string;
-}
-
-function Stars({ motion }: { motion: number }) {
-  const ref = useRef<THREE.Points>(null);
-  const pos = useMemo(() => {
-    const n = 1800;
-    const a = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const r = 30 + Math.random() * 50;
-      const th = Math.random() * Math.PI * 2;
-      const ph = Math.acos(2 * Math.random() - 1);
-      a[i * 3] = r * Math.sin(ph) * Math.cos(th);
-      a[i * 3 + 1] = r * Math.cos(ph);
-      a[i * 3 + 2] = r * Math.sin(ph) * Math.sin(th);
-    }
-    return a;
-  }, []);
-  useFrame((_, dt) => {
-    if (ref.current) ref.current.rotation.y += dt * 0.01 * motion;
-  });
-  return (
-    <points ref={ref}>
-      <bufferGeometry>
-        <bufferAttribute attach="attributes-position" args={[pos, 3]} />
-      </bufferGeometry>
-      <pointsMaterial size={0.16} color="#d6ffe9" transparent opacity={0.85} sizeAttenuation depthWrite={false} />
-    </points>
-  );
 }
 
 function Planet({ position, color, size }: { position: [number, number, number]; color: string; size: number }) {
@@ -153,7 +126,7 @@ function Scene(props: StudioProps) {
       <ambientLight intensity={0.55} />
       <directionalLight position={[6, 10, 8]} intensity={1.2} color="#d6ffe9" />
       <pointLight position={[0, 3, 0]} intensity={18} color={color} distance={14} />
-      <Stars motion={motion} />
+      <Stars speed={0.01 * motion} count={1800} radius={30} spread={50} />
       <Planet position={[-26, 8, -34]} color="#0e3b2c" size={7} />
       <Planet position={[34, -6, -40]} color="#2a1b4d" size={5} />
       {/* docking platform */}
@@ -166,18 +139,19 @@ function Scene(props: StudioProps) {
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
       {selected && (
-        <group scale={1.9} position={[0, 0, 0]}>
+        <group scale={2.4} position={[0, 0, 0]}>
           <Robot color={color} state={props.states[selected.id] ?? 'idle'} />
         </group>
       )}
-      {selected && <Label3D text={props.agentName(selected)} dot={color} border={color} glow position={[0, 4.4, 0]} height={0.62} />}
+      {selected && <Label3D text={props.agentName(selected)} dot={color} border={color} glow position={[0, 5.2, 0]} height={0.62} />}
       <group ref={spin}>
         {props.powers.map((p, i) => (
-          <PowerOrb key={p.id} power={p} angle={(i / Math.max(1, props.powers.length)) * Math.PI * 2} radius={2.5} motion={motion} onToggle={() => props.onTogglePower(p.id)} canManage={props.canManage} />
+          <PowerOrb key={p.id} power={p} angle={(i / Math.max(1, props.powers.length)) * Math.PI * 2} radius={3.0} motion={motion} onToggle={() => props.onTogglePower(p.id)} canManage={props.canManage} />
         ))}
       </group>
       <Hangar {...props} />
-      <OrbitControls makeDefault enablePan={false} target={[0, 1.8, 0]} minDistance={6} maxDistance={22} minPolarAngle={0.5} maxPolarAngle={1.55} enableDamping autoRotate={!reduced} autoRotateSpeed={0.4} />
+      <Glow vignette />
+      <OrbitControls makeDefault enablePan={false} target={[0, 2.2, 0]} minDistance={6} maxDistance={22} minPolarAngle={0.5} maxPolarAngle={1.55} enableDamping autoRotate={!reduced} autoRotateSpeed={0.4} />
     </>
   );
 }
@@ -189,7 +163,7 @@ export function StudioScene(props: StudioProps) {
     return <div className="fb-muted grid h-full w-full place-items-center p-6 text-center text-sm">{props.noWebgl}</div>;
   }
   return (
-    <Canvas dpr={[1, 1.6]} camera={{ position: [9, 5.5, 11], fov: 40 }} gl={{ antialias: true, powerPreference: 'high-performance' }} frameloop={reduced ? 'demand' : 'always'}>
+    <Canvas dpr={[1, 1.6]} camera={{ position: [8, 5, 10], fov: 40 }} gl={{ antialias: true, powerPreference: 'high-performance' }} frameloop={reduced ? 'demand' : 'always'}>
       <Scene {...props} />
     </Canvas>
   );

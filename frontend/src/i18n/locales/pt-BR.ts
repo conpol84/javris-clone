@@ -866,6 +866,7 @@ const ptBR: Dictionary = {
   "studio.power.file_write": "Grava arquivos.",
   "studio.power.think": "Gasta mais tempo raciocinando antes de responder.",
   "studio.power.other": "Uma permissão de ferramenta para este agente.",
+  "ceo.live": "{agents} funcionários conectados · {active} trabalhando agora",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

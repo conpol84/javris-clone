@@ -874,6 +874,7 @@ export const en = {
   "studio.power.file_write": "Writes files.",
   "studio.power.think": "Takes extra time to reason before answering.",
   "studio.power.other": "A tool permission for this agent.",
+  "ceo.live": "{agents} employees linked · {active} working now",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

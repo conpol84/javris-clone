@@ -1,10 +1,19 @@
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Line } from '@react-three/drei';
 import { voiceLevel } from '../../lib/company/voice';
+import { Glow, Stars } from './fx';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export type HoloState = 'idle' | 'listening' | 'thinking' | 'speaking';
+
+/** One AI employee shown as a satellite of the CEO; it lights up while it works. */
+export interface Satellite {
+  id: string;
+  color: string;
+  active: boolean;
+}
 
 const COLORS: Record<HoloState, string> = { idle: '#00f58a', listening: '#00d97a', thinking: '#a78bfa', speaking: '#5dffb0' };
 
@@ -94,14 +103,45 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
   );
 }
 
-export function HologramScene({ state, labels }: { state: HoloState; labels: { noWebgl: string } }) {
+
+function Satellites({ items, state, motion }: { items: Satellite[]; state: HoloState; motion: number }) {
+  const g = useRef<THREE.Group>(null);
+  useFrame((s, dt) => {
+    if (g.current) g.current.rotation.y += dt * (state === 'thinking' ? 0.5 : 0.12) * motion;
+    void s;
+  });
+  return (
+    <group ref={g}>
+      {items.map((it, i) => {
+        const a = (i / Math.max(1, items.length)) * Math.PI * 2;
+        const r = 4.1 + (i % 3) * 0.4;
+        const y = Math.sin(i * 1.7) * 0.9;
+        const p: [number, number, number] = [Math.cos(a) * r, y, Math.sin(a) * r];
+        return (
+          <group key={it.id}>
+            <mesh position={p}>
+              <octahedronGeometry args={[it.active ? 0.11 : 0.07, 0]} />
+              <meshBasicMaterial color={it.color} toneMapped={false} transparent opacity={it.active ? 1 : 0.45} />
+            </mesh>
+            <Line points={[[0, 0, 0], p]} color={it.color} transparent opacity={it.active || state === 'thinking' ? 0.55 : 0.1} lineWidth={1} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+export function HologramScene({ state, labels, satellites = [] }: { state: HoloState; labels: { noWebgl: string }; satellites?: Satellite[] }) {
   const reduced = usePrefersReducedMotion();
   if (!supportsWebGL()) {
     return <div className="fb-muted grid h-full place-items-center text-sm">{labels.noWebgl}</div>;
   }
   return (
-    <Canvas camera={{ position: [0, 0.2, 6.2], fov: 45 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
+    <Canvas camera={{ position: [0, 0.4, 7.4], fov: 45 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
+      <Stars count={900} radius={14} spread={22} speed={reduced ? 0 : 0.012} size={0.09} />
       <Hologram state={state} motion={reduced ? 0.3 : 1} />
+      <Satellites items={satellites} state={state} motion={reduced ? 0.3 : 1} />
+      <Glow strength={1.1} threshold={0.2} />
     </Canvas>
   );
 }

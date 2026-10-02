@@ -1,3 +1,4 @@
+import { Glow } from './fx';
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -111,6 +112,7 @@ export function MemoryScene(props: MemorySceneProps) {
   return (
     <Canvas camera={{ position: [0, 1.2, 7], fov: 50 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <Galaxy stars={props.stars} types={props.types} selected={props.selected} onSelect={props.onSelect} motion={reduced ? 0 : 1} />
+      <Glow />
     </Canvas>
   );
 }

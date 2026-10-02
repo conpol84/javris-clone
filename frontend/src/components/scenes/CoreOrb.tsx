@@ -1,3 +1,4 @@
+import { Glow } from './fx';
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -167,6 +168,7 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
         frameloop={reduced ? 'demand' : 'always'}
       >
         <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} />
+        <Glow />
       </Canvas>
     </div>
   );

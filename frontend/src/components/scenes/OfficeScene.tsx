@@ -1,3 +1,4 @@
+import { Glow } from './fx';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Edges, Grid, OrbitControls } from '@react-three/drei';
@@ -453,6 +454,7 @@ export function OfficeScene(props: OfficeProps) {
       onPointerMissed={() => props.onSelect(null)}
     >
       <Scene {...props} />
+      <Glow strength={0.6} threshold={0.45} vignette />
     </Canvas>
   );
 }

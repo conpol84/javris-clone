@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
-import { HologramScene, type HoloState } from '../components/scenes/HologramScene';
+import { HologramScene, type HoloState, type Satellite } from '../components/scenes/HologramScene';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createConversation, listAgents, loadOrgSummary } from '../lib/company/data';
+import { agentColor, deriveAgentStates } from '../lib/company/status';
+import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { RunError, sendChat } from '../lib/company/runner';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
@@ -18,6 +20,20 @@ interface Line {
 }
 
 const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
+
+/** Reveals text letter by letter, like a film caption. */
+function useTypewriter(text: string, cps = 60): string {
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    setN(0);
+    if (!text) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (reduced) return setN(text.length);
+    const id = window.setInterval(() => setN((v) => (v >= text.length ? (window.clearInterval(id), v) : v + 2)), 1000 / cps);
+    return () => window.clearInterval(id);
+  }, [text, cps]);
+  return text.slice(0, n);
+}
 
 /** The AI CEO, as a hologram you can talk to. */
 export function CeoPage() {
@@ -40,6 +56,14 @@ export function CeoPage() {
   const alive = useRef(true);
   const mutedRef = useRef(false);
   const canTalk = recognitionSupported();
+  const org = useOrgData(orgId, false, 12_000);
+  const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
+  const satellites: Satellite[] = useMemo(
+    () => org.agents.filter((a) => a.type !== 'ceo' && !a.slug.startsWith('ceo')).map((a) => ({ id: a.id, color: agentColor(a.type, a.slug), active: states[a.id] === 'active' || states[a.id] === 'waiting' })),
+    [org.agents, states],
+  );
+  const lastCeo = [...lines].reverse().find((l) => l.who === 'ceo')?.text ?? '';
+  const caption = useTypewriter(state === 'speaking' || state === 'idle' ? lastCeo : '');
 
   useEffect(() => {
     alive.current = true;
@@ -156,7 +180,7 @@ export function CeoPage() {
           <section className="fb-glass relative overflow-hidden" style={{ minHeight: 440 }}>
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
-              <HologramScene state={state} labels={{ noWebgl: t('office.noWebgl') }} />
+              <HologramScene state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
             </div>
             <div className="absolute start-4 top-4 flex items-center gap-2">
               <span className="fb-dot" style={{ background: 'var(--fb-accent)', boxShadow: '0 0 10px var(--fb-accent)' }} />
@@ -168,11 +192,20 @@ export function CeoPage() {
                 {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
             </div>
-            {interim && (
+            {interim ? (
               <div className="absolute inset-x-6 bottom-5 text-center text-lg" style={{ color: 'var(--fb-accent)' }}>
                 “{interim}”
               </div>
+            ) : (
+              caption && (
+                <div aria-hidden className="pointer-events-none absolute inset-x-5 bottom-4 max-h-[34%] overflow-hidden rounded-xl px-4 py-3 text-center text-[15px] leading-snug" style={{ background: 'rgba(2,10,6,0.55)', backdropFilter: 'blur(6px)', border: '1px solid var(--fb-border)' }}>
+                  {caption}
+                </div>
+              )
             )}
+            <div className="absolute start-4 bottom-4 hidden flex-col gap-1 text-[11px] md:flex" aria-hidden>
+              <span className="fb-dim">{t('ceo.live', { agents: satellites.length, active: satellites.filter((s) => s.active).length })}</span>
+            </div>
           </section>
 
           <section className="fb-glass fb-col gap-3 p-4">

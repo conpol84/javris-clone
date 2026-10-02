@@ -1,3 +1,4 @@
+import { Glow } from './fx';
 import { useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -149,6 +150,7 @@ export function ShiftScene(props: ShiftSceneProps) {
   return (
     <Canvas camera={{ position: [0, 0.4, 9.6], fov: 44 }} dpr={[1, 1.75]} gl={{ antialias: true }} style={{ background: 'transparent' }}>
       <Dial shifts={props.shifts} motion={reduced ? 0 : 1} />
+      <Glow />
     </Canvas>
   );
 }

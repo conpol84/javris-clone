@@ -871,6 +871,7 @@ const ar: Dictionary = {
   "studio.power.file_write": "يكتب الملفات.",
   "studio.power.think": "يأخذ وقتاً أطول للتفكير قبل الإجابة.",
   "studio.power.other": "إذن أداة لهذا الوكيل.",
+  "ceo.live": "{agents} موظفين متصلين · {active} يعملون الآن",
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

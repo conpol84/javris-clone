@@ -1,3 +1,4 @@
+import { Glow } from './fx';
 import { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -226,6 +227,7 @@ export function MissionScene(props: MissionSceneProps) {
   return (
     <Canvas camera={{ position: [0, 7.2, 8.6], fov: 44 }} dpr={[1, 1.75]} gl={{ antialias: true }} style={{ background: 'transparent' }}>
       <World {...props} motion={reduced ? 0 : 1} />
+      <Glow />
     </Canvas>
   );
 }

@@ -866,6 +866,7 @@ const el: Dictionary = {
   "studio.power.file_write": "Γράφει αρχεία.",
   "studio.power.think": "Παίρνει επιπλέον χρόνο να σκεφτεί πριν απαντήσει.",
   "studio.power.other": "Δικαίωμα εργαλείου για αυτόν τον agent.",
+  "ceo.live": "{agents} υπάλληλοι συνδεδεμένοι · {active} δουλεύουν τώρα",
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

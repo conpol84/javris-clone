@@ -867,6 +867,7 @@ const zhCN: Dictionary = {
   "studio.power.file_write": "写入文件。",
   "studio.power.think": "回答前花更多时间思考。",
   "studio.power.other": "此智能体的一项工具权限。",
+  "ceo.live": "已连接 {agents} 名员工 · {active} 人正在工作",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',
