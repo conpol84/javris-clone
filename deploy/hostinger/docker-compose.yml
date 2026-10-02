@@ -69,7 +69,9 @@ services:
       dockerfile: deploy/docker/Dockerfile
     container_name: firbo-api
     restart: unless-stopped
-    command: ["serve", "--host", "0.0.0.0", "--port", "8000", "--engine", "omniroute", "--model", "auto"]
+    # Gateway-only API: starts without an inference engine (see openjarvis/server/firbo_app.py).
+    entrypoint: ["python", "-m", "uvicorn"]
+    command: ["openjarvis.server.firbo_app:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       # Browsers never see this key: Firbo users authenticate with their own Supabase session instead.
       OPENJARVIS_API_KEY: ${OPENJARVIS_API_KEY}
