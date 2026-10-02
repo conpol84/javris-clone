@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
+import { Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { loadOrgSummary, type OrgSummary } from '../lib/company/data';
+import { deleteOrganization, loadOrgSummary, type OrgSummary } from '../lib/company/data';
 import { MANAGER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 
@@ -11,7 +13,10 @@ import '../styles/firbo.css';
 export function CompaniesPage() {
   const { t, fmt } = useI18n();
   const navigate = useNavigate();
-  const { memberships, current, selectOrg } = useCompanyAuth();
+  const { memberships, current, selectOrg, refresh } = useCompanyAuth();
+  const [removing, setRemoving] = useState<string | null>(null);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
   const [stats, setStats] = useState<Record<string, OrgSummary | 'error'>>({});
 
   useEffect(() => {
@@ -29,6 +34,22 @@ export function CompaniesPage() {
   const open = (id: string, to: string) => {
     selectOrg(id);
     navigate(to);
+  };
+
+  const remove = async (id: string) => {
+    setBusy(true);
+    try {
+      await deleteOrganization(id);
+      toast.success(t('cmp.removed'));
+      setRemoving(null);
+      setTyped('');
+      await refresh();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String((err as { message?: string })?.message ?? '');
+      toast.error(msg.includes('active_subscription') ? t('cmp.removeSub') : msg.includes('not_owner') ? t('cmp.removeOwner') : t('cmp.removeError'));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -68,6 +89,23 @@ export function CompaniesPage() {
                 <button className="fb-btn fb-btn--primary mt-4 w-full" onClick={() => open(id, '/')}>
                   {t('cmp.open')}
                 </button>
+                {m.role === 'owner' &&
+                  (removing === id ? (
+                    <div className="fb-col mt-3 gap-2">
+                      <p className="text-xs" style={{ color: 'var(--fb-warn)' }}>{t('cmp.removeWarn', { name: m.organization.name })}</p>
+                      <input className="fb-input" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder={m.organization.name} aria-label={t('cmp.removeType')} />
+                      <div className="flex gap-2">
+                        <button className="fb-btn fb-btn--ghost flex-1" onClick={() => (setRemoving(null), setTyped(''))}>{t('cmp.removeCancel')}</button>
+                        <button className="fb-btn flex-1" disabled={busy || typed.trim() !== m.organization.name} onClick={() => void remove(id)} style={{ color: 'var(--fb-warn)' }}>
+                          <Trash2 size={14} /> {t('cmp.removeConfirm')}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button className="fb-btn fb-btn--ghost mt-2 w-full" onClick={() => (setRemoving(id), setTyped(''))}>
+                      <Trash2 size={14} /> {t('cmp.remove')}
+                    </button>
+                  ))}
               </li>
             );
           })}

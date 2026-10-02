@@ -310,3 +310,13 @@ export const GOALS = [
   { id: 'market', label: 'Understand my market', agents: ['research', 'marketing', 'ceo'], extra: ['competitor-analyst', 'data-analyst'] },
   { id: 'all', label: 'A bit of everything', agents: ['ceo', 'research', 'sales', 'marketing', 'operations', 'finance', 'developer'], extra: [] },
 ] as const;
+
+/** Specialist AI employees that need a paid plan. Must match private.premium_agent_slugs() in the database, which enforces it. */
+export const PREMIUM_SLUGS: readonly string[] = [
+  'devops-engineer', 'security-auditor', 'code-reviewer', 'qa-engineer', 'product-manager', 'ads-manager', 'influencer-outreach', 'pr-comms',
+  'brand-strategist', 'procurement', 'inventory-planner', 'legal-reviewer', 'compliance-helper', 'tax-assistant', 'financial-planner',
+  'invoice-collector', 'market-researcher', 'trend-scout', 'ux-researcher', 'competitor-analyst', 'deep-research', 'site-watchdog',
+  'knowledge-librarian', 'ai-cost-optimizer', 'ai-gateway-operator', 'autonomous-coder', 'seo-specialist', 'email-marketer', 'hr-onboarding',
+  'recruiter', 'community-manager',
+];
+export const isPremium = (slug: string): boolean => PREMIUM_SLUGS.includes(slug.replace(/-\d+$/, ''));

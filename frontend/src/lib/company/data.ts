@@ -439,3 +439,9 @@ export async function setAllAutonomy(orgId: string, autonomy: Autonomy): Promise
   const { error } = await requireClient().from('agents').update({ autonomy }).eq('organization_id', orgId);
   fail(error, null);
 }
+
+/** Owner-only: permanently removes a company with all of its data. */
+export async function deleteOrganization(orgId: string): Promise<void> {
+  const { error } = await requireClient().rpc('delete_organization', { p_org: orgId });
+  if (error) throw error;
+}

@@ -36,10 +36,11 @@ export async function loadPlanUsage(orgId: string): Promise<PlanUsage> {
 }
 
 /** The database raises "plan_limit:<key>" when a company hits what its plan allows. */
-export function planLimitKey(err: unknown): LimitKey | null {
+export function planLimitKey(err: unknown): LimitKey | 'premium_agent' | null {
   const msg = err instanceof Error ? err.message : typeof err === 'object' && err && 'message' in err ? String((err as { message: unknown }).message) : '';
   const m = /plan_limit:?([a-z_]*)/.exec(msg);
   if (!m) return null;
+  if (m[1] === 'premium_agent') return 'premium_agent';
   return (LIMIT_KEYS as string[]).includes(m[1]) ? (m[1] as LimitKey) : 'agents';
 }
 
