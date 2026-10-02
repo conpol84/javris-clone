@@ -7,13 +7,15 @@ const SR_LANG: Record<string, string> = {
   en: 'en-US', el: 'el-GR', es: 'es-ES', 'pt-BR': 'pt-BR', de: 'de-DE', fr: 'fr-FR', 'zh-CN': 'zh-CN', ar: 'ar-SA',
 };
 
+export type VoiceError = 'denied' | 'no_speech' | 'network' | 'other';
+
 interface RecognitionLike {
   lang: string;
   interimResults: boolean;
   continuous: boolean;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((e: { error?: string }) => void) | null;
   start(): void;
   stop(): void;
 }
@@ -24,7 +26,7 @@ export function recognitionSupported(): boolean {
 }
 
 /** Starts one listening turn. Returns a stop function. */
-export function listenOnce(lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void }): () => void {
+export function listenOnce(lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError) => void }): () => void {
   const w = window as unknown as Record<string, new () => RecognitionLike>;
   const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
   if (!Ctor) {
@@ -48,8 +50,10 @@ export function listenOnce(lang: string, on: { interim: (t: string) => void; fin
       on.final(text.trim());
     } else on.interim(text);
   };
-  rec.onerror = () => {
+  rec.onerror = (e) => {
     done = true;
+    const code = e?.error;
+    on.error?.(code === 'not-allowed' || code === 'service-not-allowed' ? 'denied' : code === 'no-speech' || code === 'aborted' ? 'no_speech' : code === 'network' ? 'network' : 'other');
     on.end();
   };
   rec.onend = () => {
@@ -58,6 +62,7 @@ export function listenOnce(lang: string, on: { interim: (t: string) => void; fin
   try {
     rec.start();
   } catch {
+    on.error?.('other');
     on.end();
   }
   return () => {
@@ -131,6 +136,10 @@ export async function speak(orgId: string, text: string, lang: string): Promise<
       if (!synth) return resolve();
       const u = new SpeechSynthesisUtterance(clean);
       u.lang = SR_LANG[lang] ?? 'en-US';
+      const voices = synth.getVoices();
+      const want = (SR_LANG[lang] ?? 'en-US').toLowerCase();
+      const v = voices.find((x) => x.lang.toLowerCase() === want) ?? voices.find((x) => x.lang.toLowerCase().startsWith(want.slice(0, 2)));
+      if (v) u.voice = v;
       u.rate = 0.96;
       u.pitch = 0.8;
       u.onend = () => resolve();

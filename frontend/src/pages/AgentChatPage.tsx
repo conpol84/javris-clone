@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { MessageSquarePlus, Send, Trash2 } from 'lucide-react';
+import { Mic, MessageSquarePlus, Send, Square, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Wave } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
@@ -10,6 +10,7 @@ import { createConversation, deleteConversation, listAgents, listConversations, 
 import { agentLabel } from '../lib/company/labels';
 import { RunError, sendChat, type ChatMessage } from '../lib/company/runner';
 import { agentColor } from '../lib/company/status';
+import { listenOnce, recognitionSupported, speak, stopSpeaking, type VoiceError } from '../lib/company/voice';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
 
@@ -27,6 +28,17 @@ export function AgentChatPage() {
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [listening, setListening] = useState(false);
+  const [interim, setInterim] = useState('');
+  const [speakOn, setSpeakOn] = useState(() => {
+    try {
+      return localStorage.getItem('firbo.chat.speak') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const stopListen = useRef<() => void>(() => {});
+  const canTalk = recognitionSupported();
   const end = useRef<HTMLDivElement>(null);
   const activeId = params.get('c');
   const active = convos.find((c) => c.id === activeId) ?? null;
@@ -102,18 +114,19 @@ export function AgentChatPage() {
     }
   };
 
-  const send = async (e?: FormEvent) => {
+  const send = async (e?: FormEvent, override?: string) => {
     e?.preventDefault();
-    const msg = text.trim();
+    const msg = (override ?? text).trim();
     if (!msg || !active || sending) return;
     setSending(true);
     setText('');
     const temp: ChatMessage = { id: `tmp-${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages((m) => [...m, temp]);
     try {
-      const out = await sendChat(active.id, msg, lang);
+      const out = await sendChat(active.id, msg, lang, speakOn);
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
+      if (speakOn) void speak(orgId, out.message.content, lang);
     } catch (err) {
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setText(msg);
@@ -122,6 +135,39 @@ export function AgentChatPage() {
       setSending(false);
     }
   };
+
+  const toggleSpeak = () => {
+    const next = !speakOn;
+    setSpeakOn(next);
+    if (!next) stopSpeaking();
+    try {
+      localStorage.setItem('firbo.chat.speak', next ? '1' : '0');
+    } catch {
+      /* the choice just is not remembered */
+    }
+  };
+
+  const talk = () => {
+    if (listening) {
+      stopListen.current();
+      return;
+    }
+    stopSpeaking();
+    setListening(true);
+    stopListen.current = listenOnce(lang, {
+      error: (c: VoiceError) => c !== 'no_speech' && toast.error(t(`voice.err.${c}` as TKey)),
+      interim: setInterim,
+      final: (txt) => {
+        setInterim('');
+        if (txt) void send(undefined, txt);
+      },
+      end: () => {
+        setListening(false);
+        setInterim('');
+      },
+    });
+  };
+  useEffect(() => () => (stopListen.current(), stopSpeaking()), []);
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) void send(e);
@@ -241,9 +287,19 @@ export function AgentChatPage() {
                 disabled={!canWrite}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={onKey}
-                placeholder={t('chat.placeholder', { agent: nameOf(activeAgent) })}
+                placeholder={interim || t('chat.placeholder', { agent: nameOf(activeAgent) })}
                 aria-label={t('chat.placeholder', { agent: nameOf(activeAgent) })}
               />
+              <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={speakOn} aria-label={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
+                {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              </button>
+              {canTalk ? (
+                <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44, color: listening ? 'var(--fb-accent)' : undefined }} disabled={!canWrite || sending} aria-pressed={listening} aria-label={t(listening ? 'voice.micStop' : 'voice.mic')} title={t(listening ? 'voice.micStop' : 'voice.mic')} onClick={talk}>
+                  {listening ? <Square size={16} /> : <Mic size={16} />}
+                </button>
+              ) : (
+                <span className="fb-dim max-w-[120px] text-[10px] leading-tight">{t('voice.err.unsupported')}</span>
+              )}
               <button className="fb-btn fb-btn--primary" style={{ height: 44 }} disabled={!text.trim() || sending || !canWrite} aria-label={t('chat.send')}>
                 <Send size={16} />
               </button>

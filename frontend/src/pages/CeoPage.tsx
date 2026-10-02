@@ -11,7 +11,7 @@ import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { RunError, sendChat } from '../lib/company/runner';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
-import { listenOnce, recognitionSupported, speak, stopSpeaking } from '../lib/company/voice';
+import { listenOnce, recognitionSupported, speak, stopSpeaking, type VoiceError } from '../lib/company/voice';
 import '../styles/firbo.css';
 
 interface Line {
@@ -121,6 +121,7 @@ export function CeoPage() {
     setInterim('');
     setState('listening');
     stopListen.current = listenOnce(lang, {
+      error: (c: VoiceError) => c !== 'no_speech' && toast.error(t(`voice.err.${c}` as TKey)),
       interim: setInterim,
       final: (txt) => {
         setInterim('');

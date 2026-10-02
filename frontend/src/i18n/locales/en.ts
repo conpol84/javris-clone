@@ -898,6 +898,15 @@ export const en = {
   "char.acc.2": "Headset",
   "char.acc.3": "Tie",
   "char.acc.4": "Visor",
+  "voice.err.denied": "Microphone blocked. Click the lock icon next to the address, allow the microphone, then try again.",
+  "voice.err.no_speech": "I did not hear anything. Try again.",
+  "voice.err.network": "Voice input needs an internet connection. Try again.",
+  "voice.err.other": "Voice input could not start. Use Chrome or Edge and allow the microphone.",
+  "voice.err.unsupported": "Voice input needs Chrome, Edge or Safari.",
+  "voice.mic": "Speak to Firbo",
+  "voice.micStop": "Stop listening",
+  "voice.speakOn": "Read answers aloud",
+  "voice.speakOff": "Stop reading answers aloud",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents
