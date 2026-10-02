@@ -531,6 +531,18 @@ export const en = {
   "store.search": "Search agents, skills or tools…",
   "store.none": "No agent matches your search.",
   "store.hired": "{n} hired",
+  "nav.reviews": "Performance",
+  "rev.eyebrow": "Performance reviews",
+  "rev.title": "How is your AI team performing?",
+  "rev.intro": "Every AI employee gets a transparent score from real results. Strong, trusted agents are recommended for more autonomy.",
+  "rev.none": "Hire an AI employee to see performance reviews.",
+  "rev.formula": "Score = 40% finished vs failed tasks, 30% approvals by people, 20% cost efficiency, 10% volume. Missing data counts as neutral, never as a penalty.",
+  "rev.v.promote": "Ready for promotion",
+  "rev.v.steady": "Steady",
+  "rev.v.coach": "Needs coaching",
+  "rev.v.idle": "No data yet",
+  "rev.stats": "{done} done · {failed} failed · {ok} approved · {no} rejected",
+  "rev.promote": "Promote to “{level}”",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents
