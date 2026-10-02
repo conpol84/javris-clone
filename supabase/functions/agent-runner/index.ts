@@ -1,4 +1,5 @@
 // Firbo AI agent runner: executes one task as its assigned agent, entirely inside Supabase (no extra server).
+// Scheduled shifts call it with an x-cron-secret header (checked against the database) instead of a browser login.
 //
 // Guarantees (enforced here, not in the browser):
 //  - caller must be a signed-in writer of the task's company (RLS read + role check)
@@ -110,27 +111,43 @@ Deno.serve(async (req) => {
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const auth = req.headers.get('Authorization') ?? '';
   const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
+  const admin = createClient(url, service);
   const { data: who } = await userClient.auth.getUser();
-  const user = who?.user;
-  if (!user) return json(401, { error: 'unauthorized' });
+  let user: { id: string; email?: string | null } | null = who?.user ?? null;
 
-  let body: { task_id?: string; lang?: string } = {};
+  let body: { task_id?: string; lang?: string; system_user_id?: string } = {};
   try {
     body = await req.json();
   } catch {
     return json(400, { error: 'bad_request' });
   }
+
+  // Scheduled shifts run without a browser: the database scheduler proves itself with a secret kept in the database.
+  let systemRun = false;
+  const cron = req.headers.get('x-cron-secret');
+  if (!user && cron && typeof body.system_user_id === 'string') {
+    const { data: sec } = await admin.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+    if (sec && sec.value === cron) {
+      const { data: owner } = await admin.auth.admin.getUserById(body.system_user_id);
+      if (owner?.user) {
+        user = { id: owner.user.id, email: owner.user.email };
+        systemRun = true;
+      }
+    }
+  }
+  if (!user) return json(401, { error: 'unauthorized' });
+  const reader = systemRun ? admin : userClient; // normal runs read through RLS as the caller
   if (!body.task_id || typeof body.task_id !== 'string') return json(400, { error: 'bad_request' });
   const lang = body.lang && body.lang in LANG_NAME ? body.lang : 'en';
 
   // RLS-scoped read: only members of the company can see the task at all.
-  const { data: task } = await userClient
+  const { data: task } = await reader
     .from('tasks')
     .select('id, organization_id, title, description, status, priority, assigned_agent_id')
     .eq('id', body.task_id)
     .maybeSingle();
   if (!task) return json(404, { error: 'not_found' });
-  const { data: member } = await userClient
+  const { data: member } = await reader
     .from('organization_members')
     .select('role')
     .eq('organization_id', task.organization_id)
@@ -145,7 +162,6 @@ Deno.serve(async (req) => {
   if (!RUNNABLE.includes(task.status)) return json(409, { error: 'not_runnable', status: task.status });
   if (!task.assigned_agent_id) return json(422, { error: 'no_agent' });
 
-  const admin = createClient(url, service);
   const { data: agent } = await admin
     .from('agents')
     .select('id, name, system_prompt, model, temperature, enabled, autonomy, monthly_budget_usd, max_steps, agent_tools(tool_name, enabled, policy)')

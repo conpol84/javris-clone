@@ -27,6 +27,7 @@ import {
   Inbox,
   ListChecks,
   History,
+  Clock3,
   Plug,
   Shield,
 } from 'lucide-react';
@@ -87,6 +88,7 @@ export function Sidebar() {
         { path: '/', icon: LayoutDashboard, label: t('nav.commandCenter') },
         { path: '/office', icon: Box, label: t('nav.office') },
         { path: '/missions', icon: Rocket, label: t('nav.missions') },
+        { path: '/shifts', icon: Clock3, label: t('nav.shifts') },
         { path: '/chat', icon: MessageSquare, label: t('nav.chat') },
         { path: '/team', icon: Users, label: t('nav.team') },
         { path: '/inbox', icon: Inbox, label: t('nav.inbox'), badge: pending },
