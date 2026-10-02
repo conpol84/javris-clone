@@ -4,6 +4,7 @@ import { Modal } from './Modal';
 import { AGENT_TEMPLATES, TEMPLATE_CATEGORIES, type AgentTemplate } from '../../lib/company/templates';
 import { hireAgent } from '../../lib/company/data';
 import { useI18n } from '../../i18n/I18nProvider';
+import { notifyPlanLimit } from '../../lib/company/limits';
 import { categoryLabel } from '../../lib/company/labels';
 import type { TKey } from '../../i18n/locales/en';
 import type { AgentRow } from '../../lib/company/types';
@@ -40,7 +41,7 @@ export function HireDialog({
       onHired();
     } catch (err) {
       console.error(err);
-      toast.error(t('hire.error'));
+      if (!notifyPlanLimit(err, t as never)) toast.error(t('hire.error'));
     } finally {
       setBusy(null);
     }

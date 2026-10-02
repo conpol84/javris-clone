@@ -261,7 +261,8 @@ Deno.serve(async (req) => {
     const parsed = provider.parse((body.fields ?? {}) as Record<string, unknown>);
     if (!parsed) return json(422, { error: 'invalid_fields' });
     const { count } = await admin.from('integrations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId);
-    if ((count ?? 0) >= 30) return json(429, { error: 'too_many' });
+    const { data: cap } = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'integrations' });
+    if ((count ?? 0) >= Number(cap ?? 2)) return json(429, { error: 'plan_limit' });
     try {
       if (provider.messaging) await provider.send(parsed.secret, parsed.config, `✅ ${name}: Firbo AI is connected.`);
       else await provider.verify!(parsed.secret, parsed.config);
@@ -273,7 +274,7 @@ Deno.serve(async (req) => {
       .insert({ organization_id: orgId, kind, name, config: parsed.config, created_by: user.id, last_used_at: new Date().toISOString() })
       .select('id, kind, name, config, status, last_error, last_used_at, created_at')
       .single();
-    if (error || !row) return json(500, { error: 'save_failed' });
+    if (error || !row) return json(error?.message?.includes('plan_limit') ? 429 : 500, { error: error?.message?.includes('plan_limit') ? 'plan_limit' : 'save_failed' });
     await admin.from('integration_secrets').insert({ integration_id: row.id, secret: JSON.stringify(parsed.secret) });
     return json(200, { integration: row });
   }

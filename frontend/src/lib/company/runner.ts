@@ -5,6 +5,7 @@ export type RunErrorCode =
   | 'not_configured'
   | 'budget_exceeded'
   | 'rate_limited'
+  | 'plan_limit'
   | 'agent_disabled'
   | 'no_agent'
   | 'not_runnable'
@@ -24,7 +25,7 @@ export interface RunOutcome {
   queued: number;
 }
 
-const KNOWN: RunErrorCode[] = ['not_configured', 'budget_exceeded', 'rate_limited', 'agent_disabled', 'no_agent', 'not_runnable', 'forbidden', 'model_error', 'too_long'];
+const KNOWN: RunErrorCode[] = ['not_configured', 'budget_exceeded', 'rate_limited', 'plan_limit', 'agent_disabled', 'no_agent', 'not_runnable', 'forbidden', 'model_error', 'too_long'];
 
 /** Ask the agent-runner Edge Function to execute a task as its assigned agent. */
 export async function runTask(taskId: string, lang: string): Promise<RunOutcome> {

@@ -8,6 +8,7 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask, listAgents } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
 import { RunError, runTask } from '../lib/company/runner';
+import { notifyPlanLimit } from '../lib/company/limits';
 import { createShift, deleteShift, listShifts, setShiftEnabled, type Cadence, type ShiftRow } from '../lib/company/shifts';
 import { agentColor } from '../lib/company/status';
 import { MANAGER_ROLES, type AgentRow } from '../lib/company/types';
@@ -86,7 +87,7 @@ export function ShiftsPage() {
       await reload();
     } catch (err) {
       console.error(err);
-      toast.error(t('shift.createError'));
+      if (!notifyPlanLimit(err, t as never)) toast.error(t('shift.createError'));
     } finally {
       setBusy(null);
     }

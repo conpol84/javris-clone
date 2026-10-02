@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MemoryScene } from '../components/scenes/MemoryScene';
 import { useI18n } from '../i18n/I18nProvider';
+import { notifyPlanLimit } from '../lib/company/limits';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_TYPES, type MemoryRow, type MemoryType } from '../lib/company/memory';
@@ -54,7 +55,7 @@ export function MemoryPage() {
       await load();
     } catch (err) {
       console.error(err);
-      toast.error(t('mem.error'));
+      if (!notifyPlanLimit(err, t as never)) toast.error(t('mem.error'));
     } finally {
       setBusy(false);
     }

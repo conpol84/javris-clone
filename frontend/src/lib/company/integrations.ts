@@ -70,7 +70,7 @@ export const PLANNED_APPS: { id: string; name: string; color: string }[] = [
   ['quickbooks', 'QuickBooks', '#2ca01c'], ['zapier', 'Zapier', '#ff4f00'],
 ].map(([id, name, color]) => ({ id, name, color }));
 
-export type IntegrationErrorCode = 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'unknown';
+export type IntegrationErrorCode = 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'unknown';
 
 export class IntegrationError extends Error {
   constructor(public code: IntegrationErrorCode) {
@@ -78,7 +78,7 @@ export class IntegrationError extends Error {
   }
 }
 
-const KNOWN: IntegrationErrorCode[] = ['invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many'];
+const KNOWN: IntegrationErrorCode[] = ['invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit'];
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await requireClient().functions.invoke('integrations', { body });

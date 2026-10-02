@@ -34,6 +34,8 @@ import {
   Store,
   Award,
   Brain,
+  CreditCard,
+  Layers,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import type { TKey } from '../../i18n/locales/en';
@@ -104,7 +106,9 @@ export function Sidebar() {
         { path: '/activity', icon: History, label: t('nav.activity') },
         { path: '/people', icon: Building2, label: t('nav.people') },
         { path: '/analytics', icon: BarChart3, label: t('nav.analytics') },
+        { path: '/hub', icon: Layers, label: t('nav.hub') },
         { path: '/integrations', icon: Plug, label: t('nav.integrations') },
+        { path: '/billing', icon: CreditCard, label: t('nav.billing') },
         { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
       ]
     : [];

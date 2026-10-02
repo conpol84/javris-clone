@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
+import { notifyPlanLimit } from '../lib/company/limits';
 import { addMemberByEmail, listMembers, removeMember, setMemberRole } from '../lib/company/data';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
@@ -55,7 +56,7 @@ export function PeoplePage() {
       setEmail('');
       await load();
     } catch (err) {
-      toast.error(addError(err));
+      if (!notifyPlanLimit(err, t as never)) toast.error(addError(err));
     } finally {
       setBusy(false);
     }

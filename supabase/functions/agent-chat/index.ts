@@ -146,7 +146,10 @@ Deno.serve(async (req) => {
     .select('id', { count: 'exact', head: true })
     .eq('organization_id', convo.organization_id)
     .gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
-  if ((orgDay ?? 0) >= Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? 100)) return json(429, { error: 'rate_limited' });
+  // The company's plan decides how many AI actions it may use per day (enforced here, never in the browser).
+  const { data: planCap } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
+  const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
+  if ((orgDay ?? 0) >= cap) return json(429, { error: 'plan_limit' });
 
   const { data: history } = await admin
     .from('messages')

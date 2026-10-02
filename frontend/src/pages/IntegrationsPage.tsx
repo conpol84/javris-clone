@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { Plug, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Panel, StatusDot } from '../components/command/Panel';
@@ -106,6 +107,7 @@ export function IntegrationsPage() {
           <div className="fb-eyebrow">{current?.organization.name}</div>
           <h1 className="mt-1 text-2xl font-semibold">{t('int.title')}</h1>
           <p className="fb-muted mt-1 text-sm">{t('int.sub')}</p>
+          <Link to="/hub" className="mt-2 inline-block text-sm font-medium" style={{ color: 'var(--fb-accent)' }}>{t('hub.title')} →</Link>
         </header>
 
         {!canManage ? (
