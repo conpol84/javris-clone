@@ -166,6 +166,17 @@ Deno.serve(async (req) => {
 
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
+  const { data: memRows } = await admin
+    .from('memories')
+    .select('content, memory_type')
+    .eq('organization_id', convo.organization_id)
+    .or(`agent_id.is.null,agent_id.eq.${agent.id}`)
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .order('importance', { ascending: false })
+    .limit(12);
+  const memoryBlock = (memRows ?? []).length
+    ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}`
+    : '';
   // Live company snapshot so the CEO answers from real data instead of generic talk.
   let snapshot = '';
   if (body.voice === true) {
@@ -189,6 +200,7 @@ Deno.serve(async (req) => {
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
+    ...(memoryBlock ? [memoryBlock] : []),
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     'You cannot send, publish, pay or change anything yourself. If the teammate wants work delivered or an outward step taken, suggest creating a task for you so it goes through approval.',
     `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
