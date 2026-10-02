@@ -77,3 +77,18 @@ Then in Firbo: *Talk to Firbo AI* → give a command → result under *Tasks*.
 - Backup: copy `deploy/hostinger/data/` (OmniRoute database + encrypted keys) and `.env` somewhere safe. Hostinger weekly snapshots are a good second layer.
 - Forgot dashboard password: `docker exec -it firbo-omniroute node bin/reset-password.mjs`
 - Security: only 80/443/22 are open; keys live only in `.env`, OmniRoute's encrypted store and Supabase secrets — never in the browser or git. Use SSH keys and disable password SSH.
+
+## Repair, health report and the branded gateway
+
+```bash
+cd ~/javris-clone/deploy/hostinger && git pull && ./repair.sh
+```
+
+`repair.sh` backs up `.env` and the gateway data, fills in only the missing settings (secrets, domains, password),
+restarts the stack and prints a health report that never contains passwords. If the gateway still shows
+"zero-config mode" or you cannot log in, run `./repair.sh --fresh`.
+
+**Firbo name and logo in the gateway.** The branding lives in the fork `conpol84/OmniRoute`, branch `firbo/branding`.
+GitHub builds the image for you (the small VPS cannot): open the fork -> Actions -> enable workflows -> run "Firbo image".
+After the first run set the package `omniroute` to Public (GitHub -> your profile -> Packages -> omniroute -> Package settings),
+then put `OMNIROUTE_IMAGE=ghcr.io/conpol84/omniroute:firbo` in `.env` and run `docker compose pull omniroute && docker compose up -d`.
