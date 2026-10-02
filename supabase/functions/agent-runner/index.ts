@@ -86,7 +86,7 @@ async function gatherWeb(
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${gw.key}` },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(12_000),
     });
     if (!res.ok) throw new Error(`gateway_${res.status}`);
     return res.json();
@@ -292,7 +292,12 @@ Deno.serve(async (req) => {
     ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}`
     : '';
 
-  const web = await gatherWeb((agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[], task.title ?? '', task.description ?? '').catch(() => ({ block: '', used: [] as string[] }));
+  // Web powers are best-effort and capped at 25 s in total, so a slow gateway can never stall the task.
+  const noWeb = { block: '', used: [] as string[] };
+  const web = await Promise.race([
+    gatherWeb((agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[], task.title ?? '', task.description ?? '').catch(() => noWeb),
+    new Promise<typeof noWeb>((resolve) => setTimeout(() => resolve(noWeb), 25_000)),
+  ]);
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
