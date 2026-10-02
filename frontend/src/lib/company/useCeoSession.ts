@@ -5,7 +5,7 @@ import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
 import { RunError, sendChat } from './runner';
 import type { AgentRow } from './types';
-import { listenOnce, recognitionSupported, speak, stopSpeaking, type VoiceError } from './voice';
+import { listenOnce, recognitionSupported, speak, stopSpeaking, unlockAudio, type VoiceError } from './voice';
 
 export interface CeoLine {
   who: 'me' | 'ceo';
@@ -49,8 +49,17 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
       .catch(() => toast.error(t('chat.loadError')));
   }, [orgId, t]);
 
+  /** In hands-free mode the CEO keeps listening after every turn, including after silence, until you stop it. */
+  const resume = useCallback((delay: number) => {
+    if (!handsFreeRef.current || !recognitionSupported()) return;
+    window.setTimeout(() => {
+      if (alive.current && handsFreeRef.current) listenRef.current();
+    }, delay);
+  }, []);
+
   const ask = useCallback(
     async (message: string) => {
+      unlockAudio();
       if (!ceo || !userId || !message.trim()) return;
       setLines((l) => [...l, { who: 'me', text: message }]);
       setState('thinking');
@@ -59,13 +68,15 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
         const res = await sendChat(convo.current, message, lang, true);
         if (!alive.current) return;
         setLines((l) => [...l, { who: 'ceo', text: res.message.content }]);
-        if (mutedRef.current) setState('idle');
-        else {
+        if (mutedRef.current) {
+          setState('idle');
+          resume(600);
+        } else {
           setState('speaking');
           await speak(orgId, res.message.content, lang);
           if (alive.current) {
             setState('idle');
-            if (handsFreeRef.current && recognitionSupported()) listenRef.current();
+            resume(300);
           }
         }
       } catch (err) {
@@ -73,27 +84,40 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
         if (alive.current) {
           setState('idle');
           toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+          resume(1500);
         }
       }
     },
-    [ceo, userId, orgId, lang, t],
+    [ceo, userId, orgId, lang, t, resume],
   );
 
   const listen = () => {
+    unlockAudio();
     stopSpeaking();
     setInterim('');
     setState('listening');
+    let heard = false;
     stopListen.current = listenOnce(lang, {
-      error: (c: VoiceError) => c !== 'no_speech' && toast.error(t(`voice.err.${c}` as TKey)),
+      error: (c: VoiceError) => {
+        if (c === 'no_speech') return;
+        // A broken microphone or blocked permission must not loop forever.
+        handsFreeRef.current = false;
+        setHandsFree(false);
+        toast.error(t(`voice.err.${c}` as TKey));
+      },
       interim: setInterim,
       final: (txt) => {
         setInterim('');
-        if (txt) void ask(txt);
-        else setState('idle');
+        if (txt) {
+          heard = true;
+          void ask(txt);
+        } else setState('idle');
       },
       end: () => {
         setInterim('');
         setState((s) => (s === 'listening' ? 'idle' : s));
+        // silence: listen again
+        if (!heard) resume(350);
       },
     });
   };

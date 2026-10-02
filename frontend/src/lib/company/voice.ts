@@ -74,6 +74,17 @@ export function listenOnce(lang: string, on: { interim: (t: string) => void; fin
   };
 }
 
+/** Browsers only allow sound after a tap. Call this from the tap that starts a conversation so replies can play later. */
+export function unlockAudio(): void {
+  try {
+    ctx = ctx ?? new AudioContext();
+    void ctx.resume();
+    window.speechSynthesis?.speak(new SpeechSynthesisUtterance(''));
+  } catch {
+    /* no audio support: replies stay silent but readable */
+  }
+}
+
 let audio: HTMLAudioElement | null = null;
 let ctx: AudioContext | null = null;
 let raf = 0;

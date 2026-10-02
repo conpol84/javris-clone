@@ -9,14 +9,13 @@ import type { TKey } from '../../i18n/locales/en';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { createTask } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
-import { resolvePersona } from '../../lib/company/persona';
 import { RunError, runTask } from '../../lib/company/runner';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../../lib/company/status';
 import { MANAGER_ROLES, WRITER_ROLES, type TaskPriority } from '../../lib/company/types';
 import { useCeoSession } from '../../lib/company/useCeoSession';
 import { useOrgData } from '../../lib/company/useOrgData';
 
-const HologramScene = lazy(() => import('../scenes/HologramScene').then((m) => ({ default: m.HologramScene })));
+const CeoStage = lazy(() => import('../scenes/CeoStage').then((m) => ({ default: m.CeoStage })));
 
 const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
 const PRIORITIES: TaskPriority[] = ['low', 'normal', 'high', 'urgent'];
@@ -162,7 +161,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
             <div className="fb-scan absolute inset-0 opacity-40" aria-hidden />
             <div className="absolute inset-0">
               <Suspense fallback={<div className="fb-muted grid h-full place-items-center text-sm">{t('office.loading')}</div>}>
-                <HologramScene state={state} satellites={satellites} persona={ceo ? resolvePersona(ceo) : undefined} labels={{ noWebgl: t('office.noWebgl') }} />
+                <CeoStage state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
               </Suspense>
             </div>
             <div className="absolute start-4 top-4 flex items-center gap-2">
@@ -186,7 +185,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
             <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-4 px-4">
               {canTalk ? (
                 <>
-                  <label className="fb-muted hidden cursor-pointer items-center gap-2 text-xs md:flex">
+                  <label className="fb-muted flex cursor-pointer items-center gap-1.5 text-xs">
                     <input type="checkbox" checked={handsFree} onChange={(e) => (setHandsFree(e.target.checked), e.target.checked && state === 'idle' && listen())} />
                     {t('ceo.handsFree')}
                   </label>
