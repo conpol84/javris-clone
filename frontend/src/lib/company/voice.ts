@@ -1,3 +1,4 @@
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { requireClient } from './client';
 
 /** Shared, mutable loudness (0..1) the 3D hologram reads every frame without re-rendering React. */
@@ -177,11 +178,12 @@ function pickMime(): string {
  * Records one spoken turn with the microphone (stops by itself after a pause) and has the server turn it into text.
  * The loudness feeds `voiceLevel`, so the hologram visibly reacts to the user's voice.
  */
-export function recordAndTranscribe(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void }): () => void {
+export function recordAndTranscribe(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): () => void {
   let cancelled = false;
   let stopNow = () => {};
   void (async () => {
     let stream: MediaStream;
+    on.status?.('Opening the microphone…');
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
     } catch {
@@ -199,6 +201,7 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks: Blob[] = [];
     rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    on.status?.('Microphone on. Speak now.');
     const startedAt = Date.now();
     let lastVoice = 0;
     let spoke = false;
@@ -210,7 +213,11 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
       void ac.close().catch(() => undefined);
       if (rec.state !== 'inactive') rec.stop();
       rec.onstop = async () => {
-        if (!send || !spoke || cancelled) return on.end();
+        if (!send || !spoke || cancelled) {
+          if (send && !spoke) on.status?.('The microphone is on but I heard no sound. Check the input device.');
+          return on.end();
+        }
+        on.status?.('Sending your voice to the server…');
         on.interim('…');
         try {
           const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
@@ -219,12 +226,27 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
           form.append('lang', lang);
           form.append('audio', blob, 'speech.webm');
           const { data, error } = await requireClient().functions.invoke('agent-listen', { body: form });
-          const text = typeof data?.text === 'string' ? data.text.trim() : '';
           if (error) throw error;
+          const text = typeof data?.text === 'string' ? data.text.trim() : '';
           on.interim('');
-          if (text) on.final(text);
-          else on.end();
-        } catch {
+          if (text) {
+            on.status?.('Heard you.');
+            on.final(text);
+          } else {
+            on.status?.('The server heard no words. Try again a bit louder.');
+            on.end();
+          }
+        } catch (err) {
+          let detail = 'unknown';
+          if (err instanceof FunctionsHttpError) {
+            try {
+              const b = await err.context.json();
+              detail = `${err.context.status} ${b?.error ?? ''}`.trim();
+            } catch {
+              detail = String(err.context.status);
+            }
+          }
+          on.status?.(`Voice server problem (${detail}). Using the browser's own speech recognition instead.`);
           on.interim('');
           on.error?.('server');
           on.end();
@@ -258,7 +280,7 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
  * Listening for one turn. The microphone is recorded directly and transcribed on the server (reliable in every browser, any language).
  * If recording is impossible or the server fails, the browser's own speech recognition is used instead.
  */
-export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void }): () => void {
+export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): () => void {
   let stopFn: () => void = () => {};
   let off = false;
   const canRecord = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
@@ -268,6 +290,7 @@ export function listenSmart(orgId: string, lang: string, on: { interim: (t: stri
       on.error?.('other');
       return on.end();
     }
+    on.status?.('Listening with the browser’s speech recognition…');
     stopFn = listenOnce(lang, { interim: on.interim, final: on.final, end: on.end, error: on.error });
   };
   if (!canRecord) {
@@ -277,6 +300,7 @@ export function listenSmart(orgId: string, lang: string, on: { interim: (t: stri
     stopFn = recordAndTranscribe(orgId, lang, {
       interim: on.interim,
       final: on.final,
+      status: on.status,
       error: (c) => {
         sawError = c;
       },

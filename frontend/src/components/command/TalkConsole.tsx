@@ -47,7 +47,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const canWrite = WRITER_ROLES.includes(role);
   const org = useOrgData(orgId, MANAGER_ROLES.includes(role), 10_000);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
-  const { ceo, state, lines, interim, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const briefed = useRef(false);
   const [tab, setTab] = useState<'talk' | 'command'>('talk');
   const [text, setText] = useState('');
@@ -172,6 +172,11 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
               {t('ceo.live', { agents: satellites.length, active: satellites.filter((s) => s.active).length })}
             </div>
 
+            {voiceStatus && (
+              <div className="pointer-events-none absolute inset-x-4 top-14 text-center text-[11px]" style={{ color: 'var(--fb-muted)' }} role="status">
+                {voiceStatus}
+              </div>
+            )}
             {interim ? (
               <div className="absolute inset-x-6 bottom-28 text-center text-lg" style={{ color: 'var(--fb-accent)' }}>“{interim}”</div>
             ) : (

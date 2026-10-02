@@ -980,6 +980,11 @@ const el: Dictionary = {
   'hud.empty': 'Δεν υπάρχουν εργασίες ακόμα.',
   'hud.completed': '{pct}% των εργασιών ολοκληρώθηκε',
   'voice.err.server': 'Η υπηρεσία φωνής δεν απάντησε. Γράψε το μήνυμά σου ή δοκίμασε ξανά.',
+  'int.mcp.tools': 'Εργαλεία',
+  'int.mcp.args': 'Παράμετροι (JSON)',
+  'int.mcp.run': 'Εκτέλεση εργαλείου',
+  'int.mcp.none': 'Ο server δεν προσφέρει εργαλεία.',
+  'int.mcp.badJson': 'Οι παράμετροι δεν είναι έγκυρο JSON.',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

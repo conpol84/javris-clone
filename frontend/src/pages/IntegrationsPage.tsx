@@ -7,8 +7,8 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, snapshotIntegration, startOAuth, testIntegration,
-  type IntegrationKind, type IntegrationRow,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, mcpCall, mcpTools, snapshotIntegration, startOAuth, testIntegration,
+  type IntegrationKind, type IntegrationRow, type McpTool,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
@@ -29,6 +29,11 @@ export function IntegrationsPage() {
   const [busy, setBusy] = useState<string | null>(null);
   const [setup, setSetup] = useState<{ provider: string; redirect: string } | null>(null);
   const [params, setParams] = useSearchParams();
+  const [mcpOpen, setMcpOpen] = useState<string | null>(null);
+  const [mcpList, setMcpList] = useState<McpTool[]>([]);
+  const [mcpTool, setMcpTool] = useState('');
+  const [mcpArgs, setMcpArgs] = useState('{}');
+  const [mcpOut, setMcpOut] = useState('');
 
   const reload = useCallback(async () => {
     if (!orgId || !canManage) return;
@@ -101,10 +106,47 @@ export function IntegrationsPage() {
     }
   };
 
+  const toggleMcp = async (r: IntegrationRow) => {
+    if (mcpOpen === r.id) return setMcpOpen(null);
+    setBusy(r.id);
+    try {
+      const { tools } = await mcpTools(r.id);
+      setMcpList(tools);
+      setMcpTool(tools[0]?.name ?? '');
+      setMcpArgs('{}');
+      setMcpOut('');
+      setMcpOpen(r.id);
+    } catch (err) {
+      toast.error(errText(err));
+    } finally {
+      setBusy(null);
+      await reload();
+    }
+  };
+
+  const runMcp = async (r: IntegrationRow) => {
+    let args: Record<string, unknown> = {};
+    try {
+      args = JSON.parse(mcpArgs || '{}');
+    } catch {
+      return void toast.error(t('int.mcp.badJson'));
+    }
+    setBusy(r.id);
+    try {
+      const out = await mcpCall(r.id, mcpTool, args);
+      setMcpOut(out.text || '(empty)');
+    } catch (err) {
+      toast.error(errText(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const test = async (r: IntegrationRow) => {
     setBusy(r.id);
     try {
-      await testIntegration(r.id);
+      if (r.kind === 'mcp') await mcpTools(r.id);
+      else await testIntegration(r.id);
       toast.success(t('int.testOk', { app: r.name }));
     } catch (err) {
       toast.error(errText(err));
@@ -178,6 +220,11 @@ export function IntegrationsPage() {
                       <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void test(r)}>
                         <Send size={13} /> {busy === r.id ? t('common.loading') : t('int.test')}
                       </button>
+                      {r.kind === 'mcp' && (
+                        <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void toggleMcp(r)}>
+                          <Plug size={13} /> {t('int.mcp.tools')}
+                        </button>
+                      )}
                       {LIVE_APPS.find((a) => a.kind === r.kind)?.readOnly && (
                         <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void peek(r)}>
                           <BarChart3 size={13} /> {t('int.snapshot')}
@@ -186,6 +233,24 @@ export function IntegrationsPage() {
                       <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 10px' }} disabled={busy !== null} aria-label={t('int.disconnect')} title={t('int.disconnect')} onClick={() => void remove(r)}>
                         <Trash2 size={14} />
                       </button>
+                      {mcpOpen === r.id && (
+                        <div className="fb-col mt-2 w-full gap-2 border-t pt-3" style={{ borderColor: 'var(--fb-border)' }}>
+                          {mcpList.length === 0 ? (
+                            <p className="fb-dim text-xs">{t('int.mcp.none')}</p>
+                          ) : (
+                            <>
+                              <select className="fb-input" value={mcpTool} onChange={(e) => setMcpTool(e.target.value)} aria-label={t('int.mcp.tools')}>
+                                {mcpList.map((m) => (
+                                  <option key={m.name} value={m.name}>{m.name}{m.description ? ` — ${m.description.slice(0, 60)}` : ''}</option>
+                                ))}
+                              </select>
+                              <textarea className="fb-input" rows={3} spellCheck={false} value={mcpArgs} onChange={(e) => setMcpArgs(e.target.value)} placeholder='{"query": "…"}' aria-label={t('int.mcp.args')} style={{ fontFamily: 'monospace', padding: 10 }} />
+                              <button className="fb-btn fb-btn--primary self-start" disabled={busy !== null || !mcpTool} onClick={() => void runMcp(r)}>{t('int.mcp.run')}</button>
+                              {mcpOut && <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-lg p-3 text-xs" style={{ background: 'rgba(0,0,0,.35)' }}>{mcpOut}</pre>}
+                            </>
+                          )}
+                        </div>
+                      )}
                     </li>
                   ))}
                 </ul>

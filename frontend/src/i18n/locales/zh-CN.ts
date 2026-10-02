@@ -981,6 +981,11 @@ const zhCN: Dictionary = {
   'hud.empty': '暂无任务。',
   'hud.completed': '已完成 {pct}% 的任务',
   'voice.err.server': '语音服务没有响应。请输入文字或重试。',
+  'int.mcp.tools': '工具',
+  'int.mcp.args': '参数 (JSON)',
+  'int.mcp.run': '运行工具',
+  'int.mcp.none': '此服务器未提供工具。',
+  'int.mcp.badJson': '参数不是有效的 JSON。',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

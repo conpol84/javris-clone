@@ -985,6 +985,11 @@ const ar: Dictionary = {
   'hud.empty': 'لا توجد مهام بعد.',
   'hud.completed': 'اكتمل {pct}% من المهام',
   'voice.err.server': 'لم تستجب خدمة الصوت. اكتب رسالتك أو حاول مرة أخرى.',
+  'int.mcp.tools': 'الأدوات',
+  'int.mcp.args': 'المعاملات (JSON)',
+  'int.mcp.run': 'تشغيل الأداة',
+  'int.mcp.none': 'هذا الخادم لا يوفر أدوات.',
+  'int.mcp.badJson': 'المعاملات ليست JSON صالحًا.',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

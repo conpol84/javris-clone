@@ -980,6 +980,11 @@ const es: Dictionary = {
   'hud.empty': 'Aún no hay tareas.',
   'hud.completed': '{pct}% de las tareas completadas',
   'voice.err.server': 'El servicio de voz no respondió. Escribe tu mensaje o inténtalo de nuevo.',
+  'int.mcp.tools': 'Herramientas',
+  'int.mcp.args': 'Argumentos (JSON)',
+  'int.mcp.run': 'Ejecutar herramienta',
+  'int.mcp.none': 'Este servidor no ofrece herramientas.',
+  'int.mcp.badJson': 'Los argumentos no son JSON válido.',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

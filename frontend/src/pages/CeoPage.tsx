@@ -36,7 +36,7 @@ export function CeoPage() {
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
-  const { ceo, state, lines, interim, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const [text, setText] = useState('');
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
@@ -85,6 +85,11 @@ export function CeoPage() {
                 {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
               </button>
             </div>
+            {voiceStatus && (
+              <div className="pointer-events-none absolute inset-x-4 top-14 text-center text-[11px]" style={{ color: 'var(--fb-muted)' }} role="status">
+                {voiceStatus}
+              </div>
+            )}
             {interim ? (
               <div className="absolute inset-x-6 bottom-5 text-center text-lg" style={{ color: 'var(--fb-accent)' }}>
                 “{interim}”

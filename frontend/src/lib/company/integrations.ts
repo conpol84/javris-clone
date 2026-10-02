@@ -7,7 +7,7 @@ export type IntegrationKind =
   | 'hubspot' | 'pipedrive' | 'asana' | 'trello' | 'clickup' | 'jira' | 'zendesk' | 'zoom' | 'wordpress' | 'bluesky' | 'facebook' | 'x'
   | 'threads' | 'instagram' | 'devto' | 'matrix' | 'zulip' | 'rocketchat' | 'todoist' | 'monday' | 'homeassistant' | 'ifttt' | 'brevo' | 'mailchimp'
   | 'stripe' | 'shopify' | 'woocommerce' | 'lemonsqueezy' | 'gumroad' | 'calendly' | 'calcom' | 'intercom'
-  | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox';
+  | 'mcp' | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox';
 
 export type IntegrationCategory = 'messaging' | 'email' | 'work' | 'crm' | 'productivity' | 'social' | 'automation' | 'commerce';
 
@@ -84,6 +84,7 @@ export const LIVE_APPS: LiveApp[] = [
   { kind: 'x', name: 'X (Twitter)', color: '#e5e7eb', cat: 'social', fields: [f('api_key', '…', false, 'API key'), f('api_secret', '…', true, 'API key secret'), f('access_token', '…', false, 'Access token'), f('access_token_secret', '…', true, 'Access token secret')], about: 'Posts to X.', help: 'Create a project and app at developer.x.com, set its permissions to Read and write, then generate the four keys. Posting needs an X API plan that allows writing; check your plan there.' },
   { kind: 'facebook', name: 'Facebook Pages', color: '#1877f2', cat: 'social', fields: [f('page_id', '1234567890', false, 'Page ID'), f('page_token', 'EAAG…', true, 'Page access token')], about: 'Posts to a Facebook Page.', help: 'In Meta for Developers create an app, get a long-lived Page access token with the pages_manage_posts permission, and enter the Page ID.' },
   // ---- new and trending
+  { kind: 'mcp', name: 'MCP server', color: '#c084fc', cat: 'automation', fields: [f('server_url', 'https://mcp.example.com/mcp', false, 'Server address (https)'), f('token', 'Optional', true, 'Access token', true)], about: 'Connect any MCP server (GitHub, Notion, Linear, your own …) and use its tools from Firbo.', help: 'Paste the address of a remote MCP server that supports streamable HTTP, plus its access token if it needs one. Firbo checks the connection and lists the tools it offers; managers can then run them.' },
   { kind: 'threads', name: 'Threads', color: '#e5e7eb', cat: 'social', fields: [f('user_id', '1784…', false, 'Threads user ID'), f('access_token', 'THQW…', true, 'Access token')], about: 'Posts text to Threads.', help: 'In Meta for Developers create an app with the Threads API, add yourself as a tester, generate a long-lived token with threads_content_publish and copy your Threads user ID.' },
   { kind: 'instagram', name: 'Instagram', color: '#e1306c', cat: 'social', fields: [f('ig_user_id', '1784…', false, 'Instagram account ID'), f('access_token', 'EAAG…', true, 'Access token')], about: 'Posts a picture with a caption. Include an image link (https …jpg or png) in the text.', help: 'Needs an Instagram Business or Creator account linked to a Facebook Page and a Meta app token with instagram_content_publish. Every post must contain a public image link.' },
   { kind: 'devto', name: 'DEV Community', color: '#e5e7eb', cat: 'social', fields: [f('api_key', '…', true, 'API key')], about: 'Saves an article draft on DEV. A person publishes it.', help: 'On dev.to open Settings → Extensions → DEV Community API Keys and generate a key. Articles are always saved as drafts.' },
@@ -137,8 +138,10 @@ export class IntegrationError extends Error {
 
 const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured'];
 
-async function call<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await requireClient().functions.invoke('integrations', { body });
+const call = <T,>(body: Record<string, unknown>): Promise<T> => callFn<T>('integrations', body);
+
+async function callFn<T>(fn: string, body: Record<string, unknown>): Promise<T> {
+  const { data, error } = await requireClient().functions.invoke(fn, { body });
   if (error) {
     let code: IntegrationErrorCode = 'unknown';
     let detail: { provider?: string; redirect_uri?: string } | undefined;
@@ -167,7 +170,17 @@ export async function listIntegrations(orgId: string): Promise<IntegrationRow[]>
 }
 
 export const connectIntegration = (organization_id: string, kind: IntegrationKind, name: string, fields: Record<string, string>) =>
-  call<{ integration: IntegrationRow }>({ action: 'connect', organization_id, kind, name, fields });
+  kind === 'mcp'
+    ? callFn<{ integration: IntegrationRow }>('mcp', { action: 'connect', organization_id, name, server_url: fields.server_url, token: fields.token ?? '' })
+    : call<{ integration: IntegrationRow }>({ action: 'connect', organization_id, kind, name, fields });
+
+export interface McpTool {
+  name: string;
+  description: string;
+  inputSchema: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] };
+}
+export const mcpTools = (id: string) => callFn<{ tools: McpTool[] }>('mcp', { action: 'tools', id });
+export const mcpCall = (id: string, tool: string, args: Record<string, unknown>) => callFn<{ text: string; is_error: boolean }>('mcp', { action: 'call', id, tool, arguments: args });
 export const testIntegration = (id: string) => call<{ ok: true }>({ action: 'test', id });
 export const sendIntegration = (id: string, text: string) => call<{ ok: true }>({ action: 'send', id, text });
 export const snapshotIntegration = (id: string) => call<{ text: string }>({ action: 'snapshot', id });

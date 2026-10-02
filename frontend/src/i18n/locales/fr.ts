@@ -980,6 +980,11 @@ const fr: Dictionary = {
   'hud.empty': 'Aucune tâche pour l\'instant.',
   'hud.completed': '{pct}% des tâches terminées',
   'voice.err.server': 'Le service vocal n\'a pas répondu. Écrivez votre message ou réessayez.',
+  'int.mcp.tools': 'Outils',
+  'int.mcp.args': 'Arguments (JSON)',
+  'int.mcp.run': 'Exécuter l\'outil',
+  'int.mcp.none': 'Ce serveur n\'offre aucun outil.',
+  'int.mcp.badJson': 'Les arguments ne sont pas du JSON valide.',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

@@ -980,6 +980,11 @@ const ptBR: Dictionary = {
   'hud.empty': 'Ainda não há tarefas.',
   'hud.completed': '{pct}% das tarefas concluídas',
   'voice.err.server': 'O serviço de voz não respondeu. Digite sua mensagem ou tente de novo.',
+  'int.mcp.tools': 'Ferramentas',
+  'int.mcp.args': 'Argumentos (JSON)',
+  'int.mcp.run': 'Executar ferramenta',
+  'int.mcp.none': 'Este servidor não oferece ferramentas.',
+  'int.mcp.badJson': 'Os argumentos não são JSON válido.',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

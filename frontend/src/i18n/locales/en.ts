@@ -988,6 +988,11 @@ export const en = {
   'hud.empty': 'No tasks yet.',
   'hud.completed': '{pct}% of tasks completed',
   'voice.err.server': 'The voice service did not answer. Type your message instead, or try again.',
+  'int.mcp.tools': 'Tools',
+  'int.mcp.args': 'Arguments (JSON)',
+  'int.mcp.run': 'Run tool',
+  'int.mcp.none': 'This server offers no tools.',
+  'int.mcp.badJson': 'The arguments are not valid JSON.',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

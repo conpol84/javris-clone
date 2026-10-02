@@ -20,6 +20,7 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
   const [interim, setInterim] = useState('');
   const [muted, setMuted] = useState(false);
   const [handsFree, setHandsFree] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
   const handsFreeRef = useRef(false);
   const mutedRef = useRef(false);
   const listenRef = useRef<() => void>(() => {});
@@ -92,12 +93,18 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
   );
 
   const listen = () => {
+    // One tap starts a conversation that keeps going until you press stop.
+    if (!handsFreeRef.current) {
+      handsFreeRef.current = true;
+      setHandsFree(true);
+    }
     unlockAudio();
     stopSpeaking();
     setInterim('');
     setState('listening');
     let heard = false;
     stopListen.current = listenSmart(orgId, lang, {
+      status: setVoiceStatus,
       error: (c: VoiceError | 'server') => {
         if (c === 'no_speech') return;
         // A broken microphone or blocked permission must not loop forever.
@@ -107,6 +114,7 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
       },
       interim: setInterim,
       final: (txt) => {
+        setVoiceStatus('');
         setInterim('');
         if (txt) {
           heard = true;
@@ -143,5 +151,5 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
     await ask(`${briefingText}. ${facts}`);
   };
 
-  return { ceo, state, lines, interim, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing };
+  return { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing };
 }
