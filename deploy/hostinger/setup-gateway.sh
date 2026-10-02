@@ -40,6 +40,12 @@ if not econ:
     sys.exit("No usable models yet: connect at least one provider in the gateway first.")
 st, cur = call("GET", "/api/combos", man)
 if st in (401, 403):
+    st2, cur2 = call("GET", "/api/combos", inf)
+    if st2 == 200:
+        open("/tmp/.firbo-swap", "w").write("1")
+        print("The two keys were saved the wrong way round (the inference key has manage access). Fixing .env.")
+        inf, man, st, cur = man, inf, st2, cur2
+if st in (401, 403):
     sys.exit("The management key was rejected. In the gateway: API Keys -> open firbo-manage -> turn ON the scope \"manage\" -> Save. Then run ./set-gateway-keys.sh --show again only if you made a new key, and ./setup-gateway.sh.")
 existing = {c["name"]: c.get("id") for c in cur.get("combos", [])} if st == 200 else {}
 for name, models, desc in (("firbo-economy", econ, "Firbo: free models first, cheap paid last"), ("firbo-quality", qual or econ, "Firbo: best model first")):
@@ -48,3 +54,12 @@ for name, models, desc in (("firbo-economy", econ, "Firbo: free models first, ch
     st, out = call("POST", "/api/combos", man, {"name": name, "description": desc, "models": models, "strategy": "priority"})
     print(f"{name}: {'created' if st in (200, 201) else 'FAILED ' + str(st) + ' ' + str(out)}  ({len(models)} models)")
 PY
+if [ -f /tmp/.firbo-swap ]; then
+  rm -f /tmp/.firbo-swap
+  setv() { if grep -qE "^$1=" .env; then sed -i "s|^$1=.*|$1=$2|" .env; else printf '%s=%s\n' "$1" "$2" >> .env; fi; }
+  setv OMNIROUTE_API_KEY "$MAN"
+  setv OMNIROUTE_MANAGEMENT_KEY "$INF"
+  chmod 600 .env
+  echo "Keys swapped in .env. Restarting the API..."
+  docker compose up -d firbo-api >/dev/null 2>&1 || true
+fi
