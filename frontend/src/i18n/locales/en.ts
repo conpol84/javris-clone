@@ -842,6 +842,10 @@ export const en = {
   "comp.jobErr.declined_on_this_computer": "The person at the computer said no.",
   "comp.jobErr.no_folder_allowed": "No folder is allowed on that computer yet.",
   "comp.jobErr.file_exists": "The file already exists.",
+  "drawer.tier": "Cost level",
+  "drawer.tier.economy": "Economy (free models first)",
+  "drawer.tier.quality": "Quality (best model first)",
+  "drawer.tier.auto": "Default",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

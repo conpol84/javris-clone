@@ -834,6 +834,10 @@ const fr: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "La personne à l’ordinateur a refusé.",
   "comp.jobErr.no_folder_allowed": "Aucun dossier n’est encore autorisé sur cet ordinateur.",
   "comp.jobErr.file_exists": "Le fichier existe déjà.",
+  "drawer.tier": "Niveau de coût",
+  "drawer.tier.economy": "Économique (modèles gratuits d’abord)",
+  "drawer.tier.quality": "Qualité (meilleur modèle d’abord)",
+  "drawer.tier.auto": "Par défaut",
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

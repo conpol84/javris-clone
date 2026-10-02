@@ -839,6 +839,10 @@ const ar: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "رفض الشخص على الحاسوب.",
   "comp.jobErr.no_folder_allowed": "لم يُسمح بأي مجلد على ذلك الحاسوب بعد.",
   "comp.jobErr.file_exists": "الملف موجود بالفعل.",
+  "drawer.tier": "مستوى التكلفة",
+  "drawer.tier.economy": "اقتصادي (النماذج المجانية أولاً)",
+  "drawer.tier.quality": "جودة (أفضل نموذج أولاً)",
+  "drawer.tier.auto": "افتراضي",
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

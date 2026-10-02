@@ -835,6 +835,10 @@ const zhCN: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "电脑前的人拒绝了。",
   "comp.jobErr.no_folder_allowed": "该电脑尚未允许任何文件夹。",
   "comp.jobErr.file_exists": "文件已存在。",
+  "drawer.tier": "成本级别",
+  "drawer.tier.economy": "经济（优先免费模型）",
+  "drawer.tier.quality": "质量（优先最佳模型）",
+  "drawer.tier.auto": "默认",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

@@ -834,6 +834,10 @@ const ptBR: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "A pessoa no computador disse não.",
   "comp.jobErr.no_folder_allowed": "Nenhuma pasta foi permitida nesse computador ainda.",
   "comp.jobErr.file_exists": "O arquivo já existe.",
+  "drawer.tier": "Nível de custo",
+  "drawer.tier.economy": "Econômico (modelos gratuitos primeiro)",
+  "drawer.tier.quality": "Qualidade (melhor modelo primeiro)",
+  "drawer.tier.auto": "Padrão",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

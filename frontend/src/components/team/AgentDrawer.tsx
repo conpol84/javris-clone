@@ -135,6 +135,21 @@ export function AgentDrawer({
       )}
 
       <div className="fb-eyebrow mb-2 mt-5">{t('drawer.model')}</div>
+      <div className="mb-2 flex flex-wrap gap-2" role="group" aria-label={t('drawer.tier')}>
+        {(['omniroute:firbo-economy', 'omniroute:firbo-quality', 'auto'] as const).map((v) => (
+          <button
+            key={v}
+            type="button"
+            className="fb-chip cursor-pointer"
+            disabled={!canManage}
+            aria-pressed={model === v}
+            style={model === v ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}
+            onClick={() => (setModel(v), void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved')))}
+          >
+            {t(v === 'auto' ? 'drawer.tier.auto' : v.endsWith('economy') ? 'drawer.tier.economy' : 'drawer.tier.quality')}
+          </button>
+        ))}
+      </div>
       <div className="flex gap-2">
         <input
           className="fb-input font-mono text-xs"
@@ -147,7 +162,7 @@ export function AgentDrawer({
           onKeyDown={(e) => e.key === 'Enter' && saveModel()}
         />
         <datalist id={`models-${agent.id}`}>
-          {['auto', 'openai:', 'anthropic:claude-sonnet-5-5', 'anthropic:claude-opus-5-5', 'anthropic:claude-haiku-4-5-20251001', 'kimi:', 'glm:', 'mimo:'].map((m) => (
+          {['auto', 'omniroute:firbo-economy', 'omniroute:firbo-quality', 'openai:', 'anthropic:claude-sonnet-5-5', 'anthropic:claude-opus-5-5', 'anthropic:claude-haiku-4-5-20251001', 'kimi:', 'glm:', 'mimo:'].map((m) => (
             <option key={m} value={m} />
           ))}
         </datalist>

@@ -834,6 +834,10 @@ const el: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "Ο άνθρωπος στον υπολογιστή είπε όχι.",
   "comp.jobErr.no_folder_allowed": "Δεν έχει επιτραπεί ακόμα κανένας φάκελος σε εκείνον τον υπολογιστή.",
   "comp.jobErr.file_exists": "Το αρχείο υπάρχει ήδη.",
+  "drawer.tier": "Επίπεδο κόστους",
+  "drawer.tier.economy": "Οικονομικό (πρώτα δωρεάν μοντέλα)",
+  "drawer.tier.quality": "Ποιότητα (πρώτα το καλύτερο μοντέλο)",
+  "drawer.tier.auto": "Προεπιλογή",
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

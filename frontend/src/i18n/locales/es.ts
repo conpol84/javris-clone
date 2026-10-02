@@ -834,6 +834,10 @@ const es: Dictionary = {
   "comp.jobErr.declined_on_this_computer": "La persona en el ordenador dijo que no.",
   "comp.jobErr.no_folder_allowed": "Aún no se permite ninguna carpeta en ese ordenador.",
   "comp.jobErr.file_exists": "El archivo ya existe.",
+  "drawer.tier": "Nivel de coste",
+  "drawer.tier.economy": "Económico (primero modelos gratuitos)",
+  "drawer.tier.quality": "Calidad (primero el mejor modelo)",
+  "drawer.tier.auto": "Predeterminado",
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',
