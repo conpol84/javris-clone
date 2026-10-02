@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { Plug, Send, Trash2 } from 'lucide-react';
+import { BarChart3, Plug, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, startOAuth, testIntegration,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, snapshotIntegration, startOAuth, testIntegration,
   type IntegrationKind, type IntegrationRow,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
@@ -114,6 +114,19 @@ export function IntegrationsPage() {
     }
   };
 
+  const peek = async (r: IntegrationRow) => {
+    setBusy(r.id);
+    try {
+      const { text } = await snapshotIntegration(r.id);
+      toast.message(r.name, { description: text, duration: 15000 });
+    } catch (err) {
+      toast.error(errText(err));
+    } finally {
+      setBusy(null);
+      await reload();
+    }
+  };
+
   const remove = async (r: IntegrationRow) => {
     if (!window.confirm(t('int.confirmDisconnect', { app: r.name }))) return;
     setBusy(r.id);
@@ -165,6 +178,11 @@ export function IntegrationsPage() {
                       <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void test(r)}>
                         <Send size={13} /> {busy === r.id ? t('common.loading') : t('int.test')}
                       </button>
+                      {LIVE_APPS.find((a) => a.kind === r.kind)?.readOnly && (
+                        <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void peek(r)}>
+                          <BarChart3 size={13} /> {t('int.snapshot')}
+                        </button>
+                      )}
                       <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 10px' }} disabled={busy !== null} aria-label={t('int.disconnect')} title={t('int.disconnect')} onClick={() => void remove(r)}>
                         <Trash2 size={14} />
                       </button>

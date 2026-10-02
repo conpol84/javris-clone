@@ -5,9 +5,11 @@ export type IntegrationKind =
   | 'slack' | 'discord' | 'telegram' | 'webhook' | 'teams' | 'googlechat' | 'mattermost' | 'ntfy' | 'pushover' | 'whatsapp'
   | 'twilio' | 'resend' | 'sendgrid' | 'notion' | 'airtable' | 'linear' | 'github' | 'mastodon'
   | 'hubspot' | 'pipedrive' | 'asana' | 'trello' | 'clickup' | 'jira' | 'zendesk' | 'zoom' | 'wordpress' | 'bluesky' | 'facebook' | 'x'
+  | 'threads' | 'instagram' | 'devto' | 'matrix' | 'zulip' | 'rocketchat' | 'todoist' | 'monday' | 'homeassistant' | 'ifttt' | 'brevo' | 'mailchimp'
+  | 'stripe' | 'shopify' | 'woocommerce' | 'lemonsqueezy' | 'gumroad' | 'calendly' | 'calcom' | 'intercom'
   | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox';
 
-export type IntegrationCategory = 'messaging' | 'email' | 'work' | 'crm' | 'productivity' | 'social' | 'automation';
+export type IntegrationCategory = 'messaging' | 'email' | 'work' | 'crm' | 'productivity' | 'social' | 'automation' | 'commerce';
 
 export interface IntegrationRow {
   id: string;
@@ -42,6 +44,8 @@ export interface LiveApp {
   /** English text for apps added without translation keys. */
   about?: string;
   help?: string;
+  /** Data apps only look: they can show a summary, never post or change anything. */
+  readOnly?: boolean;
 }
 
 const f = (key: string, placeholder: string, secret = false, label?: string, optional = false): FieldDef => ({ key, placeholder, secret, label, optional });
@@ -79,6 +83,27 @@ export const LIVE_APPS: LiveApp[] = [
   { kind: 'bluesky', name: 'Bluesky', color: '#1185fe', cat: 'social', fields: [f('handle', 'name.bsky.social', false, 'Handle'), f('app_password', 'xxxx-xxxx-xxxx-xxxx', true, 'App password')], about: 'Posts to Bluesky.', help: 'In Bluesky open Settings → Privacy and security → App passwords and create one. Never use your main password.' },
   { kind: 'x', name: 'X (Twitter)', color: '#e5e7eb', cat: 'social', fields: [f('api_key', '…', false, 'API key'), f('api_secret', '…', true, 'API key secret'), f('access_token', '…', false, 'Access token'), f('access_token_secret', '…', true, 'Access token secret')], about: 'Posts to X.', help: 'Create a project and app at developer.x.com, set its permissions to Read and write, then generate the four keys. Posting needs an X API plan that allows writing; check your plan there.' },
   { kind: 'facebook', name: 'Facebook Pages', color: '#1877f2', cat: 'social', fields: [f('page_id', '1234567890', false, 'Page ID'), f('page_token', 'EAAG…', true, 'Page access token')], about: 'Posts to a Facebook Page.', help: 'In Meta for Developers create an app, get a long-lived Page access token with the pages_manage_posts permission, and enter the Page ID.' },
+  // ---- new and trending
+  { kind: 'threads', name: 'Threads', color: '#e5e7eb', cat: 'social', fields: [f('user_id', '1784…', false, 'Threads user ID'), f('access_token', 'THQW…', true, 'Access token')], about: 'Posts text to Threads.', help: 'In Meta for Developers create an app with the Threads API, add yourself as a tester, generate a long-lived token with threads_content_publish and copy your Threads user ID.' },
+  { kind: 'instagram', name: 'Instagram', color: '#e1306c', cat: 'social', fields: [f('ig_user_id', '1784…', false, 'Instagram account ID'), f('access_token', 'EAAG…', true, 'Access token')], about: 'Posts a picture with a caption. Include an image link (https …jpg or png) in the text.', help: 'Needs an Instagram Business or Creator account linked to a Facebook Page and a Meta app token with instagram_content_publish. Every post must contain a public image link.' },
+  { kind: 'devto', name: 'DEV Community', color: '#e5e7eb', cat: 'social', fields: [f('api_key', '…', true, 'API key')], about: 'Saves an article draft on DEV. A person publishes it.', help: 'On dev.to open Settings → Extensions → DEV Community API Keys and generate a key. Articles are always saved as drafts.' },
+  { kind: 'matrix', name: 'Matrix', color: '#0dbd8b', cat: 'messaging', fields: [f('homeserver', 'https://matrix.org', false, 'Homeserver'), f('access_token', 'syt_…', true, 'Access token'), f('room_id', '!abc123:matrix.org', false, 'Room ID')], about: 'Sends messages to a Matrix room (Element and others).', help: 'In Element open Settings → Help & About → Advanced → Access Token. The room ID is under Room settings → Advanced.' },
+  { kind: 'zulip', name: 'Zulip', color: '#52c2af', cat: 'messaging', fields: [f('site', 'https://yourorg.zulipchat.com', false, 'Zulip address'), f('email', 'bot@yourorg.zulipchat.com', false, 'Bot email'), f('api_key', '…', true, 'Bot API key'), f('stream', 'general', false, 'Stream'), f('topic', 'Firbo AI', false, 'Topic', true)], about: 'Posts to a Zulip stream.', help: 'In Zulip create a generic bot (Settings → Bots) and copy its email and API key.' },
+  { kind: 'rocketchat', name: 'Rocket.Chat', color: '#f5455c', cat: 'messaging', fields: [f('webhook_url', 'https://chat.example.com/hooks/…', true, 'Incoming webhook URL')], about: 'Sends messages to a Rocket.Chat channel.', help: 'In Rocket.Chat administration create an Incoming Integration (webhook) and paste its URL.' },
+  { kind: 'todoist', name: 'Todoist', color: '#e44332', cat: 'work', fields: [f('token', '40 characters', true, 'API token')], about: 'Creates a Todoist task.', help: 'In Todoist open Settings → Integrations → Developer and copy your API token.' },
+  { kind: 'monday', name: 'monday.com', color: '#ff3d57', cat: 'work', fields: [f('token', 'eyJ…', true, 'API token'), f('board_id', '1234567890', false, 'Board ID')], about: 'Adds an item to a monday.com board.', help: 'Open your avatar → Developers → My access tokens. The board ID is the number in the board’s address.' },
+  { kind: 'homeassistant', name: 'Home Assistant', color: '#18bcf2', cat: 'automation', fields: [f('base_url', 'https://home.example.com', false, 'Address (https)'), f('token', 'eyJ…', true, 'Long-lived token'), f('notify_service', 'mobile_app_my_phone', false, 'Notify service')], about: 'Sends a notification to your phone through your smart home.', help: 'Home Assistant must be reachable over public https (for example through Nabu Casa). Create a long-lived access token on your profile page; the notify service is shown under Developer tools → Actions.' },
+  { kind: 'ifttt', name: 'IFTTT', color: '#e5e7eb', cat: 'automation', fields: [f('key', '…', true, 'Webhooks key'), f('event', 'firbo', false, 'Event name')], about: 'Triggers an IFTTT applet with a message from your AI team.', help: 'Enable the Webhooks service on ifttt.com, copy your key from its settings and use the event name of your applet.' },
+  { kind: 'mailchimp', name: 'Mailchimp', color: '#ffe01b', cat: 'email', fields: [f('api_key', '…-us21', true, 'API key'), f('list_id', 'a1b2c3d4e5', false, 'Audience ID')], about: 'Adds an email address from an approved action to your audience (the person confirms by email).', help: 'Create an API key under Account → Extras → API keys. The audience ID is under Audience → Settings → Audience name and defaults.' },
+  { kind: 'brevo', name: 'Email (Brevo)', color: '#0b996e', cat: 'email', fields: [f('api_key', 'xkeysib-…', true, 'API key'), f('from', 'hello@yourdomain.com', false, 'From (verified sender)'), f('to', 'you@example.com', false, 'Send to')], about: 'Sends email through Brevo when you approve an action.', help: 'Create an API key under SMTP & API, and verify your sender address in Brevo first.' },
+  { kind: 'stripe', name: 'Stripe', color: '#635bff', cat: 'commerce', readOnly: true, fields: [f('key', 'rk_live_…', true, 'Restricted API key')], about: 'Shows revenue and balance to your agents. Read-only.', help: 'In Stripe open Developers → API keys → Create restricted key and give it Read access only to Balance and Charges. Never paste a full secret key.' },
+  { kind: 'shopify', name: 'Shopify', color: '#95bf47', cat: 'commerce', readOnly: true, fields: [f('shop', 'my-shop.myshopify.com', false, 'Store address'), f('token', 'shpat_…', true, 'Admin API access token')], about: 'Shows orders and sales to your agents. Read-only.', help: 'In your Shopify admin open Settings → Apps and sales channels → Develop apps, create an app with read_orders access and install it to get the access token.' },
+  { kind: 'woocommerce', name: 'WooCommerce', color: '#96588a', cat: 'commerce', readOnly: true, fields: [f('site_url', 'https://yourstore.com', false, 'Store address'), f('consumer_key', 'ck_…', false, 'Consumer key'), f('consumer_secret', 'cs_…', true, 'Consumer secret')], about: 'Shows orders and sales to your agents. Read-only.', help: 'In WordPress open WooCommerce → Settings → Advanced → REST API, add a key with Read permission.' },
+  { kind: 'lemonsqueezy', name: 'Lemon Squeezy', color: '#ffc233', cat: 'commerce', readOnly: true, fields: [f('api_key', 'eyJ…', true, 'API key')], about: 'Shows latest orders to your agents. Read-only.', help: 'In Lemon Squeezy open Settings → API and create a key.' },
+  { kind: 'gumroad', name: 'Gumroad', color: '#ff90e8', cat: 'commerce', readOnly: true, fields: [f('access_token', '…', true, 'Access token')], about: 'Shows latest sales to your agents. Read-only.', help: 'On gumroad.com open Settings → Advanced → Applications, create an application and generate an access token.' },
+  { kind: 'calendly', name: 'Calendly', color: '#006bff', cat: 'productivity', readOnly: true, fields: [f('token', 'eyJ…', true, 'Personal access token')], about: 'Shows your upcoming meetings to your agents. Read-only.', help: 'In Calendly open Integrations → API & Webhooks and generate a personal access token.' },
+  { kind: 'calcom', name: 'Cal.com', color: '#e5e7eb', cat: 'productivity', readOnly: true, fields: [f('api_key', 'cal_live_…', true, 'API key')], about: 'Shows your bookings to your agents. Read-only.', help: 'In Cal.com open Settings → Developer → API keys and create a key.' },
+  { kind: 'intercom', name: 'Intercom', color: '#286efa', cat: 'crm', readOnly: true, fields: [f('token', '…', true, 'Access token')], about: 'Shows open customer conversations to your agents. Read-only.', help: 'In Intercom Developer Hub create an app and copy its access token (read access to conversations is enough). US region workspaces only.' },
   { kind: 'zapier', name: 'Zapier', color: '#ff4f00', cat: 'automation', fields: [f('webhook_url', 'https://hooks.zapier.com/hooks/catch/…', true, 'Catch Hook URL')], about: 'Starts a Zap with a message from your AI team.', help: 'In Zapier start a Zap with the Webhooks trigger “Catch Hook” and paste its URL here.' },
   { kind: 'make', name: 'Make', color: '#6d00cc', cat: 'automation', fields: [f('webhook_url', 'https://hook.eu1.make.com/…', true, 'Webhook URL')], about: 'Starts a Make scenario with a message from your AI team.', help: 'In Make add a Custom webhook module to a scenario and paste its address here.' },
   { kind: 'n8n', name: 'n8n', color: '#ea4b71', cat: 'automation', fields: [f('webhook_url', 'https://n8n.example.com/webhook/…', true, 'Webhook URL')], about: 'Starts an n8n workflow with a message from your AI team.', help: 'Add a Webhook node (POST) to a workflow and paste its production URL here.' },
@@ -92,24 +117,17 @@ export const LIVE_APPS: LiveApp[] = [
   { kind: 'webhook', name: 'Webhook', color: '#34d399', cat: 'automation', fields: [f('url', 'https://hooks.example.com/…', true)] },
 ];
 
-export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'productivity', 'work', 'crm', 'social', 'automation'];
+export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'productivity', 'work', 'crm', 'social', 'commerce', 'automation'];
 
 /** Still planned, and honest about why: each needs either a platform review or a different kind of connection. */
 export const PLANNED_APPS: { id: string; name: string; color: string; reason: string }[] = [
-  ['instagram', 'Instagram', '#e1306c', 'Posting needs a Meta business app review and an image for every post.'],
   ['tiktok', 'TikTok', '#25f4ee', 'Posting needs TikTok’s content API audit and a video for every post.'],
   ['youtube', 'YouTube', '#ff0000', 'Publishing needs a video file and Google’s API audit.'],
   ['salesforce', 'Salesforce', '#00a1e0', 'Needs a Salesforce connected app per customer org.'],
   ['quickbooks', 'QuickBooks', '#2ca01c', 'Needs an Intuit app review; it will be a read-only data app first.'],
-  ['shopify', 'Shopify', '#95bf47', 'Data app: reading orders and products for your agents.'],
-  ['stripe', 'Stripe', '#635bff', 'Data app: reading revenue and customers for your agents.'],
-  ['woocommerce', 'WooCommerce', '#96588a', 'Data app: reading orders and products for your agents.'],
-  ['calendly', 'Calendly', '#006bff', 'Data app: reading your bookings.'],
-  ['mailchimp', 'Mailchimp', '#ffe01b', 'Needs audience and campaign mapping.'],
-  ['intercom', 'Intercom', '#286efa', 'Needs contact mapping for conversations.'],
 ].map(([id, name, color, reason]) => ({ id, name, color, reason }));
 
-export type IntegrationErrorCode = 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'unknown';
+export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'unknown';
 
 export class IntegrationError extends Error {
   constructor(public code: IntegrationErrorCode, public detail?: { provider?: string; redirect_uri?: string }) {
@@ -117,7 +135,7 @@ export class IntegrationError extends Error {
   }
 }
 
-const KNOWN: IntegrationErrorCode[] = ['invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured'];
+const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured'];
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
   const { data, error } = await requireClient().functions.invoke('integrations', { body });
@@ -152,6 +170,7 @@ export const connectIntegration = (organization_id: string, kind: IntegrationKin
   call<{ integration: IntegrationRow }>({ action: 'connect', organization_id, kind, name, fields });
 export const testIntegration = (id: string) => call<{ ok: true }>({ action: 'test', id });
 export const sendIntegration = (id: string, text: string) => call<{ ok: true }>({ action: 'send', id, text });
+export const snapshotIntegration = (id: string) => call<{ text: string }>({ action: 'snapshot', id });
 export const disconnectIntegration = (id: string) => call<{ ok: true }>({ action: 'disconnect', id });
 
 /** Starts the provider's sign-in; the browser is sent to the returned address and comes back to /integrations. */

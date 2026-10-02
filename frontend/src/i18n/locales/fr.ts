@@ -969,6 +969,9 @@ const fr: Dictionary = {
   'panel.restore': 'Restaurer',
   'panel.maximize': 'Agrandir',
   'panel.close': 'Fermer',
+  'int.cat.commerce': 'Commerce et paiements',
+  'int.err.read_only': 'Cette application est en lecture seule.',
+  'int.snapshot': 'Afficher les données',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

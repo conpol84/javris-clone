@@ -969,6 +969,9 @@ const de: Dictionary = {
   'panel.restore': 'Wiederherstellen',
   'panel.maximize': 'Maximieren',
   'panel.close': 'Schließen',
+  'int.cat.commerce': 'Handel & Zahlungen',
+  'int.err.read_only': 'Diese App ist nur lesend.',
+  'int.snapshot': 'Daten anzeigen',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

@@ -49,6 +49,9 @@ interface Provider {
   /** Read-only credential check (work tools). */
   verify?(s: Record<string, string>, c: Record<string, unknown>): Promise<void>;
   send(s: Record<string, string>, c: Record<string, unknown>, text: string): Promise<void>;
+  /** Data apps (shops, payments, bookings): never write, only summarise what the agents may look at. */
+  readOnly?: boolean;
+  read?(s: Record<string, string>, c: Record<string, unknown>): Promise<string>;
 }
 
 const webhookProvider = (check: (u: URL) => boolean, payload: (t: string) => unknown): Provider => ({
@@ -378,6 +381,308 @@ const PROVIDERS: Record<string, Provider> = {
   n8n: webhookProvider((u) => u.pathname.includes('/webhook'), (t) => ({ source: 'firbo-ai', text: t.slice(0, 3500) })),
 
   // ---- CRM and work tools: paste a token, Firbo creates the record when you approve an action
+  // ---- new and trending apps
+  threads: {
+    messaging: false,
+    parse: (f) => {
+      const id = str(f.user_id, 30);
+      const token = str(f.access_token, 400);
+      return /^\d{5,25}$/.test(id) && token.length >= 20 ? { secret: { token }, config: { user_id: id } } : null;
+    },
+    verify: async (s) => ok(await fetch('https://graph.threads.net/v1.0/me?fields=id', { headers: bearer(s.token), signal: sig() })),
+    send: async (s, c, t) => {
+      const make = await fetch(`https://graph.threads.net/v1.0/${c.user_id}/threads`, { method: 'POST', headers: { ...bearer(s.token), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ media_type: 'TEXT', text: t.slice(0, 480) }), signal: sig() });
+      await ok(make);
+      const { id } = await make.json();
+      await ok(await fetch(`https://graph.threads.net/v1.0/${c.user_id}/threads_publish`, { method: 'POST', headers: { ...bearer(s.token), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ creation_id: String(id) }), signal: sig() }));
+    },
+  },
+  instagram: {
+    messaging: false,
+    parse: (f) => {
+      const id = str(f.ig_user_id, 30);
+      const token = str(f.access_token, 500);
+      return /^\d{5,25}$/.test(id) && token.length >= 20 ? { secret: { token }, config: { ig_user_id: id } } : null;
+    },
+    verify: async (s, c) => ok(await fetch(`https://graph.facebook.com/v21.0/${c.ig_user_id}?fields=username`, { headers: bearer(s.token), signal: sig() })),
+    send: async (s, c, t) => {
+      const img = t.match(/https:\/\/[^\s]+\.(?:jpe?g|png)(?:\?[^\s]*)?/i)?.[0];
+      if (!img) throw new Error('image_required');
+      const caption = t.replace(img, '').trim().slice(0, 2000);
+      const make = await fetch(`https://graph.facebook.com/v21.0/${c.ig_user_id}/media`, { method: 'POST', headers: { ...bearer(s.token), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ image_url: img, caption }), signal: sig() });
+      await ok(make);
+      const { id } = await make.json();
+      await ok(await fetch(`https://graph.facebook.com/v21.0/${c.ig_user_id}/media_publish`, { method: 'POST', headers: { ...bearer(s.token), 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ creation_id: String(id) }), signal: sig() }));
+    },
+  },
+  devto: {
+    messaging: false,
+    parse: (f) => {
+      const key = str(f.api_key, 80);
+      return /^[A-Za-z0-9]{20,60}$/.test(key) ? { secret: { key }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch('https://dev.to/api/users/me', { headers: { 'api-key': s.key, accept: 'application/vnd.forem.api-v1+json' }, signal: sig() })),
+    send: async (s, _c, t) =>
+      await ok(await fetch('https://dev.to/api/articles', { method: 'POST', headers: { ...J, 'api-key': s.key, accept: 'application/vnd.forem.api-v1+json' }, body: JSON.stringify({ article: { title: firstLine(t, 120) || 'Firbo AI', body_markdown: t.slice(0, 50000), published: false } }), signal: sig() })),
+  },
+  matrix: {
+    messaging: true,
+    parse: (f) => {
+      const u = publicHttps(f.homeserver);
+      const token = str(f.access_token, 300);
+      const room = str(f.room_id, 120);
+      if (!u || token.length < 10 || !/^![^\s:]+:[A-Za-z0-9.-]+$/.test(room)) return null;
+      return { secret: { token }, config: { host: u.origin, room_id: room } };
+    },
+    send: async (s, c, t) =>
+      await ok(await fetch(`${c.host}/_matrix/client/v3/rooms/${encodeURIComponent(String(c.room_id))}/send/m.room.message/${crypto.randomUUID()}`, { method: 'PUT', headers: { ...J, ...bearer(s.token) }, body: JSON.stringify({ msgtype: 'm.text', body: t.slice(0, 3500) }), signal: sig(), redirect: 'error' })),
+  },
+  zulip: {
+    messaging: true,
+    parse: (f) => {
+      const u = publicHttps(f.site);
+      const email = str(f.email, 120);
+      const key = str(f.api_key, 80);
+      const stream = str(f.stream, 60);
+      const topic = str(f.topic, 60) || 'Firbo AI';
+      if (!u || !/^[^\s@]+@[^\s@]+$/.test(email) || key.length < 20 || !stream) return null;
+      return { secret: { key }, config: { host: u.origin, email, stream, topic } };
+    },
+    send: async (s, c, t) =>
+      await ok(await fetch(`${c.host}/api/v1/messages`, { method: 'POST', headers: { authorization: `Basic ${b64(`${c.email}:${s.key}`)}`, 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ type: 'stream', to: String(c.stream), topic: String(c.topic), content: t.slice(0, 9000) }), signal: sig(), redirect: 'error' })),
+  },
+  rocketchat: webhookProvider((u) => u.pathname.includes('/hooks/'), (t) => ({ text: t.slice(0, 3500) })),
+  todoist: {
+    messaging: false,
+    parse: (f) => {
+      const token = str(f.token, 80);
+      return /^[a-f0-9]{40}$/i.test(token) ? { secret: { token }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.todoist.com/rest/v2/projects', { headers: bearer(s.token), signal: sig() })),
+    send: async (s, _c, t) =>
+      await ok(await fetch('https://api.todoist.com/rest/v2/tasks', { method: 'POST', headers: { ...J, ...bearer(s.token) }, body: JSON.stringify({ content: firstLine(t, 200) || 'Firbo AI', description: t.slice(0, 16000) }), signal: sig() })),
+  },
+  monday: {
+    messaging: false,
+    parse: (f) => {
+      const token = str(f.token, 600);
+      const board = str(f.board_id, 20);
+      return token.length >= 30 && /^\d{5,18}$/.test(board) ? { secret: { token }, config: { board_id: board } } : null;
+    },
+    verify: async (s) => {
+      const r = await fetch('https://api.monday.com/v2', { method: 'POST', headers: { ...J, authorization: s.token }, body: JSON.stringify({ query: '{ me { id } }' }), signal: sig() });
+      await ok(r);
+      if ((await r.json()).errors) throw new Error('auth');
+    },
+    send: async (s, c, t) => {
+      const r = await fetch('https://api.monday.com/v2', { method: 'POST', headers: { ...J, authorization: s.token }, body: JSON.stringify({ query: 'mutation($b: ID!, $n: String!) { create_item(board_id: $b, item_name: $n) { id } }', variables: { b: c.board_id, n: firstLine(t, 200) || 'Firbo AI' } }), signal: sig() });
+      await ok(r);
+      if ((await r.json()).errors) throw new Error('monday');
+    },
+  },
+  homeassistant: {
+    messaging: true,
+    parse: (f) => {
+      const u = publicHttps(f.base_url);
+      const token = str(f.token, 400);
+      const svc = str(f.notify_service, 80).replace(/^notify\./, '');
+      if (!u || token.length < 30 || !/^[a-z0-9_]{2,80}$/.test(svc)) return null;
+      return { secret: { token }, config: { host: u.origin, service: svc } };
+    },
+    send: async (s, c, t) =>
+      await ok(await fetch(`${c.host}/api/services/notify/${c.service}`, { method: 'POST', headers: { ...J, ...bearer(s.token) }, body: JSON.stringify({ title: 'Firbo AI', message: t.slice(0, 1000) }), signal: sig(), redirect: 'error' })),
+  },
+  ifttt: {
+    messaging: true,
+    parse: (f) => {
+      const key = str(f.key, 60);
+      const event = str(f.event, 60);
+      return /^[A-Za-z0-9_-]{15,60}$/.test(key) && /^[A-Za-z0-9_-]{1,60}$/.test(event) ? { secret: { key }, config: { event } } : null;
+    },
+    send: async (s, c, t) => ok(await fetch(`https://maker.ifttt.com/trigger/${c.event}/with/key/${s.key}`, { method: 'POST', headers: J, body: JSON.stringify({ value1: t.slice(0, 1500) }), signal: sig() })),
+  },
+  brevo: {
+    messaging: false,
+    parse: (f) => {
+      const key = str(f.api_key, 120);
+      const from = str(f.from, 120);
+      const to = str(f.to, 120);
+      return key.length >= 30 && /^[^\s@]+@[^\s@]+$/.test(from) && /^[^\s@]+@[^\s@]+$/.test(to) ? { secret: { key }, config: { from, to } } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.brevo.com/v3/account', { headers: { 'api-key': s.key }, signal: sig() })),
+    send: async (s, c, t) =>
+      await ok(await fetch('https://api.brevo.com/v3/smtp/email', { method: 'POST', headers: { ...J, 'api-key': s.key }, body: JSON.stringify({ sender: { email: c.from }, to: [{ email: c.to }], subject: firstLine(t, 150) || 'Firbo AI', textContent: t.slice(0, 20000) }), signal: sig() })),
+  },
+  mailchimp: {
+    messaging: false,
+    parse: (f) => {
+      const key = str(f.api_key, 80);
+      const list = str(f.list_id, 20);
+      const dc = key.split('-')[1] ?? '';
+      return /^[a-f0-9]{32}-[a-z]{2}\d{1,2}$/.test(key) && /^[a-f0-9]{8,12}$/i.test(list) ? { secret: { key }, config: { dc, list_id: list } } : null;
+    },
+    verify: async (s, c) => ok(await fetch(`https://${c.dc}.api.mailchimp.com/3.0/lists/${c.list_id}`, { headers: { authorization: `Basic ${b64(`firbo:${s.key}`)}` }, signal: sig() })),
+    // Adds the first email address found in the text as a pending contact: the person confirms by email (double opt-in).
+    send: async (s, c, t) => {
+      const email = t.match(/[^\s@<>(),;]+@[^\s@<>(),;]+\.[^\s@<>(),;]+/)?.[0];
+      if (!email) throw new Error('email_required');
+      const r = await fetch(`https://${c.dc}.api.mailchimp.com/3.0/lists/${c.list_id}/members`, { method: 'POST', headers: { ...J, authorization: `Basic ${b64(`firbo:${s.key}`)}` }, body: JSON.stringify({ email_address: email, status: 'pending' }), signal: sig() });
+      if (r.status === 400 && (await r.text()).includes('Member Exists')) return;
+      await ok(r);
+    },
+  },
+  stripe: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const key = str(f.key, 200);
+      return /^(rk|sk)_(live|test)_[A-Za-z0-9]{20,}$/.test(key) ? { secret: { key }, config: { mode: key.includes('_test_') ? 'test' : 'live' } } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.stripe.com/v1/balance', { headers: bearer(s.key), signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const bal = await (await fetch('https://api.stripe.com/v1/balance', { headers: bearer(s.key), signal: sig() })).json();
+      const since = Math.floor(Date.now() / 1000) - 7 * 86400;
+      const ch = await (await fetch(`https://api.stripe.com/v1/charges?limit=100&created[gte]=${since}`, { headers: bearer(s.key), signal: sig() })).json();
+      const paid = (ch.data ?? []).filter((x: { paid: boolean; refunded: boolean }) => x.paid && !x.refunded);
+      const cur = String(paid[0]?.currency ?? bal.available?.[0]?.currency ?? 'usd').toUpperCase();
+      const sum = paid.reduce((a: number, x: { amount: number }) => a + x.amount, 0) / 100;
+      const avail = (bal.available ?? []).reduce((a: number, x: { amount: number }) => a + x.amount, 0) / 100;
+      return `Stripe, last 7 days: ${paid.length} paid charges, ${sum.toFixed(2)} ${cur}. Available balance: ${avail.toFixed(2)} ${cur}.`;
+    },
+  },
+  shopify: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const shop = str(f.shop, 80).toLowerCase().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+      const token = str(f.token, 120);
+      return /^[a-z0-9][a-z0-9-]{1,60}\.myshopify\.com$/.test(shop) && /^shp[a-z]{2}_[A-Za-z0-9]{20,}$/.test(token) ? { secret: { token }, config: { shop } } : null;
+    },
+    verify: async (s, c) => ok(await fetch(`https://${c.shop}/admin/api/2024-10/shop.json`, { headers: { 'x-shopify-access-token': s.token }, signal: sig(), redirect: 'error' })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s, c) => {
+      const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+      const r = await (await fetch(`https://${c.shop}/admin/api/2024-10/orders.json?status=any&limit=250&created_at_min=${since}&fields=total_price,currency`, { headers: { 'x-shopify-access-token': s.token }, signal: sig(), redirect: 'error' })).json();
+      const orders = r.orders ?? [];
+      const sum = orders.reduce((a: number, o: { total_price: string }) => a + Number(o.total_price), 0);
+      return `Shopify ${c.shop}, last 7 days: ${orders.length} orders, ${sum.toFixed(2)} ${orders[0]?.currency ?? ''}.`;
+    },
+  },
+  woocommerce: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const u = publicHttps(f.site_url);
+      const ck = str(f.consumer_key, 80);
+      const cs = str(f.consumer_secret, 80);
+      return u && /^ck_[a-f0-9]{20,}$/i.test(ck) && /^cs_[a-f0-9]{20,}$/i.test(cs) ? { secret: { ck, cs }, config: { host: u.origin } } : null;
+    },
+    verify: async (s, c) => ok(await fetch(`${c.host}/wp-json/wc/v3/orders?per_page=1`, { headers: { authorization: `Basic ${b64(`${s.ck}:${s.cs}`)}` }, signal: sig(), redirect: 'error' })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s, c) => {
+      const since = new Date(Date.now() - 7 * 86400_000).toISOString();
+      const r = await (await fetch(`${c.host}/wp-json/wc/v3/orders?per_page=100&after=${since}`, { headers: { authorization: `Basic ${b64(`${s.ck}:${s.cs}`)}` }, signal: sig(), redirect: 'error' })).json();
+      const list = Array.isArray(r) ? r : [];
+      const sum = list.reduce((a: number, o: { total: string }) => a + Number(o.total), 0);
+      return `WooCommerce, last 7 days: ${list.length} orders, ${sum.toFixed(2)} ${list[0]?.currency ?? ''}.`;
+    },
+  },
+  lemonsqueezy: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const key = str(f.api_key, 2000);
+      return key.length >= 40 && /^[A-Za-z0-9._-]+$/.test(key) ? { secret: { key }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.lemonsqueezy.com/v1/users/me', { headers: { ...bearer(s.key), accept: 'application/vnd.api+json' }, signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const r = await (await fetch('https://api.lemonsqueezy.com/v1/orders?page[size]=50', { headers: { ...bearer(s.key), accept: 'application/vnd.api+json' }, signal: sig() })).json();
+      const list = r.data ?? [];
+      const sum = list.reduce((a: number, o: { attributes: { total: number } }) => a + o.attributes.total, 0) / 100;
+      return `Lemon Squeezy, latest ${list.length} orders: ${sum.toFixed(2)} ${list[0]?.attributes?.currency ?? ''}.`;
+    },
+  },
+  gumroad: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const token = str(f.access_token, 200);
+      return token.length >= 20 && /^[A-Za-z0-9_-]+$/.test(token) ? { secret: { token }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch(`https://api.gumroad.com/v2/user?access_token=${encodeURIComponent(s.token)}`, { signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const r = await (await fetch(`https://api.gumroad.com/v2/sales?access_token=${encodeURIComponent(s.token)}`, { signal: sig() })).json();
+      const list = r.sales ?? [];
+      return `Gumroad, latest ${list.length} sales (page 1).`;
+    },
+  },
+  calendly: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const token = str(f.token, 1500);
+      return token.length >= 30 && /^[A-Za-z0-9._-]+$/.test(token) ? { secret: { token }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.calendly.com/users/me', { headers: bearer(s.token), signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const me = await (await fetch('https://api.calendly.com/users/me', { headers: bearer(s.token), signal: sig() })).json();
+      const uri = me.resource?.uri;
+      const r = await (await fetch(`https://api.calendly.com/scheduled_events?user=${encodeURIComponent(uri)}&status=active&count=10&sort=start_time:asc&min_start_time=${new Date().toISOString()}`, { headers: bearer(s.token), signal: sig() })).json();
+      const list = r.collection ?? [];
+      return `Calendly, next ${list.length} meetings: ` + (list.map((e: { name: string; start_time: string }) => `${e.name} (${e.start_time.slice(0, 16).replace('T', ' ')})`).join('; ') || 'none');
+    },
+  },
+  calcom: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const key = str(f.api_key, 100);
+      return /^cal_(live_)?[A-Za-z0-9]{16,}$/.test(key) ? { secret: { key }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch(`https://api.cal.com/v1/me?apiKey=${encodeURIComponent(s.key)}`, { signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const r = await (await fetch(`https://api.cal.com/v1/bookings?apiKey=${encodeURIComponent(s.key)}`, { signal: sig() })).json();
+      const list = r.bookings ?? [];
+      return `Cal.com: ${list.length} bookings found.`;
+    },
+  },
+  intercom: {
+    messaging: false,
+    readOnly: true,
+    parse: (f) => {
+      const token = str(f.token, 300);
+      return token.length >= 20 && /^[A-Za-z0-9=_-]+$/.test(token) ? { secret: { token }, config: {} } : null;
+    },
+    verify: async (s) => ok(await fetch('https://api.intercom.io/me', { headers: { ...bearer(s.token), accept: 'application/json' }, signal: sig() })),
+    send: async () => {
+      throw new Error('read_only');
+    },
+    read: async (s) => {
+      const r = await (await fetch('https://api.intercom.io/conversations?per_page=20', { headers: { ...bearer(s.token), accept: 'application/json' }, signal: sig() })).json();
+      const list = r.conversations ?? [];
+      const open = list.filter((c: { state: string }) => c.state === 'open').length;
+      return `Intercom: ${list.length} recent conversations, ${open} open.`;
+    },
+  },
   hubspot: {
     messaging: false,
     parse: (f) => {
@@ -714,9 +1019,26 @@ Deno.serve(async (req) => {
     return json(200, { ok: true });
   }
 
+  if (body.action === 'snapshot') {
+    const provider = PROVIDERS[integ.kind];
+    if (!provider?.read) return json(400, { error: 'bad_request' });
+    const { data: sec } = await admin.from('integration_secrets').select('secret').eq('integration_id', id).maybeSingle();
+    if (!sec) return json(404, { error: 'not_found' });
+    try {
+      const secret = await freshSecret(admin, id, integ.kind, readSecret(integ.kind, sec.secret));
+      const text = await provider.read(secret, (integ.config ?? {}) as Record<string, unknown>);
+      await admin.from('integrations').update({ status: 'active', last_error: null, last_used_at: new Date().toISOString() }).eq('id', id);
+      return json(200, { text: text.slice(0, 1500) });
+    } catch (err) {
+      await admin.from('integrations').update({ status: 'error', last_error: (err instanceof Error ? err.message : 'error').slice(0, 120) }).eq('id', id);
+      return json(502, { error: 'send_failed' });
+    }
+  }
+
   if (body.action === 'test' || body.action === 'send') {
     const provider = PROVIDERS[integ.kind];
     if (!provider) return json(400, { error: 'bad_request' });
+    if (provider.readOnly && body.action === 'send') return json(422, { error: 'read_only' });
     const text = body.action === 'test' ? `✅ ${integ.name}: test message from Firbo AI.` : typeof body.text === 'string' ? body.text.trim() : '';
     if (!text) return json(400, { error: 'bad_request' });
     const { data: sec } = await admin.from('integration_secrets').select('secret').eq('integration_id', id).maybeSingle();

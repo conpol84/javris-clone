@@ -969,6 +969,9 @@ const ptBR: Dictionary = {
   'panel.restore': 'Restaurar',
   'panel.maximize': 'Maximizar',
   'panel.close': 'Fechar',
+  'int.cat.commerce': 'Comércio e pagamentos',
+  'int.err.read_only': 'Este app é somente leitura.',
+  'int.snapshot': 'Mostrar dados',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

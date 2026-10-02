@@ -977,6 +977,9 @@ export const en = {
   'panel.restore': 'Restore',
   'panel.maximize': 'Maximize',
   'panel.close': 'Close',
+  'int.cat.commerce': 'Commerce & payments',
+  'int.err.read_only': 'This app is read-only.',
+  'int.snapshot': 'Show data',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

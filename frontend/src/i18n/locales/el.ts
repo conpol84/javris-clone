@@ -969,6 +969,9 @@ const el: Dictionary = {
   'panel.restore': 'Επαναφορά',
   'panel.maximize': 'Μεγιστοποίηση',
   'panel.close': 'Κλείσιμο',
+  'int.cat.commerce': 'Εμπόριο & πληρωμές',
+  'int.err.read_only': 'Αυτή η εφαρμογή είναι μόνο για ανάγνωση.',
+  'int.snapshot': 'Εμφάνιση δεδομένων',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

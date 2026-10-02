@@ -974,6 +974,9 @@ const ar: Dictionary = {
   'panel.restore': 'استعادة',
   'panel.maximize': 'تكبير',
   'panel.close': 'إغلاق',
+  'int.cat.commerce': 'التجارة والمدفوعات',
+  'int.err.read_only': 'هذا التطبيق للقراءة فقط.',
+  'int.snapshot': 'عرض البيانات',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

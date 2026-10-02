@@ -970,6 +970,9 @@ const zhCN: Dictionary = {
   'panel.restore': '还原',
   'panel.maximize': '最大化',
   'panel.close': '关闭',
+  'int.cat.commerce': '电商与支付',
+  'int.err.read_only': '此应用为只读。',
+  'int.snapshot': '显示数据',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',
