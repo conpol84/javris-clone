@@ -71,6 +71,24 @@ export interface GatewayCall {
   active: boolean;
 }
 
+export interface QuotaProvider {
+  provider: string;
+  name: string;
+  plan: string;
+  fetched_at: string;
+  windows: { name: string; remaining_pct: number | null; used: number | null; total: number | null; reset_at: string | null; unlimited: boolean }[];
+}
+
+export interface GatewayKey {
+  id: string;
+  name: string;
+  active: boolean;
+  created_at: string;
+  max_per_day: number | null;
+  max_per_minute: number | null;
+  expires_at: string | null;
+}
+
 export interface FreeModel {
   provider: string;
   model: string;

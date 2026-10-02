@@ -288,3 +288,51 @@ class TestExtraEndpoints:
         )
         body = client.get("/v1/gateway/free-models").json()
         assert body["models"] == [{"provider": "groq", "model": "llama", "name": "Llama", "monthly_tokens": 1000000, "free_type": "monthly"}]
+
+    @respx.mock
+    def test_quota_is_normalized_and_names_come_from_connections(self, client: TestClient):
+        respx.get(f"{HOST}/api/usage/provider-limits").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "caches": {
+                        "c1": {
+                            "quotas": {
+                                "daily": {"remainingPercentage": 42.04, "resetAt": "2026-10-02T00:00:00Z"},
+                                "tokens": {"used": 10, "total": 100, "remaining": 90},
+                                "free": {"unlimited": True},
+                            },
+                            "plan": {"name": "Pro", "token": "secret-token"},
+                            "fetchedAt": "2026-10-01T10:00:00Z",
+                        },
+                        "c2": {"quotas": None},
+                    }
+                },
+            )
+        )
+        respx.get(f"{HOST}/api/providers").mock(
+            return_value=httpx.Response(200, json={"connections": [{"id": "c1", "provider": "openai", "name": "Main", "apiKey": "sk-leak"}]})
+        )
+        body = client.get("/v1/gateway/quota").json()
+        assert body["available"] and len(body["providers"]) == 1
+        p = body["providers"][0]
+        assert p["provider"] == "openai" and p["name"] == "Main" and p["plan"] == "Pro"
+        w = {x["name"]: x for x in p["windows"]}
+        assert w["daily"]["remaining_pct"] == 42.0 and w["daily"]["reset_at"]
+        assert w["tokens"]["remaining_pct"] == 90.0
+        assert w["free"]["unlimited"] is True
+        assert "sk-leak" not in str(body) and "secret-token" not in str(body)
+
+    @respx.mock
+    def test_keys_never_include_key_values(self, client: TestClient):
+        respx.get(f"{HOST}/api/keys").mock(
+            return_value=httpx.Response(
+                200,
+                json={"keys": [{"id": "k1", "name": "agent-ceo", "key": "sk-or-abc", "isActive": False, "createdAt": "2026-10-01", "maxRequestsPerDay": 500}]},
+            )
+        )
+        body = client.get("/v1/gateway/keys").json()
+        assert body["keys"] == [
+            {"id": "k1", "name": "agent-ceo", "active": False, "created_at": "2026-10-01", "max_per_day": 500, "max_per_minute": None, "expires_at": None}
+        ]
+        assert "sk-or-abc" not in str(body)

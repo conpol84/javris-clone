@@ -7,7 +7,7 @@ import { listAgents, loadMonthlySpend } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
 import { agentColor } from '../../lib/company/status';
 import type { AgentRow } from '../../lib/company/types';
-import { useGatewayData, type FreeModel, type GatewayCall, type GatewayUsage } from '../../lib/gateway';
+import { useGatewayData, type FreeModel, type GatewayCall, type GatewayKey, type GatewayUsage, type QuotaProvider } from '../../lib/gateway';
 
 const RANGES = ['1d', '7d', '30d', '90d'] as const;
 
@@ -122,7 +122,7 @@ export function UsageTab() {
               <Stat label={t('gw.usage.requests')} value={fmt.number(data.requests)} />
               <Stat label={t('gw.usage.tokens')} value={fmt.number(data.tokens_in + data.tokens_out)} />
               <Stat label={t('gw.usage.cost')} value={fmt.currency(data.cost)} />
-              <Stat label={t('gw.usage.success')} value={data.success_rate == null ? '–' : `${fmt.number(Math.round(data.success_rate))}%`} />
+              <Stat label={t('gw.usage.success')} value={data.success_rate == null ? '–' : `${fmt.number(Math.round(data.success_rate * 100))}%`} />
               <Stat label={t('gw.usage.latency')} value={`${fmt.number(Math.round(data.avg_latency_ms))} ms`} />
               <Stat label={t('gw.usage.fallbacks')} value={fmt.number(data.fallbacks)} />
             </div>
@@ -273,6 +273,93 @@ export function FreeModelsTab() {
                   <td className="font-medium">{m.provider}</td>
                   <td>{m.name}</td>
                   <td>{m.monthly_tokens == null ? m.free_type || '–' : `${fmt.number(m.monthly_tokens)} ${t('gw.col.tokens')}`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function QuotaTab() {
+  const { t, fmt } = useI18n();
+  const { data, error, loading } = useGatewayData<{ available: boolean; error: string | null; providers: QuotaProvider[] }>('/v1/gateway/quota', 60_000);
+  return (
+    <Panel title={t('gw.quota.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.quota.hint')}</p>
+      {error ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{reasonText(error, t)}</p>
+      ) : loading && !data ? (
+        <p className="fb-dim text-sm">{t('common.loading')}</p>
+      ) : !data?.available ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>
+          {t('gw.usage.unavailable')} {data?.error ? reasonText(data.error, t) : ''}
+        </p>
+      ) : data.providers.length === 0 ? (
+        <p className="fb-dim text-sm">{t('gw.quota.empty')}</p>
+      ) : (
+        <ul className="grid gap-3 md:grid-cols-2">
+          {data.providers.map((p) => (
+            <li key={`${p.provider}-${p.name}`} className="fb-row flex-col items-stretch gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="truncate text-sm font-semibold">{p.name || p.provider}</span>
+                {p.plan && <span className="fb-chip">{p.plan}</span>}
+              </div>
+              {p.windows.map((w) => {
+                const left = w.unlimited ? 100 : w.remaining_pct;
+                return (
+                  <div key={w.name}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="fb-dim truncate">{w.name}</span>
+                      <span>{w.unlimited ? t('gw.quota.unlimited') : left == null ? '–' : t('gw.quota.left', { pct: fmt.number(Math.round(left)) })}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,.06)' }}>
+                      <div className="h-full rounded-full" style={{ width: `${left ?? 0}%`, background: left != null && left < 15 ? 'var(--fb-err)' : left != null && left < 40 ? 'var(--fb-warn)' : 'var(--fb-ok)' }} />
+                    </div>
+                    {w.reset_at && <div className="fb-dim mt-0.5 text-[11px]">{t('gw.quota.resets', { when: fmt.dateTime(w.reset_at) })}</div>}
+                  </div>
+                );
+              })}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+export function KeysTab() {
+  const { t, fmt } = useI18n();
+  const { data, error, loading } = useGatewayData<{ available: boolean; error: string | null; keys: GatewayKey[] }>('/v1/gateway/keys');
+  return (
+    <Panel title={t('gw.keys.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.keys.hint')}</p>
+      {error ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{reasonText(error, t)}</p>
+      ) : loading && !data ? (
+        <p className="fb-dim text-sm">{t('common.loading')}</p>
+      ) : !data?.available ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>
+          {t('gw.usage.unavailable')} {data?.error ? reasonText(data.error, t) : ''}
+        </p>
+      ) : data.keys.length === 0 ? (
+        <p className="fb-dim text-sm">{t('gw.keys.empty')}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="fb-table">
+            <thead>
+              <tr><th>{t('gw.keys.name')}</th><th>{t('gw.calls.status')}</th><th>{t('gw.keys.perDay')}</th><th>{t('gw.keys.perMin')}</th><th>{t('gw.keys.created')}</th></tr>
+            </thead>
+            <tbody>
+              {data.keys.map((k) => (
+                <tr key={k.id}>
+                  <td className="font-medium">{k.name}</td>
+                  <td style={{ color: k.active ? 'var(--fb-ok)' : 'var(--fb-err)' }}>{k.active ? t('gw.keys.active') : t('gw.keys.disabled')}</td>
+                  <td>{k.max_per_day ? fmt.number(k.max_per_day) : t('gw.keys.noLimit')}</td>
+                  <td>{k.max_per_minute ? fmt.number(k.max_per_minute) : t('gw.keys.noLimit')}</td>
+                  <td>{k.created_at ? fmt.dateTime(k.created_at) : '–'}</td>
                 </tr>
               ))}
             </tbody>

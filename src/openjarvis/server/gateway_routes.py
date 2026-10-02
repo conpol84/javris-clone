@@ -387,6 +387,85 @@ async def _cached(name: str, path: str, params: Dict[str, Any]) -> tuple[Any, Op
     return data, err
 
 
+def _plan_name(plan: Any) -> str:
+    if isinstance(plan, str):
+        return plan[:60]
+    if isinstance(plan, dict):
+        for k in ("name", "label", "tier", "plan"):
+            if isinstance(plan.get(k), str):
+                return plan[k][:60]
+    return ""
+
+
+def _quota_summary(limits: Any, providers: Any) -> List[Dict[str, Any]]:
+    caches = limits.get("caches", {}) if isinstance(limits, dict) else {}
+    conns = providers.get("connections", []) if isinstance(providers, dict) else []
+    names = {
+        str(c.get("id")): c for c in conns if isinstance(c, dict) and c.get("id")
+    }
+    out: List[Dict[str, Any]] = []
+    for cid, entry in list(caches.items())[:60]:
+        if not isinstance(entry, dict) or not isinstance(entry.get("quotas"), dict):
+            continue
+        conn = names.get(str(cid), {})
+        windows = []
+        for wname, w in list(entry["quotas"].items())[:12]:
+            if not isinstance(w, dict):
+                continue
+            pct = w.get("remainingPercentage")
+            total = w.get("total")
+            used = w.get("used")
+            if pct is None and isinstance(total, (int, float)) and total:
+                rem = w.get("remaining")
+                if isinstance(rem, (int, float)):
+                    pct = rem / total * 100
+            windows.append(
+                {
+                    "name": str(wname)[:60],
+                    "remaining_pct": round(_num(pct), 1) if pct is not None else None,
+                    "used": _num(used) if used is not None else None,
+                    "total": _num(total) if total is not None else None,
+                    "reset_at": str(w["resetAt"]) if w.get("resetAt") else None,
+                    "unlimited": w.get("unlimited") is True,
+                }
+            )
+        if windows:
+            out.append(
+                {
+                    "provider": str(conn.get("provider") or ""),
+                    "name": str(conn.get("name") or conn.get("provider") or "")[:80],
+                    "plan": _plan_name(entry.get("plan")),
+                    "fetched_at": str(entry.get("fetchedAt") or ""),
+                    "windows": windows,
+                }
+            )
+    return out
+
+
+def _keys_summary(payload: Any) -> List[Dict[str, Any]]:
+    rows = payload.get("keys", []) if isinstance(payload, dict) else []
+    out = []
+    for k in rows[:200]:
+        if not isinstance(k, dict):
+            continue
+        out.append(
+            {
+                "id": str(k.get("id") or ""),
+                "name": str(k.get("name") or "")[:80],
+                "active": k.get("isActive") is not False,
+                "created_at": str(k.get("createdAt") or ""),
+                "max_per_day": int(_num(k.get("maxRequestsPerDay")))
+                if k.get("maxRequestsPerDay")
+                else None,
+                "max_per_minute": int(_num(k.get("maxRequestsPerMinute")))
+                if k.get("maxRequestsPerMinute")
+                else None,
+                "expires_at": str(k["expiresAt"]) if k.get("expiresAt") else None,
+            }
+        )
+    return out
+
+
 @router.get("/usage")
 async def gateway_usage(range: str = "7d") -> Dict[str, Any]:
     """Secret-free usage and cost summary for the AI gateway."""
@@ -410,6 +489,21 @@ async def gateway_free_models() -> Dict[str, Any]:
     """Free-tier model catalogue known to the gateway."""
     data, err = await _cached("free", "/api/free-models", {})
     return {"available": data is not None, "error": err, "models": _free_summary(data)}
+
+
+@router.get("/quota")
+async def gateway_quota() -> Dict[str, Any]:
+    """Remaining quota per connected provider account (windows and resets only)."""
+    limits, err = await _cached("quota", "/api/usage/provider-limits", {})
+    providers, _ = await _cached("quota_providers", "/api/providers", {})
+    return {"available": limits is not None, "error": err, "providers": _quota_summary(limits, providers)}
+
+
+@router.get("/keys")
+async def gateway_keys() -> Dict[str, Any]:
+    """Gateway API keys: names, status and limits. The key values are never returned."""
+    data, err = await _cached("keys", "/api/keys", {})
+    return {"available": data is not None, "error": err, "keys": _keys_summary(data)}
 
 
 __all__ = ["router", "build_overview"]
