@@ -170,6 +170,50 @@ export async function loadCounts(orgId: string, canSeeUsage: boolean): Promise<O
   return { memories, knowledgeSources, workflows, tokens30d, cost30d };
 }
 
+export interface ConversationRow {
+  id: string;
+  title: string | null;
+  agent_id: string | null;
+  updated_at: string;
+}
+
+export async function listConversations(orgId: string, userId: string): Promise<ConversationRow[]> {
+  const { data, error } = await requireClient()
+    .from('conversations')
+    .select('id, title, agent_id, updated_at')
+    .eq('organization_id', orgId)
+    .eq('user_id', userId)
+    .eq('status', 'active')
+    .order('updated_at', { ascending: false })
+    .limit(100);
+  return fail(error, data) as unknown as ConversationRow[];
+}
+
+export async function createConversation(orgId: string, userId: string, agentId: string): Promise<ConversationRow> {
+  const { data, error } = await requireClient()
+    .from('conversations')
+    .insert({ organization_id: orgId, user_id: userId, agent_id: agentId })
+    .select('id, title, agent_id, updated_at')
+    .single();
+  return fail(error, data) as unknown as ConversationRow;
+}
+
+export async function deleteConversation(id: string): Promise<void> {
+  const { error } = await requireClient().from('conversations').delete().eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function listMessages(conversationId: string): Promise<import('./runner').ChatMessage[]> {
+  const { data, error } = await requireClient()
+    .from('messages')
+    .select('id, role, content, created_at, model')
+    .eq('conversation_id', conversationId)
+    .in('role', ['user', 'assistant'])
+    .order('created_at', { ascending: true })
+    .limit(500);
+  return fail(error, data) as unknown as import('./runner').ChatMessage[];
+}
+
 export interface OrgSummary {
   agents: number;
   openTasks: number;
