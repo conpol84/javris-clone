@@ -516,6 +516,13 @@ const ptBR: Dictionary = {
   "ceo.q.results": "Resuma os últimos resultados",
   "ceo.quickAria": "Perguntas rápidas",
   "ceo.handsFree": "Conversa mãos livres (continua ouvindo)",
+  "nav.store": "Loja de agentes",
+  "store.eyebrow": "Loja de agentes",
+  "store.title": "Loja de agentes",
+  "store.intro": "Explore {n} funcionários de IA prontos. Escolha um, dê instruções permanentes e um orçamento, e ele entra na sua equipe.",
+  "store.search": "Buscar agentes, habilidades ou ferramentas…",
+  "store.none": "Nenhum agente corresponde à busca.",
+  "store.hired": "{n} contratado(s)",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

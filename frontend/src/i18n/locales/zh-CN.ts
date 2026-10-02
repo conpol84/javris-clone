@@ -517,6 +517,13 @@ const zhCN: Dictionary = {
   "ceo.q.results": "总结最近的结果",
   "ceo.quickAria": "快捷提问",
   "ceo.handsFree": "免提对话（持续聆听）",
+  "nav.store": "智能体商店",
+  "store.eyebrow": "智能体商店",
+  "store.title": "智能体商店",
+  "store.intro": "浏览 {n} 位现成的 AI 员工。选一位，设定长期指令和预算，即可加入你的团队。",
+  "store.search": "搜索智能体、技能或工具…",
+  "store.none": "没有符合搜索的智能体。",
+  "store.hired": "已雇用 {n}",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

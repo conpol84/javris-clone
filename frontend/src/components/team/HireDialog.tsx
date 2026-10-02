@@ -13,17 +13,19 @@ export function HireDialog({
   existing,
   onClose,
   onHired,
+  initial,
 }: {
   orgId: string;
   existing: AgentRow[];
   onClose: () => void;
   onHired: () => void;
+  initial?: AgentTemplate;
 }) {
   const i18n = useI18n();
   const { t } = i18n;
   const [cat, setCat] = useState<string>('All');
   const [busy, setBusy] = useState<string | null>(null);
-  const [pick, setPick] = useState<AgentTemplate | null>(null);
+  const [pick, setPick] = useState<AgentTemplate | null>(initial ?? null);
   const [instr, setInstr] = useState('');
   const [budget, setBudget] = useState('20');
   const hired = (tpl: AgentTemplate) => existing.some((a) => a.slug === tpl.slug || a.slug.startsWith(`${tpl.slug}-`));

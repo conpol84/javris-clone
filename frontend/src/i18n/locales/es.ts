@@ -516,6 +516,13 @@ const es: Dictionary = {
   "ceo.q.results": "Resume los últimos resultados",
   "ceo.quickAria": "Preguntas rápidas",
   "ceo.handsFree": "Conversación manos libres (sigue escuchando)",
+  "nav.store": "Tienda de agentes",
+  "store.eyebrow": "Tienda de agentes",
+  "store.title": "Tienda de agentes",
+  "store.intro": "Explora {n} empleados de IA listos. Elige uno, dale instrucciones permanentes y un presupuesto, y se une a tu equipo.",
+  "store.search": "Buscar agentes, habilidades o herramientas…",
+  "store.none": "Ningún agente coincide con tu búsqueda.",
+  "store.hired": "{n} contratado(s)",
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

@@ -31,6 +31,7 @@ import {
   Plug,
   Shield,
   Mic,
+  Store,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import type { TKey } from '../../i18n/locales/en';
@@ -93,6 +94,7 @@ export function Sidebar() {
         { path: '/shifts', icon: Clock3, label: t('nav.shifts') },
         { path: '/chat', icon: MessageSquare, label: t('nav.chat') },
         { path: '/team', icon: Users, label: t('nav.team') },
+        { path: '/store', icon: Store, label: t('nav.store') },
         { path: '/inbox', icon: Inbox, label: t('nav.inbox'), badge: pending },
         { path: '/tasks', icon: ListChecks, label: t('nav.tasks') },
         { path: '/activity', icon: History, label: t('nav.activity') },

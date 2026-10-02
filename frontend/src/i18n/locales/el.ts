@@ -516,6 +516,13 @@ const el: Dictionary = {
   "ceo.q.results": "Σύνοψη των τελευταίων αποτελεσμάτων",
   "ceo.quickAria": "Γρήγορες ερωτήσεις",
   "ceo.handsFree": "Συνομιλία χωρίς χέρια (συνεχίζει να ακούει)",
+  "nav.store": "Agent Store",
+  "store.eyebrow": "Agent Store",
+  "store.title": "Agent Store",
+  "store.intro": "Δες {n} έτοιμους AI υπαλλήλους. Διάλεξε έναν, δώσε του μόνιμες οδηγίες και budget και μπαίνει στην ομάδα σου.",
+  "store.search": "Αναζήτηση agents, δεξιοτήτων ή εργαλείων…",
+  "store.none": "Κανένας agent δεν ταιριάζει με την αναζήτηση.",
+  "store.hired": "{n} προσληφθέντες",
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

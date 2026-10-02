@@ -524,6 +524,13 @@ export const en = {
   "ceo.q.results": "Summarize the latest results",
   "ceo.quickAria": "Quick questions",
   "ceo.handsFree": "Hands-free conversation (keeps listening)",
+  "nav.store": "Agent Store",
+  "store.eyebrow": "Agent Store",
+  "store.title": "Agent Store",
+  "store.intro": "Browse {n} ready-made AI employees. Pick one, give it standing instructions and a budget, and it joins your team.",
+  "store.search": "Search agents, skills or tools…",
+  "store.none": "No agent matches your search.",
+  "store.hired": "{n} hired",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

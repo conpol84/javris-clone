@@ -516,6 +516,13 @@ const fr: Dictionary = {
   "ceo.q.results": "Résume les derniers résultats",
   "ceo.quickAria": "Questions rapides",
   "ceo.handsFree": "Conversation mains libres (continue d’écouter)",
+  "nav.store": "Boutique d’agents",
+  "store.eyebrow": "Boutique d’agents",
+  "store.title": "Boutique d’agents",
+  "store.intro": "Parcourez {n} employés IA prêts à l’emploi. Choisissez-en un, donnez-lui des instructions permanentes et un budget, et il rejoint votre équipe.",
+  "store.search": "Rechercher agents, compétences ou outils…",
+  "store.none": "Aucun agent ne correspond à votre recherche.",
+  "store.hired": "{n} recruté(s)",
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

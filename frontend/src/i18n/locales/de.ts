@@ -516,6 +516,13 @@ const de: Dictionary = {
   "ceo.q.results": "Fasse die letzten Ergebnisse zusammen",
   "ceo.quickAria": "Schnellfragen",
   "ceo.handsFree": "Freisprech-Gespräch (hört weiter zu)",
+  "nav.store": "Agenten-Store",
+  "store.eyebrow": "Agenten-Store",
+  "store.title": "Agenten-Store",
+  "store.intro": "Entdecke {n} fertige KI-Mitarbeiter. Wähle einen, gib ihm dauerhafte Anweisungen und ein Budget, und er stößt zu deinem Team.",
+  "store.search": "Agenten, Fähigkeiten oder Tools suchen…",
+  "store.none": "Kein Agent passt zu deiner Suche.",
+  "store.hired": "{n} eingestellt",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',
