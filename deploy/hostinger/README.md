@@ -97,3 +97,7 @@ then put `OMNIROUTE_IMAGE=ghcr.io/conpol84/omniroute:firbo` in `.env` and run `d
 ## Cost levels (Economy / Quality)
 
 After connecting providers in the gateway, run `./setup-gateway.sh` once (and again whenever you add providers). It creates the combos `firbo-economy` (free first) and `firbo-quality` (best first). In Supabase -> Edge Functions -> Secrets set `OMNIROUTE_BASE_URL=https://gateway.<your-domain>/v1` and `OMNIROUTE_API_KEY` (the same value as `OMNIROUTE_API_KEY` in `.env`: `grep ^OMNIROUTE_API_KEY= .env`).
+
+## Providers or keys disappear after a restart
+
+Symptom in `docker compose logs omniroute`: `EACCES: permission denied, open '/app/data/storage.sqlite.tmp-…'`. The gateway runs as the `node` user (uid 1000) and `data/omniroute` was owned by root, so nothing was ever saved. `./repair.sh` now fixes the owner automatically; by hand: `sudo chown -R 1000:1000 data/omniroute && docker compose restart omniroute`.
