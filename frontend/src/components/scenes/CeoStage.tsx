@@ -1,167 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Focus, Minus, Plus } from 'lucide-react';
 import { Line, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
-import { voiceLevel } from '../../lib/company/voice';
 import { Glow, Stars } from './fx';
+import { HoloHead } from './HoloHead';
 import { Label3D } from './OfficeScene';
 import type { HoloState, Satellite } from './HologramScene';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 const COLORS: Record<HoloState, string> = { idle: '#22d3ee', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };
 
-/** Deterministic pseudo-random in [0,1). */
-function rnd(i: number): number {
-  const x = Math.sin(i * 127.1 + 311.7) * 43758.5453;
-  return x - Math.floor(x);
-}
-
-interface HeadData {
-  points: Float32Array;
-  lines: Float32Array;
-  eyes: Float32Array;
-}
-
-/** A dot-matrix head, neck and shoulders built ring by ring, facing +z, like a holographic scan. */
-function buildHead(): HeadData {
-  const rings: THREE.Vector3[][] = [];
-  const addRing = (y: number, rx: number, rz: number, bump?: (x: number, z: number, a: number) => number, flat = false) => {
-    const n = Math.max(14, Math.round((rx + rz) * 40));
-    const ring: THREE.Vector3[] = [];
-    for (let k = 0; k < n; k++) {
-      const a = (k / n) * Math.PI * 2;
-      let x = Math.sin(a) * rx;
-      let z = Math.cos(a) * rz;
-      if (flat) z *= 0.55;
-      z += bump ? bump(x, z, a) : 0;
-      ring.push(new THREE.Vector3(x, y, z));
-    }
-    rings.push(ring);
-  };
-  const H = 1.18;
-  const face = (x: number, z: number) => {
-    // nose, brow ridge and eye sockets only on the front half
-    if (z < 0.1) return 0;
-    return 0;
-  };
-  void face;
-  for (let y = H; y >= -1.15; y -= 0.055) {
-    const u = y / H;
-    let w = Math.sqrt(Math.max(0, 1 - u * u)) ** 0.85;
-    if (y < -0.2) w *= 1 - ((-0.2 - y) / 0.95) ** 1.6 * 0.42; // jaw taper
-    const rx = 0.82 * w;
-    const rz = 0.95 * w;
-    addRing(y, Math.max(0.04, rx), Math.max(0.04, rz), (x, z) => {
-      if (z <= 0.15) return 0;
-      const nose = 0.22 * Math.exp(-((y + 0.12) ** 2) / 0.05) * Math.exp(-(x * x) / 0.012);
-      const brow = 0.07 * Math.exp(-((y - 0.3) ** 2) / 0.006) * Math.exp(-(x * x) / 0.35);
-      const eyes = -0.09 * Math.exp(-((y - 0.18) ** 2) / 0.01) * (Math.exp(-((x - 0.34) ** 2) / 0.02) + Math.exp(-((x + 0.34) ** 2) / 0.02));
-      const lips = 0.05 * Math.exp(-((y + 0.62) ** 2) / 0.004) * Math.exp(-(x * x) / 0.05);
-      return nose + brow + eyes + lips;
-    });
-  }
-  for (let y = -1.2; y >= -1.95; y -= 0.1) addRing(y, 0.36, 0.38); // neck
-  for (let y = -2.0; y >= -2.75; y -= 0.1) {
-    const t = (-2.0 - y) / 0.75;
-    addRing(y, 0.5 + t * 1.45, 0.7 + t * 0.2, undefined, true); // shoulders
-  }
-  const pts: number[] = [];
-  const seg: number[] = [];
-  rings.forEach((ring, ri) => {
-    ring.forEach((p, k) => {
-      const jx = (rnd(ri * 97 + k) - 0.5) * 0.012;
-      pts.push(p.x + jx, p.y, p.z);
-      const q = ring[(k + 1) % ring.length];
-      if (rnd(ri * 31 + k * 7) > 0.35) seg.push(p.x, p.y, p.z, q.x, q.y, q.z);
-      const next = rings[ri + 1];
-      if (next && rnd(ri * 13 + k * 5) > 0.55) {
-        const m = next[Math.round((k / ring.length) * next.length) % next.length];
-        seg.push(p.x, p.y, p.z, m.x, m.y, m.z);
-      }
-    });
-  });
-  const eyes: number[] = [];
-  for (const sx of [-1, 1]) for (let i = 0; i < 9; i++) eyes.push(sx * (0.34 + (rnd(i + 5) - 0.5) * 0.14), 0.2 + (rnd(i + 50) - 0.5) * 0.05, 0.78 + rnd(i) * 0.05);
-  return { points: new Float32Array(pts), lines: new Float32Array(seg), eyes: new Float32Array(eyes) };
-}
-
-/** The AI at the end of the room: a huge dotted head on a floating screen that reacts to the voice. */
+/** The AI at the end of the room: a real head scan rendered as a living hologram on a floating screen. */
 function AiHead({ state, motion }: { state: HoloState; motion: number }) {
-  const data = useMemo(buildHead, []);
-  const group = useRef<THREE.Group>(null);
-  const pm = useRef<THREE.PointsMaterial>(null);
-  const lm = useRef<THREE.LineBasicMaterial>(null);
-  const em = useRef<THREE.PointsMaterial>(null);
-  const sweep = useRef<THREE.Mesh>(null);
-  const mouth = useRef<THREE.BufferAttribute>(null);
-  const smooth = useRef(0);
-  const col = useMemo(() => new THREE.Color(COLORS.idle), []);
-  const target = useMemo(() => new THREE.Color(), []);
-  useFrame((s, dt) => {
-    const t = s.clock.elapsedTime * motion;
-    const lvl = state === 'speaking' ? voiceLevel.value : state === 'listening' ? 0.25 + Math.sin(t * 6) * 0.1 : state === 'thinking' ? 0.3 + Math.sin(t * 9) * 0.15 : 0.08 + Math.sin(t * 1.4) * 0.04;
-    smooth.current += (lvl - smooth.current) * Math.min(1, dt * 10);
-    col.lerp(target.set(COLORS[state]), Math.min(1, dt * 4));
-    if (pm.current) {
-      pm.current.color.copy(col);
-      pm.current.size = 0.034 + smooth.current * 0.03;
-    }
-    lm.current?.color.copy(col);
-    em.current?.color.set('#ffffff');
-    if (group.current) {
-      group.current.rotation.y = Math.sin(t * 0.35) * (state === 'thinking' ? 0.45 : 0.18);
-      group.current.rotation.x = Math.sin(t * 0.5) * 0.03;
-      group.current.scale.setScalar(1 + smooth.current * 0.05);
-    }
-    if (mouth.current) {
-      // upper and lower lip: the gap follows the loudness of the voice
-      const open = state === 'speaking' ? 0.03 + smooth.current * 0.34 : 0.02;
-      const arr = mouth.current.array as Float32Array;
-      for (let i = 0; i < 11; i++) {
-        const x = (i - 5) * 0.045;
-        const z = 0.64 * Math.sqrt(Math.max(0, 1 - (x / 0.55) ** 2)) + 0.05;
-        const curve = Math.abs(x) * 0.18;
-        arr[i * 3] = x; arr[i * 3 + 1] = -0.58 + curve; arr[i * 3 + 2] = z;
-        const j = 11 + i;
-        arr[j * 3] = x; arr[j * 3 + 1] = -0.58 - open + curve * 0.6; arr[j * 3 + 2] = z;
-      }
-      mouth.current.needsUpdate = true;
-    }
-    if (sweep.current) sweep.current.position.y = -2.7 + ((s.clock.elapsedTime * 0.35 * Math.max(0.3, motion)) % 1) * 4.1;
-  });
   return (
-    <group position={[0, 0.9, -4.1]} scale={1.85}>
-      <group ref={group}>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[data.points, 3]} />
-          </bufferGeometry>
-          <pointsMaterial ref={pm} size={0.036} transparent opacity={0.95} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} />
-        </points>
-        <lineSegments>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[data.lines, 3]} />
-          </bufferGeometry>
-          <lineBasicMaterial ref={lm} transparent opacity={0.22} blending={THREE.AdditiveBlending} depthWrite={false} />
-        </lineSegments>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute attach="attributes-position" args={[data.eyes, 3]} />
-          </bufferGeometry>
-          <pointsMaterial ref={em} size={0.05} transparent opacity={1} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-        </points>
-        <points>
-          <bufferGeometry>
-            <bufferAttribute ref={mouth} attach="attributes-position" args={[new Float32Array(22 * 3), 3]} />
-          </bufferGeometry>
-          <pointsMaterial size={0.06} color="#ffffff" transparent opacity={0.95} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
-        </points>
-        <mesh ref={sweep} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[1.5, 1.56, 64]} />
-          <meshBasicMaterial color="#67e8f9" transparent opacity={0.5} side={THREE.DoubleSide} blending={THREE.AdditiveBlending} depthWrite={false} />
-        </mesh>
-      </group>
+    <group position={[0, 0.55, -4.1]} scale={2.25}>
+      <HoloHead state={state} motion={motion} />
     </group>
   );
 }
@@ -321,7 +175,9 @@ export function CeoStage({ state, satellites, labels }: { state: HoloState; sate
     <Canvas camera={{ position: [0, 0.4, 6.2], fov: 52 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <Stars count={800} radius={16} spread={24} speed={reduced ? 0 : 0.01} size={0.08} />
       <Screen />
-      <AiHead state={state} motion={motion} />
+      <Suspense fallback={null}>
+        <AiHead state={state} motion={motion} />
+      </Suspense>
       <Cards items={satellites} state={state} motion={motion} />
       <Floor />
       <Viewer state={state} />
