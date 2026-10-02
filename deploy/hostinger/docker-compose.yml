@@ -39,11 +39,7 @@ services:
       retries: 3
 
   omniroute:
-    # Built from our own fork (Firbo AI branding). The first build takes ~10-15 minutes.
-    build:
-      context: https://github.com/conpol84/OmniRoute.git#${OMNIROUTE_REF:-firbo/branding}
-      target: runner-base
-    image: firbo-omniroute:local
+    image: ${OMNIROUTE_IMAGE:-diegosouzapw/omniroute:latest}
     container_name: firbo-omniroute
     restart: unless-stopped
     stop_grace_period: 40s
