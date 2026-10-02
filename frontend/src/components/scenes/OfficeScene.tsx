@@ -60,7 +60,7 @@ export function layoutAgents(agents: AgentRow[]): { agent: AgentRow; pos: [numbe
 
 
 /** Canvas-texture label (no DOM roots, so it is cheap and React-19 safe). */
-function Label3D({
+export function Label3D({
   text,
   sub,
   dot,
@@ -128,7 +128,7 @@ function Label3D({
   );
 }
 
-function Robot({ color, state }: { color: string; state: AgentState }) {
+export function Robot({ color, state }: { color: string; state: AgentState }) {
   const body = useRef<THREE.Group>(null);
   const head = useRef<THREE.Group>(null);
   const armL = useRef<THREE.Mesh>(null);

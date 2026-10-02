@@ -30,6 +30,7 @@ import { BillingPage } from './pages/BillingPage';
 import { HubPage } from './pages/HubPage';
 import { CodingPage } from './pages/CodingPage';
 import { ComputersPage } from './pages/ComputersPage';
+import { StudioPage } from './pages/StudioPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AgentChatPage } from './pages/AgentChatPage';
 import { CompaniesPage } from './pages/CompaniesPage';
@@ -222,6 +223,7 @@ function AuthedApp() {
           <Route path="analytics" element={COMPANY_ENABLED ? <AnalyticsPage /> : <Navigate to="/" replace />} />
           <Route path="integrations" element={COMPANY_ENABLED ? <IntegrationsPage /> : <Navigate to="/" replace />} />
           <Route path="admin" element={COMPANY_ENABLED ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="studio" element={COMPANY_ENABLED ? <StudioPage /> : <Navigate to="/" replace />} />
           <Route path="computers" element={COMPANY_ENABLED ? <ComputersPage /> : <Navigate to="/" replace />} />
           <Route path="coding" element={COMPANY_ENABLED ? <CodingPage /> : <Navigate to="/" replace />} />
           <Route path="hub" element={COMPANY_ENABLED ? <HubPage /> : <Navigate to="/" replace />} />

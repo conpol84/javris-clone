@@ -37,6 +37,7 @@ import {
   CreditCard,
   Layers,
   Terminal,
+  Orbit,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import type { TKey } from '../../i18n/locales/en';
@@ -94,6 +95,7 @@ export function Sidebar() {
     ? [
         { path: '/', icon: LayoutDashboard, label: t('nav.commandCenter') },
         { path: '/office', icon: Box, label: t('nav.office') },
+        { path: '/studio', icon: Orbit, label: t('nav.studio') },
         { path: '/ceo', icon: Mic, label: t('nav.ceo') },
         { path: '/missions', icon: Rocket, label: t('nav.missions') },
         { path: '/shifts', icon: Clock3, label: t('nav.shifts') },
