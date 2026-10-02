@@ -92,3 +92,8 @@ restarts the stack and prints a health report that never contains passwords. If 
 GitHub builds the image for you (the small VPS cannot): open the fork -> Actions -> enable workflows -> run "Firbo image".
 After the first run set the package `omniroute` to Public (GitHub -> your profile -> Packages -> omniroute -> Package settings),
 then put `OMNIROUTE_IMAGE=ghcr.io/conpol84/omniroute:firbo` in `.env` and run `docker compose pull omniroute && docker compose up -d`.
+
+
+## Cost levels (Economy / Quality)
+
+After connecting providers in the gateway, run `./setup-gateway.sh` once (and again whenever you add providers). It creates the combos `firbo-economy` (free first) and `firbo-quality` (best first). In Supabase -> Edge Functions -> Secrets set `OMNIROUTE_BASE_URL=https://gateway.<your-domain>/v1` and `OMNIROUTE_API_KEY` (the same value as `OMNIROUTE_API_KEY` in `.env`: `grep ^OMNIROUTE_API_KEY= .env`).
