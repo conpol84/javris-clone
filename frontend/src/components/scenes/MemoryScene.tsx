@@ -130,7 +130,7 @@ function Network({ stars, types, selected, onSelect, agents, activeAgent, onPick
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[linePts, 3]} />
         </bufferGeometry>
-        <lineBasicMaterial color="#22d3ee" transparent opacity={activeAgent ? 0.07 : 0.2} />
+        <lineBasicMaterial color="#00d4ff" transparent opacity={activeAgent ? 0.07 : 0.2} />
       </lineSegments>
       {pulses.map((e, i) => (
         <Pulse key={e.key} a={e.a} b={e.b} offset={hash(e.key, 3)} speed={0.25 + hash(e.key, 4) * 0.4} color={e.color} motion={motion || 0} />

@@ -11,7 +11,7 @@ export interface Persona {
 
 export const SKINS = ['#f2c9a5', '#e0a97c', '#c58c63', '#a06a46', '#7a4a30', '#4f2e1f'];
 export const HAIR_COLORS = ['#1b1410', '#4a2f1a', '#8a5a2b', '#d9b36a', '#b8321f', '#cfd3da', '#6d4bd6'];
-export const OUTFITS = ['#22d3ee', '#60a5fa', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#e2e8f0', '#334155'];
+export const OUTFITS = ['#00d4ff', '#60a5fa', '#a78bfa', '#f472b6', '#fbbf24', '#fb923c', '#e2e8f0', '#334155'];
 export const HAIR_STYLES = 5; // none, short, long, bun, cap
 export const ACCESSORIES = 5; // none, glasses, headset, tie, visor
 

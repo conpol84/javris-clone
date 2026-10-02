@@ -65,7 +65,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('web_search'), t('pdf_extract'), t('file_read'), t('memory_search'), t('channel_send', 'approval'), t('queue_action')],
   },
   {
-    slug: 'data-analyst', name: 'Data Analyst', category: 'Intelligence', color: '#22d3ee',
+    slug: 'data-analyst', name: 'Data Analyst', category: 'Intelligence', color: '#00d4ff',
     tagline: 'Turns your data into answers, charts and weekly reports.',
     prompt: 'You are the Data Analyst. Query company data, compute metrics carefully, explain methodology and flag data-quality issues. You are read-only.' + RULES,
     tools: [t('think'), t('db_query'), t('calculator'), t('file_read'), t('pdf_extract'), t('knowledge_search')],
@@ -173,7 +173,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('file_read'), t('git_status'), t('git_diff'), t('git_log'), t('http_request'), t('queue_action')],
   },
   {
-    slug: 'technical-writer', name: 'Technical Writer', category: 'Engineering', color: '#22d3ee',
+    slug: 'technical-writer', name: 'Technical Writer', category: 'Engineering', color: '#00d4ff',
     tagline: 'Docs, changelogs and how-to guides from your code and notes.',
     prompt: 'You are the Technical Writer. Write accurate, concise documentation, changelogs and tutorials from the code and notes you are given, and ask when something is unclear.' + RULES,
     tools: [t('think'), t('file_read'), t('git_log'), t('knowledge_search'), t('file_write', 'approval')],

@@ -362,17 +362,17 @@ function CommandTable({ open, approvals, labels }: { open: number; approvals: nu
       <mesh position={[0, 0.5, 0]}>
         <cylinderGeometry args={[1.1, 1.3, 1, 32]} />
         <meshStandardMaterial color="#0b1a2e" roughness={0.4} metalness={0.6} />
-        <Edges color="#22d3ee" threshold={15} />
+        <Edges color="#00d4ff" threshold={15} />
       </mesh>
       <mesh ref={ring} position={[0, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.95, 0.018, 8, 64]} />
-        <meshBasicMaterial color="#22d3ee" toneMapped={false} />
+        <meshBasicMaterial color="#00d4ff" toneMapped={false} />
       </mesh>
       <mesh ref={core} position={[0, 1.5, 0]}>
         <icosahedronGeometry args={[0.32, 1]} />
         <meshBasicMaterial color="#67e8f9" wireframe toneMapped={false} />
       </mesh>
-      <pointLight position={[0, 1.6, 0]} color="#22d3ee" intensity={5} distance={7} />
+      <pointLight position={[0, 1.6, 0]} color="#00d4ff" intensity={5} distance={7} />
       <Label3D
         position={[0, 2.55, 0]}
         text={labels.tableOpen}

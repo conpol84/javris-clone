@@ -57,7 +57,7 @@ function Member({ agent, index, count, selected, state, persona, name, onSelect 
 function Scene(props: TeamStageProps) {
   const reduced = usePrefersReducedMotion();
   const sel = props.agents.find((a) => a.id === props.selectedId) ?? null;
-  const col = sel ? agentColor(sel.type, sel.slug) : '#22d3ee';
+  const col = sel ? agentColor(sel.type, sel.slug) : '#00d4ff';
   return (
     <>
       <color attach="background" args={['#02070f']} />

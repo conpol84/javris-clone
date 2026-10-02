@@ -28,7 +28,7 @@ export interface MissionSceneProps {
   labels: { core: string; noWebgl: string };
 }
 
-const TONE = { done: '#34d399', run: '#22d3ee', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
+const TONE = { done: '#34d399', run: '#00d4ff', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
 
 function labelTexture(text: string, color: string): THREE.CanvasTexture {
   const c = document.createElement('canvas');
@@ -199,7 +199,7 @@ function World({ nodes, steps, missionStatus, labels, motion }: MissionSceneProp
   return (
     <group ref={group}>
       <ambientLight intensity={0.6} />
-      <pointLight position={[0, 4, 3]} intensity={30} color="#22d3ee" />
+      <pointLight position={[0, 4, 3]} intensity={30} color="#00d4ff" />
       <pointLight position={[-5, 2, -3]} intensity={12} color="#a78bfa" />
       <gridHelper args={[26, 26, '#164e63', '#0b2540']} position={[0, -0.9, 0]} />
       <Core status={missionStatus} motion={motion} />

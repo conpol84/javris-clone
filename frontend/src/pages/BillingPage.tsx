@@ -11,7 +11,7 @@ import {
 } from '../lib/company/billing';
 import '../styles/firbo.css';
 
-const ACCENT: Record<string, string> = { free: '#8aa4c4', pro: '#22d3ee', business: '#a3e635', enterprise: '#f59e0b' };
+const ACCENT: Record<string, string> = { free: '#8aa4c4', pro: '#00d4ff', business: '#a3e635', enterprise: '#f59e0b' };
 
 /** Plans, live usage against the plan's limits, and upgrading. Limits are enforced by the database and Edge Functions. */
 export function BillingPage() {
@@ -139,7 +139,7 @@ export function BillingPage() {
           <h2 className="text-lg font-semibold">{t('bill.choose')}</h2>
           <div className="fb-glass flex gap-1 p-1" role="group" aria-label={t('bill.interval')}>
             {(['month', 'year'] as const).map((m) => (
-              <button key={m} className="fb-btn" style={{ height: 30, padding: '0 14px', ...(interval === m ? { background: 'rgba(34, 211, 238,.16)', color: 'var(--fb-accent)' } : {}) }} aria-pressed={interval === m} onClick={() => setIntervalMode(m)}>
+              <button key={m} className="fb-btn" style={{ height: 30, padding: '0 14px', ...(interval === m ? { background: 'rgba(0, 212, 255,.16)', color: 'var(--fb-accent)' } : {}) }} aria-pressed={interval === m} onClick={() => setIntervalMode(m)}>
                 {t(m === 'month' ? 'bill.monthly' : 'bill.yearly')}
               </button>
             ))}

@@ -17,7 +17,7 @@ export interface Satellite {
   active: boolean;
 }
 
-const COLORS: Record<HoloState, string> = { idle: '#22d3ee', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };
+const COLORS: Record<HoloState, string> = { idle: '#00d4ff', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };
 
 function Hologram({ state, motion }: { state: HoloState; motion: number }) {
   const core = useRef<THREE.Mesh>(null);
@@ -84,7 +84,7 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
         {[1.9, 2.25, 2.6].map((r, i) => (
           <mesh key={r} rotation={[0, 0, i]}>
             <torusGeometry args={[r, 0.006, 8, 160]} />
-            <meshBasicMaterial color="#22d3ee" transparent opacity={0.35 - i * 0.07} />
+            <meshBasicMaterial color="#00d4ff" transparent opacity={0.35 - i * 0.07} />
           </mesh>
         ))}
       </group>
@@ -99,7 +99,7 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
       </group>
       <mesh position={[0, -2.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.2, 2.9, 64]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.08} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#00d4ff" transparent opacity={0.08} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );

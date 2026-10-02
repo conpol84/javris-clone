@@ -120,7 +120,7 @@ function Scene(props: StudioProps) {
   useFrame((_, dt) => {
     if (spin.current) spin.current.rotation.y += dt * 0.12 * motion;
   });
-  const color = selected ? agentColor(selected.type, selected.slug) : '#22d3ee';
+  const color = selected ? agentColor(selected.type, selected.slug) : '#00d4ff';
   return (
     <>
       <color attach="background" args={['#02060e']} />

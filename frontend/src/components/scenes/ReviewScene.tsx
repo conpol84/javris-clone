@@ -74,7 +74,7 @@ function Contestant({ tower, rank, position, height, scale, selected, onSelect }
       {height > 0 && (
         <mesh position={[0, height / 2, 0]}>
           <boxGeometry args={[1.3, height, 1.1]} />
-          <meshStandardMaterial color="#0a1424" metalness={0.7} roughness={0.35} emissive={medal ?? '#22d3ee'} emissiveIntensity={0.18} />
+          <meshStandardMaterial color="#0a1424" metalness={0.7} roughness={0.35} emissive={medal ?? '#00d4ff'} emissiveIntensity={0.18} />
         </mesh>
       )}
       <group ref={g} position={[0, height, 0]} scale={scale}>
@@ -116,7 +116,7 @@ function Scene({ towers, selected, onSelect, motion }: Omit<ReviewSceneProps, 'l
       <ambientLight intensity={0.5} />
       <spotLight position={[0, 8, 5]} angle={0.5} penumbra={0.8} intensity={160} color="#fff4d6" />
       <pointLight position={[-6, 3, 3]} intensity={12} color="#60a5fa" distance={14} />
-      <pointLight position={[6, 3, 3]} intensity={12} color="#22d3ee" distance={14} />
+      <pointLight position={[6, 3, 3]} intensity={12} color="#00d4ff" distance={14} />
       <Stars count={700} radius={22} spread={16} speed={0.008 * motion} size={0.09} />
       <mesh position={[0, -0.02, -1]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[9, 80]} />

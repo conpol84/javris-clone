@@ -6,7 +6,7 @@ import { CODING_TOOLS } from '../lib/company/coding';
 import '../styles/firbo.css';
 
 const GATEWAY = ((import.meta.env.VITE_OMNIROUTE_URL as string | undefined) ?? 'https://gateway.firboai.app').replace(/\/+$/, '');
-const TONE = { auto: '#22d3ee', manual: '#fbbf24', limited: '#8aa4c4' } as const;
+const TONE = { auto: '#00d4ff', manual: '#fbbf24', limited: '#8aa4c4' } as const;
 
 function Code({ text }: { text: string }) {
   const { t } = useI18n();

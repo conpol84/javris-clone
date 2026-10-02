@@ -168,7 +168,7 @@ export function MissionsPage() {
               <button
                 onClick={() => select(m.id)}
                 className="fb-glass--hover w-full cursor-pointer rounded-xl px-3 py-2 text-start"
-                style={m.id === activeId ? { background: 'rgba(34, 211, 238,.1)', border: '1px solid var(--fb-border-strong)' } : { border: '1px solid transparent' }}
+                style={m.id === activeId ? { background: 'rgba(0, 212, 255,.1)', border: '1px solid var(--fb-border-strong)' } : { border: '1px solid transparent' }}
               >
                 <div className="truncate text-sm font-medium">{m.title}</div>
                 <div className="fb-dim flex items-center gap-1.5 text-[11px]">

@@ -82,10 +82,10 @@
     --color-text-tertiary: #5c5c63;
     --color-text-inverse: #0a0a0b;
 
-    --color-accent: #22d3ee;
+    --color-accent: #00d4ff;
     --color-accent-hover: #67e8f9;
-    --color-accent-subtle: rgba(34, 211, 238, 0.1);
-    --color-accent-glow: rgba(34, 211, 238, 0.3);
+    --color-accent-subtle: rgba(0, 212, 255, 0.1);
+    --color-accent-glow: rgba(0, 212, 255, 0.3);
 
     --color-accent-amber: #f5a524;
     --color-accent-amber-hover: #fbbf24;
@@ -130,10 +130,10 @@
       --color-text-tertiary: #5c5c63;
       --color-text-inverse: #0a0a0b;
 
-      --color-accent: #22d3ee;
+      --color-accent: #00d4ff;
       --color-accent-hover: #67e8f9;
-      --color-accent-subtle: rgba(34, 211, 238, 0.1);
-      --color-accent-glow: rgba(34, 211, 238, 0.3);
+      --color-accent-subtle: rgba(0, 212, 255, 0.1);
+      --color-accent-glow: rgba(0, 212, 255, 0.3);
 
       --color-accent-amber: #f5a524;
       --color-accent-amber-hover: #fbbf24;

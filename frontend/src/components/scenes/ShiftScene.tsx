@@ -90,14 +90,14 @@ function Dial({ shifts, motion }: { shifts: ShiftDot[]; motion: number }) {
   return (
     <group ref={group} position={[0, 0.1, 0]}>
       <ambientLight intensity={0.7} />
-      <pointLight position={[0, 0, 5]} intensity={30} color="#22d3ee" />
+      <pointLight position={[0, 0, 5]} intensity={30} color="#00d4ff" />
       <mesh>
         <circleGeometry args={[R + 0.7, 96]} />
         <meshBasicMaterial color="#06121f" transparent opacity={0.75} />
       </mesh>
       <mesh>
         <torusGeometry args={[R, 0.02, 8, 160]} />
-        <meshBasicMaterial color="#22d3ee" transparent opacity={0.85} />
+        <meshBasicMaterial color="#00d4ff" transparent opacity={0.85} />
       </mesh>
       <mesh>
         <torusGeometry args={[R - 0.55, 0.008, 8, 160]} />

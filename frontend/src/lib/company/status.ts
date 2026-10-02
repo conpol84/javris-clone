@@ -5,7 +5,7 @@ export type AgentState = 'active' | 'waiting' | 'idle' | 'disabled';
 /** Department accent colours shared by the orb, office and cards. */
 export const AGENT_COLORS: Record<string, string> = {
   ceo: '#f59e0b',
-  research: '#22d3ee',
+  research: '#00d4ff',
   sales: '#34d399',
   marketing: '#f472b6',
   operations: '#60a5fa',
@@ -17,7 +17,7 @@ export const AGENT_COLORS: Record<string, string> = {
 import type { TKey } from '../../i18n/locales/en';
 import { AGENT_TEMPLATES } from './templates';
 
-const FALLBACK = ['#22d3ee', '#a78bfa', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#c084fc'];
+const FALLBACK = ['#00d4ff', '#a78bfa', '#34d399', '#f472b6', '#fbbf24', '#60a5fa', '#fb923c', '#c084fc'];
 
 /** Known departments keep their colour; hired templates use theirs; anything else gets a stable colour. */
 export function agentColor(type: string, slug = ''): string {

@@ -7,7 +7,7 @@ export function LogoMark({ size = 28, rounded = true }: { size?: number; rounded
     <svg width={size} height={size} viewBox="0 0 512 512" role="img" aria-label="Firbo AI">
       <defs>
         <linearGradient id={`g${uid}`} gradientUnits="userSpaceOnUse" x1="160" y1="112" x2="416" y2="428">
-          <stop offset="0" stopColor="#22d3ee" />
+          <stop offset="0" stopColor="#00d4ff" />
           <stop offset="1" stopColor="#0891b2" />
         </linearGradient>
         <linearGradient id={`b${uid}`} x1="0" y1="0" x2="0" y2="1">

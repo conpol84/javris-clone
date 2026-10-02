@@ -132,7 +132,7 @@ export function PeoplePage() {
                 const locked = !isAdmin || (m.role === 'owner' && !isOwner);
                 return (
                   <li key={m.user_id} className="flex flex-wrap items-center gap-3 px-3 py-3" style={{ borderTop: '1px solid var(--fb-border)' }}>
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold" style={{ background: 'rgba(34, 211, 238,.14)', color: 'var(--fb-accent)' }}>
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold" style={{ background: 'rgba(0, 212, 255,.14)', color: 'var(--fb-accent)' }}>
                       {(m.full_name || m.email || '?').slice(0, 1).toUpperCase()}
                     </span>
                     <div className="min-w-0 flex-1">

@@ -83,7 +83,7 @@ export function ActivityPage() {
                   aria-selected={group === g}
                   onClick={() => setGroup(g)}
                   className="fb-chip cursor-pointer"
-                  style={group === g ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34, 211, 238,.1)' } : undefined}
+                  style={group === g ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,.1)' } : undefined}
                 >
                   {t(`act.group.${g}` as TKey)}
                 </button>

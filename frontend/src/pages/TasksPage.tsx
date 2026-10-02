@@ -139,7 +139,7 @@ export function TasksPage() {
               aria-selected={filter === f}
               onClick={() => setFilter(f)}
               className="fb-chip cursor-pointer"
-              style={filter === f ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34, 211, 238,.1)' } : undefined}
+              style={filter === f ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,.1)' } : undefined}
             >
               {t(`tasks.f.${f}` as TKey)}
             </button>

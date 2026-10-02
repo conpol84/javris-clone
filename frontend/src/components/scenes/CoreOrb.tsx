@@ -30,8 +30,8 @@ function glowTexture(): THREE.Texture {
   const g = c.getContext('2d')!;
   const grad = g.createRadialGradient(64, 64, 0, 64, 64, 64);
   grad.addColorStop(0, 'rgba(180, 245, 255,1)');
-  grad.addColorStop(0.25, 'rgba(34, 211, 238,0.55)');
-  grad.addColorStop(1, 'rgba(34, 211, 238,0)');
+  grad.addColorStop(0.25, 'rgba(0, 212, 255,0.55)');
+  grad.addColorStop(1, 'rgba(0, 212, 255,0)');
   g.fillStyle = grad;
   g.fillRect(0, 0, 128, 128);
   return new THREE.CanvasTexture(c);
@@ -113,7 +113,7 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
       </points>
       <mesh>
         <icosahedronGeometry args={[1.38, 2]} />
-        <meshBasicMaterial color="#22d3ee" wireframe transparent opacity={0.13} />
+        <meshBasicMaterial color="#00d4ff" wireframe transparent opacity={0.13} />
       </mesh>
       <mesh>
         <icosahedronGeometry args={[0.55, 1]} />

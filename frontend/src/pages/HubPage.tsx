@@ -8,7 +8,7 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { CATALOG, countBy, GROUPS, loadVotes, setVote, type CatalogGroup, type CatalogStatus } from '../lib/company/catalog';
 import '../styles/firbo.css';
 
-const TONE: Record<CatalogStatus, string> = { live: '#22d3ee', engine: '#fbbf24', planned: '#8aa4c4' };
+const TONE: Record<CatalogStatus, string> = { live: '#00d4ff', engine: '#fbbf24', planned: '#8aa4c4' };
 
 /** Everything the platform can do: what works now, what already exists in our engine, and what is coming. */
 export function HubPage() {
@@ -56,7 +56,7 @@ export function HubPage() {
 
   const chip = (active: boolean, color?: string) => ({
     className: 'fb-chip cursor-pointer',
-    style: active ? { color: color ?? 'var(--fb-accent)', borderColor: color ?? 'var(--fb-border-strong)', background: 'rgba(34, 211, 238,0.08)' } : undefined,
+    style: active ? { color: color ?? 'var(--fb-accent)', borderColor: color ?? 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,0.08)' } : undefined,
   });
 
   return (
