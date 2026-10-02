@@ -969,6 +969,14 @@ export const en = {
   'cmp.removeSub': 'Cancel the subscription in Billing first, then remove the company.',
   'cmp.removeOwner': 'Only the owner can remove a company.',
   'cmp.removeError': 'Could not remove the company.',
+  'win.label': 'Window',
+  'win.newWindow': 'Open this page in its own window',
+  'win.full': 'Full screen',
+  'win.exitFull': 'Exit full screen',
+  'panel.minimize': 'Minimize',
+  'panel.restore': 'Restore',
+  'panel.maximize': 'Maximize',
+  'panel.close': 'Close',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

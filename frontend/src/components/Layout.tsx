@@ -7,6 +7,7 @@ import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { useI18n } from '../i18n/I18nProvider';
 import { checkHealth } from '../lib/api';
+import { WindowControls } from './command/WindowControls';
 import { CommandProvider } from './command/CommandHost';
 
 export function Layout() {
@@ -41,6 +42,7 @@ export function Layout() {
   const shell = (
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
+      {COMPANY_ENABLED && <WindowControls />}
       {!COMPANY_ENABLED && <SystemPulse apiReachable={apiReachable} />}
       {!COMPANY_ENABLED && <ApprovalBell />}
 

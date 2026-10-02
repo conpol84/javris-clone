@@ -226,3 +226,12 @@ html[lang='ar'] .fb-root h1, html[lang='zh-CN'] .fb-root h1, html[lang='ar'] .fb
 html[lang='ar'] .fb-eyebrow, html[lang='zh-CN'] .fb-eyebrow, html[lang='ar'] .uppercase, html[lang='zh-CN'] .uppercase { text-transform: none; }
 html[lang='ar'] body { font-family: system-ui, 'Segoe UI', 'Noto Sans Arabic', 'Tahoma', sans-serif; }
 html[lang='zh-CN'] body { font-family: system-ui, 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif; }
+
+/* window controls + panel maximize */
+.fb-wincontrols { position: fixed; top: 8px; right: 10px; z-index: 40; display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: color-mix(in srgb, #050b1a 70%, transparent); border: 1px solid var(--fb-border); backdrop-filter: blur(8px); }
+[dir='rtl'] .fb-wincontrols { right: auto; left: 10px; }
+.fb-iconbtn { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; color: var(--fb-muted, #9fb3d1); background: transparent; border: 0; cursor: pointer; }
+.fb-iconbtn:hover { color: #e6f1ff; background: color-mix(in srgb, #00d4ff 16%, transparent); }
+.fb-panel-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(2, 6, 16, 0.78); backdrop-filter: blur(4px); }
+.fb-glass.fb-panel-max { position: fixed !important; inset: 3vh 3vw; z-index: 61; overflow: auto; margin: 0; grid-area: auto !important; }
+:fullscreen .fb-wincontrols { top: 6px; }
