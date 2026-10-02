@@ -94,6 +94,7 @@ function AiHead({ state, motion }: { state: HoloState; motion: number }) {
   const lm = useRef<THREE.LineBasicMaterial>(null);
   const em = useRef<THREE.PointsMaterial>(null);
   const sweep = useRef<THREE.Mesh>(null);
+  const mouth = useRef<THREE.BufferAttribute>(null);
   const smooth = useRef(0);
   const col = useMemo(() => new THREE.Color(COLORS.idle), []);
   const target = useMemo(() => new THREE.Color(), []);
@@ -112,6 +113,20 @@ function AiHead({ state, motion }: { state: HoloState; motion: number }) {
       group.current.rotation.y = Math.sin(t * 0.35) * (state === 'thinking' ? 0.45 : 0.18);
       group.current.rotation.x = Math.sin(t * 0.5) * 0.03;
       group.current.scale.setScalar(1 + smooth.current * 0.05);
+    }
+    if (mouth.current) {
+      // upper and lower lip: the gap follows the loudness of the voice
+      const open = state === 'speaking' ? 0.03 + smooth.current * 0.34 : 0.02;
+      const arr = mouth.current.array as Float32Array;
+      for (let i = 0; i < 11; i++) {
+        const x = (i - 5) * 0.045;
+        const z = 0.64 * Math.sqrt(Math.max(0, 1 - (x / 0.55) ** 2)) + 0.05;
+        const curve = Math.abs(x) * 0.18;
+        arr[i * 3] = x; arr[i * 3 + 1] = -0.58 + curve; arr[i * 3 + 2] = z;
+        const j = 11 + i;
+        arr[j * 3] = x; arr[j * 3 + 1] = -0.58 - open + curve * 0.6; arr[j * 3 + 2] = z;
+      }
+      mouth.current.needsUpdate = true;
     }
     if (sweep.current) sweep.current.position.y = -2.7 + ((s.clock.elapsedTime * 0.35 * Math.max(0.3, motion)) % 1) * 4.1;
   });
@@ -135,6 +150,12 @@ function AiHead({ state, motion }: { state: HoloState; motion: number }) {
             <bufferAttribute attach="attributes-position" args={[data.eyes, 3]} />
           </bufferGeometry>
           <pointsMaterial ref={em} size={0.05} transparent opacity={1} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
+        </points>
+        <points>
+          <bufferGeometry>
+            <bufferAttribute ref={mouth} attach="attributes-position" args={[new Float32Array(22 * 3), 3]} />
+          </bufferGeometry>
+          <pointsMaterial size={0.06} color="#ffffff" transparent opacity={0.95} sizeAttenuation depthWrite={false} blending={THREE.AdditiveBlending} toneMapped={false} />
         </points>
         <mesh ref={sweep} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[1.5, 1.56, 64]} />

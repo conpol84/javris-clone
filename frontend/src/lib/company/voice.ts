@@ -196,7 +196,6 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
     const an = ac.createAnalyser();
     an.fftSize = 512;
     ac.createMediaStreamSource(stream).connect(an);
-    const buf = new Uint8Array(an.frequencyBinCount);
     const mime = pickMime();
     const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
     const chunks: Blob[] = [];
@@ -255,19 +254,34 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
     };
     stopNow = () => finish(false);
     rec.start(250);
+    // Loudness from the waveform (RMS), compared with the room's own background level, so fans and hum do not count as speech.
+    const wave = new Uint8Array(an.fftSize);
+    let floor = 0.02;
+    let frames = 0;
+    let voiced = 0;
     timer = window.setInterval(() => {
-      an.getByteFrequencyData(buf);
-      let sum = 0;
-      for (let i = 0; i < buf.length; i++) sum += buf[i];
-      const level = sum / buf.length / 60;
-      voiceLevel.value = Math.min(1, level);
-      const now = Date.now();
-      if (level > 0.18) {
-        if (!spoke) on.interim('🎙 …');
-        spoke = true;
-        lastVoice = now;
+      an.getByteTimeDomainData(wave);
+      let sq = 0;
+      for (let i = 0; i < wave.length; i++) {
+        const v = (wave[i] - 128) / 128;
+        sq += v * v;
       }
-      if ((spoke && now - lastVoice > 1300) || now - startedAt > 20_000 || (!spoke && now - startedAt > 9000)) finish(true);
+      const rms = Math.sqrt(sq / wave.length);
+      frames++;
+      if (frames <= 8) floor = frames === 1 ? rms : floor * 0.7 + rms * 0.3; // first 0.6 s: learn the background
+      else if (!spoke) floor = floor * 0.98 + rms * 0.02; // keep following slow changes while nobody speaks
+      const threshold = Math.max(0.025, floor * 2.8);
+      voiceLevel.value = Math.min(1, rms * 7);
+      const now = Date.now();
+      if (frames > 8 && rms > threshold) {
+        voiced++;
+        lastVoice = now;
+        if (voiced >= 3 && !spoke) {
+          spoke = true;
+          on.interim('🎙 …');
+        }
+      }
+      if ((spoke && now - lastVoice > 1200) || now - startedAt > 20_000 || (!spoke && now - startedAt > 9000)) finish(true);
     }, 80);
   })();
   return () => {
