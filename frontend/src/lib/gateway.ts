@@ -41,6 +41,52 @@ export async function gatewayGet<T>(path: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** POST to a gateway route with the signed-in user's session. Throws the server's message on failure. */
+export async function gatewayPost<T>(path: string, body: unknown): Promise<T> {
+  const session = companyClient ? (await companyClient.auth.getSession()).data.session : null;
+  const res = await fetch(`${getBase()}${path}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      if (typeof j?.detail === 'string') detail = j.detail;
+    } catch {
+      /* keep status text */
+    }
+    const err = new Error(detail) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
+  }
+  return (await res.json()) as T;
+}
+
+export interface GatewayHealthRow {
+  provider: string;
+  status: 'healthy' | 'degraded' | 'down' | 'idle';
+  requests: number;
+  success_rate: number | null;
+  avg_latency_ms: number | null;
+  last_request_at: string | null;
+  last_error_at: string | null;
+}
+export interface GatewayCombo {
+  name: string;
+  strategy: string;
+  models: string[];
+  enabled: boolean;
+}
+export interface GatewaySavings {
+  available: boolean;
+  error: string | null;
+  compression: { enabled: boolean; mode: string };
+  modes: string[];
+  cache: Record<string, number>;
+}
+
 export interface GatewayUsage {
   range: string;
   available: boolean;

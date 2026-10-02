@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _TOKEN_TTL_SECONDS = 60.0
 _tokens: Dict[str, float] = {}
+_uids: Dict[str, str] = {}
 
 
 def supabase_auth_enabled() -> bool:
@@ -63,7 +64,12 @@ async def require_firbo_user(request: Request) -> None:
         raise HTTPException(status_code=401, detail="Invalid session")
     if len(_tokens) > 512:
         _tokens.clear()
+        _uids.clear()
     _tokens[token] = now + _TOKEN_TTL_SECONDS
+    try:
+        _uids[token] = str(resp.json().get("id", ""))
+    except ValueError:
+        _uids[token] = ""
 
 
 router = APIRouter(
@@ -504,6 +510,253 @@ async def gateway_keys() -> Dict[str, Any]:
     """Gateway API keys: names, status and limits. The key values are never returned."""
     data, err = await _cached("keys", "/api/keys", {})
     return {"available": data is not None, "error": err, "keys": _keys_summary(data)}
+
+
+# ---------------------------------------------------------------- health, routing, savings, playground
+
+_HEALTH_RECENT_ERROR_SECONDS = 15 * 60
+
+
+def _health_summary(payload: Any) -> List[Dict[str, Any]]:
+    """Per-provider health from call statistics. Never includes keys or account names."""
+    metrics = payload.get("metrics", {}) if isinstance(payload, dict) else {}
+    out: List[Dict[str, Any]] = []
+    if not isinstance(metrics, dict):
+        return out
+    for name, row in metrics.items():
+        if not isinstance(row, dict):
+            continue
+        total = int(_num(row.get("totalRequests")))
+        rate = row.get("successRate")
+        rate = round(_num(rate)) if rate is not None else None
+        if total == 0:
+            status = "idle"
+        elif rate is not None and rate >= 95:
+            status = "healthy"
+        elif rate is not None and rate >= 70:
+            status = "degraded"
+        else:
+            status = "down"
+        out.append(
+            {
+                "provider": str(name),
+                "status": status,
+                "requests": total,
+                "success_rate": rate,
+                "avg_latency_ms": row.get("avgLatencyMs"),
+                "last_request_at": row.get("lastRequestAt"),
+                "last_error_at": row.get("lastErrorAt"),
+            }
+        )
+    order = {"down": 0, "degraded": 1, "healthy": 2, "idle": 3}
+    out.sort(key=lambda r: (order[r["status"]], -r["requests"]))
+    return out
+
+
+def _combo_detail(payload: Any) -> List[Dict[str, Any]]:
+    rows = payload.get("combos", []) if isinstance(payload, dict) else []
+    out = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        models = row.get("models")
+        names: List[str] = []
+        for m in models if isinstance(models, list) else []:
+            if isinstance(m, dict):
+                names.append(str(m.get("model") or m.get("name") or m.get("id") or ""))
+            else:
+                names.append(str(m))
+        out.append(
+            {
+                "name": str(row.get("name", "")),
+                "strategy": str(row.get("strategy") or "priority"),
+                "models": [n for n in names if n][:12],
+                "enabled": row.get("isActive", row.get("enabled", True)) is not False,
+            }
+        )
+    return out
+
+
+def _scalar_stats(payload: Any) -> Dict[str, float]:
+    if not isinstance(payload, dict):
+        return {}
+    return {
+        str(k): float(v)
+        for k, v in payload.items()
+        if isinstance(v, (int, float)) and not isinstance(v, bool)
+    }
+
+
+_COMPRESSION_MODES = ("off", "lite", "standard", "aggressive", "ultra", "rtk")
+
+
+@router.get("/health")
+async def gateway_health() -> Dict[str, Any]:
+    """Which AI providers are working right now, from real call statistics."""
+    data, err = await _cached("pmetrics", "/api/provider-metrics", {})
+    return {"available": data is not None, "error": err, "providers": _health_summary(data)}
+
+
+@router.get("/routing")
+async def gateway_routing() -> Dict[str, Any]:
+    """Smart-routing combos: which models are tried, in what order."""
+    data, err = await _cached("combos_detail", "/api/combos", {})
+    return {"available": data is not None, "error": err, "combos": _combo_detail(data)}
+
+
+@router.get("/savings")
+async def gateway_savings() -> Dict[str, Any]:
+    """Token compression and response cache: settings and how much they are being used."""
+    comp, err = await _cached("compression", "/api/settings/compression", {})
+    cache, _ = await _cached("cache_stats", "/api/cache/stats", {})
+    settings = comp if isinstance(comp, dict) else {}
+    return {
+        "available": comp is not None,
+        "error": err,
+        "compression": {
+            "enabled": bool(settings.get("enabled")),
+            "mode": str(settings.get("defaultMode") or "off"),
+        },
+        "modes": list(_COMPRESSION_MODES),
+        "cache": _scalar_stats(cache),
+    }
+
+
+def _bearer(request: Request) -> str:
+    return request.headers.get("Authorization", "").partition(" ")[2]
+
+
+async def _supabase_get(request: Request, path: str) -> Any:
+    base = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    apikey = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "")
+    if not base:
+        return None
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
+            resp = await client.get(
+                f"{base}{path}",
+                headers={"Authorization": f"Bearer {_bearer(request)}", "apikey": apikey},
+            )
+        return resp.json() if resp.status_code == 200 else None
+    except (httpx.HTTPError, ValueError):
+        return None
+
+
+async def _is_platform_admin(request: Request) -> bool:
+    base = os.environ.get("SUPABASE_URL", "").rstrip("/")
+    apikey = os.environ.get("SUPABASE_PUBLISHABLE_KEY", "")
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
+            resp = await client.post(
+                f"{base}/rest/v1/rpc/is_platform_admin",
+                headers={"Authorization": f"Bearer {_bearer(request)}", "apikey": apikey},
+                json={},
+            )
+        return resp.status_code == 200 and resp.json() is True
+    except (httpx.HTTPError, ValueError):
+        return False
+
+
+async def _is_workspace_admin(request: Request) -> bool:
+    uid = _uids.get(_bearer(request), "")
+    if not uid or not all(c in "0123456789abcdef-" for c in uid.lower()):
+        return False
+    rows = await _supabase_get(
+        request,
+        f"/rest/v1/organization_members?select=role&user_id=eq.{uid}&role=in.(owner,admin)&limit=1",
+    )
+    return isinstance(rows, list) and len(rows) > 0
+
+
+async def _require(request: Request, who: str) -> None:
+    if not supabase_auth_enabled():
+        return  # the global API-key middleware governs the route instead
+    ok = (
+        await _is_platform_admin(request)
+        if who == "platform"
+        else (await _is_platform_admin(request) or await _is_workspace_admin(request))
+    )
+    if not ok:
+        raise HTTPException(status_code=403, detail="Admins only")
+
+
+@router.post("/savings")
+async def gateway_set_savings(request: Request) -> Dict[str, Any]:
+    """Switch token compression on or off and pick its strength. Platform admins only."""
+    await _require(request, "platform")
+    body = await request.json()
+    patch: Dict[str, Any] = {}
+    if isinstance(body.get("enabled"), bool):
+        patch["enabled"] = body["enabled"]
+    if body.get("mode") in _COMPRESSION_MODES:
+        patch["defaultMode"] = body["mode"]
+    if not patch:
+        raise HTTPException(status_code=400, detail="Nothing to change")
+    host, key = _settings()
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    try:
+        async with httpx.AsyncClient(base_url=host, headers=headers, timeout=httpx.Timeout(8.0)) as client:
+            resp = await client.put("/api/settings/compression", json=patch)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=type(exc).__name__)
+    if resp.status_code in (401, 403):
+        raise HTTPException(status_code=502, detail="Gateway rejected the management key")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Gateway error {resp.status_code}")
+    _extra_cache.clear()
+    return {"ok": True, "applied": patch}
+
+
+_play_hits: Dict[str, List[float]] = {}
+
+
+@router.post("/playground")
+async def gateway_playground(request: Request) -> Dict[str, Any]:
+    """Send one short message to a model through the gateway. Workspace admins only, rate limited."""
+    await _require(request, "workspace")
+    token = _bearer(request) or "local"
+    now = time.monotonic()
+    hits = [t for t in _play_hits.get(token, []) if now - t < 60.0]
+    if len(hits) >= 6:
+        raise HTTPException(status_code=429, detail="Slow down: 6 messages per minute")
+    _play_hits[token] = hits + [now]
+    if len(_play_hits) > 256:
+        _play_hits.clear()
+    body = await request.json()
+    message = str(body.get("message", "")).strip()[:2000]
+    model = str(body.get("model", "auto")).strip()[:120] or "auto"
+    if not message:
+        raise HTTPException(status_code=400, detail="Write a message first")
+    host, key = _settings()
+    headers = {"Authorization": f"Bearer {key}"} if key else {}
+    started = time.monotonic()
+    try:
+        async with httpx.AsyncClient(base_url=host, headers=headers, timeout=httpx.Timeout(45.0, connect=3.0)) as client:
+            resp = await client.post(
+                "/v1/chat/completions",
+                json={
+                    "model": model,
+                    "messages": [{"role": "user", "content": message}],
+                    "max_tokens": 400,
+                    "stream": False,
+                },
+            )
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=type(exc).__name__)
+    if resp.status_code in (401, 403):
+        raise HTTPException(status_code=502, detail="Gateway key rejected")
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=f"Model error {resp.status_code}")
+    data = resp.json()
+    choice = (data.get("choices") or [{}])[0].get("message", {}) if isinstance(data, dict) else {}
+    usage = data.get("usage", {}) if isinstance(data, dict) else {}
+    return {
+        "model": str(data.get("model", model)) if isinstance(data, dict) else model,
+        "reply": str(choice.get("content", ""))[:4000],
+        "tokens_in": int(_num(usage.get("prompt_tokens"))),
+        "tokens_out": int(_num(usage.get("completion_tokens"))),
+        "latency_ms": int((time.monotonic() - started) * 1000),
+    }
 
 
 __all__ = ["router", "build_overview"]

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { usePlatformAdmin } from '../lib/company/admin';
-import { CallsTab, FreeModelsTab, KeysTab, QuotaTab, UsageTab } from '../components/gateway/GatewayExtras';
+import { CallsTab, FreeModelsTab, HealthTab, KeysTab, PlaygroundTab, QuotaTab, RoutingTab, SavingsTab, UsageTab } from '../components/gateway/GatewayExtras';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { ProviderTopology } from '../components/command/ProviderTopology';
 import { STRATEGY_INFO, useGateway } from '../lib/gateway';
@@ -30,7 +30,7 @@ export function GatewayPage() {
   const gw = useGateway();
   const navigate = useNavigate();
   const isAdmin = usePlatformAdmin();
-  const [tab, setTab] = useState<'overview' | 'usage' | 'quota' | 'keys' | 'calls' | 'free'>('overview');
+  const [tab, setTab] = useState<'overview' | 'health' | 'routing' | 'savings' | 'usage' | 'quota' | 'keys' | 'calls' | 'free' | 'playground'>('overview');
   const data = gw.status === 'ready' ? gw.data : null;
   const online = !!data?.connected;
 
@@ -60,7 +60,7 @@ export function GatewayPage() {
 
 
         <div className="flex flex-wrap gap-2" role="tablist">
-          {(['overview', 'usage', 'quota', 'keys', 'calls', 'free'] as const).map((k) => (
+          {(['overview', 'health', 'routing', 'savings', 'usage', 'quota', 'keys', 'calls', 'free', 'playground'] as const).map((k) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="fb-chip cursor-pointer"
               style={tab === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
               {t(`gw.tab.${k}` as TKey)}
@@ -68,6 +68,10 @@ export function GatewayPage() {
           ))}
         </div>
 
+        {tab === 'health' && <HealthTab />}
+        {tab === 'routing' && <RoutingTab />}
+        {tab === 'savings' && <SavingsTab />}
+        {tab === 'playground' && <PlaygroundTab />}
         {tab === 'usage' && <UsageTab />}
         {tab === 'quota' && <QuotaTab />}
         {tab === 'keys' && <KeysTab />}

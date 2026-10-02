@@ -336,3 +336,96 @@ class TestExtraEndpoints:
             {"id": "k1", "name": "agent-ceo", "active": False, "created_at": "2026-10-01", "max_per_day": 500, "max_per_minute": None, "expires_at": None}
         ]
         assert "sk-or-abc" not in str(body)
+
+
+class TestHealthRoutingSavings:
+    @pytest.fixture(autouse=True)
+    def _clear(self):
+        gateway_routes._extra_cache.clear()
+        yield
+        gateway_routes._extra_cache.clear()
+
+    @respx.mock
+    def test_health_ranks_problem_providers_first_and_hides_nothing_secret(self, client: TestClient):
+        respx.get(f"{HOST}/api/provider-metrics").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "metrics": {
+                        "openai": {"totalRequests": 100, "successRate": 99, "avgLatencyMs": 800, "lastRequestAt": "t1", "lastErrorAt": None},
+                        "groq": {"totalRequests": 50, "successRate": 40, "avgLatencyMs": 300},
+                        "idle": {"totalRequests": 0},
+                    }
+                },
+            )
+        )
+        body = client.get("/v1/gateway/health").json()
+        assert [p["provider"] for p in body["providers"]] == ["groq", "openai", "idle"]
+        assert [p["status"] for p in body["providers"]] == ["down", "healthy", "idle"]
+
+    @respx.mock
+    def test_routing_lists_combo_models_in_order(self, client: TestClient):
+        respx.get(f"{HOST}/api/combos").mock(
+            return_value=httpx.Response(
+                200,
+                json={"combos": [{"name": "cheap-first", "strategy": "priority", "models": [{"model": "groq/llama"}, "openai/gpt-5-mini"], "isActive": True}]},
+            )
+        )
+        body = client.get("/v1/gateway/routing").json()
+        assert body["combos"] == [{"name": "cheap-first", "strategy": "priority", "models": ["groq/llama", "openai/gpt-5-mini"], "enabled": True}]
+
+    @respx.mock
+    def test_savings_reports_settings_and_numeric_cache_stats_only(self, client: TestClient):
+        respx.get(f"{HOST}/api/settings/compression").mock(return_value=httpx.Response(200, json={"enabled": True, "defaultMode": "standard", "secret": "x"}))
+        respx.get(f"{HOST}/api/cache/stats").mock(return_value=httpx.Response(200, json={"hits": 7, "misses": 3, "note": "text"}))
+        body = client.get("/v1/gateway/savings").json()
+        assert body["compression"] == {"enabled": True, "mode": "standard"}
+        assert body["cache"] == {"hits": 7.0, "misses": 3.0}
+
+    @respx.mock
+    def test_playground_rate_limits_and_returns_reply(self, client: TestClient):
+        gateway_routes._play_hits.clear()
+        respx.post(f"{HOST}/v1/chat/completions").mock(
+            return_value=httpx.Response(200, json={"model": "gpt-5-mini", "choices": [{"message": {"content": "Hello"}}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
+        )
+        first = client.post("/v1/gateway/playground", json={"message": "hi"})
+        assert first.status_code == 200 and first.json()["reply"] == "Hello" and first.json()["tokens_out"] == 2
+        statuses = [client.post("/v1/gateway/playground", json={"message": "hi"}).status_code for _ in range(6)]
+        assert 429 in statuses
+
+
+class TestAdminGates:
+    @pytest.fixture(autouse=True)
+    def _supabase(self, monkeypatch: pytest.MonkeyPatch):
+        monkeypatch.setenv("SUPABASE_URL", "https://proj.supabase.test")
+        monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "sb_publishable_x")
+        gateway_routes._tokens.clear()
+        gateway_routes._uids.clear()
+        gateway_routes._play_hits.clear()
+        yield
+        gateway_routes._tokens.clear()
+        gateway_routes._uids.clear()
+
+    @respx.mock
+    def test_only_platform_admins_can_change_savings(self, client: TestClient):
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "11111111-1111-1111-1111-111111111111"}))
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=False))
+        resp = client.post("/v1/gateway/savings", json={"enabled": True}, headers={"Authorization": "Bearer t"})
+        assert resp.status_code == 403
+
+    @respx.mock
+    def test_platform_admin_can_change_savings(self, client: TestClient):
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "11111111-1111-1111-1111-111111111111"}))
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=True))
+        put = respx.put(f"{HOST}/api/settings/compression").mock(return_value=httpx.Response(200, json={"enabled": True}))
+        resp = client.post("/v1/gateway/savings", json={"enabled": True, "mode": "bogus"}, headers={"Authorization": "Bearer t"})
+        assert resp.status_code == 200 and resp.json()["applied"] == {"enabled": True}
+        assert put.called
+
+    @respx.mock
+    def test_playground_needs_an_admin_membership(self, client: TestClient):
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "22222222-2222-2222-2222-222222222222"}))
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=False))
+        respx.get(url__regex=r"https://proj\.supabase\.test/rest/v1/organization_members.*").mock(return_value=httpx.Response(200, json=[]))
+        resp = client.post("/v1/gateway/playground", json={"message": "hi"}, headers={"Authorization": "Bearer t"})
+        assert resp.status_code == 403

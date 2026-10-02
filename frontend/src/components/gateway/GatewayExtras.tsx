@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { toast } from 'sonner';
+import { usePlatformAdmin } from '../../lib/company/admin';
 import { Panel, StatusDot } from '../command/Panel';
 import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/locales/en';
@@ -7,7 +9,7 @@ import { listAgents, loadMonthlySpend } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
 import { agentColor } from '../../lib/company/status';
 import type { AgentRow } from '../../lib/company/types';
-import { useGatewayData, type FreeModel, type GatewayCall, type GatewayKey, type GatewayUsage, type QuotaProvider } from '../../lib/gateway';
+import { gatewayPost, useGatewayData, type FreeModel, type GatewayCombo, type GatewayHealthRow, type GatewaySavings, type GatewayCall, type GatewayKey, type GatewayUsage, type QuotaProvider } from '../../lib/gateway';
 
 const RANGES = ['1d', '7d', '30d', '90d'] as const;
 
@@ -366,6 +368,197 @@ export function KeysTab() {
           </table>
         </div>
       )}
+    </Panel>
+  );
+}
+
+
+const HEALTH_TONE = { healthy: 'var(--fb-ok)', degraded: 'var(--fb-warn)', down: 'var(--fb-err)', idle: 'var(--fb-dim)' } as const;
+
+export function HealthTab() {
+  const { t, fmt } = useI18n();
+  const { data, error, loading } = useGatewayData<{ available: boolean; error: string | null; providers: GatewayHealthRow[] }>('/v1/gateway/health', 20_000);
+  return (
+    <Panel title={t('gw.health.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.health.hint')}</p>
+      {error ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{reasonText(error, t)}</p>
+      ) : loading && !data ? (
+        <p className="fb-dim text-sm">{t('common.loading')}</p>
+      ) : !data?.available ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('gw.usage.unavailable')} {data?.error ? reasonText(data.error, t) : ''}</p>
+      ) : data.providers.length === 0 ? (
+        <p className="fb-dim text-sm">{t('gw.health.empty')}</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="fb-table">
+            <thead>
+              <tr><th>{t('gw.health.provider')}</th><th>{t('gw.calls.status')}</th><th>{t('gw.health.requests')}</th><th>{t('gw.health.success')}</th><th>{t('gw.health.latency')}</th><th>{t('gw.health.lastError')}</th></tr>
+            </thead>
+            <tbody>
+              {data.providers.map((p) => (
+                <tr key={p.provider}>
+                  <td className="font-medium">{p.provider}</td>
+                  <td style={{ color: HEALTH_TONE[p.status] }}><StatusDot tone={p.status === 'healthy' ? 'ok' : p.status === 'idle' ? 'idle' : p.status === 'degraded' ? 'warn' : 'err'} live={p.status === 'healthy'} /> {t(`gw.health.s.${p.status}` as TKey)}</td>
+                  <td>{fmt.number(p.requests)}</td>
+                  <td>{p.success_rate == null ? '–' : `${p.success_rate}%`}</td>
+                  <td>{p.avg_latency_ms == null ? '–' : `${fmt.number(Math.round(p.avg_latency_ms))} ms`}</td>
+                  <td>{p.last_error_at ? fmt.dateTime(p.last_error_at) : '–'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function RoutingTab() {
+  const { t } = useI18n();
+  const { data, error, loading } = useGatewayData<{ available: boolean; error: string | null; combos: GatewayCombo[] }>('/v1/gateway/routing');
+  return (
+    <Panel title={t('gw.routing.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.routing.hint')}</p>
+      {error ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{reasonText(error, t)}</p>
+      ) : loading && !data ? (
+        <p className="fb-dim text-sm">{t('common.loading')}</p>
+      ) : !data?.available ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('gw.usage.unavailable')} {data?.error ? reasonText(data.error, t) : ''}</p>
+      ) : data.combos.length === 0 ? (
+        <p className="fb-dim text-sm">{t('gw.routing.empty')}</p>
+      ) : (
+        <ul className="grid gap-3 md:grid-cols-2">
+          {data.combos.map((c) => (
+            <li key={c.name} className="fb-row fb-col gap-2 p-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{c.name}</span>
+                <span className="fb-chip">{c.strategy}</span>
+                {!c.enabled && <span className="fb-chip" style={{ color: 'var(--fb-warn)' }}>{t('gw.keys.disabled')}</span>}
+              </div>
+              <ol className="fb-muted list-decimal ps-5 text-xs">
+                {c.models.map((m, i) => (
+                  <li key={`${m}-${i}`}>{m}</li>
+                ))}
+              </ol>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="fb-dim mt-3 text-xs">{t('gw.routing.edit')}</p>
+    </Panel>
+  );
+}
+
+export function SavingsTab() {
+  const { t, fmt } = useI18n();
+  const isAdmin = usePlatformAdmin();
+  const { data, error, loading, reload } = useGatewayData<GatewaySavings>('/v1/gateway/savings');
+  const [busy, setBusy] = useState(false);
+  const save = async (patch: { enabled?: boolean; mode?: string }) => {
+    setBusy(true);
+    try {
+      await gatewayPost('/v1/gateway/savings', patch);
+      toast.success(t('gw.savings.saved'));
+      reload();
+    } catch (err) {
+      console.error(err);
+      toast.error(t('gw.savings.saveError'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title={t('gw.savings.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.savings.hint')}</p>
+      {error ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{reasonText(error, t)}</p>
+      ) : loading && !data ? (
+        <p className="fb-dim text-sm">{t('common.loading')}</p>
+      ) : !data?.available ? (
+        <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('gw.usage.unavailable')} {data?.error ? reasonText(data.error, t) : ''}</p>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="fb-row fb-col gap-3 p-4">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-semibold">{t('gw.savings.compression')}</span>
+              <span className="fb-chip" style={{ color: data.compression.enabled ? 'var(--fb-ok)' : 'var(--fb-dim)' }}>{data.compression.enabled ? t('gw.savings.on') : t('gw.savings.off')}</span>
+            </div>
+            <label className="fb-muted flex items-center gap-2 text-xs">
+              {t('gw.savings.mode')}
+              <select className="fb-input" style={{ width: 'auto' }} disabled={!isAdmin || busy} value={data.compression.mode} onChange={(e) => void save({ mode: e.target.value })}>
+                {data.modes.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </label>
+            {isAdmin ? (
+              <button className="fb-btn fb-btn--primary self-start" disabled={busy} onClick={() => void save({ enabled: !data.compression.enabled })}>
+                {data.compression.enabled ? t('gw.savings.turnOff') : t('gw.savings.turnOn')}
+              </button>
+            ) : (
+              <p className="fb-dim text-xs">{t('gw.savings.adminOnly')}</p>
+            )}
+          </div>
+          <div className="fb-row fb-col gap-2 p-4">
+            <span className="text-sm font-semibold">{t('gw.savings.cache')}</span>
+            {Object.keys(data.cache).length === 0 ? (
+              <p className="fb-dim text-xs">{t('gw.savings.noCache')}</p>
+            ) : (
+              <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                {Object.entries(data.cache).map(([k, v]) => (
+                  <div key={k} className="contents">
+                    <dt className="fb-dim">{k}</dt>
+                    <dd className="text-end tabular-nums">{fmt.number(v)}</dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </div>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+export function PlaygroundTab() {
+  const { t, fmt } = useI18n();
+  const [model, setModel] = useState('auto');
+  const [message, setMessage] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [out, setOut] = useState<{ model: string; reply: string; tokens_in: number; tokens_out: number; latency_ms: number } | null>(null);
+  const send = async () => {
+    if (!message.trim() || busy) return;
+    setBusy(true);
+    try {
+      setOut(await gatewayPost('/v1/gateway/playground', { model, message }));
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      toast.error(t(status === 403 ? 'gw.play.adminsOnly' : status === 429 ? 'gw.play.rate' : 'gw.play.error'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Panel title={t('gw.play.title')}>
+      <p className="fb-muted mb-3 text-sm">{t('gw.play.hint')}</p>
+      <div className="fb-col gap-3">
+        <label className="block text-xs">
+          <span className="fb-dim">{t('coding.model')}</span>
+          <input className="fb-input mt-1" value={model} onChange={(e) => setModel(e.target.value)} spellCheck={false} />
+        </label>
+        <textarea className="fb-input" rows={3} maxLength={2000} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={t('gw.play.placeholder')} aria-label={t('gw.play.placeholder')} />
+        <button className="fb-btn fb-btn--primary self-start" disabled={busy || !message.trim()} onClick={() => void send()}>
+          {busy ? t('common.loading') : t('gw.play.send')}
+        </button>
+        {out && (
+          <div className="fb-row fb-col gap-2 p-3">
+            <p className="whitespace-pre-wrap text-sm">{out.reply}</p>
+            <p className="fb-dim text-xs">{out.model} · {fmt.number(out.tokens_in)} → {fmt.number(out.tokens_out)} tokens · {fmt.number(out.latency_ms)} ms</p>
+          </div>
+        )}
+      </div>
     </Panel>
   );
 }
