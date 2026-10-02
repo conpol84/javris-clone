@@ -1,6 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { companyClient } from './client';
 
+/** Several screens can watch the same tables at once (a page plus an open dialog), so every subscription gets its own channel name. */
+let seq = 0;
+export const channelName = (orgId: string, key: string): string => `org-${orgId}-${key}-${++seq}`;
+
 /**
  * Calls `onChange` (debounced) whenever rows of the given tables change for this company.
  * Supabase Realtime applies row-level security, so users only receive what they may read.
@@ -17,7 +21,7 @@ export function useRealtimeReload(orgId: string, tables: string[], onChange: () 
       window.clearTimeout(timer);
       timer = window.setTimeout(() => cb.current(), debounceMs);
     };
-    let channel = companyClient.channel(`org-${orgId}-${key}`);
+    let channel = companyClient.channel(channelName(orgId, key));
     for (const table of key.split(',')) {
       channel = channel.on(
         'postgres_changes',
