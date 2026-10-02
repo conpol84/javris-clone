@@ -241,6 +241,7 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
       voiceLevel.value = Math.min(1, level);
       const now = Date.now();
       if (level > 0.18) {
+        if (!spoke) on.interim('🎙 …');
         spoke = true;
         lastVoice = now;
       }
@@ -253,48 +254,46 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
   };
 }
 
-/** Browser speech recognition when it really hears something; otherwise falls back to recording and server transcription. */
+/**
+ * Listening for one turn. The microphone is recorded directly and transcribed on the server (reliable in every browser, any language).
+ * If recording is impossible or the server fails, the browser's own speech recognition is used instead.
+ */
 export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void }): () => void {
   let stopFn: () => void = () => {};
   let off = false;
-  const fallback = () => {
+  const canRecord = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+  const browser = () => {
     if (off) return;
-    stopFn = recordAndTranscribe(orgId, lang, on);
+    if (!recognitionSupported()) {
+      on.error?.('other');
+      return on.end();
+    }
+    stopFn = listenOnce(lang, { interim: on.interim, final: on.final, end: on.end, error: on.error });
   };
-  if (!recognitionSupported()) {
-    fallback();
-    return () => {
-      off = true;
-      stopFn();
-    };
+  if (!canRecord) {
+    browser();
+  } else {
+    let sawError: VoiceError | 'server' | null = null;
+    stopFn = recordAndTranscribe(orgId, lang, {
+      interim: on.interim,
+      final: on.final,
+      error: (c) => {
+        sawError = c;
+      },
+      end: () => {
+        if (sawError === 'server' && !off) {
+          sawError = null;
+          on.interim('');
+          browser();
+        } else {
+          if (sawError) on.error?.(sawError);
+          on.end();
+        }
+      },
+    });
   }
-  let spoke = false;
-  let switched = false;
-  const toFallback = () => {
-    if (switched || off) return;
-    switched = true;
-    stopFn();
-    fallback();
-  };
-  const watchdog = window.setTimeout(() => !spoke && toFallback(), 6000);
-  stopFn = listenOnce(lang, {
-    interim: (t) => ((spoke = true), on.interim(t)),
-    final: (t) => (window.clearTimeout(watchdog), (switched = true), on.final(t)),
-    spoke: () => (spoke = true),
-    end: () => {
-      window.clearTimeout(watchdog);
-      if (!switched) on.end();
-    },
-    error: (c) => {
-      window.clearTimeout(watchdog);
-      if (c === 'denied') return on.error?.(c);
-      if (c === 'network' || c === 'other') return toFallback();
-      on.error?.(c);
-    },
-  });
   return () => {
     off = true;
-    window.clearTimeout(watchdog);
     stopFn();
   };
 }
