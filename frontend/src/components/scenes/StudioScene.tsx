@@ -5,7 +5,9 @@ import * as THREE from 'three';
 import type { AgentRow } from '../../lib/company/types';
 import { agentColor, type AgentState } from '../../lib/company/status';
 import { Glow, Stars } from './fx';
-import { Label3D, Robot } from './OfficeScene';
+import { Label3D } from './OfficeScene';
+import { Person } from './Person';
+import { resolvePersona } from '../../lib/company/persona';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export interface StudioPower {
@@ -101,7 +103,7 @@ function Hangar({ agents, states, selectedId, onSelect, agentName }: Pick<Studio
             >
               <boxGeometry args={[1, 1.9, 1]} />
             </mesh>
-            <Robot color={color} state={states[a.id] ?? 'idle'} />
+            <Person persona={resolvePersona(a)} color={color} state={states[a.id] ?? 'idle'} />
             <Label3D text={agentName(a)} dot={color} border={color} position={[0, 1.95, 0]} height={0.4} />
           </group>
         );
@@ -139,11 +141,11 @@ function Scene(props: StudioProps) {
         <meshBasicMaterial color={color} toneMapped={false} />
       </mesh>
       {selected && (
-        <group scale={2.4} position={[0, 0, 0]}>
-          <Robot color={color} state={props.states[selected.id] ?? 'idle'} />
+        <group scale={1.7} position={[0, 0, 0]}>
+          <Person persona={resolvePersona(selected)} color={color} state={props.states[selected.id] ?? 'idle'} />
         </group>
       )}
-      {selected && <Label3D text={props.agentName(selected)} dot={color} border={color} glow position={[0, 5.2, 0]} height={0.62} />}
+      {selected && <Label3D text={props.agentName(selected)} dot={color} border={color} glow position={[0, 4.3, 0]} height={0.62} />}
       <group ref={spin}>
         {props.powers.map((p, i) => (
           <PowerOrb key={p.id} power={p} angle={(i / Math.max(1, props.powers.length)) * Math.PI * 2} radius={3.0} motion={motion} onToggle={() => props.onTogglePower(p.id)} canManage={props.canManage} />

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Plus } from 'lucide-react';
 import { StatusDot, Wave } from '../components/command/Panel';
 import { AgentDrawer } from '../components/team/AgentDrawer';
+import { CharacterEditor } from '../components/team/CharacterEditor';
+import type { Persona } from '../lib/company/persona';
 import { HireDialog } from '../components/team/HireDialog';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { loadDecisionStats, loadMonthlySpend } from '../lib/company/data';
@@ -14,6 +16,8 @@ import { MANAGER_ROLES } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import '../styles/firbo.css';
 
+const TeamStage = lazy(() => import('../components/scenes/TeamStage'));
+
 export function TeamPage() {
   const i18n = useI18n();
   const { t, fmt } = i18n;
@@ -24,6 +28,7 @@ export function TeamPage() {
   const canManage = MANAGER_ROLES.includes(role);
   const data = useOrgData(orgId, canManage);
   const [hiring, setHiring] = useState(false);
+  const [draft, setDraft] = useState<Persona | null>(null);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof loadDecisionStats>>>({});
   const [spend, setSpend] = useState<Record<string, number>>({});
   const states = useMemo(() => deriveAgentStates(data.agents, data.tasks, data.approvals), [data.agents, data.tasks, data.approvals]);
@@ -43,6 +48,7 @@ export function TeamPage() {
   }, [loadExtras, data.approvals.length]);
 
   const select = (id: string | null) => {
+    setDraft(null);
     const next = new URLSearchParams(params);
     if (id) next.set('agent', id);
     else next.delete('agent');
@@ -74,6 +80,17 @@ export function TeamPage() {
             {data.error}
           </p>
         )}
+
+        <div className="fb-glass relative mb-4 h-[46vh] min-h-[320px] overflow-hidden">
+          {data.agents.length === 0 ? (
+            <div className="fb-muted grid h-full place-items-center p-6 text-center text-sm">{t('team.noAgents')}</div>
+          ) : (
+            <Suspense fallback={<div className="fb-muted grid h-full place-items-center text-sm">{t('office.loading')}</div>}>
+              <TeamStage agents={data.agents} states={states} selectedId={selected?.id ?? null} onSelect={(id) => select(id)} agentName={(a) => agentLabel(a, i18n).name} draft={draft} noWebgl={t('studio.noWebgl')} />
+            </Suspense>
+          )}
+          <p className="fb-dim pointer-events-none absolute bottom-2 start-3 text-[11px]">{t('team.stage.hint')}</p>
+        </div>
 
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
           <ul className="grid content-start gap-3 sm:grid-cols-2">
@@ -117,7 +134,8 @@ export function TeamPage() {
           </ul>
 
           {selected && (
-            <aside className="lg:sticky lg:top-4 lg:self-start">
+            <aside className="fb-col gap-4 lg:sticky lg:top-4 lg:self-start">
+              <CharacterEditor key={`c-${selected.id}-${selected.name}`} agent={selected} canManage={canManage} onDraft={setDraft} onSaved={() => (setDraft(null), changed())} />
               <AgentDrawer
                 key={selected.id}
                 agent={selected}

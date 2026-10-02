@@ -34,6 +34,7 @@ export interface AgentRow {
   autonomous: boolean;
   autonomy: Autonomy;
   monthly_budget_usd: number | null;
+  persona?: { skin?: number; hair?: number; hairColor?: number; outfit?: number; accessory?: number } | null;
   agent_tools: AgentToolRow[];
 }
 
