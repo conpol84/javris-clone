@@ -20,6 +20,7 @@ import { FirboSettingsPage } from './pages/FirboSettingsPage';
 import { COMPANY_ENABLED } from './lib/company/client';
 import { AdminPage } from './pages/AdminPage';
 import { AnalyticsPage } from './pages/AnalyticsPage';
+import { MissionsPage } from './pages/MissionsPage';
 import { IntegrationsPage } from './pages/IntegrationsPage';
 import { AgentChatPage } from './pages/AgentChatPage';
 import { CompaniesPage } from './pages/CompaniesPage';
@@ -212,6 +213,7 @@ function AuthedApp() {
           <Route path="analytics" element={COMPANY_ENABLED ? <AnalyticsPage /> : <Navigate to="/" replace />} />
           <Route path="integrations" element={COMPANY_ENABLED ? <IntegrationsPage /> : <Navigate to="/" replace />} />
           <Route path="admin" element={COMPANY_ENABLED ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="missions" element={COMPANY_ENABLED ? <MissionsPage /> : <Navigate to="/" replace />} />
           <Route path="companies" element={COMPANY_ENABLED ? <CompaniesPage /> : <Navigate to="/" replace />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="inbox" element={<InboxPage />} />

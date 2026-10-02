@@ -86,6 +86,7 @@ export function Sidebar() {
     ? [
         { path: '/', icon: LayoutDashboard, label: t('nav.commandCenter') },
         { path: '/office', icon: Box, label: t('nav.office') },
+        { path: '/missions', icon: Rocket, label: t('nav.missions') },
         { path: '/chat', icon: MessageSquare, label: t('nav.chat') },
         { path: '/team', icon: Users, label: t('nav.team') },
         { path: '/inbox', icon: Inbox, label: t('nav.inbox'), badge: pending },
