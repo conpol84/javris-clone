@@ -65,6 +65,7 @@ export async function listTasks(orgId: string): Promise<TaskRow[]> {
     .from('tasks')
     .select('id, title, description, status, priority, assigned_agent_id, due_at, created_at, result')
     .eq('organization_id', orgId)
+    .eq('kind', 'task') // missions have their own page; their steps are ordinary tasks
     .order('created_at', { ascending: false })
     .limit(100);
   return fail(error, data) as unknown as TaskRow[];
@@ -227,7 +228,7 @@ export async function loadOrgSummary(orgId: string, canSeeUsage: boolean): Promi
   const db = requireClient();
   const [agents, tasks, approvals, counts] = await Promise.all([
     db.from('agents').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('enabled', true),
-    db.from('tasks').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).in('status', OPEN_TASK_STATUSES),
+    db.from('tasks').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('kind', 'task').in('status', OPEN_TASK_STATUSES),
     db.from('approvals').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'pending'),
     canSeeUsage ? loadCounts(orgId, true) : Promise.resolve(null),
   ]);
