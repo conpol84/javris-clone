@@ -974,6 +974,12 @@ const zhCN: Dictionary = {
   'int.err.read_only': '此应用为只读。',
   'int.snapshot': '显示数据',
   'nav.more': '更多',
+  'hud.toggle': 'HUD 窗口',
+  'hud.voice': '语音指令',
+  'hud.flow': '自动化流程',
+  'hud.analytics': 'AI 分析',
+  'hud.empty': '暂无任务。',
+  'hud.completed': '已完成 {pct}% 的任务',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

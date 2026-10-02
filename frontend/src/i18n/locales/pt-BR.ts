@@ -973,6 +973,12 @@ const ptBR: Dictionary = {
   'int.err.read_only': 'Este app é somente leitura.',
   'int.snapshot': 'Mostrar dados',
   'nav.more': 'Mais',
+  'hud.toggle': 'Janelas HUD',
+  'hud.voice': 'Comandos de voz',
+  'hud.flow': 'Fluxo de automação',
+  'hud.analytics': 'Análises de IA',
+  'hud.empty': 'Ainda não há tarefas.',
+  'hud.completed': '{pct}% das tarefas concluídas',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

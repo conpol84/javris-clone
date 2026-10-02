@@ -981,6 +981,12 @@ export const en = {
   'int.err.read_only': 'This app is read-only.',
   'int.snapshot': 'Show data',
   'nav.more': 'More',
+  'hud.toggle': 'HUD windows',
+  'hud.voice': 'Voice commands',
+  'hud.flow': 'Automation workflow',
+  'hud.analytics': 'AI analytics',
+  'hud.empty': 'No tasks yet.',
+  'hud.completed': '{pct}% of tasks completed',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

@@ -973,6 +973,12 @@ const de: Dictionary = {
   'int.err.read_only': 'Diese App ist nur lesend.',
   'int.snapshot': 'Daten anzeigen',
   'nav.more': 'Mehr',
+  'hud.toggle': 'HUD-Fenster',
+  'hud.voice': 'Sprachbefehle',
+  'hud.flow': 'Automatisierungsablauf',
+  'hud.analytics': 'KI-Analysen',
+  'hud.empty': 'Noch keine Aufgaben.',
+  'hud.completed': '{pct}% der Aufgaben erledigt',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

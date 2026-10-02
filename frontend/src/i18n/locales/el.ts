@@ -973,6 +973,12 @@ const el: Dictionary = {
   'int.err.read_only': 'Αυτή η εφαρμογή είναι μόνο για ανάγνωση.',
   'int.snapshot': 'Εμφάνιση δεδομένων',
   'nav.more': 'Περισσότερα',
+  'hud.toggle': 'Παράθυρα HUD',
+  'hud.voice': 'Φωνητικές εντολές',
+  'hud.flow': 'Ροή εργασιών',
+  'hud.analytics': 'Αναλυτικά AI',
+  'hud.empty': 'Δεν υπάρχουν εργασίες ακόμα.',
+  'hud.completed': '{pct}% των εργασιών ολοκληρώθηκε',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

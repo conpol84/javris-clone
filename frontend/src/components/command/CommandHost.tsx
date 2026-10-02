@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { HudDock } from './HudDock';
 import { TalkConsole } from './TalkConsole';
 
 interface CommandApi {
@@ -31,6 +32,7 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
+      <HudDock />
       {on && <TalkConsole autoBriefing={briefing} onClose={() => setOn(false)} />}
     </Ctx.Provider>
   );

@@ -973,6 +973,12 @@ const es: Dictionary = {
   'int.err.read_only': 'Esta aplicación es de solo lectura.',
   'int.snapshot': 'Mostrar datos',
   'nav.more': 'Más',
+  'hud.toggle': 'Ventanas HUD',
+  'hud.voice': 'Comandos de voz',
+  'hud.flow': 'Flujo de automatización',
+  'hud.analytics': 'Analítica de IA',
+  'hud.empty': 'Aún no hay tareas.',
+  'hud.completed': '{pct}% de las tareas completadas',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

@@ -978,6 +978,12 @@ const ar: Dictionary = {
   'int.err.read_only': 'هذا التطبيق للقراءة فقط.',
   'int.snapshot': 'عرض البيانات',
   'nav.more': 'المزيد',
+  'hud.toggle': 'نوافذ HUD',
+  'hud.voice': 'الأوامر الصوتية',
+  'hud.flow': 'سير الأتمتة',
+  'hud.analytics': 'تحليلات الذكاء الاصطناعي',
+  'hud.empty': 'لا توجد مهام بعد.',
+  'hud.completed': 'اكتمل {pct}% من المهام',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',
