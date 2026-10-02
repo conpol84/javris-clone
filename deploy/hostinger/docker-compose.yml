@@ -79,7 +79,8 @@ services:
       OPENJARVIS_API_KEY: ${OPENJARVIS_API_KEY}
       OPENJARVIS_CORS_ORIGINS: ${FRONTEND_ORIGINS:-https://firboai.app}
       OMNIROUTE_HOST: http://omniroute:20128
-      OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-}
+      # The engine needs a key that can list models; fall back to the management key.
+      OMNIROUTE_API_KEY: ${OMNIROUTE_API_KEY:-${OMNIROUTE_MANAGEMENT_KEY:-}}
       OMNIROUTE_MANAGEMENT_KEY: ${OMNIROUTE_MANAGEMENT_KEY:-}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
