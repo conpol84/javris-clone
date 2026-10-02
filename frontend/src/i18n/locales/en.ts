@@ -987,6 +987,7 @@ export const en = {
   'hud.analytics': 'AI analytics',
   'hud.empty': 'No tasks yet.',
   'hud.completed': '{pct}% of tasks completed',
+  'voice.err.server': 'The voice service did not answer. Type your message instead, or try again.',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

@@ -15,6 +15,7 @@ interface RecognitionLike {
   continuous: boolean;
   onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }) => void) | null;
   onend: (() => void) | null;
+  onspeechstart?: (() => void) | null;
   onerror: ((e: { error?: string }) => void) | null;
   start(): void;
   stop(): void;
@@ -26,7 +27,7 @@ export function recognitionSupported(): boolean {
 }
 
 /** Starts one listening turn. Returns a stop function. */
-export function listenOnce(lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError) => void }): () => void {
+export function listenOnce(lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError) => void; spoke?: () => void }): () => void {
   const w = window as unknown as Record<string, new () => RecognitionLike>;
   const Ctor = w.SpeechRecognition || w.webkitSpeechRecognition;
   if (!Ctor) {
@@ -38,6 +39,7 @@ export function listenOnce(lang: string, on: { interim: (t: string) => void; fin
   rec.interimResults = true;
   rec.continuous = false;
   let done = false;
+  rec.onspeechstart = () => on.spoke?.();
   rec.onresult = (e) => {
     let text = '';
     let isFinal = false;
@@ -162,4 +164,137 @@ export async function speak(orgId: string, text: string, lang: string): Promise<
   cancelAnimationFrame(raf);
   clearInterval(synthTimer);
   voiceLevel.value = 0;
+}
+
+// ---------------------------------------------------------------- server-side listening (works in every browser)
+
+function pickMime(): string {
+  for (const m of ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg;codecs=opus']) if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+
+/**
+ * Records one spoken turn with the microphone (stops by itself after a pause) and has the server turn it into text.
+ * The loudness feeds `voiceLevel`, so the hologram visibly reacts to the user's voice.
+ */
+export function recordAndTranscribe(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void }): () => void {
+  let cancelled = false;
+  let stopNow = () => {};
+  void (async () => {
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    } catch {
+      on.error?.('denied');
+      on.end();
+      return;
+    }
+    if (cancelled) return stream.getTracks().forEach((t) => t.stop());
+    const ac = new AudioContext();
+    const an = ac.createAnalyser();
+    an.fftSize = 512;
+    ac.createMediaStreamSource(stream).connect(an);
+    const buf = new Uint8Array(an.frequencyBinCount);
+    const mime = pickMime();
+    const rec = new MediaRecorder(stream, mime ? { mimeType: mime } : undefined);
+    const chunks: Blob[] = [];
+    rec.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const startedAt = Date.now();
+    let lastVoice = 0;
+    let spoke = false;
+    let timer = 0;
+    const finish = (send: boolean) => {
+      window.clearInterval(timer);
+      voiceLevel.value = 0;
+      stream.getTracks().forEach((t) => t.stop());
+      void ac.close().catch(() => undefined);
+      if (rec.state !== 'inactive') rec.stop();
+      rec.onstop = async () => {
+        if (!send || !spoke || cancelled) return on.end();
+        on.interim('…');
+        try {
+          const blob = new Blob(chunks, { type: rec.mimeType || 'audio/webm' });
+          const form = new FormData();
+          form.append('organization_id', orgId);
+          form.append('lang', lang);
+          form.append('audio', blob, 'speech.webm');
+          const { data, error } = await requireClient().functions.invoke('agent-listen', { body: form });
+          const text = typeof data?.text === 'string' ? data.text.trim() : '';
+          if (error) throw error;
+          on.interim('');
+          if (text) on.final(text);
+          else on.end();
+        } catch {
+          on.interim('');
+          on.error?.('server');
+          on.end();
+        }
+      };
+    };
+    stopNow = () => finish(false);
+    rec.start(250);
+    timer = window.setInterval(() => {
+      an.getByteFrequencyData(buf);
+      let sum = 0;
+      for (let i = 0; i < buf.length; i++) sum += buf[i];
+      const level = sum / buf.length / 60;
+      voiceLevel.value = Math.min(1, level);
+      const now = Date.now();
+      if (level > 0.18) {
+        spoke = true;
+        lastVoice = now;
+      }
+      if ((spoke && now - lastVoice > 1300) || now - startedAt > 20_000 || (!spoke && now - startedAt > 9000)) finish(true);
+    }, 80);
+  })();
+  return () => {
+    cancelled = true;
+    stopNow();
+  };
+}
+
+/** Browser speech recognition when it really hears something; otherwise falls back to recording and server transcription. */
+export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void }): () => void {
+  let stopFn: () => void = () => {};
+  let off = false;
+  const fallback = () => {
+    if (off) return;
+    stopFn = recordAndTranscribe(orgId, lang, on);
+  };
+  if (!recognitionSupported()) {
+    fallback();
+    return () => {
+      off = true;
+      stopFn();
+    };
+  }
+  let spoke = false;
+  let switched = false;
+  const toFallback = () => {
+    if (switched || off) return;
+    switched = true;
+    stopFn();
+    fallback();
+  };
+  const watchdog = window.setTimeout(() => !spoke && toFallback(), 6000);
+  stopFn = listenOnce(lang, {
+    interim: (t) => ((spoke = true), on.interim(t)),
+    final: (t) => (window.clearTimeout(watchdog), (switched = true), on.final(t)),
+    spoke: () => (spoke = true),
+    end: () => {
+      window.clearTimeout(watchdog);
+      if (!switched) on.end();
+    },
+    error: (c) => {
+      window.clearTimeout(watchdog);
+      if (c === 'denied') return on.error?.(c);
+      if (c === 'network' || c === 'other') return toFallback();
+      on.error?.(c);
+    },
+  });
+  return () => {
+    off = true;
+    window.clearTimeout(watchdog);
+    stopFn();
+  };
 }

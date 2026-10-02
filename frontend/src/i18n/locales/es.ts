@@ -979,6 +979,7 @@ const es: Dictionary = {
   'hud.analytics': 'Analítica de IA',
   'hud.empty': 'Aún no hay tareas.',
   'hud.completed': '{pct}% de las tareas completadas',
+  'voice.err.server': 'El servicio de voz no respondió. Escribe tu mensaje o inténtalo de nuevo.',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

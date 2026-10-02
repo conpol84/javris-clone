@@ -984,6 +984,7 @@ const ar: Dictionary = {
   'hud.analytics': 'تحليلات الذكاء الاصطناعي',
   'hud.empty': 'لا توجد مهام بعد.',
   'hud.completed': 'اكتمل {pct}% من المهام',
+  'voice.err.server': 'لم تستجب خدمة الصوت. اكتب رسالتك أو حاول مرة أخرى.',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

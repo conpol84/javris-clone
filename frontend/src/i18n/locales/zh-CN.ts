@@ -980,6 +980,7 @@ const zhCN: Dictionary = {
   'hud.analytics': 'AI 分析',
   'hud.empty': '暂无任务。',
   'hud.completed': '已完成 {pct}% 的任务',
+  'voice.err.server': '语音服务没有响应。请输入文字或重试。',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

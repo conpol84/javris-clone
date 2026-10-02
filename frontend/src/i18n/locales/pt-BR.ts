@@ -979,6 +979,7 @@ const ptBR: Dictionary = {
   'hud.analytics': 'Análises de IA',
   'hud.empty': 'Ainda não há tarefas.',
   'hud.completed': '{pct}% das tarefas concluídas',
+  'voice.err.server': 'O serviço de voz não respondeu. Digite sua mensagem ou tente de novo.',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

@@ -979,6 +979,7 @@ const de: Dictionary = {
   'hud.analytics': 'KI-Analysen',
   'hud.empty': 'Noch keine Aufgaben.',
   'hud.completed': '{pct}% der Aufgaben erledigt',
+  'voice.err.server': 'Der Sprachdienst hat nicht geantwortet. Tippe deine Nachricht oder versuche es erneut.',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

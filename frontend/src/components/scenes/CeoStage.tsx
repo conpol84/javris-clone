@@ -1,5 +1,6 @@
-import { useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import { Focus, Minus, Plus } from 'lucide-react';
 import { Line, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { voiceLevel } from '../../lib/company/voice';
@@ -272,11 +273,30 @@ function Floor() {
   );
 }
 
+/** Moves the camera toward (or away from) the AI's face when the zoom buttons are used; the mouse wheel and pinch also work. */
+function ZoomDriver({ level }: { level: number }) {
+  const { camera } = useThree();
+  const goal = useRef(0);
+  useEffect(() => {
+    goal.current = 11 - level * 5.6; // 11 = whole room, 5.4 = face close-up
+  }, [level]);
+  useFrame(() => {
+    const target = new THREE.Vector3(0, level > 0.6 ? 0.9 : 0, level > 0.6 ? -3.6 : -2);
+    const dir = camera.position.clone().sub(target);
+    const d = dir.length();
+    const next = d + (goal.current - d) * 0.08;
+    if (Math.abs(next - d) > 0.002) camera.position.copy(target).add(dir.setLength(next));
+  });
+  return null;
+}
+
 export function CeoStage({ state, satellites, labels }: { state: HoloState; satellites: Satellite[]; labels: { noWebgl: string } }) {
   const reduced = usePrefersReducedMotion();
   if (!supportsWebGL()) return <div className="fb-muted grid h-full place-items-center text-sm">{labels.noWebgl}</div>;
   const motion = reduced ? 0.3 : 1;
+  const [zoom, setZoom] = useState(0.35);
   return (
+    <div className="relative h-full w-full" style={{ height: "100%", width: "100%" }}>
     <Canvas camera={{ position: [0, 0.4, 6.2], fov: 52 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <Stars count={800} radius={16} spread={24} speed={reduced ? 0 : 0.01} size={0.08} />
       <Screen />
@@ -285,8 +305,21 @@ export function CeoStage({ state, satellites, labels }: { state: HoloState; sate
       <Floor />
       <Viewer state={state} />
       <Glow strength={1.15} threshold={0.18} vignette />
-      <OrbitControls target={[0, 0, -2]} enablePan={false} enableZoom={false} minPolarAngle={Math.PI / 2.6} maxPolarAngle={Math.PI / 1.85} minAzimuthAngle={-0.55} maxAzimuthAngle={0.55} enableDamping />
+      <ZoomDriver level={zoom} />
+      <OrbitControls target={zoom > 0.6 ? [0, 0.9, -3.6] : [0, 0, -2]} enablePan={false} enableZoom minDistance={3.2} maxDistance={12} minPolarAngle={Math.PI / 2.6} maxPolarAngle={Math.PI / 1.85} minAzimuthAngle={-0.55} maxAzimuthAngle={0.55} enableDamping />
     </Canvas>
+    <div className="absolute end-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5" role="group">
+      {[
+        { icon: <Plus size={15} />, to: Math.min(1, zoom + 0.2), label: '+' },
+        { icon: <Focus size={15} />, to: 0.95, label: 'face' },
+        { icon: <Minus size={15} />, to: Math.max(0, zoom - 0.2), label: '–' },
+      ].map((b) => (
+        <button key={b.label} type="button" className="fb-iconbtn" style={{ width: 34, height: 34, background: 'rgba(5,11,26,.7)', border: '1px solid var(--fb-border)' }} aria-label={b.label} onClick={() => setZoom(b.to)}>
+          {b.icon}
+        </button>
+      ))}
+    </div>
+    </div>
   );
 }
 

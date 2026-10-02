@@ -979,6 +979,7 @@ const el: Dictionary = {
   'hud.analytics': 'Αναλυτικά AI',
   'hud.empty': 'Δεν υπάρχουν εργασίες ακόμα.',
   'hud.completed': '{pct}% των εργασιών ολοκληρώθηκε',
+  'voice.err.server': 'Η υπηρεσία φωνής δεν απάντησε. Γράψε το μήνυμά σου ή δοκίμασε ξανά.',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

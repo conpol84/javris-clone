@@ -5,7 +5,7 @@ import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
 import { RunError, sendChat } from './runner';
 import type { AgentRow } from './types';
-import { listenOnce, recognitionSupported, speak, stopSpeaking, unlockAudio, type VoiceError } from './voice';
+import { listenSmart, recognitionSupported, speak, stopSpeaking, unlockAudio, type VoiceError } from './voice';
 
 export interface CeoLine {
   who: 'me' | 'ceo';
@@ -26,7 +26,7 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
   const convo = useRef<string | null>(null);
   const stopListen = useRef<() => void>(() => {});
   const alive = useRef(true);
-  const canTalk = recognitionSupported();
+  const canTalk = typeof navigator !== 'undefined' && (recognitionSupported() || !!navigator.mediaDevices?.getUserMedia);
 
   useEffect(() => {
     alive.current = true;
@@ -51,11 +51,11 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
 
   /** In hands-free mode the CEO keeps listening after every turn, including after silence, until you stop it. */
   const resume = useCallback((delay: number) => {
-    if (!handsFreeRef.current || !recognitionSupported()) return;
+    if (!handsFreeRef.current || !canTalk) return;
     window.setTimeout(() => {
       if (alive.current && handsFreeRef.current) listenRef.current();
     }, delay);
-  }, []);
+  }, [canTalk]);
 
   const ask = useCallback(
     async (message: string) => {
@@ -97,8 +97,8 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
     setInterim('');
     setState('listening');
     let heard = false;
-    stopListen.current = listenOnce(lang, {
-      error: (c: VoiceError) => {
+    stopListen.current = listenSmart(orgId, lang, {
+      error: (c: VoiceError | 'server') => {
         if (c === 'no_speech') return;
         // A broken microphone or blocked permission must not loop forever.
         handsFreeRef.current = false;
