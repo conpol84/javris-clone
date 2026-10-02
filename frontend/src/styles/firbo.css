@@ -256,3 +256,7 @@ html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
   aside { padding-top: env(safe-area-inset-top); }
 }
 @media (display-mode: standalone) { body { padding-top: env(safe-area-inset-top); } }
+/* fixed bars reuse the theme variables of .fb-root but must not inherit its page-sized box */
+.fb-root.fb-bottomnav, .fb-root.fb-wincontrols { min-height: 0; overflow: visible; height: auto; }
+.fb-root.fb-bottomnav::before, .fb-root.fb-wincontrols::before { display: none; }
+@media (min-width: 768px) { .fb-root.fb-bottomnav { display: none; } }
