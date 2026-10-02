@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Panel } from '../components/command/Panel';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { decideApproval, listApprovalHistory } from '../lib/company/data';
+import { listIntegrations, sendIntegration, type IntegrationRow } from '../lib/company/integrations';
 import { timeAgo } from '../lib/company/feed';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
@@ -11,6 +12,16 @@ import type { TKey } from '../i18n/locales/en';
 import { MANAGER_ROLES, type ApprovalRow } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import '../styles/firbo.css';
+
+/** The text an approved action should deliver: the agent's own wording, not raw JSON. */
+function deliverText(a: ApprovalRow): string {
+  const p = (a.payload ?? {}) as Record<string, unknown>;
+  const pick = ['text', 'message', 'body', 'content', 'post'].map((k) => p[k]).find((v) => typeof v === 'string' && v.trim());
+  const subject = typeof p.subject === 'string' ? p.subject.trim() : '';
+  const main = typeof pick === 'string' ? pick.trim() : JSON.stringify(Object.fromEntries(Object.entries(p).filter(([k]) => k !== 'ai_generated' && k !== 'disclosure')), null, 2);
+  const note = typeof p.disclosure === 'string' ? `\n\n${p.disclosure}` : '';
+  return `${subject ? `${subject}\n\n` : ''}${main}${note}`.slice(0, 3500);
+}
 
 const RISK_COLOR = { low: 'var(--fb-ok)', medium: 'var(--fb-warn)', high: 'var(--fb-err)' } as const;
 
@@ -47,6 +58,31 @@ export function InboxPage() {
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [edits, setEdits] = useState<Record<string, string>>({});
+  const [apps, setApps] = useState<IntegrationRow[]>([]);
+  const [target, setTarget] = useState<Record<string, string>>({});
+  const [sent, setSent] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!orgId || !canDecide) return;
+    listIntegrations(orgId).then(setApps).catch(() => undefined);
+  }, [orgId, canDecide]);
+
+  const deliver = async (a: ApprovalRow) => {
+    const id = target[a.id] ?? apps[0]?.id;
+    const app = apps.find((x) => x.id === id);
+    if (!app) return;
+    setBusy(a.id);
+    try {
+      await sendIntegration(app.id, deliverText(a));
+      setSent((m) => ({ ...m, [a.id]: app.name }));
+      toast.success(t('inbox.sentVia', { app: app.name }));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('int.err.send_failed'));
+    } finally {
+      setBusy(null);
+    }
+  };
 
   const agentName = (id: string | null) => data.agents.find((a) => a.id === id);
 
@@ -190,7 +226,29 @@ export function InboxPage() {
                       <p className="fb-dim mt-3 text-xs">{t('inbox.onlyManagers')}</p>
                     )
                   ) : (
-                    a.decision_note && <p className="fb-muted mt-3 text-xs">{t('inbox.note', { note: a.decision_note })}</p>
+                    <>
+                      {a.decision_note && <p className="fb-muted mt-3 text-xs">{t('inbox.note', { note: a.decision_note })}</p>}
+                      {a.status === 'approved' && canDecide && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {sent[a.id] ? (
+                            <span className="fb-chip" style={{ color: 'var(--fb-ok)' }}>{t('inbox.sentVia', { app: sent[a.id] })}</span>
+                          ) : apps.length === 0 ? (
+                            <span className="fb-dim text-xs">{t('inbox.noApps')}</span>
+                          ) : (
+                            <>
+                              <select className="fb-input" style={{ width: 'auto' }} aria-label={t('inbox.deliverVia')} value={target[a.id] ?? apps[0].id} onChange={(e) => setTarget({ ...target, [a.id]: e.target.value })}>
+                                {apps.map((x) => (
+                                  <option key={x.id} value={x.id}>{x.name}</option>
+                                ))}
+                              </select>
+                              <button className="fb-btn fb-btn--primary" disabled={busy === a.id} onClick={() => void deliver(a)}>
+                                {busy === a.id ? t('common.loading') : t('inbox.deliver')}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </>
                   )}
                 </li>
               );

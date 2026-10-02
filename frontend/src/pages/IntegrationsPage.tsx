@@ -6,13 +6,13 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, PLANNED_APPS, testIntegration,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, PLANNED_APPS, testIntegration,
   type IntegrationKind, type IntegrationRow,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 
-const BRAND: Record<IntegrationKind, string> = { slack: 'Slack', discord: 'Discord', telegram: 'Telegram', webhook: 'Webhook' };
+const BRAND = Object.fromEntries(LIVE_APPS.map((a) => [a.kind, a.name])) as Record<IntegrationKind, string>;
 
 /** Connect the apps each company uses, and test them with one click. */
 export function IntegrationsPage() {
@@ -141,22 +141,27 @@ export function IntegrationsPage() {
             </Panel>
 
             <Panel title={t('int.available')}>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                {LIVE_APPS.map((a) => (
-                  <li key={a.kind}>
-                    <button
-                      onClick={() => open(a.kind)}
-                      className="fb-row fb-glass--hover w-full cursor-pointer flex-col items-start gap-1.5 text-start"
-                      style={adding === a.kind ? { borderColor: a.color } : undefined}
-                    >
-                      <span className="fb-dot" style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
-                      <span className="text-sm font-semibold">{BRAND[a.kind]}</span>
-                      <span className="fb-dim text-xs">{t(`int.about.${a.kind}` as TKey)}</span>
-                      <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              {CATEGORIES.map((cat) => (
+                <div key={cat} className="mb-4">
+                  <div className="fb-eyebrow mb-2">{t(`int.cat.${cat}` as TKey)}</div>
+                  <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {LIVE_APPS.filter((a) => a.cat === cat).map((a) => (
+                      <li key={a.kind}>
+                        <button
+                          onClick={() => open(a.kind)}
+                          className="fb-row fb-glass--hover w-full cursor-pointer flex-col items-start gap-1.5 text-start"
+                          style={adding === a.kind ? { borderColor: a.color } : undefined}
+                        >
+                          <span className="fb-dot" style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
+                          <span className="text-sm font-semibold">{a.name}</span>
+                          <span className="fb-dim text-xs">{t(`int.about.${a.kind}` as TKey)}</span>
+                          <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
 
               {adding && def && (
                 <form onSubmit={connect} className="mt-4 rounded-xl p-4" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
