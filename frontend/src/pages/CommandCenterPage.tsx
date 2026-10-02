@@ -1,8 +1,10 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
+import { ArrowRight, Box, Brain, Focus, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
 import { useCommand } from '../components/command/CommandHost';
 import { Gauge } from '../components/command/Gauge';
+import { GlobalSearch } from '../components/command/GlobalSearch';
+import { useFocusMode } from '../lib/company/focus';
 import { Panel, StatusDot, Wave } from '../components/command/Panel';
 import { loadPlanUsage, type PlanUsage } from '../lib/company/billing';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
@@ -44,6 +46,7 @@ export function CommandCenterPage() {
   const gateway = useGateway();
   const now = useClock();
   const command = useCommand();
+  const [focus, setFocus] = useFocusMode();
   const [plan, setPlan] = useState<PlanUsage | null>(null);
   useEffect(() => {
     if (!orgId) return;
@@ -96,7 +99,11 @@ export function CommandCenterPage() {
               {rich('cc.greeting', { greeting: t(greetingKey(now.getHours())), name: <span className="fb-grad-text">{name}</span> })}
             </h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <GlobalSearch agents={data.agents} tasks={data.tasks} />
+            <button className="fb-btn fb-btn--ghost" aria-pressed={focus} onClick={() => setFocus(!focus)}>
+              <Focus size={14} /> {t(focus ? 'cc.focus.exit' : 'cc.focus')}
+            </button>
             <span className="fb-chip">
               <StatusDot tone={degraded ? 'err' : 'ok'} live /> {degraded ? t('cc.system.degraded') : t('cc.system.optimal')}
             </span>
@@ -114,7 +121,7 @@ export function CommandCenterPage() {
         )}
 
         <div className="fb-cc">
-          <Panel title={t('cc.overview')} area="overview">
+          <Panel title={t('cc.overview')} area="overview" className="fb-focus-hide">
             <ul className="flex flex-col gap-2">
               {rows.map(({ to, icon: Icon, label, value, tone }) => (
                 <li key={label}>
@@ -145,6 +152,7 @@ export function CommandCenterPage() {
           <Panel
             title={t('cc.feed')}
             area="feed"
+            className="fb-focus-hide"
             right={
               <span className="fb-chip">
                 <StatusDot tone="ok" live /> {t('cc.live')}
@@ -234,7 +242,7 @@ export function CommandCenterPage() {
             </ul>
           </Panel>
 
-          <Panel title={t('cc.timeline')} area="timeline">
+          <Panel title={t('cc.timeline')} area="timeline" className="fb-focus-hide">
             {timeline.length === 0 ? (
               <p className="fb-dim text-sm">{t('cc.timeline.empty')}</p>
             ) : (
@@ -261,7 +269,7 @@ export function CommandCenterPage() {
             )}
           </Panel>
 
-          <Panel title={t('cc.memory')} area="memory">
+          <Panel title={t('cc.memory')} area="memory" className="fb-focus-hide">
             <div className="grid grid-cols-3 gap-3 text-center">
               {[
                 [t('cc.mem.memories'), data.counts?.memories, '/activity'],
@@ -281,7 +289,7 @@ export function CommandCenterPage() {
             )}
           </Panel>
 
-          <Panel title={t('cc.monitor')} area="monitor">
+          <Panel title={t('cc.monitor')} area="monitor" className="fb-focus-hide">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <Gauge value={readyCount ? activeCount / readyCount : 0} label={t('cc.mon.working')} sub={t('cc.agents.summary', { active: activeCount, ready: readyCount })} />
               <Gauge value={plan ? plan.usage.daily_runs / Math.max(1, plan.plan.limits.daily_runs) : 0} label={t('cc.mon.runs')} sub={plan ? `${plan.usage.daily_runs} / ${fmt.number(plan.plan.limits.daily_runs)}` : '–'} />
@@ -290,7 +298,7 @@ export function CommandCenterPage() {
             </div>
           </Panel>
 
-          <Panel title={t('cc.plan')} area="plan">
+          <Panel title={t('cc.plan')} area="plan" className="fb-focus-hide">
             {plan ? (
               <div className="fb-col gap-3">
                 <div className="flex items-baseline justify-between gap-2">
@@ -308,6 +316,7 @@ export function CommandCenterPage() {
           <Panel
             title={t('cc.gateway')}
             area="llm"
+            className="fb-focus-hide"
             right={
               <button className="fb-link fb-muted cursor-pointer text-xs hover:text-white" onClick={() => navigate('/gateway')}>
                 {t('cc.gw.manage')}

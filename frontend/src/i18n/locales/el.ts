@@ -921,6 +921,13 @@ const el: Dictionary = {
   "cc.plan.manage": "Διαχείριση πλάνου",
   "cc.plan.loading": "Φόρτωση πλάνου…",
   "cc.briefing": "Ενημέρωση διοίκησης",
+  "search.placeholder": "Αναζήτηση σελίδων, υπαλλήλων, εργασιών…",
+  "search.none": "Δεν βρέθηκε τίποτα",
+  "search.page": "Σελίδα",
+  "search.agent": "Υπάλληλος",
+  "search.task": "Εργασία",
+  "cc.focus": "Λειτουργία εστίασης",
+  "cc.focus.exit": "Έξοδος από την εστίαση",
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

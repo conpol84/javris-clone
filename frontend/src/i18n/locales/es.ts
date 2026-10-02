@@ -921,6 +921,13 @@ const es: Dictionary = {
   "cc.plan.manage": "Gestionar plan",
   "cc.plan.loading": "Cargando plan…",
   "cc.briefing": "Informe ejecutivo",
+  "search.placeholder": "Buscar páginas, empleados, tareas…",
+  "search.none": "No se encontró nada",
+  "search.page": "Página",
+  "search.agent": "Empleado",
+  "search.task": "Tarea",
+  "cc.focus": "Modo enfoque",
+  "cc.focus.exit": "Salir del modo enfoque",
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

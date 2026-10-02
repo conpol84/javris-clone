@@ -921,6 +921,13 @@ const de: Dictionary = {
   "cc.plan.manage": "Tarif verwalten",
   "cc.plan.loading": "Tarif wird geladen…",
   "cc.briefing": "Executive-Briefing",
+  "search.placeholder": "Seiten, Mitarbeiter, Aufgaben suchen…",
+  "search.none": "Nichts gefunden",
+  "search.page": "Seite",
+  "search.agent": "Mitarbeiter",
+  "search.task": "Aufgabe",
+  "cc.focus": "Fokusmodus",
+  "cc.focus.exit": "Fokusmodus beenden",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

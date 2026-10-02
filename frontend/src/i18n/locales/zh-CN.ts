@@ -922,6 +922,13 @@ const zhCN: Dictionary = {
   "cc.plan.manage": "管理套餐",
   "cc.plan.loading": "正在加载套餐…",
   "cc.briefing": "高管简报",
+  "search.placeholder": "搜索页面、员工、任务…",
+  "search.none": "未找到结果",
+  "search.page": "页面",
+  "search.agent": "员工",
+  "search.task": "任务",
+  "cc.focus": "专注模式",
+  "cc.focus.exit": "退出专注模式",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

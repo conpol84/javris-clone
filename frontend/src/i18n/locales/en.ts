@@ -929,6 +929,13 @@ export const en = {
   "cc.plan.manage": "Manage plan",
   "cc.plan.loading": "Loading plan…",
   "cc.briefing": "Executive briefing",
+  "search.placeholder": "Search pages, employees, tasks…",
+  "search.none": "Nothing found",
+  "search.page": "Page",
+  "search.agent": "Employee",
+  "search.task": "Task",
+  "cc.focus": "Focus mode",
+  "cc.focus.exit": "Exit focus mode",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

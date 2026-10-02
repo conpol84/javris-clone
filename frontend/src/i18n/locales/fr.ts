@@ -921,6 +921,13 @@ const fr: Dictionary = {
   "cc.plan.manage": "Gérer le forfait",
   "cc.plan.loading": "Chargement du forfait…",
   "cc.briefing": "Briefing exécutif",
+  "search.placeholder": "Rechercher pages, employés, tâches…",
+  "search.none": "Rien trouvé",
+  "search.page": "Page",
+  "search.agent": "Employé",
+  "search.task": "Tâche",
+  "cc.focus": "Mode concentration",
+  "cc.focus.exit": "Quitter le mode concentration",
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

@@ -188,6 +188,11 @@
     grid-template-areas: 'hero' 'overview' 'agents' 'feed' 'timeline' 'commands' 'memory' 'llm' 'monitor' 'plan';
   }
 }
+:root[data-focus='1'] .fb-focus-hide { display: none; }
+:root[data-focus='1'] .fb-cc { grid-template-areas: 'hero hero commands' 'agents agents agents'; }
+@media (max-width: 760px) {
+  :root[data-focus='1'] .fb-cc { grid-template-areas: 'hero' 'agents' 'commands'; }
+}
 .fb-row {
   display: flex; align-items: center; gap: 10px; padding: 9px 12px; border-radius: 12px;
   background: rgba(255, 255, 255, 0.025); border: 1px solid var(--fb-border);

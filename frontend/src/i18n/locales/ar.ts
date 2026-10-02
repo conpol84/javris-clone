@@ -926,6 +926,13 @@ const ar: Dictionary = {
   "cc.plan.manage": "إدارة الخطة",
   "cc.plan.loading": "جارٍ تحميل الخطة…",
   "cc.briefing": "إحاطة تنفيذية",
+  "search.placeholder": "ابحث في الصفحات والموظفين والمهام…",
+  "search.none": "لم يتم العثور على شيء",
+  "search.page": "صفحة",
+  "search.agent": "موظف",
+  "search.task": "مهمة",
+  "cc.focus": "وضع التركيز",
+  "cc.focus.exit": "الخروج من وضع التركيز",
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

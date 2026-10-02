@@ -921,6 +921,13 @@ const ptBR: Dictionary = {
   "cc.plan.manage": "Gerenciar plano",
   "cc.plan.loading": "Carregando plano…",
   "cc.briefing": "Briefing executivo",
+  "search.placeholder": "Buscar páginas, funcionários, tarefas…",
+  "search.none": "Nada encontrado",
+  "search.page": "Página",
+  "search.agent": "Funcionário",
+  "search.task": "Tarefa",
+  "cc.focus": "Modo foco",
+  "cc.focus.exit": "Sair do modo foco",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',
