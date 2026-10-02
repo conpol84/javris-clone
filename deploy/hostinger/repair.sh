@@ -30,6 +30,9 @@ ensure SUPABASE_PUBLISHABLE_KEY sb_publishable_tKMs6ANU1ywiwomvd-7wUg_hln8qSeu
 ensure OPENJARVIS_API_KEY "$(hex)"
 ensure JWT_SECRET "$(hex)"
 ensure API_KEY_SECRET "$(hex)"
+# Fixed once, never regenerated: it encrypts the provider keys stored in the gateway. If it changed, saved keys stop working.
+ensure STORAGE_ENCRYPTION_KEY "$(hex)"
+ensure MACHINE_ID_SALT "$(hex)"
 ensure AUTH_COOKIE_SECURE true
 P="$(get INITIAL_PASSWORD)"
 NEWPASS=""
@@ -40,6 +43,7 @@ if [ "${1:-}" = "--fresh" ]; then
   echo "==> Gateway data moved aside (kept in data/omniroute.old-${STAMP}); it will start clean with the new password"
 fi
 
+cp -n .env ".env.keep-${STAMP}" 2>/dev/null && chmod 600 ".env.keep-${STAMP}" && echo "==> Saved a copy of .env (.env.keep-${STAMP}); keep it: it holds the key that protects your provider keys"
 echo "==> Restarting"
 docker compose pull omniroute >/dev/null 2>&1 || true
 docker compose up -d
@@ -50,7 +54,7 @@ echo "================= HEALTH REPORT (safe to paste) ================="
 docker compose ps --format 'table {{.Name}}\t{{.Status}}' 2>/dev/null || docker compose ps
 echo
 echo "-- settings present in .env (names only) --"
-for k in API_DOMAIN GATEWAY_DOMAIN SUPABASE_URL SUPABASE_PUBLISHABLE_KEY OPENJARVIS_API_KEY JWT_SECRET API_KEY_SECRET INITIAL_PASSWORD OMNIROUTE_API_KEY OMNIROUTE_MANAGEMENT_KEY OMNIROUTE_IMAGE; do
+for k in STORAGE_ENCRYPTION_KEY MACHINE_ID_SALT API_DOMAIN GATEWAY_DOMAIN SUPABASE_URL SUPABASE_PUBLISHABLE_KEY OPENJARVIS_API_KEY JWT_SECRET API_KEY_SECRET INITIAL_PASSWORD OMNIROUTE_API_KEY OMNIROUTE_MANAGEMENT_KEY OMNIROUTE_IMAGE; do
   if [ -n "$(get "$k")" ]; then echo "  yes  $k"; else echo "  NO   $k"; fi
 done
 echo
