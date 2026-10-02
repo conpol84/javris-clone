@@ -11,7 +11,8 @@ GW="https://$(get GATEWAY_DOMAIN)"
 INF="$(get OMNIROUTE_API_KEY)"
 MAN="$(get OMNIROUTE_MANAGEMENT_KEY)"
 [ -n "$INF" ] && [ -n "$MAN" ] || { echo "OMNIROUTE_API_KEY / OMNIROUTE_MANAGEMENT_KEY missing in .env (see README step: create the two gateway keys)"; exit 1; }
-GW="$GW" INF="$INF" MAN="$MAN" python3 - <<'PY'
+PYRC=0
+GW="$GW" INF="$INF" MAN="$MAN" python3 - <<'PY' || PYRC=$?
 import json, os, re, sys, urllib.request, urllib.error
 gw = os.environ["GW"]
 k_api, k_man = os.environ["INF"], os.environ["MAN"]
@@ -69,3 +70,4 @@ if [ -f /tmp/.firbo-swap ]; then
   echo "Keys moved in .env. Restarting the API..."
   docker compose up -d firbo-api >/dev/null 2>&1 || true
 fi
+exit "${PYRC:-0}"
