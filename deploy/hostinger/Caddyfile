@@ -6,5 +6,9 @@
 
 {$GATEWAY_DOMAIN} {
 	encode zstd gzip
-	reverse_proxy omniroute:20128
+	reverse_proxy omniroute:20128 {
+		# Let the Firbo site (and only it) show the gateway console inside its Admin page.
+		header_down -X-Frame-Options
+		header_down Content-Security-Policy "frame-ancestors [^;]*" "frame-ancestors 'self' https://{$FRONTEND_DOMAIN:firboai.app}"
+	}
 }

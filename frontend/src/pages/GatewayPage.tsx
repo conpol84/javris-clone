@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useNavigate } from 'react-router';
+import { usePlatformAdmin } from '../lib/company/admin';
 import { CallsTab, FreeModelsTab, KeysTab, QuotaTab, UsageTab } from '../components/gateway/GatewayExtras';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { ProviderTopology } from '../components/command/ProviderTopology';
@@ -26,6 +28,8 @@ export function GatewayPage() {
   const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '–' : f.number(n));
   const strategyText = (k: string) => (t(`strategy.${k}` as TKey) === `strategy.${k}` ? STRATEGY_INFO[k] ?? t('gw.combo.custom') : t(`strategy.${k}` as TKey));
   const gw = useGateway();
+  const navigate = useNavigate();
+  const isAdmin = usePlatformAdmin();
   const [tab, setTab] = useState<'overview' | 'usage' | 'quota' | 'keys' | 'calls' | 'free'>('overview');
   const data = gw.status === 'ready' ? gw.data : null;
   const online = !!data?.connected;
@@ -98,12 +102,12 @@ OMNIROUTE_MANAGEMENT_KEY=<API key with manage scope>`}
           </p>
         )}
 
-        {GATEWAY_DASHBOARD && (
+        {GATEWAY_DASHBOARD && isAdmin && (
           <Panel title={t('gw.dashboardTitle')}>
             <p className="fb-muted text-sm">{t('gw.dashboardHint')}</p>
-            <a className="fb-btn fb-btn--primary mt-3 inline-flex" href={GATEWAY_DASHBOARD} target="_blank" rel="noopener noreferrer">
+            <button className="fb-btn fb-btn--primary mt-3 inline-flex cursor-pointer" onClick={() => navigate('/admin?tab=console')}>
               {t('gw.openDashboard')} →
-            </a>
+            </button>
           </Panel>
         )}
 

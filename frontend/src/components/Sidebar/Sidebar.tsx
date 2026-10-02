@@ -28,12 +28,14 @@ import {
   ListChecks,
   History,
   Plug,
+  Shield,
 } from 'lucide-react';
 import { COMPANY_ENABLED } from '../../lib/company/client';
 import type { TKey } from '../../i18n/locales/en';
 import { LogoMark } from '../brand/Logo';
 import { LanguageSwitcher } from '../brand/LanguageSwitcher';
 import { OrgSwitcher } from '../company/OrgSwitcher';
+import { usePlatformAdmin } from '../../lib/company/admin';
 import { useI18n } from '../../i18n/I18nProvider';
 import { CHAT_PATH } from '../../lib/company/routes';
 import { useCommand } from '../command/CommandHost';
@@ -44,6 +46,7 @@ import { useAppStore } from '../../lib/store';
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const isPlatformAdmin = usePlatformAdmin();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -96,7 +99,7 @@ export function Sidebar() {
     : [];
   // Company workspace: only pages that work in the hosted product. The legacy local-assistant pages stay for the desktop build.
   const navItems: NavItem[] = COMPANY_ENABLED
-    ? [...workspace, { path: '/settings', icon: Settings, label: t('nav.settings') }]
+    ? [...workspace, ...(isPlatformAdmin ? [{ path: '/admin', icon: Shield, label: t('nav.admin') }] : []), { path: '/settings', icon: Settings, label: t('nav.settings') }]
     : [
     ...workspace,
     { path: CHAT_PATH, icon: MessageSquare, label: t('nav.chat') },
