@@ -170,21 +170,22 @@
   grid-template-areas:
     'overview hero feed'
     'agents agents commands'
-    'timeline memory llm';
+    'timeline memory llm'
+    'monitor monitor plan';
 }
 .fb-a-overview { grid-area: overview; } .fb-a-hero { grid-area: hero; } .fb-a-feed { grid-area: feed; }
 .fb-a-agents { grid-area: agents; } .fb-a-commands { grid-area: commands; } .fb-a-timeline { grid-area: timeline; }
-.fb-a-memory { grid-area: memory; } .fb-a-llm { grid-area: llm; }
+.fb-a-memory { grid-area: memory; } .fb-a-llm { grid-area: llm; } .fb-a-monitor { grid-area: monitor; } .fb-a-plan { grid-area: plan; }
 @media (max-width: 1180px) {
   .fb-cc {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: 'hero hero' 'overview feed' 'agents agents' 'commands timeline' 'memory llm';
+    grid-template-areas: 'hero hero' 'overview feed' 'agents agents' 'commands timeline' 'memory llm' 'monitor monitor' 'plan plan';
   }
 }
 @media (max-width: 760px) {
   .fb-cc {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: 'hero' 'overview' 'agents' 'feed' 'timeline' 'commands' 'memory' 'llm';
+    grid-template-areas: 'hero' 'overview' 'agents' 'feed' 'timeline' 'commands' 'memory' 'llm' 'monitor' 'plan';
   }
 }
 .fb-row {

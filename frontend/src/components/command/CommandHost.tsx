@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { CommandDialog } from './CommandDialog';
+import { TalkConsole } from './TalkConsole';
 
 interface CommandApi {
-  open: () => void;
+  open: (opts?: { briefing?: boolean }) => void;
 }
 const Ctx = createContext<CommandApi>({ open: () => {} });
 export const useCommand = (): CommandApi => useContext(Ctx);
@@ -10,7 +10,11 @@ export const useCommand = (): CommandApi => useContext(Ctx);
 /** One command dialog for the whole workspace: sidebar button, Talk button and ⌘K / Ctrl+K all open it. */
 export function CommandProvider({ children }: { children: ReactNode }) {
   const [on, setOn] = useState(false);
-  const open = useCallback(() => setOn(true), []);
+  const [briefing, setBriefing] = useState(false);
+  const open = useCallback((opts?: { briefing?: boolean }) => {
+    setBriefing(!!opts?.briefing);
+    setOn(true);
+  }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -27,7 +31,7 @@ export function CommandProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={api}>
       {children}
-      {on && <CommandDialog onClose={() => setOn(false)} />}
+      {on && <TalkConsole autoBriefing={briefing} onClose={() => setOn(false)} />}
     </Ctx.Provider>
   );
 }

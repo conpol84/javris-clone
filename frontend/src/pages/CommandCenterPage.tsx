@@ -2,7 +2,9 @@ import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { ArrowRight, Box, Brain, ListChecks, MessageSquare, ShieldCheck, Users, Waypoints } from 'lucide-react';
 import { useCommand } from '../components/command/CommandHost';
+import { Gauge } from '../components/command/Gauge';
 import { Panel, StatusDot, Wave } from '../components/command/Panel';
+import { loadPlanUsage, type PlanUsage } from '../lib/company/billing';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { buildFeed, timeAgo } from '../lib/company/feed';
 import { agentLabel } from '../lib/company/labels';
@@ -42,6 +44,15 @@ export function CommandCenterPage() {
   const gateway = useGateway();
   const now = useClock();
   const command = useCommand();
+  const [plan, setPlan] = useState<PlanUsage | null>(null);
+  useEffect(() => {
+    if (!orgId) return;
+    let live = true;
+    loadPlanUsage(orgId).then((p) => live && setPlan(p)).catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [orgId, data.tasks.length]);
 
   const states = useMemo(() => deriveAgentStates(data.agents, data.tasks, data.approvals), [data.agents, data.tasks, data.approvals]);
   const satellites = useMemo(
@@ -270,6 +281,30 @@ export function CommandCenterPage() {
             )}
           </Panel>
 
+          <Panel title={t('cc.monitor')} area="monitor">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              <Gauge value={readyCount ? activeCount / readyCount : 0} label={t('cc.mon.working')} sub={t('cc.agents.summary', { active: activeCount, ready: readyCount })} />
+              <Gauge value={plan ? plan.usage.daily_runs / Math.max(1, plan.plan.limits.daily_runs) : 0} label={t('cc.mon.runs')} sub={plan ? `${plan.usage.daily_runs} / ${fmt.number(plan.plan.limits.daily_runs)}` : '–'} />
+              <Gauge value={plan ? plan.usage.agents / Math.max(1, plan.plan.limits.agents) : 0} label={t('cc.mon.team')} sub={plan ? `${plan.usage.agents} / ${fmt.number(plan.plan.limits.agents)}` : '–'} />
+              <Gauge value={plan ? plan.usage.memories / Math.max(1, plan.plan.limits.memories) : 0} label={t('cc.mon.memory')} sub={plan ? `${plan.usage.memories} / ${fmt.number(plan.plan.limits.memories)}` : '–'} />
+            </div>
+          </Panel>
+
+          <Panel title={t('cc.plan')} area="plan">
+            {plan ? (
+              <div className="fb-col gap-3">
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="fb-grad-text text-2xl font-bold">{plan.plan.name}</span>
+                  <span className="fb-chip">{t(`bill.status.${plan.status}` as TKey)}</span>
+                </div>
+                <p className="fb-dim text-xs">{plan.renews_at ? t('cc.plan.renews', { date: fmt.date(plan.renews_at) }) : t('cc.plan.noRenewal')}</p>
+                <button className="fb-btn fb-btn--primary" onClick={() => navigate('/billing')}>{t('cc.plan.manage')}</button>
+              </div>
+            ) : (
+              <p className="fb-dim text-sm">{t('cc.plan.loading')}</p>
+            )}
+          </Panel>
+
           <Panel
             title={t('cc.gateway')}
             area="llm"
@@ -312,10 +347,13 @@ export function CommandCenterPage() {
 
       </div>
       <div className="relative z-10 flex shrink-0 justify-center px-4 pb-4 pt-1">
-        <button className="fb-talk" onClick={command.open}>
+        <button className="fb-talk" onClick={() => command.open()}>
           <Wave color="var(--fb-accent)" />
           {t('cc.talk')}
           <Wave color="var(--fb-accent)" />
+        </button>
+        <button className="fb-btn fb-btn--ghost ms-3 hidden md:inline-flex" style={{ height: 58, borderRadius: 999 }} onClick={() => command.open({ briefing: true })}>
+          {t('cc.briefing')}
         </button>
       </div>
     </div>

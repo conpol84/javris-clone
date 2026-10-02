@@ -1,24 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
-import { toast } from 'sonner';
 import { HologramScene, type HoloState, type Satellite } from '../components/scenes/HologramScene';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { createConversation, listAgents, loadOrgSummary } from '../lib/company/data';
 import { agentColor, deriveAgentStates } from '../lib/company/status';
 import { resolvePersona } from '../lib/company/persona';
 import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
-import { RunError, sendChat } from '../lib/company/runner';
-import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
-import { listenOnce, recognitionSupported, speak, stopSpeaking, type VoiceError } from '../lib/company/voice';
+import { useCeoSession } from '../lib/company/useCeoSession';
+import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
-
-interface Line {
-  who: 'me' | 'ceo';
-  text: string;
-}
 
 const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
 
@@ -43,20 +35,9 @@ export function CeoPage() {
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
-  const [ceo, setCeo] = useState<AgentRow | null>(null);
-  const [state, setState] = useState<HoloState>('idle');
-  const [lines, setLines] = useState<Line[]>([]);
-  const [interim, setInterim] = useState('');
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
+  const { ceo, state, lines, interim, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const [text, setText] = useState('');
-  const [muted, setMuted] = useState(false);
-  const [handsFree, setHandsFree] = useState(false);
-  const handsFreeRef = useRef(false);
-  const listenRef = useRef<() => void>(() => {});
-  const convo = useRef<string | null>(null);
-  const stopListen = useRef<() => void>(() => {});
-  const alive = useRef(true);
-  const mutedRef = useRef(false);
-  const canTalk = recognitionSupported();
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
   const satellites: Satellite[] = useMemo(
@@ -65,96 +46,6 @@ export function CeoPage() {
   );
   const lastCeo = [...lines].reverse().find((l) => l.who === 'ceo')?.text ?? '';
   const caption = useTypewriter(state === 'speaking' || state === 'idle' ? lastCeo : '');
-
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      stopListen.current();
-      stopSpeaking();
-    };
-  }, []);
-  useEffect(() => {
-    mutedRef.current = muted;
-    handsFreeRef.current = handsFree;
-    if (muted) stopSpeaking();
-  }, [muted, handsFree]);
-  useEffect(() => {
-    convo.current = null;
-    if (!orgId) return;
-    listAgents(orgId)
-      .then((a) => setCeo(a.find((x) => x.type === 'ceo' || x.slug.startsWith('ceo')) ?? null))
-      .catch(() => toast.error(t('chat.loadError')));
-  }, [orgId, t]);
-
-  const ask = useCallback(
-    async (message: string) => {
-      if (!ceo || !user || !message.trim()) return;
-      setLines((l) => [...l, { who: 'me', text: message }]);
-      setState('thinking');
-      try {
-        if (!convo.current) convo.current = (await createConversation(orgId, user.id, ceo.id)).id;
-        const res = await sendChat(convo.current, message, lang, true);
-        if (!alive.current) return;
-        setLines((l) => [...l, { who: 'ceo', text: res.message.content }]);
-        if (mutedRef.current) setState('idle');
-        else {
-          setState('speaking');
-          await speak(orgId, res.message.content, lang);
-          if (alive.current) {
-            setState('idle');
-            if (handsFreeRef.current && recognitionSupported()) listenRef.current();
-          }
-        }
-      } catch (err) {
-        console.error(err);
-        if (alive.current) {
-          setState('idle');
-          toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
-        }
-      }
-    },
-    [ceo, user, orgId, lang, t],
-  );
-
-  const listen = () => {
-    stopSpeaking();
-    setInterim('');
-    setState('listening');
-    stopListen.current = listenOnce(lang, {
-      error: (c: VoiceError) => c !== 'no_speech' && toast.error(t(`voice.err.${c}` as TKey)),
-      interim: setInterim,
-      final: (txt) => {
-        setInterim('');
-        if (txt) void ask(txt);
-        else setState('idle');
-      },
-      end: () => {
-        setInterim('');
-        setState((s) => (s === 'listening' ? 'idle' : s));
-      },
-    });
-  };
-  listenRef.current = listen;
-  const stop = () => {
-    setHandsFree(false);
-    handsFreeRef.current = false;
-    stopListen.current();
-    stopSpeaking();
-    setState('idle');
-  };
-
-  const briefing = async () => {
-    if (!ceo) return;
-    let facts = '';
-    try {
-      const s = await loadOrgSummary(orgId, false);
-      facts = `Facts: ${s.agents} active AI employees, ${s.openTasks} open tasks, ${s.approvals} approvals waiting for me.`;
-    } catch {
-      /* the CEO still greets */
-    }
-    await ask(`${t('ceo.briefing')}. ${facts}`);
-  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();

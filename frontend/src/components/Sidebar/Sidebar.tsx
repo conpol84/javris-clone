@@ -189,7 +189,7 @@ export function Sidebar() {
                 <ThemeIcon size={16} />
               </button>
               <button
-                onClick={COMPANY_ENABLED ? command.open : handleNewChat}
+                onClick={COMPANY_ENABLED ? () => command.open() : handleNewChat}
                 className="p-2 rounded-lg transition-colors cursor-pointer"
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
@@ -204,7 +204,7 @@ export function Sidebar() {
           {COMPANY_ENABLED && (
             <>
               <button
-                onClick={command.open}
+                onClick={() => command.open()}
                 className="mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
                 style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
               >
