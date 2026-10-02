@@ -235,3 +235,24 @@ html[lang='zh-CN'] body { font-family: system-ui, 'PingFang SC', 'Microsoft YaHe
 .fb-panel-backdrop { position: fixed; inset: 0; z-index: 60; background: rgba(2, 6, 16, 0.78); backdrop-filter: blur(4px); }
 .fb-glass.fb-panel-max { position: fixed !important; inset: 3vh 3vw; z-index: 61; overflow: auto; margin: 0; grid-area: auto !important; }
 :fullscreen .fb-wincontrols { top: 6px; }
+
+/* ---- phone: feels like an app ---- */
+html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+.fb-bottomnav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 35; display: flex; justify-content: space-around; gap: 2px; padding: 6px 6px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, #050b1a 86%, transparent); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-top: 1px solid var(--fb-border); }
+.fb-tab { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 6px 2px; border-radius: 12px; font-size: 10.5px; font-weight: 500; color: var(--fb-muted); background: transparent; border: 0; cursor: pointer; text-decoration: none; transition: color .15s, background .15s; }
+.fb-tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fb-tab.is-active { color: #67e8f9; background: color-mix(in srgb, #00d4ff 14%, transparent); }
+.fb-tab:active { transform: scale(.95); }
+@media (max-width: 767px) {
+  .fb-main-pad { padding-bottom: calc(66px + env(safe-area-inset-bottom)); }
+  .fb-wincontrols { display: none; }
+  .fb-root .fb-input, .fb-root select, .fb-root textarea { font-size: 16px; }
+  .fb-root .fb-btn { min-height: 40px; }
+  .fb-root h1 { font-size: 1.45rem; line-height: 1.2; }
+  .fb-glass { border-radius: 16px; }
+  .fb-glass[style*='min-height'] { min-height: 340px !important; }
+  .fb-glass.fb-panel-max { inset: 0; border-radius: 0; padding-top: max(16px, env(safe-area-inset-top)); }
+  .fb-iconbtn { width: 32px; height: 32px; }
+  aside { padding-top: env(safe-area-inset-top); }
+}
+@media (display-mode: standalone) { body { padding-top: env(safe-area-inset-top); } }

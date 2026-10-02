@@ -972,6 +972,7 @@ const ptBR: Dictionary = {
   'int.cat.commerce': 'Comércio e pagamentos',
   'int.err.read_only': 'Este app é somente leitura.',
   'int.snapshot': 'Mostrar dados',
+  'nav.more': 'Mais',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

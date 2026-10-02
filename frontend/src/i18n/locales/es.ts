@@ -972,6 +972,7 @@ const es: Dictionary = {
   'int.cat.commerce': 'Comercio y pagos',
   'int.err.read_only': 'Esta aplicación es de solo lectura.',
   'int.snapshot': 'Mostrar datos',
+  'nav.more': 'Más',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

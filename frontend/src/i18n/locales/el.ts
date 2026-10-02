@@ -972,6 +972,7 @@ const el: Dictionary = {
   'int.cat.commerce': 'Εμπόριο & πληρωμές',
   'int.err.read_only': 'Αυτή η εφαρμογή είναι μόνο για ανάγνωση.',
   'int.snapshot': 'Εμφάνιση δεδομένων',
+  'nav.more': 'Περισσότερα',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

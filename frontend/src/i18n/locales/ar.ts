@@ -977,6 +977,7 @@ const ar: Dictionary = {
   'int.cat.commerce': 'التجارة والمدفوعات',
   'int.err.read_only': 'هذا التطبيق للقراءة فقط.',
   'int.snapshot': 'عرض البيانات',
+  'nav.more': 'المزيد',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

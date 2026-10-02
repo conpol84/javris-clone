@@ -972,6 +972,7 @@ const fr: Dictionary = {
   'int.cat.commerce': 'Commerce et paiements',
   'int.err.read_only': 'Cette application est en lecture seule.',
   'int.snapshot': 'Afficher les données',
+  'nav.more': 'Plus',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

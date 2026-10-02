@@ -980,6 +980,7 @@ export const en = {
   'int.cat.commerce': 'Commerce & payments',
   'int.err.read_only': 'This app is read-only.',
   'int.snapshot': 'Show data',
+  'nav.more': 'More',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

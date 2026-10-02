@@ -7,6 +7,7 @@ import { SystemPulse } from './SystemPulse';
 import { useAppStore } from '../lib/store';
 import { useI18n } from '../i18n/I18nProvider';
 import { checkHealth } from '../lib/api';
+import { BottomNav } from './command/BottomNav';
 import { WindowControls } from './command/WindowControls';
 import { CommandProvider } from './command/CommandHost';
 
@@ -43,6 +44,7 @@ export function Layout() {
     <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       {COMPANY_ENABLED && <WindowControls />}
+      {COMPANY_ENABLED && <BottomNav />}
       {!COMPANY_ENABLED && <SystemPulse apiReachable={apiReachable} />}
       {!COMPANY_ENABLED && <ApprovalBell />}
 
@@ -80,7 +82,7 @@ export function Layout() {
           />
         )}
         <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
-          <div className="flex-1 flex flex-col min-w-0 min-h-0 relative z-[2]">
+          <div className={`flex-1 flex flex-col min-w-0 min-h-0 relative z-[2] ${COMPANY_ENABLED ? 'fb-main-pad' : ''}`}>
             <Outlet />
           </div>
         </main>
