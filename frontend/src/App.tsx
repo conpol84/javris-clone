@@ -18,6 +18,8 @@ import { ActivityPage } from './pages/ActivityPage';
 import { PeoplePage } from './pages/PeoplePage';
 import { FirboSettingsPage } from './pages/FirboSettingsPage';
 import { COMPANY_ENABLED } from './lib/company/client';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { CompaniesPage } from './pages/CompaniesPage';
 import { CompanyAuthProvider } from './lib/company/AuthProvider';
 import { LocaleSync } from './components/company/LocaleSync';
 import { AuthGate } from './components/company/AuthGate';
@@ -204,6 +206,8 @@ function AuthedApp() {
           <Route path="chat" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <ChatPage />} />
           <Route path="office" element={<OfficePage />} />
           <Route path="gateway" element={<GatewayPage />} />
+          <Route path="analytics" element={COMPANY_ENABLED ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+          <Route path="companies" element={COMPANY_ENABLED ? <CompaniesPage /> : <Navigate to="/" replace />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="inbox" element={<InboxPage />} />
           <Route path="activity" element={<ActivityPage />} />

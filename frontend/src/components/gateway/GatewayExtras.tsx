@@ -131,7 +131,7 @@ export function UsageTab() {
                 <div className="fb-eyebrow mb-2">{t('gw.usage.daily')}</div>
                 <div className="flex h-28 items-end gap-1" role="img" aria-label={t('gw.usage.daily')}>
                   {data.daily.map((d) => (
-                    <div key={d.date} className="flex-1" title={`${d.date} · ${fmt.currency(d.cost)} · ${fmt.number(d.requests)}`}>
+                    <div key={d.date} className="flex h-full flex-1 items-end" title={`${d.date} · ${fmt.currency(d.cost)} · ${fmt.number(d.requests)}`}>
                       <div
                         className="w-full rounded-t"
                         style={{ height: `${Math.max(3, ((d.cost || d.requests / 1000) / maxDaily) * 100)}%`, background: 'linear-gradient(180deg,var(--fb-accent),rgba(34,211,238,.25))' }}

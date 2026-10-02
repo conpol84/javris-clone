@@ -15,7 +15,7 @@ import type {
   ToolPolicy,
 } from './types';
 import type { AgentTemplate } from './templates';
-import { slugify } from './types';
+import { OPEN_TASK_STATUSES, slugify } from './types';
 
 function fail<T>(error: { message: string } | null, data: T | null): T {
   if (error) throw new Error(error.message);
@@ -168,6 +168,53 @@ export async function loadCounts(orgId: string, canSeeUsage: boolean): Promise<O
     }
   }
   return { memories, knowledgeSources, workflows, tokens30d, cost30d };
+}
+
+export interface OrgSummary {
+  agents: number;
+  openTasks: number;
+  approvals: number;
+  cost30d: number | null;
+  tokens30d: number | null;
+}
+
+/** Headline numbers for one company (used by the multi-company overview). */
+export async function loadOrgSummary(orgId: string, canSeeUsage: boolean): Promise<OrgSummary> {
+  const db = requireClient();
+  const [agents, tasks, approvals, counts] = await Promise.all([
+    db.from('agents').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('enabled', true),
+    db.from('tasks').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).in('status', OPEN_TASK_STATUSES),
+    db.from('approvals').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).eq('status', 'pending'),
+    canSeeUsage ? loadCounts(orgId, true) : Promise.resolve(null),
+  ]);
+  return {
+    agents: agents.count ?? 0,
+    openTasks: tasks.count ?? 0,
+    approvals: approvals.count ?? 0,
+    cost30d: counts ? counts.cost30d : null,
+    tokens30d: counts ? counts.tokens30d : null,
+  };
+}
+
+export interface UsageRow {
+  agent_id: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cost_usd: number;
+  created_at: string;
+}
+
+/** Raw usage events for the last N days (managers and above). */
+export async function loadUsageSince(orgId: string, days: number): Promise<UsageRow[]> {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const { data, error } = await requireClient()
+    .from('usage_events')
+    .select('agent_id, input_tokens, output_tokens, cost_usd, created_at')
+    .eq('organization_id', orgId)
+    .gte('created_at', since)
+    .order('created_at', { ascending: true })
+    .limit(20000);
+  return (fail(error, data) as unknown as (Omit<UsageRow, 'cost_usd'> & { cost_usd: number | string })[]).map((r) => ({ ...r, cost_usd: Number(r.cost_usd) }));
 }
 
 // ------------------------------------------------------------- agents & policy

@@ -32,6 +32,7 @@ import { COMPANY_ENABLED } from '../../lib/company/client';
 import type { TKey } from '../../i18n/locales/en';
 import { LogoMark } from '../brand/Logo';
 import { LanguageSwitcher } from '../brand/LanguageSwitcher';
+import { OrgSwitcher } from '../company/OrgSwitcher';
 import { useI18n } from '../../i18n/I18nProvider';
 import { CHAT_PATH } from '../../lib/company/routes';
 import { useCommand } from '../command/CommandHost';
@@ -86,6 +87,7 @@ export function Sidebar() {
         { path: '/tasks', icon: ListChecks, label: t('nav.tasks') },
         { path: '/activity', icon: History, label: t('nav.activity') },
         { path: '/people', icon: Building2, label: t('nav.people') },
+        { path: '/analytics', icon: BarChart3, label: t('nav.analytics') },
         { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
       ]
     : [];
@@ -186,9 +188,7 @@ export function Sidebar() {
                   ⌘K
                 </kbd>
               </button>
-              <div className="mx-4 mb-2 truncate text-[11px] uppercase tracking-wider" style={{ color: 'var(--color-text-tertiary)' }}>
-                {current?.organization.name}
-              </div>
+              <OrgSwitcher />
             </>
           )}
 
