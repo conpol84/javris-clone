@@ -24,14 +24,14 @@ export interface MissionSceneProps {
   labels: { core: string; noWebgl: string };
 }
 
-const TONE = { done: '#34d399', run: '#22d3ee', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
+const TONE = { done: '#34d399', run: '#4ade80', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
 
 function labelTexture(text: string, color: string): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 512;
   c.height = 96;
   const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(8,14,28,0.82)';
+  g.fillStyle = 'rgba(6, 20, 13,0.82)';
   g.strokeStyle = color;
   g.lineWidth = 3;
   const r = 40;
@@ -39,7 +39,7 @@ function labelTexture(text: string, color: string): THREE.CanvasTexture {
   g.roundRect(4, 8, 504, 80, r);
   g.fill();
   g.stroke();
-  g.fillStyle = '#e6f1ff';
+  g.fillStyle = '#ecfdf3';
   g.font = '600 38px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -196,7 +196,7 @@ function World({ nodes, steps, missionStatus, labels, motion }: MissionSceneProp
   return (
     <group ref={group}>
       <ambientLight intensity={0.6} />
-      <pointLight position={[0, 4, 3]} intensity={30} color="#22d3ee" />
+      <pointLight position={[0, 4, 3]} intensity={30} color="#4ade80" />
       <pointLight position={[-5, 2, -3]} intensity={12} color="#a78bfa" />
       <gridHelper args={[26, 26, '#164e63', '#0b2540']} position={[0, -0.9, 0]} />
       <Core status={missionStatus} motion={motion} />

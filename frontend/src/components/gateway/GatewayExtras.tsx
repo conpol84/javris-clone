@@ -134,7 +134,7 @@ export function UsageTab() {
                     <div key={d.date} className="flex h-full flex-1 items-end" title={`${d.date} · ${fmt.currency(d.cost)} · ${fmt.number(d.requests)}`}>
                       <div
                         className="w-full rounded-t"
-                        style={{ height: `${Math.max(3, ((d.cost || d.requests / 1000) / maxDaily) * 100)}%`, background: 'linear-gradient(180deg,var(--fb-accent),rgba(34,211,238,.25))' }}
+                        style={{ height: `${Math.max(3, ((d.cost || d.requests / 1000) / maxDaily) * 100)}%`, background: 'linear-gradient(180deg,var(--fb-accent),rgba(74, 222, 128,.25))' }}
                       />
                     </div>
                   ))}

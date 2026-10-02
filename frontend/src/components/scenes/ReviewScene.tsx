@@ -24,7 +24,7 @@ function label(text: string): THREE.CanvasTexture {
   c.width = 384;
   c.height = 72;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#e6f1ff';
+  g.fillStyle = '#ecfdf3';
   g.font = '600 34px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -85,7 +85,7 @@ export function ReviewScene({ towers, selected, onSelect, labels }: ReviewSceneP
           <Tower key={tw.id} tower={tw} x={i * gap} selected={tw.id === selected} motion={reduced ? 0 : 1} onSelect={onSelect} />
         ))}
       </group>
-      <gridHelper args={[Math.max(10, width + 4), 20, '#22d3ee', '#1e3a5f']} position={[0, -1.41, 0]} />
+      <gridHelper args={[Math.max(10, width + 4), 20, '#4ade80', '#1f4a35']} position={[0, -1.41, 0]} />
     </Canvas>
   );
 }

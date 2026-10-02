@@ -108,7 +108,7 @@ function Label3D({
     g.textAlign = 'left';
     g.direction = rtl ? 'rtl' : 'ltr';
     g.font = font(600);
-    g.fillStyle = '#e6f1ff';
+    g.fillStyle = '#ecfdf3';
     g.fillText(text, padX + 26, H / 2 + 1);
     if (sub) {
       g.font = font(500);
@@ -336,7 +336,7 @@ function Zone({
         text={labels.agentName(agent)}
         sub={labels.state[state]}
         dot={state === 'waiting' ? '#fbbf24' : state === 'active' ? '#34d399' : state === 'disabled' ? '#64748b' : color}
-        border={selected ? color : 'rgba(56,189,248,0.3)'}
+        border={selected ? color : 'rgba(52, 211, 153,0.3)'}
         glow={selected}
       />
     </group>
@@ -359,23 +359,23 @@ function CommandTable({ open, approvals, labels }: { open: number; approvals: nu
       <mesh position={[0, 0.5, 0]}>
         <cylinderGeometry args={[1.1, 1.3, 1, 32]} />
         <meshStandardMaterial color="#0b1a2e" roughness={0.4} metalness={0.6} />
-        <Edges color="#22d3ee" threshold={15} />
+        <Edges color="#4ade80" threshold={15} />
       </mesh>
       <mesh ref={ring} position={[0, 1.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[0.95, 0.018, 8, 64]} />
-        <meshBasicMaterial color="#22d3ee" toneMapped={false} />
+        <meshBasicMaterial color="#4ade80" toneMapped={false} />
       </mesh>
       <mesh ref={core} position={[0, 1.5, 0]}>
         <icosahedronGeometry args={[0.32, 1]} />
-        <meshBasicMaterial color="#67e8f9" wireframe toneMapped={false} />
+        <meshBasicMaterial color="#86efac" wireframe toneMapped={false} />
       </mesh>
-      <pointLight position={[0, 1.6, 0]} color="#22d3ee" intensity={5} distance={7} />
+      <pointLight position={[0, 1.6, 0]} color="#4ade80" intensity={5} distance={7} />
       <Label3D
         position={[0, 2.55, 0]}
         text={labels.tableOpen}
         sub={labels.tableApprovals}
         dot={approvals ? '#fbbf24' : '#34d399'}
-        border="rgba(56,189,248,0.4)"
+        border="rgba(52, 211, 153,0.4)"
       />
     </group>
   );
@@ -387,10 +387,10 @@ function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprova
   const placed = useMemo(() => layoutAgents(agents), [agents]);
   return (
     <>
-      <color attach="background" args={['#050a14']} />
-      <fog attach="fog" args={['#050a14', 34, 70]} />
+      <color attach="background" args={['#04100a']} />
+      <fog attach="fog" args={['#04100a', 34, 70]} />
       <ambientLight intensity={0.7} />
-      <hemisphereLight args={['#7dd3fc', '#0b1220', 0.5]} />
+      <hemisphereLight args={['#bbf7d0', '#0b1220', 0.5]} />
       <directionalLight position={[10, 16, 8]} intensity={1.1} />
       <Grid
         position={[0, 0, 2]}
@@ -400,7 +400,7 @@ function Scene({ agents, states, selectedId, onSelect, openTasks, pendingApprova
         cellColor="#0c3550"
         sectionSize={3}
         sectionThickness={1}
-        sectionColor="#0e7490"
+        sectionColor="#15803d"
         fadeDistance={38}
         fadeStrength={1.5}
         infiniteGrid

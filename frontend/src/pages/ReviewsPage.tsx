@@ -12,7 +12,7 @@ import { MANAGER_ROLES, type AgentRow, type Autonomy, type TaskRow } from '../li
 import '../styles/firbo.css';
 
 const NEXT: Partial<Record<Autonomy, Autonomy>> = { suggest: 'approval', approval: 'notify' };
-const TONE: Record<Verdict, string> = { promote: '#34d399', steady: '#22d3ee', coach: '#fbbf24', idle: '#64748b' };
+const TONE: Record<Verdict, string> = { promote: '#34d399', steady: '#4ade80', coach: '#fbbf24', idle: '#64748b' };
 
 /** Performance reviews: a transparent score per AI employee and a promotion recommendation. */
 export function ReviewsPage() {

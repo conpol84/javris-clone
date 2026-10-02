@@ -23,7 +23,7 @@ const t = (tool: string, policy?: ToolPolicy): TemplateTool => ({ tool, policy }
 /** Pre-built "employees". Tool names match the OpenJarvis ToolRegistry so the backend can enforce them. */
 export const AGENT_TEMPLATES: AgentTemplate[] = [
   {
-    slug: 'customer-support', name: 'Customer Support Agent', category: 'Operations', color: '#38bdf8',
+    slug: 'customer-support', name: 'Customer Support Agent', category: 'Operations', color: '#34d399',
     tagline: 'Answers tickets from your knowledge base and escalates what it cannot solve.',
     prompt: 'You are the Customer Support agent. Answer customer questions using the company knowledge base, keep a warm and concise tone, and escalate anything uncertain, legal or billing-related to a human.' + RULES,
     tools: [t('think'), t('knowledge_search'), t('memory_search'), t('memory_store'), t('channel_send', 'approval'), t('queue_action')],
@@ -65,7 +65,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('web_search'), t('pdf_extract'), t('file_read'), t('memory_search'), t('channel_send', 'approval'), t('queue_action')],
   },
   {
-    slug: 'data-analyst', name: 'Data Analyst', category: 'Intelligence', color: '#22d3ee',
+    slug: 'data-analyst', name: 'Data Analyst', category: 'Intelligence', color: '#4ade80',
     tagline: 'Turns your data into answers, charts and weekly reports.',
     prompt: 'You are the Data Analyst. Query company data, compute metrics carefully, explain methodology and flag data-quality issues. You are read-only.' + RULES,
     tools: [t('think'), t('db_query'), t('calculator'), t('file_read'), t('pdf_extract'), t('knowledge_search')],
@@ -131,7 +131,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('web_search'), t('knowledge_search'), t('memory_search'), t('memory_store'), t('file_write', 'approval')],
   },
   {
-    slug: 'project-manager', name: 'Project Manager', category: 'Operations', color: '#38bdf8',
+    slug: 'project-manager', name: 'Project Manager', category: 'Operations', color: '#34d399',
     tagline: 'Breaks goals into tasks, tracks progress and chases blockers.',
     prompt: 'You are the Project Manager. Turn goals into clear task lists with owners and dates, track progress, flag blockers early and write short status updates.' + RULES,
     tools: [t('think'), t('memory_search'), t('memory_store'), t('calendar_upcoming'), t('record_decision'), t('queue_action')],
@@ -173,7 +173,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('file_read'), t('git_status'), t('git_diff'), t('git_log'), t('http_request'), t('queue_action')],
   },
   {
-    slug: 'technical-writer', name: 'Technical Writer', category: 'Engineering', color: '#22d3ee',
+    slug: 'technical-writer', name: 'Technical Writer', category: 'Engineering', color: '#4ade80',
     tagline: 'Docs, changelogs and how-to guides from your code and notes.',
     prompt: 'You are the Technical Writer. Write accurate, concise documentation, changelogs and tutorials from the code and notes you are given, and ask when something is unclear.' + RULES,
     tools: [t('think'), t('file_read'), t('git_log'), t('knowledge_search'), t('file_write', 'approval')],
@@ -227,7 +227,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     tools: [t('think'), t('db_query'), t('calculator'), t('memory_search'), t('channel_send', 'approval'), t('queue_action')],
   },
   {
-    slug: 'financial-planner', name: 'Financial Planner', category: 'Finance & Legal', color: '#38bdf8',
+    slug: 'financial-planner', name: 'Financial Planner', category: 'Finance & Legal', color: '#34d399',
     tagline: 'Budgets, runway and scenario forecasts.',
     prompt: 'You are the Financial Planner. Build budgets, runway and scenario forecasts, state every assumption clearly and show the calculations. This is not financial advice.' + RULES,
     tools: [t('think'), t('calculator'), t('db_query'), t('file_read'), t('knowledge_search'), t('memory_store')],

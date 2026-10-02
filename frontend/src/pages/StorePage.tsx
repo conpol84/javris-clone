@@ -58,7 +58,7 @@ export function StorePage() {
             className="fb-chip cursor-pointer"
             aria-pressed={cat === c}
             onClick={() => setCat(c)}
-            style={cat === c ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34,211,238,0.1)' } : undefined}
+            style={cat === c ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(74, 222, 128,0.1)' } : undefined}
           >
             {c === 'All' ? t('cat.all') : categoryLabel(c, i18n)}
           </button>

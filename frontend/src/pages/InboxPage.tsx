@@ -107,7 +107,7 @@ export function InboxPage() {
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               className="fb-chip cursor-pointer"
-              style={tab === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34,211,238,.1)' } : undefined}
+              style={tab === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(74, 222, 128,.1)' } : undefined}
             >
               {id === 'pending' ? t('inbox.tab.pending', { count: data.approvals.length }) : t('inbox.tab.history')}
             </button>

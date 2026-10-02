@@ -63,7 +63,7 @@ export function FirboSettingsPage() {
                 aria-checked={theme === id}
                 onClick={() => updateSettings({ theme: id })}
                 className="fb-chip cursor-pointer"
-                style={theme === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34,211,238,.1)' } : undefined}
+                style={theme === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(74, 222, 128,.1)' } : undefined}
               >
                 <Icon size={13} /> {t(`settings.theme.${id}` as TKey)}
               </button>

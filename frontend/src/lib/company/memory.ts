@@ -13,7 +13,7 @@ export interface MemoryRow {
 }
 
 export const MEMORY_COLORS: Record<MemoryType, string> = {
-  company: '#22d3ee',
+  company: '#4ade80',
   project: '#a78bfa',
   instruction: '#fbbf24',
   decision: '#34d399',
