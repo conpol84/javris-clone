@@ -107,6 +107,7 @@ export function Sidebar() {
         { path: '/activity', icon: History, label: t('nav.activity') },
         { path: '/people', icon: Building2, label: t('nav.people') },
         { path: '/analytics', icon: BarChart3, label: t('nav.analytics') },
+        { path: '/computers', icon: Monitor, label: t('nav.computers') },
         { path: '/coding', icon: Terminal, label: t('nav.coding') },
         { path: '/hub', icon: Layers, label: t('nav.hub') },
         { path: '/integrations', icon: Plug, label: t('nav.integrations') },
