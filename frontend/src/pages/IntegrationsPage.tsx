@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { Plug, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Panel, StatusDot } from '../components/command/Panel';
@@ -7,7 +7,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, PLANNED_APPS, testIntegration,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, startOAuth, testIntegration,
   type IntegrationKind, type IntegrationRow,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
@@ -27,6 +27,8 @@ export function IntegrationsPage() {
   const [name, setName] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState<string | null>(null);
+  const [setup, setSetup] = useState<{ provider: string; redirect: string } | null>(null);
+  const [params, setParams] = useSearchParams();
 
   const reload = useCallback(async () => {
     if (!orgId || !canManage) return;
@@ -45,6 +47,18 @@ export function IntegrationsPage() {
     void reload();
   }, [reload]);
 
+  // Back from a provider's sign-in page: ?connected=gmail or ?oauth_error=…
+  useEffect(() => {
+    const ok = params.get('connected');
+    const bad = params.get('oauth_error');
+    if (!ok && !bad) return;
+    if (ok) toast.success(t('int.oauth.done', { app: BRAND[ok as IntegrationKind] ?? ok }));
+    else toast.error(bad === 'plan_limit' ? t('int.err.limit') : t('int.oauth.failed', { code: String(bad).slice(0, 40) }));
+    setParams({}, { replace: true });
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const errText = (err: unknown) => {
     const code = err instanceof IntegrationError ? err.code : 'unknown';
     return t(`int.err.${code === 'too_many' ? 'limit' : code}` as TKey);
@@ -54,6 +68,21 @@ export function IntegrationsPage() {
     setAdding(kind);
     setName(BRAND[kind]);
     setValues({});
+    setSetup(null);
+  };
+
+  const signIn = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!adding || busy) return;
+    setBusy('connect');
+    try {
+      const { url } = await startOAuth(orgId, adding, name, values);
+      window.location.assign(url);
+    } catch (err) {
+      if (err instanceof IntegrationError && err.code === 'not_configured' && err.detail?.redirect_uri) setSetup({ provider: err.detail.provider ?? '', redirect: err.detail.redirect_uri });
+      else toast.error(errText(err));
+      setBusy(null);
+    }
   };
 
   const connect = async (e: FormEvent) => {
@@ -99,6 +128,9 @@ export function IntegrationsPage() {
   };
 
   const def = LIVE_APPS.find((a) => a.kind === adding);
+  const about = (a: (typeof LIVE_APPS)[number]) => a.about ?? t(`int.about.${a.kind}` as TKey);
+  const help = (a: (typeof LIVE_APPS)[number]) => a.help ?? t(`int.help.${a.kind}` as TKey);
+  const oauthInfo = def?.oauth ? OAUTH_CONSOLE[def.oauth] : null;
 
   return (
     <div className="fb-root h-full overflow-y-auto">
@@ -156,7 +188,7 @@ export function IntegrationsPage() {
                         >
                           <span className="fb-dot" style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
                           <span className="text-sm font-semibold">{a.name}</span>
-                          <span className="fb-dim text-xs">{t(`int.about.${a.kind}` as TKey)}</span>
+                          <span className="fb-dim text-xs">{about(a)}</span>
                           <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
                         </button>
                       </li>
@@ -166,9 +198,9 @@ export function IntegrationsPage() {
               ))}
 
               {adding && def && (
-                <form onSubmit={connect} className="mt-4 rounded-xl p-4" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
+                <form onSubmit={def.oauth ? signIn : connect} className="mt-4 rounded-xl p-4" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
                   <div className="text-sm font-semibold">{t('int.connectTitle', { app: BRAND[adding] })}</div>
-                  <p className="fb-muted mt-1 text-sm">{t(`int.help.${adding}` as TKey)}</p>
+                  <p className="fb-muted mt-1 text-sm">{help(def)}</p>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="block text-xs">
                       <span className="fb-dim">{t('int.name')}</span>
@@ -176,7 +208,7 @@ export function IntegrationsPage() {
                     </label>
                     {def.fields.map((f) => (
                       <label key={f.key} className="block text-xs">
-                        <span className="fb-dim">{t(`int.field.${f.key}` as TKey)}</span>
+                        <span className="fb-dim">{f.label ?? t(`int.field.${f.key}` as TKey)}{f.optional ? ` (${t('int.optional')})` : ''}</span>
                         <input
                           className="fb-input mt-1"
                           type={f.secret ? 'password' : 'text'}
@@ -185,14 +217,23 @@ export function IntegrationsPage() {
                           placeholder={f.placeholder}
                           value={values[f.key] ?? ''}
                           onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
-                          required
+                          required={!f.optional}
                         />
                       </label>
                     ))}
                   </div>
-                  <p className="fb-dim mt-3 text-xs">{t('int.secretNote')}</p>
+                  <p className="fb-dim mt-3 text-xs">{def.oauth ? t('int.oauth.note', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.secretNote')}</p>
+                  {setup && oauthInfo && (
+                    <div className="mt-3 rounded-xl p-3 text-xs" role="status" style={{ background: 'rgba(251,191,36,.08)', border: '1px solid rgba(251,191,36,.35)' }}>
+                      <div className="mb-1 text-sm font-semibold">{t('int.oauth.setupTitle', { provider: oauthInfo.label })}</div>
+                      <p className="fb-muted">{t('int.oauth.setupBody', { names: oauthInfo.secrets })}</p>
+                      <div className="fb-dim mt-2">{t('int.oauth.redirect')}</div>
+                      <code className="mt-1 block break-all rounded-lg p-2" dir="ltr" style={{ background: 'rgba(0,0,0,.35)' }}>{setup.redirect}</code>
+                      <a className="mt-2 inline-block font-medium" style={{ color: 'var(--fb-accent)' }} href={oauthInfo.url} target="_blank" rel="noreferrer">{oauthInfo.label} →</a>
+                    </div>
+                  )}
                   <div className="mt-3 flex gap-2">
-                    <button className="fb-btn fb-btn--primary" disabled={busy !== null}>{busy === 'connect' ? t('int.connecting') : t('int.connectAndTest')}</button>
+                    <button className="fb-btn fb-btn--primary" disabled={busy !== null}>{busy === 'connect' ? t('int.connecting') : def.oauth ? t('int.signIn', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.connectAndTest')}</button>
                     <button type="button" className="fb-btn fb-btn--ghost" onClick={() => setAdding(null)}>{t('common.close')}</button>
                   </div>
                 </form>
@@ -202,7 +243,7 @@ export function IntegrationsPage() {
             <Panel title={t('int.soon')}>
               <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
                 {PLANNED_APPS.map((a) => (
-                  <li key={a.id} className="fb-row py-2 opacity-70" title={t('int.soonHint')}>
+                  <li key={a.id} className="fb-row py-2 opacity-70" title={a.reason}>
                     <span className="fb-dot" style={{ background: a.color }} />
                     <span className="min-w-0 truncate text-xs font-medium">{a.name}</span>
                   </li>

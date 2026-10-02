@@ -936,6 +936,17 @@ export const en = {
   "search.task": "Task",
   "cc.focus": "Focus mode",
   "cc.focus.exit": "Exit focus mode",
+  "int.cat.crm": "Customers and support",
+  "int.cat.productivity": "Calendar, files and meetings",
+  "int.optional": "optional",
+  "int.signIn": "Sign in with {provider}",
+  "int.oauth.note": "You sign in on {provider}’s own page. Firbo never sees your password and only asks for the permission it needs.",
+  "int.oauth.setupTitle": "One-time setup: {provider}",
+  "int.oauth.setupBody": "Create an app there, register the redirect address below, then store its client ID and secret as Supabase secrets: {names}. This is done once per platform, by the person who runs Firbo.",
+  "int.oauth.redirect": "Redirect address",
+  "int.oauth.done": "{app} is connected.",
+  "int.oauth.failed": "Sign-in did not finish ({code}). Try again.",
+  "int.err.not_configured": "This sign-in needs a one-time setup by the platform owner (shown below).",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents
