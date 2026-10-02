@@ -91,7 +91,7 @@ export function OnboardingWizard() {
                     setPicked(null);
                   }}
                   className="fb-row cursor-pointer text-start"
-                  style={goalId === g.id ? { borderColor: 'var(--fb-accent)', background: 'rgba(0, 245, 138,.08)' } : undefined}
+                  style={goalId === g.id ? { borderColor: 'var(--fb-accent)', background: 'rgba(34, 211, 238,.08)' } : undefined}
                 >
                   <span className="fb-dot" style={goalId === g.id ? { background: 'var(--fb-accent)', boxShadow: '0 0 10px var(--fb-accent)' } : undefined} />
                   <span className="text-sm font-medium">{t(`goal.${g.id}` as TKey)}</span>
@@ -153,7 +153,7 @@ export function OnboardingWizard() {
                   aria-checked={freedom === f.id}
                   onClick={() => setFreedom(f.id)}
                   className="fb-row cursor-pointer text-start"
-                  style={freedom === f.id ? { borderColor: 'var(--fb-accent)', background: 'rgba(0, 245, 138,.08)' } : undefined}
+                  style={freedom === f.id ? { borderColor: 'var(--fb-accent)', background: 'rgba(34, 211, 238,.08)' } : undefined}
                 >
                   <span className="fb-dot" style={freedom === f.id ? { background: 'var(--fb-accent)', boxShadow: '0 0 10px var(--fb-accent)' } : undefined} />
                   <span className="min-w-0 flex-1">

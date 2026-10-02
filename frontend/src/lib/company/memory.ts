@@ -13,10 +13,10 @@ export interface MemoryRow {
 }
 
 export const MEMORY_COLORS: Record<MemoryType, string> = {
-  company: '#00f58a',
+  company: '#22d3ee',
   project: '#a78bfa',
   instruction: '#fbbf24',
-  decision: '#00d97a',
+  decision: '#34d399',
   fact: '#60a5fa',
   user_preference: '#f472b6',
   conversation: '#94a3b8',
@@ -43,4 +43,12 @@ export async function addMemory(orgId: string, userId: string, input: { content:
 export async function deleteMemory(id: string): Promise<void> {
   const { error } = await requireClient().from('memories').delete().eq('id', id);
   if (error) throw new Error(error.message);
+}
+
+/** The memories an agent actually reads: the same rule the runner uses (company-wide or its own, most important first). */
+export function memoriesReadBy<T extends { id: string; agent_id: string | null; importance: number }>(agentId: string, items: T[], limit = 12): T[] {
+  return items
+    .filter((m) => m.agent_id === null || m.agent_id === agentId)
+    .sort((a, b) => b.importance - a.importance)
+    .slice(0, limit);
 }

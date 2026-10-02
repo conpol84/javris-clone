@@ -899,6 +899,9 @@ const fr: Dictionary = {
   "voice.micStop": "Arrêter l’écoute",
   "voice.speakOn": "Lire les réponses à voix haute",
   "voice.speakOff": "Arrêter la lecture à voix haute",
+  "mem.readers": "Qui lit ces souvenirs ?",
+  "mem.readersHint": "Choisissez un employé IA pour éclairer les souvenirs qu’il lit à chaque fois qu’il travaille.",
+  "mem.readsCount": "{name} lit {count} souvenirs en travaillant : ceux de toute l’entreprise et les siens, les plus importants d’abord.",
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

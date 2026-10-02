@@ -2,17 +2,21 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MemoryScene } from '../components/scenes/MemoryScene';
+import { agentLabel } from '../lib/company/labels';
+import { agentColor } from '../lib/company/status';
+import { listAgents } from '../lib/company/data';
 import { useI18n } from '../i18n/I18nProvider';
 import { notifyPlanLimit } from '../lib/company/limits';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_TYPES, type MemoryRow, type MemoryType } from '../lib/company/memory';
-import { MANAGER_ROLES, WRITER_ROLES } from '../lib/company/types';
+import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_TYPES, memoriesReadBy, type MemoryRow, type MemoryType } from '../lib/company/memory';
+import { MANAGER_ROLES, WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
 
 /** What the company knows: a 3D constellation of memories every AI employee can draw on. */
 export function MemoryPage() {
-  const { t, fmt } = useI18n();
+  const i18n = useI18n();
+  const { t, fmt } = i18n;
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
@@ -24,6 +28,8 @@ export function MemoryPage() {
   const [importance, setImportance] = useState(0.7);
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
+  const [agents, setAgents] = useState<AgentRow[]>([]);
+  const [activeAgent, setActiveAgent] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -39,10 +45,18 @@ export function MemoryPage() {
   useEffect(() => {
     void load();
   }, [load]);
+  useEffect(() => {
+    if (!orgId) return;
+    listAgents(orgId).then(setAgents).catch(() => undefined);
+  }, [orgId]);
 
   const types = useMemo(() => [...new Set(items.map((m) => m.memory_type))], [items]);
   const stars = useMemo(() => items.map((m) => ({ id: m.id, type: m.memory_type, importance: m.importance, color: MEMORY_COLORS[m.memory_type] ?? '#94a3b8' })), [items]);
   const chosen = items.find((m) => m.id === selected) ?? null;
+  const sceneAgents = useMemo(() => agents.filter((a) => a.enabled).map((a) => ({ id: a.id, name: agentLabel(a, i18n).name.replace(' Agent', ''), color: agentColor(a.type, a.slug) })), [agents, i18n]);
+  const readList = useMemo(() => (activeAgent ? memoriesReadBy(activeAgent, items) : []), [activeAgent, items]);
+  const readIds = useMemo(() => new Set(readList.map((m) => m.id)), [readList]);
+  const activeName = sceneAgents.find((a) => a.id === activeAgent)?.name ?? '';
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -82,7 +96,7 @@ export function MemoryPage() {
       <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
         <section className="fb-glass relative overflow-hidden" style={{ minHeight: 440 }}>
           <div className="absolute inset-0">
-            <MemoryScene stars={stars} types={types} selected={selected} onSelect={setSelected} labels={{ noWebgl: t('office.noWebgl') }} />
+            <MemoryScene stars={stars} types={types} selected={selected} onSelect={setSelected} agents={sceneAgents} activeAgent={activeAgent} onPickAgent={setActiveAgent} readIds={readIds} labels={{ noWebgl: t('office.noWebgl') }} />
           </div>
           {loaded && items.length === 0 && <div className="fb-muted absolute inset-0 grid place-items-center p-6 text-center text-sm">{t('mem.empty')}</div>}
           <div className="absolute bottom-3 start-3 flex flex-wrap gap-1.5">
@@ -94,6 +108,17 @@ export function MemoryPage() {
           </div>
         </section>
         <section className="fb-glass fb-col gap-3 p-4">
+          <div className="fb-col gap-2">
+            <div className="fb-eyebrow">{t('mem.readers')}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {sceneAgents.map((a) => (
+                <button key={a.id} className="fb-chip cursor-pointer" aria-pressed={activeAgent === a.id} onClick={() => setActiveAgent(activeAgent === a.id ? null : a.id)} style={activeAgent === a.id ? { color: a.color, borderColor: a.color } : undefined}>
+                  {a.name}
+                </button>
+              ))}
+            </div>
+            <p className="fb-dim text-xs">{activeAgent ? t('mem.readsCount', { name: activeName, count: readList.length }) : t('mem.readersHint')}</p>
+          </div>
           {chosen ? (
             <div className="fb-row fb-col gap-2 p-3">
               <div className="flex items-center gap-2">

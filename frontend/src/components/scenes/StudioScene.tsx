@@ -120,21 +120,21 @@ function Scene(props: StudioProps) {
   useFrame((_, dt) => {
     if (spin.current) spin.current.rotation.y += dt * 0.12 * motion;
   });
-  const color = selected ? agentColor(selected.type, selected.slug) : '#00f58a';
+  const color = selected ? agentColor(selected.type, selected.slug) : '#22d3ee';
   return (
     <>
-      <color attach="background" args={['#02060a']} />
-      <fog attach="fog" args={['#02060a', 40, 95]} />
+      <color attach="background" args={['#02060e']} />
+      <fog attach="fog" args={['#02060e', 40, 95]} />
       <ambientLight intensity={0.55} />
-      <directionalLight position={[6, 10, 8]} intensity={1.2} color="#d6ffe9" />
+      <directionalLight position={[6, 10, 8]} intensity={1.2} color="#d6f0ff" />
       <pointLight position={[0, 3, 0]} intensity={18} color={color} distance={14} />
       <Stars speed={0.01 * motion} count={1800} radius={30} spread={50} />
-      <Planet position={[-26, 8, -34]} color="#0e3b2c" size={7} />
+      <Planet position={[-26, 8, -34]} color="#0c2f4a" size={7} />
       <Planet position={[34, -6, -40]} color="#2a1b4d" size={5} />
       {/* docking platform */}
       <mesh position={[0, -0.05, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[3.3, 64]} />
-        <meshStandardMaterial color="#06130e" metalness={0.8} roughness={0.35} />
+        <meshStandardMaterial color="#0a1424" metalness={0.8} roughness={0.35} />
       </mesh>
       <mesh position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[3.2, 3.3, 96]} />

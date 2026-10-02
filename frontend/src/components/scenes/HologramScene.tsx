@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { Line } from '@react-three/drei';
 import { voiceLevel } from '../../lib/company/voice';
 import { Glow, Stars } from './fx';
+import { Person } from './Person';
+import type { Persona } from '../../lib/company/persona';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export type HoloState = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -15,7 +17,7 @@ export interface Satellite {
   active: boolean;
 }
 
-const COLORS: Record<HoloState, string> = { idle: '#00f58a', listening: '#00d97a', thinking: '#a78bfa', speaking: '#5dffb0' };
+const COLORS: Record<HoloState, string> = { idle: '#22d3ee', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };
 
 function Hologram({ state, motion }: { state: HoloState; motion: number }) {
   const core = useRef<THREE.Mesh>(null);
@@ -82,7 +84,7 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
         {[1.9, 2.25, 2.6].map((r, i) => (
           <mesh key={r} rotation={[0, 0, i]}>
             <torusGeometry args={[r, 0.006, 8, 160]} />
-            <meshBasicMaterial color="#00f58a" transparent opacity={0.35 - i * 0.07} />
+            <meshBasicMaterial color="#22d3ee" transparent opacity={0.35 - i * 0.07} />
           </mesh>
         ))}
       </group>
@@ -91,13 +93,13 @@ function Hologram({ state, motion }: { state: HoloState; motion: number }) {
         {Array.from({ length: 41 }, (_, i) => (
           <mesh key={i} position={[(i - 20) * 0.13, 0, 0]}>
             <boxGeometry args={[0.05, 0.5, 0.05]} />
-            <meshBasicMaterial color="#5dffb0" transparent opacity={0.65} />
+            <meshBasicMaterial color="#67e8f9" transparent opacity={0.65} />
           </mesh>
         ))}
       </group>
       <mesh position={[0, -2.6, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[1.2, 2.9, 64]} />
-        <meshBasicMaterial color="#00f58a" transparent opacity={0.08} side={THREE.DoubleSide} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.08} side={THREE.DoubleSide} />
       </mesh>
     </group>
   );
@@ -131,7 +133,24 @@ function Satellites({ items, state, motion }: { items: Satellite[]; state: HoloS
   );
 }
 
-export function HologramScene({ state, labels, satellites = [] }: { state: HoloState; labels: { noWebgl: string }; satellites?: Satellite[] }) {
+/** The CEO as a full-body hologram: stands in front of the neural shell, gestures while speaking, and is scanned by a moving light. */
+function CeoBody({ persona, state }: { persona: Persona; state: HoloState }) {
+  const scan = useRef<THREE.Mesh>(null);
+  useFrame(({ clock }) => {
+    if (scan.current) scan.current.position.y = -2.5 + ((clock.elapsedTime * 0.45) % 1) * 4.3;
+  });
+  return (
+    <group position={[0, -2.5, 0.6]} scale={2.1}>
+      <Person persona={persona} color="#f59e0b" state="idle" speaking={state === 'speaking'} />
+      <mesh ref={scan} position={[0, 0, 0]} rotation={[-Math.PI / 2, 0, 0]} visible>
+        <ringGeometry args={[0.35, 0.42, 48]} />
+        <meshBasicMaterial color="#67e8f9" transparent opacity={0.55} toneMapped={false} blending={THREE.AdditiveBlending} depthWrite={false} />
+      </mesh>
+    </group>
+  );
+}
+
+export function HologramScene({ state, labels, satellites = [], persona }: { state: HoloState; labels: { noWebgl: string }; satellites?: Satellite[]; persona?: Persona }) {
   const reduced = usePrefersReducedMotion();
   if (!supportsWebGL()) {
     return <div className="fb-muted grid h-full place-items-center text-sm">{labels.noWebgl}</div>;
@@ -139,7 +158,16 @@ export function HologramScene({ state, labels, satellites = [] }: { state: HoloS
   return (
     <Canvas camera={{ position: [0, 0.4, 7.4], fov: 45 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <Stars count={900} radius={14} spread={22} speed={reduced ? 0 : 0.012} size={0.09} />
-      <Hologram state={state} motion={reduced ? 0.3 : 1} />
+      <group position={[0, 0, -1.4]}>
+        <Hologram state={state} motion={reduced ? 0.3 : 1} />
+      </group>
+      {persona && (
+        <>
+          <ambientLight intensity={0.8} />
+          <pointLight position={[2, 3, 4]} intensity={30} color="#e8f4ff" />
+          <CeoBody persona={persona} state={state} />
+        </>
+      )}
       <Satellites items={satellites} state={state} motion={reduced ? 0.3 : 1} />
       <Glow strength={1.1} threshold={0.2} />
     </Canvas>

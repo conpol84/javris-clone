@@ -7,6 +7,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createConversation, listAgents, loadOrgSummary } from '../lib/company/data';
 import { agentColor, deriveAgentStates } from '../lib/company/status';
+import { resolvePersona } from '../lib/company/persona';
 import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { RunError, sendChat } from '../lib/company/runner';
@@ -181,7 +182,7 @@ export function CeoPage() {
           <section className="fb-glass relative overflow-hidden" style={{ minHeight: 440 }}>
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
-              <HologramScene state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
+              <HologramScene state={state} satellites={satellites} persona={ceo ? resolvePersona(ceo) : undefined} labels={{ noWebgl: t('office.noWebgl') }} />
             </div>
             <div className="absolute start-4 top-4 flex items-center gap-2">
               <span className="fb-dot" style={{ background: 'var(--fb-accent)', boxShadow: '0 0 10px var(--fb-accent)' }} />
@@ -199,7 +200,7 @@ export function CeoPage() {
               </div>
             ) : (
               caption && (
-                <div aria-hidden className="pointer-events-none absolute inset-x-5 bottom-4 max-h-[34%] overflow-hidden rounded-xl px-4 py-3 text-center text-[15px] leading-snug" style={{ background: 'rgba(2,10,6,0.55)', backdropFilter: 'blur(6px)', border: '1px solid var(--fb-border)' }}>
+                <div aria-hidden className="pointer-events-none absolute inset-x-5 bottom-4 max-h-[34%] overflow-hidden rounded-xl px-4 py-3 text-center text-[15px] leading-snug" style={{ background: 'rgba(3, 8, 18,0.55)', backdropFilter: 'blur(6px)', border: '1px solid var(--fb-border)' }}>
                   {caption}
                 </div>
               )

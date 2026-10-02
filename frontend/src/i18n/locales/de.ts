@@ -899,6 +899,9 @@ const de: Dictionary = {
   "voice.micStop": "Zuhören beenden",
   "voice.speakOn": "Antworten vorlesen",
   "voice.speakOff": "Vorlesen beenden",
+  "mem.readers": "Wer liest diese Erinnerungen?",
+  "mem.readersHint": "Wähle einen KI-Mitarbeiter, um die Erinnerungen aufleuchten zu lassen, die er bei jeder Arbeit liest.",
+  "mem.readsCount": "{name} liest bei der Arbeit {count} Erinnerungen: unternehmensweite und eigene, die wichtigsten zuerst.",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

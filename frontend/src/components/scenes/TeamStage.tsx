@@ -57,20 +57,20 @@ function Member({ agent, index, count, selected, state, persona, name, onSelect 
 function Scene(props: TeamStageProps) {
   const reduced = usePrefersReducedMotion();
   const sel = props.agents.find((a) => a.id === props.selectedId) ?? null;
-  const col = sel ? agentColor(sel.type, sel.slug) : '#00f58a';
+  const col = sel ? agentColor(sel.type, sel.slug) : '#22d3ee';
   return (
     <>
-      <color attach="background" args={['#02080a']} />
-      <fog attach="fog" args={['#02080a', 16, 38]} />
+      <color attach="background" args={['#02070f']} />
+      <fog attach="fog" args={['#02070f', 16, 38]} />
       <ambientLight intensity={0.55} />
-      <spotLight position={[0, 9, 4]} angle={0.7} penumbra={0.8} intensity={140} color="#e8fff3" castShadow={false} />
+      <spotLight position={[0, 9, 4]} angle={0.7} penumbra={0.8} intensity={140} color="#e8f4ff" castShadow={false} />
       <pointLight position={[-6, 3, 2]} intensity={14} color="#60a5fa" distance={14} />
       <pointLight position={[6, 3, 2]} intensity={14} color={col} distance={14} />
       <Stars count={900} radius={26} spread={20} speed={reduced ? 0 : 0.008} size={0.1} />
       {/* stage */}
       <mesh position={[0, -0.02, 2]} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[8.4, 80]} />
-        <meshStandardMaterial color="#04100b" metalness={0.85} roughness={0.28} />
+        <meshStandardMaterial color="#050a14" metalness={0.85} roughness={0.28} />
       </mesh>
       <mesh position={[0, 0, 2]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[8.3, 8.42, 120]} />

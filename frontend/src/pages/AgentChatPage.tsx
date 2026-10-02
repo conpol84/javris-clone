@@ -213,7 +213,7 @@ export function AgentChatPage() {
                 <button
                   onClick={() => select(c.id)}
                   className="fb-glass--hover w-full cursor-pointer rounded-xl px-3 py-2 text-start"
-                  style={c.id === activeId ? { background: 'rgba(0, 245, 138,.1)', border: '1px solid var(--fb-border-strong)' } : { border: '1px solid transparent' }}
+                  style={c.id === activeId ? { background: 'rgba(34, 211, 238,.1)', border: '1px solid var(--fb-border-strong)' } : { border: '1px solid transparent' }}
                 >
                   <div className="truncate pe-6 text-sm font-medium">{c.title || t('chat.untitled')}</div>
                   <div className="fb-dim flex items-center gap-1.5 text-[11px]">
@@ -265,7 +265,7 @@ export function AgentChatPage() {
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed"
-                    style={m.role === 'user' ? { background: 'rgba(0, 245, 138,.16)', border: '1px solid var(--fb-border-strong)' } : { background: 'rgba(255,255,255,.05)', border: '1px solid var(--fb-border)' }}
+                    style={m.role === 'user' ? { background: 'rgba(34, 211, 238,.16)', border: '1px solid var(--fb-border-strong)' } : { background: 'rgba(255,255,255,.05)', border: '1px solid var(--fb-border)' }}
                   >
                     {m.content}
                   </div>

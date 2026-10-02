@@ -117,6 +117,6 @@ export function I18nProvider({ children, onLangChange }: { children: ReactNode; 
   );
 
   const value = useMemo(() => (dict ? build(lang, dict, setLang) : null), [lang, dict, setLang]);
-  if (!value) return <div style={{ background: '#04100a', height: '100%' }} aria-busy="true" />;
+  if (!value) return <div style={{ background: '#050a14', height: '100%' }} aria-busy="true" />;
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

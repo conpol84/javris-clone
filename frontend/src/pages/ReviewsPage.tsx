@@ -8,11 +8,12 @@ import { listAgents, listTasks, loadDecisionStats, loadMonthlySpend, updateAgent
 import { agentLabel } from '../lib/company/labels';
 import { reviewAgents, type AgentReview, type Verdict } from '../lib/company/reviews';
 import { agentColor } from '../lib/company/status';
+import { resolvePersona } from '../lib/company/persona';
 import { MANAGER_ROLES, type AgentRow, type Autonomy, type TaskRow } from '../lib/company/types';
 import '../styles/firbo.css';
 
 const NEXT: Partial<Record<Autonomy, Autonomy>> = { suggest: 'approval', approval: 'notify' };
-const TONE: Record<Verdict, string> = { promote: '#00d97a', steady: '#00f58a', coach: '#fbbf24', idle: '#64748b' };
+const TONE: Record<Verdict, string> = { promote: '#34d399', steady: '#22d3ee', coach: '#fbbf24', idle: '#64748b' };
 
 /** Performance reviews: a transparent score per AI employee and a promotion recommendation. */
 export function ReviewsPage() {
@@ -56,7 +57,10 @@ export function ReviewsPage() {
   const reviews = useMemo(() => reviewAgents({ agents, tasks, decisions, spend }), [agents, tasks, decisions, spend]);
   const byId = useMemo(() => new Map(reviews.map((r) => [r.agentId, r])), [reviews]);
   const ranked = useMemo(() => [...agents].sort((a, b) => (byId.get(b.id)?.score ?? -1) - (byId.get(a.id)?.score ?? -1)), [agents, byId]);
-  const towers = ranked.map((a) => ({ id: a.id, name: agentLabel(a, i18n).name, score: byId.get(a.id)?.score ?? null, color: agentColor(a.type, a.slug) }));
+  const towers = ranked.map((a) => {
+    const r = byId.get(a.id);
+    return { id: a.id, name: agentLabel(a, i18n).name.replace(' Agent', ''), score: r?.score ?? null, color: agentColor(a.type, a.slug), persona: resolvePersona(a), state: (r?.verdict === 'promote' ? 'waiting' : a.enabled ? 'idle' : 'disabled') as 'waiting' | 'idle' | 'disabled' };
+  });
 
   const promote = async (a: AgentRow) => {
     const next = NEXT[a.autonomy];
@@ -115,7 +119,7 @@ export function ReviewsPage() {
         <div className="fb-glass p-6 text-sm">{t('rev.none')}</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <section className="fb-glass relative overflow-hidden" style={{ minHeight: 420 }}>
+          <section className="fb-glass relative overflow-hidden" style={{ minHeight: 480 }}>
             <div className="absolute inset-0">
               <ReviewScene towers={towers} selected={selected} onSelect={setSelected} labels={{ noWebgl: t('office.noWebgl') }} />
             </div>

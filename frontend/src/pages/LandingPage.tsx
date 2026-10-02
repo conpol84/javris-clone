@@ -62,7 +62,7 @@ export function LandingPage({ onSignIn, onSignUp }: { onSignIn: () => void; onSi
         </div>
 
         <div className="relative h-[340px] md:h-[520px]">
-          <div className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(closest-side, rgba(0, 245, 138,0.18), transparent)' }} />
+          <div className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(closest-side, rgba(34, 211, 238,0.18), transparent)' }} />
           <Suspense fallback={null}>
             <CoreOrb satellites={SATELLITES} className="absolute inset-0" />
           </Suspense>

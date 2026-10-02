@@ -900,6 +900,9 @@ const zhCN: Dictionary = {
   "voice.micStop": "停止聆听",
   "voice.speakOn": "朗读回答",
   "voice.speakOff": "停止朗读",
+  "mem.readers": "谁在读取这些记忆？",
+  "mem.readersHint": "选择一名 AI 员工，点亮它每次工作时读取的记忆。",
+  "mem.readsCount": "{name} 工作时会读取 {count} 条记忆：全公司的和自己的，最重要的优先。",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

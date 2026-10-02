@@ -18,7 +18,7 @@ export function Glow({ strength = 0.9, threshold = 0.25, vignette = false }: { s
 }
 
 /** A slow field of stars behind the scene. */
-export function Stars({ count = 1400, radius = 38, spread = 40, speed = 0.01, size = 0.14, color = '#d6ffe9' }: { count?: number; radius?: number; spread?: number; speed?: number; size?: number; color?: string }) {
+export function Stars({ count = 1400, radius = 38, spread = 40, speed = 0.01, size = 0.14, color = '#d6f0ff' }: { count?: number; radius?: number; spread?: number; speed?: number; size?: number; color?: string }) {
   const ref = useRef<THREE.Points>(null);
   const pos = useMemo(() => {
     const a = new Float32Array(count * 3);

@@ -2,12 +2,15 @@ import { Glow } from './fx';
 import { useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Person } from './Person';
+import { resolvePersona, type Persona } from '../../lib/company/persona';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
 
 export interface MissionNode {
   id: string;
   name: string;
   color: string;
+  persona?: Persona;
 }
 
 export interface MissionStep {
@@ -25,14 +28,14 @@ export interface MissionSceneProps {
   labels: { core: string; noWebgl: string };
 }
 
-const TONE = { done: '#00d97a', run: '#00f58a', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
+const TONE = { done: '#34d399', run: '#22d3ee', wait: '#fbbf24', fail: '#f87171', idle: '#475569' };
 
 function labelTexture(text: string, color: string): THREE.CanvasTexture {
   const c = document.createElement('canvas');
   c.width = 512;
   c.height = 96;
   const g = c.getContext('2d')!;
-  g.fillStyle = 'rgba(6, 20, 13,0.82)';
+  g.fillStyle = 'rgba(8, 14, 28,0.82)';
   g.strokeStyle = color;
   g.lineWidth = 3;
   const r = 40;
@@ -40,7 +43,7 @@ function labelTexture(text: string, color: string): THREE.CanvasTexture {
   g.roundRect(4, 8, 504, 80, r);
   g.fill();
   g.stroke();
-  g.fillStyle = '#ecfdf3';
+  g.fillStyle = '#e6f1ff';
   g.font = '600 38px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -96,13 +99,12 @@ function AgentNode({ node, pos, state, index }: { node: MissionNode; pos: THREE.
       <sprite ref={halo} position={[0, pos.y, 0]} scale={[2, 2, 1]}>
         <spriteMaterial map={sprite} transparent opacity={state === 'idle' ? 0.35 : 0.9} blending={THREE.AdditiveBlending} depthWrite={false} />
       </sprite>
-      <mesh ref={body} position={[0, pos.y, 0]}>
-        <octahedronGeometry args={[0.34, 0]} />
-        <meshStandardMaterial color={node.color} emissive={node.color} emissiveIntensity={state === 'idle' ? 0.25 : 0.9} metalness={0.6} roughness={0.25} />
-      </mesh>
-      <mesh position={[0, pos.y, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <torusGeometry args={[0.55, 0.012, 8, 64]} />
-        <meshBasicMaterial color={tone} transparent opacity={state === 'idle' ? 0.3 : 0.95} />
+      <group position={[0, -0.9, 0]} rotation={[0, Math.atan2(-pos.x, -pos.z), 0]} scale={0.9}>
+        <Person persona={node.persona ?? resolvePersona({ slug: node.id, type: 'custom' })} color={node.color} state={state === 'run' ? 'active' : state === 'wait' ? 'waiting' : state === 'fail' ? 'disabled' : 'idle'} />
+      </group>
+      <mesh position={[0, -0.88, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.6, 0.66, 40]} />
+        <meshBasicMaterial color={tone} transparent opacity={state === 'idle' ? 0.3 : 0.95} toneMapped={false} />
       </mesh>
       <sprite position={[0, pos.y + 0.95, 0]} scale={[3, 0.56, 1]}>
         <spriteMaterial map={label} transparent depthWrite={false} />
@@ -134,7 +136,7 @@ function Beam({ from, to, active, color }: { from: THREE.Vector3; to: THREE.Vect
         <lineBasicMaterial color={color} transparent opacity={active ? 0.75 : 0.18} />
       </line>
       <mesh ref={dot}>
-        <sphereGeometry args={[0.09, 12, 12]} />
+        <boxGeometry args={[0.26, 0.34, 0.03]} />
         <meshBasicMaterial color="#ffffff" toneMapped={false} />
       </mesh>
     </group>
@@ -197,7 +199,7 @@ function World({ nodes, steps, missionStatus, labels, motion }: MissionSceneProp
   return (
     <group ref={group}>
       <ambientLight intensity={0.6} />
-      <pointLight position={[0, 4, 3]} intensity={30} color="#00f58a" />
+      <pointLight position={[0, 4, 3]} intensity={30} color="#22d3ee" />
       <pointLight position={[-5, 2, -3]} intensity={12} color="#a78bfa" />
       <gridHelper args={[26, 26, '#164e63', '#0b2540']} position={[0, -0.9, 0]} />
       <Core status={missionStatus} motion={motion} />

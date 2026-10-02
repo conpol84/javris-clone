@@ -899,6 +899,9 @@ const ptBR: Dictionary = {
   "voice.micStop": "Parar de ouvir",
   "voice.speakOn": "Ler respostas em voz alta",
   "voice.speakOff": "Parar de ler em voz alta",
+  "mem.readers": "Quem lê estas memórias?",
+  "mem.readersHint": "Escolha um funcionário de IA para acender as memórias que ele lê toda vez que trabalha.",
+  "mem.readsCount": "{name} lê {count} memórias ao trabalhar: as da empresa toda e as próprias, as mais importantes primeiro.",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

@@ -9,7 +9,7 @@ export interface PowerMeta {
 
 /** What each tool permission means, and whether Firbo really runs it. Unknown tools still show, as permission only. */
 export const POWER_META: Record<string, PowerMeta> = {
-  web_search: { color: '#00f58a', live: true, desc: 'studio.power.web_search' },
+  web_search: { color: '#22d3ee', live: true, desc: 'studio.power.web_search' },
   browser_extract: { color: '#60a5fa', live: true, desc: 'studio.power.browser_extract' },
   http_request: { color: '#38bdf8', live: false, desc: 'studio.power.http_request' },
   browser_navigate: { color: '#818cf8', live: false, desc: 'studio.power.browser_navigate' },
@@ -18,7 +18,7 @@ export const POWER_META: Record<string, PowerMeta> = {
   memory_store: { color: '#c084fc', live: false, desc: 'studio.power.memory_store' },
   knowledge_search: { color: '#fbbf24', live: false, desc: 'studio.power.knowledge_search' },
   file_write: { color: '#fb923c', live: false, desc: 'studio.power.file_write' },
-  think: { color: '#b6ff3b', live: false, desc: 'studio.power.think' },
+  think: { color: '#a3e635', live: false, desc: 'studio.power.think' },
 };
 
 export const FALLBACK_POWER: PowerMeta = { color: '#94a3b8', live: false, desc: 'studio.power.other' };

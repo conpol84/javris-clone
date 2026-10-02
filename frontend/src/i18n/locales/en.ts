@@ -907,6 +907,9 @@ export const en = {
   "voice.micStop": "Stop listening",
   "voice.speakOn": "Read answers aloud",
   "voice.speakOff": "Stop reading answers aloud",
+  "mem.readers": "Who reads these memories?",
+  "mem.readersHint": "Pick an AI employee to light up the memories it reads every time it works.",
+  "mem.readsCount": "{name} reads {count} memories when it works: company-wide ones and its own, most important first.",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

@@ -148,7 +148,7 @@ export function ComputersPage() {
                 <button className="fb-btn fb-btn--primary" disabled={busy || !name.trim()}>{t('comp.addBtn')}</button>
               </form>
               {pair && (
-                <div className="fb-col gap-3 rounded-xl p-4" style={{ background: 'rgba(0,245,138,.06)', border: '1px solid var(--fb-border-strong)' }}>
+                <div className="fb-col gap-3 rounded-xl p-4" style={{ background: 'rgba(34, 211, 238,.06)', border: '1px solid var(--fb-border-strong)' }}>
                   <div className="text-sm">{t('comp.codeIs')}</div>
                   <div className="text-3xl font-bold tracking-[0.3em]" style={{ color: 'var(--fb-accent)' }}>{pair.code}</div>
                   <p className="fb-dim text-xs">{t('comp.codeExpires')}</p>

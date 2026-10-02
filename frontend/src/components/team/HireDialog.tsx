@@ -81,7 +81,7 @@ export function HireDialog({
             aria-selected={cat === c}
             onClick={() => setCat(c)}
             className="fb-chip cursor-pointer"
-            style={cat === c ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 245, 138,0.1)' } : undefined}
+            style={cat === c ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(34, 211, 238,0.1)' } : undefined}
           >
             {c === 'All' ? t('cat.all') : categoryLabel(c, i18n)}
           </button>

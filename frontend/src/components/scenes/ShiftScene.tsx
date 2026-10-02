@@ -26,7 +26,7 @@ function numeral(text: string): THREE.CanvasTexture {
   c.width = 128;
   c.height = 64;
   const g = c.getContext('2d')!;
-  g.fillStyle = '#b9ffda';
+  g.fillStyle = '#7dd3fc';
   g.font = '600 40px system-ui, sans-serif';
   g.textAlign = 'center';
   g.textBaseline = 'middle';
@@ -90,14 +90,14 @@ function Dial({ shifts, motion }: { shifts: ShiftDot[]; motion: number }) {
   return (
     <group ref={group} position={[0, 0.1, 0]}>
       <ambientLight intensity={0.7} />
-      <pointLight position={[0, 0, 5]} intensity={30} color="#00f58a" />
+      <pointLight position={[0, 0, 5]} intensity={30} color="#22d3ee" />
       <mesh>
         <circleGeometry args={[R + 0.7, 96]} />
-        <meshBasicMaterial color="#06140c" transparent opacity={0.75} />
+        <meshBasicMaterial color="#06121f" transparent opacity={0.75} />
       </mesh>
       <mesh>
         <torusGeometry args={[R, 0.02, 8, 160]} />
-        <meshBasicMaterial color="#00f58a" transparent opacity={0.85} />
+        <meshBasicMaterial color="#22d3ee" transparent opacity={0.85} />
       </mesh>
       <mesh>
         <torusGeometry args={[R - 0.55, 0.008, 8, 160]} />
@@ -109,7 +109,7 @@ function Dial({ shifts, motion }: { shifts: ShiftDot[]; motion: number }) {
         return (
           <mesh key={h} position={[Math.cos(a) * (R - 0.18), Math.sin(a) * (R - 0.18), 0]} rotation={[0, 0, a]}>
             <boxGeometry args={[big ? 0.3 : 0.14, 0.03, 0.03]} />
-            <meshBasicMaterial color={big ? '#e0fbff' : '#00d97a'} />
+            <meshBasicMaterial color={big ? '#e0fbff' : '#38bdf8'} />
           </mesh>
         );
       })}

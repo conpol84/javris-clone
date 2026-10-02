@@ -118,6 +118,9 @@ export function Person({ persona, color, state, speaking = false }: { persona: P
     } else if (state === 'waiting') {
       armL.current.rotation.x = -0.1;
       armR.current.rotation.set(-2.6 + Math.sin(t * 3.5) * 0.25, 0, -0.2);
+    } else if (speaking) {
+      armL.current.rotation.set(-0.5 + Math.sin(t * 2.1) * 0.15, 0, 0.1);
+      armR.current.rotation.set(-0.9 + Math.sin(t * 2.7) * 0.35, 0, -0.15 + Math.sin(t * 1.9) * 0.1);
     } else {
       armL.current.rotation.x = Math.sin(t * 1.6) * 0.04;
       armR.current.rotation.set(Math.sin(t * 1.6 + 1) * 0.04, 0, 0);

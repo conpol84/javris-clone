@@ -2150,7 +2150,7 @@ function MemorySection() {
                 <div className="flex items-center gap-3 mt-2">
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{
                     background: r.score > 0.5
-                      ? 'rgba(0, 245, 138, 0.1)'
+                      ? 'rgba(34, 211, 238, 0.1)'
                       : r.score > 0.2
                         ? 'var(--color-accent-amber-subtle)'
                         : 'var(--color-bg-tertiary)',
