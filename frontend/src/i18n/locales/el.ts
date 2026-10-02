@@ -509,6 +509,13 @@ const el: Dictionary = {
   "hire.budgetNote": "Ο agent σταματά αυτόματα όταν φτάσει το budget. Οι πληρωμές και τα τέλη πρόσληψης έρχονται με το billing.",
   "hire.back": "Πίσω",
   "hire.confirmBtn": "Επιβεβαίωση και πρόσληψη",
+  "ceo.q.urgent": "Τι είναι το πιο επείγον τώρα;",
+  "ceo.q.team": "Πώς τα πάει η ομάδα μου;",
+  "ceo.q.spend": "Πόσο έχουμε ξοδέψει;",
+  "ceo.q.next": "Τι να κάνω στη συνέχεια;",
+  "ceo.q.results": "Σύνοψη των τελευταίων αποτελεσμάτων",
+  "ceo.quickAria": "Γρήγορες ερωτήσεις",
+  "ceo.handsFree": "Συνομιλία χωρίς χέρια (συνεχίζει να ακούει)",
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

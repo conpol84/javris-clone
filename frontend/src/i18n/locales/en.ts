@@ -517,6 +517,13 @@ export const en = {
   "hire.budgetNote": "The agent stops automatically when it reaches this budget. Paid plans and per-hire fees arrive with billing.",
   "hire.back": "Back",
   "hire.confirmBtn": "Confirm and hire",
+  "ceo.q.urgent": "What is most urgent right now?",
+  "ceo.q.team": "How is my team performing?",
+  "ceo.q.spend": "How much have we spent?",
+  "ceo.q.next": "What should I do next?",
+  "ceo.q.results": "Summarize the latest results",
+  "ceo.quickAria": "Quick questions",
+  "ceo.handsFree": "Hands-free conversation (keeps listening)",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

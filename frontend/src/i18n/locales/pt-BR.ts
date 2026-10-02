@@ -509,6 +509,13 @@ const ptBR: Dictionary = {
   "hire.budgetNote": "O agente para ao atingir este orçamento. Planos pagos e taxas por contratação chegam com a cobrança.",
   "hire.back": "Voltar",
   "hire.confirmBtn": "Confirmar e contratar",
+  "ceo.q.urgent": "O que é mais urgente agora?",
+  "ceo.q.team": "Como está o desempenho da equipe?",
+  "ceo.q.spend": "Quanto gastamos?",
+  "ceo.q.next": "O que devo fazer agora?",
+  "ceo.q.results": "Resuma os últimos resultados",
+  "ceo.quickAria": "Perguntas rápidas",
+  "ceo.handsFree": "Conversa mãos livres (continua ouvindo)",
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

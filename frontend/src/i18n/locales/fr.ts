@@ -509,6 +509,13 @@ const fr: Dictionary = {
   "hire.budgetNote": "L’agent s’arrête automatiquement à ce budget. Les offres payantes et frais de recrutement arrivent avec la facturation.",
   "hire.back": "Retour",
   "hire.confirmBtn": "Confirmer et recruter",
+  "ceo.q.urgent": "Qu’est-ce qui est le plus urgent ?",
+  "ceo.q.team": "Comment se porte mon équipe ?",
+  "ceo.q.spend": "Combien avons-nous dépensé ?",
+  "ceo.q.next": "Que dois-je faire ensuite ?",
+  "ceo.q.results": "Résume les derniers résultats",
+  "ceo.quickAria": "Questions rapides",
+  "ceo.handsFree": "Conversation mains libres (continue d’écouter)",
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

@@ -17,6 +17,8 @@ interface Line {
   text: string;
 }
 
+const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
+
 /** The AI CEO, as a hologram you can talk to. */
 export function CeoPage() {
   const i18n = useI18n();
@@ -30,6 +32,9 @@ export function CeoPage() {
   const [interim, setInterim] = useState('');
   const [text, setText] = useState('');
   const [muted, setMuted] = useState(false);
+  const [handsFree, setHandsFree] = useState(false);
+  const handsFreeRef = useRef(false);
+  const listenRef = useRef<() => void>(() => {});
   const convo = useRef<string | null>(null);
   const stopListen = useRef<() => void>(() => {});
   const alive = useRef(true);
@@ -46,8 +51,9 @@ export function CeoPage() {
   }, []);
   useEffect(() => {
     mutedRef.current = muted;
+    handsFreeRef.current = handsFree;
     if (muted) stopSpeaking();
-  }, [muted]);
+  }, [muted, handsFree]);
   useEffect(() => {
     convo.current = null;
     if (!orgId) return;
@@ -70,7 +76,10 @@ export function CeoPage() {
         else {
           setState('speaking');
           await speak(orgId, res.message.content, lang);
-          if (alive.current) setState('idle');
+          if (alive.current) {
+            setState('idle');
+            if (handsFreeRef.current && recognitionSupported()) listenRef.current();
+          }
         }
       } catch (err) {
         console.error(err);
@@ -100,7 +109,10 @@ export function CeoPage() {
       },
     });
   };
+  listenRef.current = listen;
   const stop = () => {
+    setHandsFree(false);
+    handsFreeRef.current = false;
     stopListen.current();
     stopSpeaking();
     setState('idle');
@@ -115,7 +127,7 @@ export function CeoPage() {
     } catch {
       /* the CEO still greets */
     }
-    await ask(`Give me my executive briefing. ${facts} Greet me, summarize where we stand and tell me the single most important thing to do next.`);
+    await ask(`${t('ceo.briefing')}. ${facts}`);
   };
 
   const submit = (e: FormEvent) => {
@@ -179,6 +191,26 @@ export function CeoPage() {
                 {t('ceo.briefing')}
               </button>
             </div>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('ceo.quickAria')}>
+              {QUICK.map((k) => (
+                <button key={k} className="fb-chip cursor-pointer" disabled={!canWrite || state === 'thinking'} onClick={() => void ask(t(`ceo.q.${k}` as TKey))}>
+                  {t(`ceo.q.${k}` as TKey)}
+                </button>
+              ))}
+            </div>
+            {canTalk && (
+              <label className="fb-muted flex cursor-pointer items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={handsFree}
+                  onChange={(e) => {
+                    setHandsFree(e.target.checked);
+                    if (e.target.checked && state === 'idle') listen();
+                  }}
+                />
+                {t('ceo.handsFree')}
+              </label>
+            )}
             {!canTalk && <p className="fb-dim text-xs">{t('ceo.noMic')}</p>}
             <ul className="fb-col flex-1 gap-2 overflow-y-auto" style={{ maxHeight: 320 }} aria-live="polite">
               {lines.length === 0 && <li className="fb-dim text-sm">{t('ceo.empty')}</li>}

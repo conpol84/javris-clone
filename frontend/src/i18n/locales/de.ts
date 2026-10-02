@@ -509,6 +509,13 @@ const de: Dictionary = {
   "hire.budgetNote": "Der Agent stoppt automatisch bei Erreichen dieses Budgets. Bezahlpläne und Einstellungsgebühren folgen mit der Abrechnung.",
   "hire.back": "Zurück",
   "hire.confirmBtn": "Bestätigen und einstellen",
+  "ceo.q.urgent": "Was ist gerade am dringendsten?",
+  "ceo.q.team": "Wie schlägt sich mein Team?",
+  "ceo.q.spend": "Wie viel haben wir ausgegeben?",
+  "ceo.q.next": "Was soll ich als Nächstes tun?",
+  "ceo.q.results": "Fasse die letzten Ergebnisse zusammen",
+  "ceo.quickAria": "Schnellfragen",
+  "ceo.handsFree": "Freisprech-Gespräch (hört weiter zu)",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

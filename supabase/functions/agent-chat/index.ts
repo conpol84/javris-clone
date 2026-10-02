@@ -166,13 +166,33 @@ Deno.serve(async (req) => {
 
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
+  // Live company snapshot so the CEO answers from real data instead of generic talk.
+  let snapshot = '';
+  if (body.voice === true) {
+    const [{ data: tk }, { data: ap }, { data: ag }] = await Promise.all([
+      admin.from('tasks').select('title, status, priority, result, completed_at, assigned_agent_id').eq('organization_id', convo.organization_id).eq('kind', 'task').order('updated_at', { ascending: false }).limit(12),
+      admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8),
+      admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
+    ]);
+    const names = new Map((ag ?? []).map((x: any) => [x.id, x.name]));
+    const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
+    const { data: spendMonth } = await admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString());
+    const monthCost = (spendMonth ?? []).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
+    snapshot = [
+      `LIVE COMPANY DATA (use it; never invent numbers):`,
+      `Team: ${(ag ?? []).map((x: any) => `${x.name}${x.enabled ? '' : ' (paused)'}`).join(', ') || 'none'}.`,
+      `Spend this month: $${monthCost.toFixed(2)}.`,
+      `Pending approvals (${(ap ?? []).length}): ${(ap ?? []).map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
+      `Recent tasks: ${(tk ?? []).map((x: any) => `"${clip(x.title, 60)}" ${x.status}${x.assigned_agent_id ? ` by ${names.get(x.assigned_agent_id) ?? 'agent'}` : ' (unassigned)'}${x.result ? ` -> ${clip(x.result, 140)}` : ''}`).join(' | ') || 'none'}.`,
+    ].join('\n');
+  }
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     'You cannot send, publish, pay or change anything yourself. If the teammate wants work delivered or an outward step taken, suggest creating a task for you so it goes through approval.',
     `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
-    ...(body.voice === true ? ['This is a spoken conversation: answer in one to three short, natural sentences, with no markdown, lists, links or emoji, as an executive would say it out loud.'] : []),
+    ...(body.voice === true ? [snapshot, 'This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
 
   const t0 = Date.now();

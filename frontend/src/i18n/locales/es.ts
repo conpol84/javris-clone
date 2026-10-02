@@ -509,6 +509,13 @@ const es: Dictionary = {
   "hire.budgetNote": "El agente se detiene al alcanzar este presupuesto. Los planes de pago y tarifas por contratación llegan con la facturación.",
   "hire.back": "Atrás",
   "hire.confirmBtn": "Confirmar y contratar",
+  "ceo.q.urgent": "¿Qué es lo más urgente ahora?",
+  "ceo.q.team": "¿Cómo rinde mi equipo?",
+  "ceo.q.spend": "¿Cuánto hemos gastado?",
+  "ceo.q.next": "¿Qué debo hacer ahora?",
+  "ceo.q.results": "Resume los últimos resultados",
+  "ceo.quickAria": "Preguntas rápidas",
+  "ceo.handsFree": "Conversación manos libres (sigue escuchando)",
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

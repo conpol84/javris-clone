@@ -510,6 +510,13 @@ const zhCN: Dictionary = {
   "hire.budgetNote": "达到预算后智能体会自动停止。付费方案与雇用费用将随计费功能上线。",
   "hire.back": "返回",
   "hire.confirmBtn": "确认并雇用",
+  "ceo.q.urgent": "现在最紧急的是什么？",
+  "ceo.q.team": "我的团队表现如何？",
+  "ceo.q.spend": "我们花了多少钱？",
+  "ceo.q.next": "接下来我该做什么？",
+  "ceo.q.results": "总结最近的结果",
+  "ceo.quickAria": "快捷提问",
+  "ceo.handsFree": "免提对话（持续聆听）",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',
