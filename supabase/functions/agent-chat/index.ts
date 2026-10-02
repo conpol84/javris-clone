@@ -77,7 +77,7 @@ Deno.serve(async (req) => {
   const user = who?.user;
   if (!user) return json(401, { error: 'unauthorized' });
 
-  let body: { conversation_id?: string; message?: string; lang?: string } = {};
+  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean } = {};
   try {
     body = await req.json();
   } catch {
@@ -172,6 +172,7 @@ Deno.serve(async (req) => {
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     'You cannot send, publish, pay or change anything yourself. If the teammate wants work delivered or an outward step taken, suggest creating a task for you so it goes through approval.',
     `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
+    ...(body.voice === true ? ['This is a spoken conversation: answer in one to three short, natural sentences, with no markdown, lists, links or emoji, as an executive would say it out loud.'] : []),
   ].join('\n\n');
 
   const t0 = Date.now();

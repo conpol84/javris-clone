@@ -23,14 +23,18 @@ export function HireDialog({
   const { t } = i18n;
   const [cat, setCat] = useState<string>('All');
   const [busy, setBusy] = useState<string | null>(null);
+  const [pick, setPick] = useState<AgentTemplate | null>(null);
+  const [instr, setInstr] = useState('');
+  const [budget, setBudget] = useState('20');
   const hired = (tpl: AgentTemplate) => existing.some((a) => a.slug === tpl.slug || a.slug.startsWith(`${tpl.slug}-`));
   const list = AGENT_TEMPLATES.filter((x) => cat === 'All' || x.category === cat);
 
   const hire = async (tpl: AgentTemplate) => {
     setBusy(tpl.slug);
     try {
-      await hireAgent(orgId, tpl);
+      await hireAgent(orgId, tpl, { instructions: instr, monthlyBudget: Number(budget) || null });
       toast.success(t('hire.success', { name: t(`tpl.${tpl.slug}.name` as TKey) }));
+      setPick(null);
       onHired();
     } catch (err) {
       console.error(err);
@@ -42,6 +46,27 @@ export function HireDialog({
 
   return (
     <Modal title={t('hire.title')} onClose={onClose} wide>
+      {pick ? (
+        <div className="fb-col gap-3">
+          <div className="text-base font-semibold">{t('hire.confirm', { name: t(`tpl.${pick.slug}.name` as TKey) })}</div>
+          <label className="fb-col gap-1 text-sm">
+            <span className="fb-muted">{t('hire.instrLabel')}</span>
+            <textarea className="fb-input" rows={5} maxLength={2000} value={instr} onChange={(e) => setInstr(e.target.value)} placeholder={t('hire.instrPh')} />
+          </label>
+          <label className="fb-col gap-1 text-sm">
+            <span className="fb-muted">{t('hire.budgetLabel')}</span>
+            <input className="fb-input" type="number" min={1} step={1} value={budget} onChange={(e) => setBudget(e.target.value)} />
+          </label>
+          <p className="fb-dim text-xs">{t('hire.budgetNote')}</p>
+          <div className="flex gap-2">
+            <button className="fb-btn fb-btn--ghost" onClick={() => setPick(null)}>{t('hire.back')}</button>
+            <button className="fb-btn fb-btn--primary" disabled={busy !== null} onClick={() => void hire(pick)}>
+              {busy ? t('hire.busy') : t('hire.confirmBtn')}
+            </button>
+          </div>
+        </div>
+      ) : (
+      <>
       <p className="fb-muted mb-4 text-sm">
         {t('hire.intro')}
       </p>
@@ -80,7 +105,7 @@ export function HireDialog({
                 className="fb-btn fb-btn--primary"
                 style={{ height: 32, padding: '0 14px', fontSize: 13 }}
                 disabled={busy !== null}
-                onClick={() => void hire(tpl)}
+                onClick={() => (setPick(tpl), setInstr(''))}
               >
                 {busy === tpl.slug ? t('hire.busy') : hired(tpl) ? t('hire.another') : t('hire.btn')}
               </button>
@@ -88,6 +113,8 @@ export function HireDialog({
           </li>
         ))}
       </ul>
+      </>
+      )}
     </Modal>
   );
 }

@@ -279,17 +279,22 @@ export async function updateTool(
   fail(error, null);
 }
 
-export async function hireAgent(orgId: string, tpl: AgentTemplate): Promise<string> {
+export async function hireAgent(orgId: string, tpl: AgentTemplate, opts: { instructions?: string; monthlyBudget?: number | null } = {}): Promise<string> {
+  const extra = opts.instructions?.trim();
   const { data, error } = await requireClient().rpc('hire_agent', {
     p_org: orgId,
     p_name: tpl.name,
     p_slug: tpl.slug,
     p_type: 'custom',
     p_description: tpl.tagline,
-    p_prompt: tpl.prompt,
+    p_prompt: extra ? `${tpl.prompt}\n\nStanding instructions from the owner (follow them):\n${extra.slice(0, 2000)}` : tpl.prompt,
     p_tools: tpl.tools.map((t) => ({ tool: t.tool, policy: t.policy ?? 'allow' })),
   });
-  return fail(error, data as string | null);
+  const id = fail(error, data as string | null);
+  if (opts.monthlyBudget != null && opts.monthlyBudget > 0) {
+    await requireClient().from('agents').update({ monthly_budget_usd: opts.monthlyBudget }).eq('id', id);
+  }
+  return id;
 }
 
 /** Decision history per agent, used to suggest when an agent has earned more autonomy. */

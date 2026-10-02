@@ -53,8 +53,8 @@ export interface ChatMessage {
 }
 
 /** One chat turn with an AI employee through the agent-chat Edge Function. */
-export async function sendChat(conversationId: string, message: string, lang: string): Promise<{ user_message: ChatMessage; message: ChatMessage }> {
-  const { data, error } = await requireClient().functions.invoke('agent-chat', { body: { conversation_id: conversationId, message, lang } });
+export async function sendChat(conversationId: string, message: string, lang: string, voice = false): Promise<{ user_message: ChatMessage; message: ChatMessage }> {
+  const { data, error } = await requireClient().functions.invoke('agent-chat', { body: { conversation_id: conversationId, message, lang, ...(voice ? { voice: true } : {}) } });
   if (error) {
     let code: RunErrorCode = 'unknown';
     if (error instanceof FunctionsHttpError) {
