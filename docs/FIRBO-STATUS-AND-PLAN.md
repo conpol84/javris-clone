@@ -24,24 +24,28 @@ Supabase  ── Edge Functions: agent-runner, agent-chat, agent-speak, mission-
 |---|---|
 | Landing, login, multi-tenant εταιρείες, ρόλοι | ✅ |
 | Agents ως υπάλληλοι: budgets, εγκρίσεις, Inbox, Activity | ✅ |
-| Store, 8+ νέα templates, Reviews (αξιολογήσεις), Memory | ✅ |
-| CEO φωνητική κονσόλα + πιο έξυπνος CEO | ✅ (απλή εκδοχή – βλ. §4) |
-| Missions (CEO σχεδιάζει, ομάδα δουλεύει) και Shifts (πρόγραμμα) | ✅ |
-| 18 ενεργές ενσωματώσεις + παράδοση εγκεκριμένων ενεργειών | ✅ (χειροκίνητο «Deliver via») |
-| Πλάνα/τιμολόγηση με επιβολή ορίων στη βάση | ✅ (χωρίς πληρωμή ακόμα) |
-| Hub (τι έχουμε/δεν έχουμε), Coding agents, AI Gateway tabs (health, routing, savings, playground) | ✅ |
-| 8 γλώσσες, RTL, ανοιχτό πράσινο θέμα, 3D | ✅ |
-| Connector: σελίδα «Οι υπολογιστές μου», ζεύξη, list/read/write/exec με φακέλους-επιτρεπτούς | ✅ κώδικας + 8 tests |
+| Look: ηλεκτρικό κυανό HUD (#00d4ff), γωνίες-αγκύλες, Orbitron, λάμψη (bloom) σε όλα τα 3D | ✅ |
+| **Ομάδα AI**: 3D σκηνή με ολόσωμους ανθρώπους, όνομα + εμφάνιση ανά agent (στήλη `agents.persona`) | ✅ |
+| **Agent Studio** (/studio): διαστημικός σταθμός, δυνάμεις = δικαιώματα εργαλείων. `web_search` και `browser_extract` τρέχουν πραγματικά μέσω του gateway (agent-runner v17) | ✅ |
+| **Talk to Firbo**: κονσόλα πλήρους οθόνης (CEO hologram, φωνή, tab Εντολή με ανάθεση/προτεραιότητα, Executive briefing) | ✅ |
+| Voice: μικρόφωνο + ανάγνωση φωναχτά στο Chat με agents, σαφή μηνύματα σφάλματος | ✅ |
+| Command Center: gauges (agents, runs, ομάδα, μνήμη), πλάνο, αναζήτηση (/), Focus mode | ✅ |
+| Μνήμη ως νευρωνικό δίκτυο (ποιος agent διαβάζει ποιες μνήμες) | ✅ |
+| Reviews ως τελετή βράβευσης (βάθρο, σκορ, κομφετί) | ✅ |
+| Missions/Office με ανθρώπους, έγγραφο που ταξιδεύει στις παραδόσεις | ✅ |
+| Connector (/computers): ζεύξη υπολογιστή, list/read/write/exec με φακέλους-επιτρεπτούς | ✅ |
+| Economy / Quality ανά agent (combos `firbo-economy`, `firbo-quality` στο gateway) | ✅ (δημιουργήθηκαν· θέλουν τα secrets στο Supabase) |
+| Billing/πλάνα με επιβολή ορίων στη βάση | ✅ (χωρίς πληρωμή ακόμα) |
+| Store, Hub, Coding agents, 8 γλώσσες, RTL | ✅ |
 
 ## 3. ΔΕΝ έγινε / δεν έχει επαληθευτεί
 
-- Σύνδεση του OpenJarvis engine στον server (τα 87 στοιχεία «στον engine μας» δεν είναι live).
-- Αυτόματη εκτέλεση εγκεκριμένων ενεργειών (τώρα πατάς εσύ «Deliver»).
-- One-click Google/OAuth (θέλει OAuth app ανά πάροχο).
-- Πληρωμές Stripe (χρειάζονται κλειδιά).
-- Έλεγχος browser/εφαρμογών στον υπολογιστή (Connector v2) και trading (§5).
-- Δεν έχει γίνει δοκιμή με αληθινό login: CEO φωνή/μικρόφωνο, memory, αληθινά tokens ενσωματώσεων, Billing, Connector end-to-end.
-- Gateway στον server: το branding/λογότυπο επανέρχεται (θέλει repair.sh + δικό μας image).
+- Shifts: μένει το ρολόι 24ώρου, χωρίς ανθρώπους.
+- Σύνδεση του OpenJarvis engine στον server (τα 87 στοιχεία «στον engine μας»).
+- Αυτόματη εκτέλεση εγκεκριμένων ενεργειών· one-click Google/OAuth· πληρωμές Stripe (θέλουν κλειδιά).
+- Browser/trading agents (Connector v2 και paper trading).
+- Όλα τα παραπάνω UI δεν έχουν δοκιμαστεί με πραγματικό login (sandbox χωρίς πρόσβαση στο firboai.app). Τα 3D έχουν δει σε δοκιμαστική σελίδα με ψεύτικα δεδομένα.
+- Branded OmniRoute image (GitHub Actions): το build τρέχει· δεν έχει επιβεβαιωθεί πράσινο.
 
 ## 4. Επόμενα βήματα (σειρά)
 
