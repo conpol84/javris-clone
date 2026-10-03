@@ -1,17 +1,8 @@
-// Firbo AI agent chat: one conversational turn with an AI employee, entirely inside Supabase (no extra server).
-//
-// Guarantees (enforced here, not in the browser):
-//  - caller must be a signed-in writer of the conversation's company and its owner (RLS read + role check)
-//  - monthly budget and an hourly circuit breaker are checked BEFORE any model call
-//  - the agent cannot send/publish/pay in chat; it is told to suggest a task so outward steps go through approval
-//  - model keys live only in Edge Function secrets. An agent's model is "provider:model" (e.g. "openai:<model>",
-//    "anthropic:claude-sonnet-5-5", "kimi:<model>", "glm:<model>", "mimo:<model>"); "auto" uses LLM_DEFAULT.
-//    Each provider NAME needs NAME_API_KEY (and NAME_BASE_URL unless it has a built-in default).
-//    LLM_FALLBACK="provider:model,provider:model" is tried in order when the first choice fails.
-//    Optional per provider: NAME_PRICE_IN_PER_M / NAME_PRICE_OUT_PER_M (cost estimate for budgets).
-//  - spend protection while signup is open: RUN_ALLOWED_EMAILS="a@x.com,@mycompany.com" limits who may run agents;
-//    ORG_DAILY_RUN_LIMIT (default 100) caps runs per company per 24 h.
+// Firbo agent chat. Authentication, ownership and budgets are checked before inference.
+// The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
+// See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { gatewayForAgent, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -20,32 +11,19 @@ const cors = {
 };
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
-
 const WRITERS = ['owner', 'admin', 'manager', 'member'];
 const HOURLY_RUN_LIMIT = 60;
 const MAX_MESSAGE = 4000;
 const HISTORY = 20;
-
 const LANG_NAME: Record<string, string> = {
   en: 'English', el: 'Greek', es: 'Spanish', 'pt-BR': 'Brazilian Portuguese',
   de: 'German', fr: 'French', 'zh-CN': 'Simplified Chinese', ar: 'Arabic',
 };
-
 const BASE_URLS: Record<string, string> = {
-  openai: 'https://api.openai.com/v1',
-  anthropic: 'https://api.anthropic.com/v1',
-  kimi: 'https://api.moonshot.ai/v1',
-  glm: 'https://api.z.ai/api/paas/v4',
+  openai: 'https://api.openai.com/v1', anthropic: 'https://api.anthropic.com/v1',
+  kimi: 'https://api.moonshot.ai/v1', glm: 'https://api.z.ai/api/paas/v4',
 };
-
-interface Target {
-  provider: string;
-  model: string;
-  base: string;
-  key: string;
-}
-
-/** "provider:model" -> a configured endpoint, or null when its secrets are missing. */
+interface Target { provider: string; model: string; base: string; key: string }
 function resolveTarget(spec: string): Target | null {
   const i = spec.indexOf(':');
   const provider = (i > 0 ? spec.slice(0, i) : 'custom').toLowerCase();
@@ -57,7 +35,6 @@ function resolveTarget(spec: string): Target | null {
   if (!key || !base) return null;
   return { provider, model, base: base.replace(/\/+$/, ''), key };
 }
-
 function priceOf(provider: string, which: 'IN' | 'OUT'): number {
   const env = provider.toUpperCase().replace(/-/g, '_');
   const v = Deno.env.get(`${env}_PRICE_${which}_PER_M`) ?? Deno.env.get(`LLM_PRICE_${which}_PER_M`);
@@ -67,7 +44,6 @@ function priceOf(provider: string, which: 'IN' | 'OUT'): number {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
-
   const url = Deno.env.get('SUPABASE_URL')!;
   const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -76,111 +52,71 @@ Deno.serve(async (req) => {
   const { data: who } = await userClient.auth.getUser();
   const user = who?.user;
   if (!user) return json(401, { error: 'unauthorized' });
-
   let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean } = {};
-  try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: 'bad_request' });
-  }
+  try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return json(400, { error: 'bad_request' });
   const text = typeof body.message === 'string' ? body.message.trim() : '';
   if (!body.conversation_id || typeof body.conversation_id !== 'string' || !text) return json(400, { error: 'bad_request' });
   if (text.length > MAX_MESSAGE) return json(413, { error: 'too_long' });
   const lang = body.lang && body.lang in LANG_NAME ? body.lang : 'en';
-
-  // RLS-scoped read: you only see your own conversations (admins see all of the company's).
-  const { data: convo } = await userClient
-    .from('conversations')
-    .select('id, organization_id, user_id, agent_id, title, status')
-    .eq('id', body.conversation_id)
-    .maybeSingle();
+  const { data: convo } = await userClient.from('conversations')
+    .select('id, organization_id, user_id, agent_id, title, status').eq('id', body.conversation_id).maybeSingle();
   if (!convo) return json(404, { error: 'not_found' });
   if (convo.user_id !== user.id) return json(403, { error: 'forbidden' });
   if (convo.status !== 'active') return json(409, { error: 'not_runnable' });
-  const { data: member } = await userClient
-    .from('organization_members')
-    .select('role')
-    .eq('organization_id', convo.organization_id)
-    .eq('user_id', user.id)
-    .maybeSingle();
+  const { data: member } = await userClient.from('organization_members').select('role')
+    .eq('organization_id', convo.organization_id).eq('user_id', user.id).maybeSingle();
   if (!member || !WRITERS.includes(member.role)) return json(403, { error: 'forbidden' });
-  const allowed = (Deno.env.get('RUN_ALLOWED_EMAILS') ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const allowed = (Deno.env.get('RUN_ALLOWED_EMAILS') ?? '').split(',').map(x => x.trim().toLowerCase()).filter(Boolean);
   const email = (user.email ?? '').toLowerCase();
-  if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) {
-    return json(403, { error: 'forbidden' });
-  }
+  if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
   if (!convo.agent_id) return json(422, { error: 'no_agent' });
-
   const admin = createClient(url, service);
-  const { data: agent } = await admin
-    .from('agents')
-    .select('id, name, system_prompt, model, temperature, enabled, monthly_budget_usd')
-    .eq('id', convo.agent_id)
-    .eq('organization_id', convo.organization_id)
-    .maybeSingle();
+  const { data: agent } = await admin.from('agents').select('id, name, system_prompt, model, temperature, enabled, monthly_budget_usd')
+    .eq('id', convo.agent_id).eq('organization_id', convo.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
 
+  let gateway: GatewayPlan | null;
+  try { gateway = gatewayForAgent(agent, name => Deno.env.get(name)); }
+  catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
-  const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map((x) => x.trim())].filter(Boolean);
-  const targets = specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (targets.length === 0) return json(503, { error: 'not_configured' });
+  const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
+  // A gateway-selected request NEVER also enters the legacy direct-provider loop.
+  const targets = gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
-  // ---- cost guards, before any model call
   const monthStart = new Date();
-  monthStart.setUTCDate(1);
-  monthStart.setUTCHours(0, 0, 0, 0);
-  const { data: spendRows } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
+  monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
+  const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
+  if (spendError) return json(503, { error: 'budget_unavailable' });
   const spent = (spendRows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd ?? 0), 0);
-  if (agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) {
-    return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
-  }
-  const { count: lastHour } = await admin
-    .from('usage_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('agent_id', agent.id)
-    .gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+  if (agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
+  const { count: lastHour, error: hourError } = await admin.from('usage_events').select('id', { count: 'exact', head: true })
+    .eq('agent_id', agent.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
+  if (hourError) return json(503, { error: 'budget_unavailable' });
   if ((lastHour ?? 0) >= HOURLY_RUN_LIMIT) return json(429, { error: 'rate_limited' });
-  const { count: orgDay } = await admin
-    .from('usage_events')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', convo.organization_id)
-    .gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
-  // The company's plan decides how many AI actions it may use per day (enforced here, never in the browser).
-  const { data: planCap } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
+  const { count: orgDay, error: dayError } = await admin.from('usage_events').select('id', { count: 'exact', head: true })
+    .eq('organization_id', convo.organization_id).gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
+  const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
+  if (dayError || planError) return json(503, { error: 'budget_unavailable' });
   const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
+  if (Number.isNaN(cap) || cap < 0) return json(503, { error: 'budget_unavailable' });
   if ((orgDay ?? 0) >= cap) return json(429, { error: 'plan_limit' });
-
-  const { data: history } = await admin
-    .from('messages')
-    .select('role, content')
-    .eq('conversation_id', convo.id)
-    .in('role', ['user', 'assistant'])
-    .order('created_at', { ascending: false })
-    .limit(HISTORY);
+  const { data: history } = await admin.from('messages').select('role, content').eq('conversation_id', convo.id)
+    .in('role', ['user', 'assistant']).order('created_at', { ascending: false }).limit(HISTORY);
   const past = (history ?? []).reverse().map((m: any) => ({ role: m.role, content: String(m.content).slice(0, MAX_MESSAGE) }));
-
-  // Keep the user's message even if the model fails, so nothing they wrote is lost.
-  const { data: userRow } = await admin
-    .from('messages')
+  const { data: userRow, error: userError } = await admin.from('messages')
     .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'user', content: text })
-    .select('id, role, content, created_at')
-    .single();
-
+    .select('id, role, content, created_at').single();
+  if (userError || !userRow) return json(503, { error: 'message_save_failed' });
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
-  const { data: memRows } = await admin
-    .from('memories')
-    .select('content, memory_type')
-    .eq('organization_id', convo.organization_id)
-    .or(`agent_id.is.null,agent_id.eq.${agent.id}`)
-    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
-    .order('importance', { ascending: false })
-    .limit(12);
+  const { data: memRows } = await admin.from('memories').select('content, memory_type').eq('organization_id', convo.organization_id)
+    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .order('importance', { ascending: false }).limit(12);
   const memoryBlock = (memRows ?? []).length
-    ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}`
-    : '';
-  // Live company snapshot so the CEO answers from real data instead of generic talk.
+    ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}` : '';
   let snapshot = '';
   if (body.voice === true) {
     const [{ data: tk }, { data: ap }, { data: ag }] = await Promise.all([
@@ -189,11 +125,11 @@ Deno.serve(async (req) => {
       admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
     ]);
     const names = new Map((ag ?? []).map((x: any) => [x.id, x.name]));
-    const clip = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').slice(0, n);
+    const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
     const { data: spendMonth } = await admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString());
     const monthCost = (spendMonth ?? []).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
     snapshot = [
-      `LIVE COMPANY DATA (use it; never invent numbers):`,
+      'LIVE COMPANY DATA (use it; never invent numbers):',
       `Team: ${(ag ?? []).map((x: any) => `${x.name}${x.enabled ? '' : ' (paused)'}`).join(', ') || 'none'}.`,
       `Spend this month: $${monthCost.toFixed(2)}.`,
       `Pending approvals (${(ap ?? []).length}): ${(ap ?? []).map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
@@ -209,57 +145,56 @@ Deno.serve(async (req) => {
     `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
     ...(body.voice === true ? [snapshot, 'This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
-
   const t0 = Date.now();
   let completion: any = null;
-  let used: Target | null = null;
+  let used: { provider: string; model: string } | null = null;
+  let routed: GatewayCompletion | null = null;
+  let routing: GatewayTrace | undefined;
   let lastError = 'model_error';
+  if (gateway) {
+    try {
+      routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, ...past, { role: 'user', content: text }], Number(agent.temperature ?? 0.5), { signal: req.signal });
+      completion = routed.completion; routing = routed.trace;
+      used = { provider: 'omniroute', model: gateway.model };
+    } catch (error) {
+      lastError = error instanceof GatewayError ? error.code : 'gateway_error';
+      routing = error instanceof GatewayError ? error.trace : undefined;
+    }
+    console.info(JSON.stringify({ event: 'firbo_gateway_inference', source: 'agent-chat', organization_id: convo.organization_id, agent_id: agent.id, conversation_id: convo.id, routing }));
+  }
   for (const target of targets) {
     try {
       const openai = target.provider === 'openai';
       const res = await fetch(`${target.base}/chat/completions`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
-        body: JSON.stringify({
-          model: target.model,
+        method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
+        body: JSON.stringify({ model: target.model,
           ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.5) }),
           messages: [{ role: 'system', content: system }, ...past, { role: 'user', content: text }],
-        }),
-        signal: AbortSignal.timeout(90_000),
+        }), signal: AbortSignal.timeout(90_000),
       });
       if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
       completion = await res.json();
       if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
-      used = target;
-      break;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : 'model_error';
-    }
+      used = target; break;
+    } catch { lastError = 'model_error'; }
   }
-  if (!completion || !used) {
-    console.error('agent-chat model error', lastError);
-    return json(502, { error: 'model_error', user_message: userRow });
-  }
+  if (!completion || !used) return json(502, { error: 'model_error', reason: lastError, user_message: userRow, routing });
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
   const reply: string = String(completion.choices[0].message.content);
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
-  const cost = Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
-
-  const { data: botRow } = await admin
-    .from('messages')
+  const cost = routed ? routed.cost : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+  // Do not report success when either usage accounting or the assistant message failed to persist.
+  const { error: usageError } = await admin.from('usage_events').insert({ organization_id: convo.organization_id, user_id: user.id, agent_id: agent.id, model,
+    input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency });
+  const { data: botRow, error: botError } = await admin.from('messages')
     .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'assistant', content: reply, model, input_tokens: inTok, output_tokens: outTok, latency_ms: latency })
-    .select('id, role, content, created_at, model')
-    .single();
-  await admin.from('usage_events').insert({
-    organization_id: convo.organization_id, user_id: user.id, agent_id: agent.id, model,
-    input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency,
-  });
-  await admin
-    .from('conversations')
-    .update({ updated_at: new Date().toISOString(), ...(convo.title ? {} : { title: text.slice(0, 60) }) })
-    .eq('id', convo.id);
-
-  return json(200, { user_message: userRow, message: botRow });
+    .select('id, role, content, created_at, model').single();
+  if (usageError || botError || !botRow) {
+    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-chat', conversation_id: convo.id, organization_id: convo.organization_id, request_id: routing?.request_id, usage_saved: !usageError, message_saved: !!botRow && !botError }));
+    return json(503, { error: 'result_save_failed', retry_safe: false, user_message: userRow, message: botRow, routing });
+  }
+  await admin.from('conversations').update({ updated_at: new Date().toISOString(), ...(convo.title ? {} : { title: text.slice(0, 60) }) }).eq('id', convo.id);
+  return json(200, { user_message: userRow, message: botRow, routing });
 });
