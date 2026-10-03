@@ -10,7 +10,7 @@ Parts: **web app** (Vercel) → **Supabase** (login, database, Edge Functions) �
 ## 2. Where everything lives
 | Part | Where | Notes |
 |---|---|---|
-| Source code | GitHub `conpol84/javris-clone` (private) | Working branch **`claude/omniroute-engine`** (92 commits). `main` is still the old OpenJarvis upstream state. |
+| Source code | GitHub `conpol84/javris-clone` (**PUBLIC repository** — verified 2026-10-03; it contains no secrets, but everything written here is world-readable; decide deliberately whether to make it private) | Working branch **`claude/omniroute-engine`** (92 commits). `main` is still the old OpenJarvis upstream state. |
 | Web app | Vercel project `prj_tNGCKDtXfH6ohh9i4UbqPkL53KJa` (team `team_MeaZI1Z6JWuUXbVh6DIbedLn`), domain **firboai.app** | Vite + React 19 SPA, root dir `frontend/`. Production is deployed **manually from a commit SHA** of the branch above (not auto from `main`). |
 | Database + login + functions | Supabase project **`bfeinnsorgjycivozcau`** (URL `https://bfeinnsorgjycivozcau.supabase.co`) | Postgres, Auth, Realtime, 12 Edge Functions, pg_cron. |
 | AI gateway | Hostinger VPS, Docker: OmniRoute + Firbo API + Caddy | `gateway.firboai.app`, `api.firboai.app`. Code in `deploy/hostinger/`. |
@@ -173,3 +173,33 @@ The branded gateway image is built by a GitHub workflow in the OmniRoute fork (n
 8. Let agents call connected MCP tools; expose Firbo itself as an MCP server.
 9. Register OAuth apps, add Stripe keys, test 5 top integrations with real accounts before advertising them.
 10. Merge the working branch into `main` after review.
+
+
+## 13. Parallel work by another AI assistant ("Codex") — reviewed 2026-10-03
+While the work above was done, a second AI assistant (Codex, acting through the owner's GitHub account) worked in parallel. This section is the independent review of that work.
+
+**Where it lives**
+- Branch `codex/firbo-unified-gateway`, **24 commits, 75 files** (+7 645 / −3 396 lines), open as **draft PR #9** into `claude/omniroute-engine`. All 20 CI checks of PR #9 are green. It merges into the current production branch **without conflicts** (checked with `git merge-tree`).
+- PR #10 (`codex/firbo-connectivity-hotfix`, same-origin gateway proxy) **was merged** into `claude/omniroute-engine` and is what runs in production now: commit `ae82ca9` (= everything in this document + that hotfix). Vercel deployment `dpl_FFpzRVXxp8UWpSfiZ2RpDZuefBSM`.
+- Planning/evidence documents it wrote: `docs/FIRBO-MASTER-PLAN-V2.md`, `FIRBO-PRODUCTION-PLAN.md`, `FIRBO-U2/U3-*.md`, `FIRBO-FREE-MODELS*.md`, `FIRBO-UNIFICATION-*.md` (on the codex branch).
+
+**What it built (all unreleased except PR #10)**
+1. *Hotfix (live):* `frontend/vercel.json` rewrites `/v1/gateway/*`, `/v1/firbo/*`, `/firbo-backend-health` to `api.firboai.app` (same-origin, no-store headers); frontend ignores stale desktop endpoints on owned hosts. Owner confirmed the Gateway overview shows "Connected" with providers/models/combos.
+2. *U1 native control plane (PR #9):* Firbo-login-protected gateway administration (`firbo_control.py`, `NativeGatewayConsole`, rewritten `GatewayPage`/`AdminPage`), guarded simple-combo edits, 26 Python tests.
+3. *U2 shared text routing (PR #9):* `supabase/functions/_shared/gateway-routing.ts` used by `agent-chat` and `agent-runner`; modes `legacy` (default), `canary`, `gateway` via secret `FIRBO_TEXT_ROUTING_MODE`; fail-closed budgets, bounded responses, trace ids; 83 mocked tests. **Not deployed** (Supabase `agent-chat` v9 / `agent-runner` v19 are unchanged — verified).
+4. *Server recovery tooling:* read-only Hostinger preflight and a private configuration + API-image recovery checkpoint (with OCI-artifact fixes). Database/volume backups and a real restore are **not** done.
+5. *Free-model discovery:* guarded script that reads official OpenCode/OpenRouter offers and registers only zero-priced text models, append-only. The owner ran it on the VPS: 7 OpenCode entries added, no inference requests, existing combos and runtime unchanged.
+6. *Mobile foundation (M1):* `mobile-foundation.css`, vendored shadcn-tailwind CSS, shared dialog fixes and a real-component Playwright check of 25 cases in 8 languages (24/25 first, then fixed).
+7. Removed the unused `shadcn` npm dependency (large lockfile shrink) after an advisory gate.
+
+**Review verdict — are we on the right track?**
+- **Yes on discipline:** it never changed production silently, labels evidence (SOURCE/V1/V2/V3/LIVE), keeps U2 behind a default-off switch, did not deploy edge functions, and refuses to claim what it cannot test. Its audit independently confirmed several problems listed in this document.
+- **Yes on the unified direction:** one frontend (this repo), Supabase for identity/data, OmniRoute as the model engine on the VPS.
+- **Concerns to resolve:**
+  1. **Overlap/conflicts in design:** its mobile layer (`mobile-foundation.css`, 40 px minimums, vendored CSS) and this branch's mobile layer (bottom tab bar, `.fb-bottomnav`, 16 px inputs) were built independently. They merge textually, but **must be reviewed visually together** before PR #9 is promoted.
+  2. **Two plans:** `FIRBO-MASTER-PLAN-V2.md` (infra/safety first) and the owner's visible priorities (design, voice, 2D polish) compete. Decide one order; suggested: voice fix → merge PR #9 after visual review → recovery/backups → routing canary.
+  3. **Keys:** its evidence says the gateway *inference* key and *management* key values were equal. Create two keys with separate scopes and rotate both (they were also pasted in chat once).
+  4. **Public repository:** the repo is public although earlier notes said private. No secrets were found by a pattern scan, but infrastructure names and plans are public.
+  5. **Voice (owner's top complaint) is untouched** by that work, and U2 explicitly excludes audio and mission planning from routing.
+  6. **Ledger gap:** there is still no durable per-request usage ledger or atomic budget reservation — required before charging customers.
+- **Do not** deploy its changed `agent-chat` / `agent-runner` until a staging Supabase project exists and the canary list is empty by default (as designed).

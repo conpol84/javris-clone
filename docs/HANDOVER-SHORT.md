@@ -3,7 +3,7 @@
 **What:** a SaaS where each customer company has AI employees (agents) with roles, budgets and approval rules, plus a talking AI CEO.
 
 **Where things live**
-- Code: GitHub `conpol84/javris-clone`, branch `claude/omniroute-engine` (not `main`). Web app in `frontend/`.
+- Code: GitHub `conpol84/javris-clone` (**public**), branch `claude/omniroute-engine` (not `main`) = production. A second AI (Codex) has an open draft PR #9 (`codex/firbo-unified-gateway`, 24 commits, CI green, merges cleanly): see HANDOVER.md section 13. Web app in `frontend/`.
 - Web app: Vercel → firboai.app. Deployed manually from a commit SHA.
 - Database, login, 12 Edge Functions: Supabase project `bfeinnsorgjycivozcau`.
 - AI gateway (OmniRoute) + small API + Caddy: Hostinger VPS, Docker, `deploy/hostinger/`.
