@@ -1,0 +1,9 @@
+# Optional: build the gateway from our Firbo-branded fork instead of the public image.
+# Needs ~6 GB of free memory/swap while building (see README). Use:
+#   docker compose -f docker-compose.yml -f docker-compose.fork.yml up -d --build omniroute
+services:
+  omniroute:
+    build:
+      context: https://github.com/conpol84/OmniRoute.git#${OMNIROUTE_REF:-firbo/branding}
+      target: runner-base
+    image: firbo-omniroute:local

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
 import { ChatPage } from './pages/ChatPage';
 import { DashboardPage } from './pages/DashboardPage';
@@ -8,6 +8,35 @@ import { GetStartedPage } from './pages/GetStartedPage';
 import { AgentsPage } from './pages/AgentsPage';
 import { DataSourcesPage } from './pages/DataSourcesPage';
 import { LogsPage } from './pages/LogsPage';
+import { TasksPage } from './pages/TasksPage';
+import { CommandCenterPage } from './pages/CommandCenterPage';
+import { OfficePage } from './pages/OfficePage';
+import { GatewayPage } from './pages/GatewayPage';
+import { TeamPage } from './pages/TeamPage';
+import { InboxPage } from './pages/InboxPage';
+import { ActivityPage } from './pages/ActivityPage';
+import { PeoplePage } from './pages/PeoplePage';
+import { FirboSettingsPage } from './pages/FirboSettingsPage';
+import { COMPANY_ENABLED } from './lib/company/client';
+import { AdminPage } from './pages/AdminPage';
+import { AnalyticsPage } from './pages/AnalyticsPage';
+import { ShiftsPage } from './pages/ShiftsPage';
+import { MissionsPage } from './pages/MissionsPage';
+import { CeoPage } from './pages/CeoPage';
+import { StorePage } from './pages/StorePage';
+import { ReviewsPage } from './pages/ReviewsPage';
+import { MemoryPage } from './pages/MemoryPage';
+import { BillingPage } from './pages/BillingPage';
+import { HubPage } from './pages/HubPage';
+import { CodingPage } from './pages/CodingPage';
+import { ComputersPage } from './pages/ComputersPage';
+import { StudioPage } from './pages/StudioPage';
+import { IntegrationsPage } from './pages/IntegrationsPage';
+import { AgentChatPage } from './pages/AgentChatPage';
+import { CompaniesPage } from './pages/CompaniesPage';
+import { CompanyAuthProvider } from './lib/company/AuthProvider';
+import { LocaleSync } from './components/company/LocaleSync';
+import { AuthGate } from './components/company/AuthGate';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -16,8 +45,9 @@ import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } fr
 import { OptInModal } from './components/OptInModal';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { track, hashId } from './lib/analytics';
+import { LEADERBOARD_ENABLED } from './lib/supabase';
 
-export default function App() {
+function AuthedApp() {
   const [setupDone, setSetupDone] = useState(!isTauri());
   const handleSetupReady = useCallback(() => {
     setSetupDone(true);
@@ -64,8 +94,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [importOverlay]);
 
-  // Fetch models on mount
+  // Fetch models on mount (legacy local-assistant backend: not used by the hosted workspace)
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchModels()
       .then((m) => {
         setModels(m);
@@ -76,11 +107,13 @@ export default function App() {
 
   // Fetch server info
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchServerInfo().then(setServerInfo).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll savings and optionally share to Supabase
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     const refresh = () =>
       fetchSavings()
         .then((data) => {
@@ -119,7 +152,7 @@ export default function App() {
 
   // Show opt-in modal on first visit
   useEffect(() => {
-    if (!optInModalSeen) {
+    if (LEADERBOARD_ENABLED && !optInModalSeen) {
       setOptInModalOpen(true);
       markOptInModalSeen();
     }
@@ -160,7 +193,7 @@ export default function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (!COMPANY_ENABLED && (e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);
       }
@@ -183,20 +216,60 @@ export default function App() {
       <UpdateChecker />
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<ChatPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="get-started" element={<GetStartedPage />} />
-          <Route path="data-sources" element={<DataSourcesPage />} />
-          <Route path="agents" element={<AgentsPage />} />
-          <Route path="logs" element={<LogsPage />} />
+          <Route index element={COMPANY_ENABLED ? <CommandCenterPage /> : <ChatPage />} />
+          <Route path="chat" element={COMPANY_ENABLED ? <AgentChatPage /> : <ChatPage />} />
+          <Route path="office" element={<OfficePage />} />
+          <Route path="gateway" element={<GatewayPage />} />
+          <Route path="analytics" element={COMPANY_ENABLED ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+          <Route path="integrations" element={COMPANY_ENABLED ? <IntegrationsPage /> : <Navigate to="/" replace />} />
+          <Route path="admin" element={COMPANY_ENABLED ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="studio" element={COMPANY_ENABLED ? <StudioPage /> : <Navigate to="/" replace />} />
+          <Route path="computers" element={COMPANY_ENABLED ? <ComputersPage /> : <Navigate to="/" replace />} />
+          <Route path="coding" element={COMPANY_ENABLED ? <CodingPage /> : <Navigate to="/" replace />} />
+          <Route path="hub" element={COMPANY_ENABLED ? <HubPage /> : <Navigate to="/" replace />} />
+          <Route path="billing" element={COMPANY_ENABLED ? <BillingPage /> : <Navigate to="/" replace />} />
+          <Route path="memory" element={COMPANY_ENABLED ? <MemoryPage /> : <Navigate to="/" replace />} />
+          <Route path="reviews" element={COMPANY_ENABLED ? <ReviewsPage /> : <Navigate to="/" replace />} />
+          <Route path="store" element={COMPANY_ENABLED ? <StorePage /> : <Navigate to="/" replace />} />
+          <Route path="ceo" element={COMPANY_ENABLED ? <CeoPage /> : <Navigate to="/" replace />} />
+          <Route path="missions" element={COMPANY_ENABLED ? <MissionsPage /> : <Navigate to="/" replace />} />
+          <Route path="shifts" element={COMPANY_ENABLED ? <ShiftsPage /> : <Navigate to="/" replace />} />
+          <Route path="companies" element={COMPANY_ENABLED ? <CompaniesPage /> : <Navigate to="/" replace />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="login" element={<Navigate to="/" replace />} />
+          <Route path="signup" element={<Navigate to="/" replace />} />
+          {/* The local-assistant pages need the desktop backend; in the hosted workspace they land on the Command Center. */}
+          <Route path="dashboard" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DashboardPage />} />
+          <Route path="settings" element={COMPANY_ENABLED ? <FirboSettingsPage /> : <SettingsPage />} />
+          <Route path="get-started" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <GetStartedPage />} />
+          <Route path="data-sources" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DataSourcesPage />} />
+          <Route path="agents" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <AgentsPage />} />
+          <Route path="logs" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <LogsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="company" element={<Navigate to="/tasks" replace />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
-      {commandPaletteOpen && <CommandPalette />}
+      {!COMPANY_ENABLED && commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />
       )}
     </>
+  );
+}
+
+/** Public site + login gate first; the app (and its backend calls) only mounts after sign-in. */
+export default function App() {
+  return (
+    <CompanyAuthProvider>
+      <LocaleSync />
+      <AuthGate>
+        <AuthedApp />
+      </AuthGate>
+    </CompanyAuthProvider>
   );
 }

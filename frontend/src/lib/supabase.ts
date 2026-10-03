@@ -1,5 +1,6 @@
-export const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL || 'https://mtbtgpwzrbostweaanpr.supabase.co';
+// No default: the upstream OpenJarvis leaderboard project must not receive data
+// from this deployment. Set VITE_SUPABASE_URL to your own project.
+export const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? '';
 
 // The Supabase anon key is optional at build time. When it is unset the public
 // savings leaderboard is disabled rather than failing the build — this keeps

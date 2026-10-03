@@ -29,6 +29,7 @@ CLOUD_PROVIDER_KEYS = {
     "litellm",
     "minimax",
     "openai",
+    "omniroute",
     "openrouter",
 }
 
@@ -61,6 +62,7 @@ API_KEY_ENV_VARS = {
     "GEMINI_API_KEY": ("Google/Gemini cloud inference", {"google", "gemini"}),
     "GOOGLE_API_KEY": ("Google/Gemini cloud inference", {"google", "gemini"}),
     "MINIMAX_API_KEY": ("MiniMax cloud inference", {"minimax"}),
+    "OMNIROUTE_API_KEY": ("OmniRoute gateway inference", {"omniroute"}),
     "OPENAI_API_KEY": ("OpenAI cloud inference", {"openai", "gpt"}),
     "OPENROUTER_API_KEY": ("OpenRouter cloud inference", {"openrouter"}),
     "OPENWEATHERMAP_API_KEY": (

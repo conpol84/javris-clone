@@ -478,7 +478,7 @@ export function SettingsPage() {
         <div className="flex flex-col gap-4">
           {/* Appearance */}
           <Section title="Appearance">
-            <SettingRow label="Theme" description="Choose how OpenJarvis looks">
+            <SettingRow label="Theme" description="Choose how Firbo AI looks">
               <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'var(--color-bg-secondary)' }}>
                 {themeOptions.map((opt) => {
                   const isActive = settings.theme === opt.value;
@@ -956,29 +956,8 @@ export function SettingsPage() {
           <Section title="About">
             <div className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>
               <p className="mb-2">
-                <span className="font-semibold" style={{ color: 'var(--color-text)' }}>OpenJarvis</span> — Programming abstractions for on-device AI.
+                <span className="font-semibold" style={{ color: 'var(--color-text)' }}>Firbo AI</span> — the AI command center for your company.
               </p>
-              <p className="text-xs" style={{ color: 'var(--color-text-tertiary)' }}>
-                Part of Intelligence Per Watt, a research initiative at Stanford SAIL.
-              </p>
-              <div className="flex gap-3 mt-3 text-xs">
-                <a
-                  href="https://openjarvis.stanford.edu/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--color-accent)' }}
-                >
-                  Project site
-                </a>
-                <a
-                  href="https://open-jarvis.github.io/OpenJarvis/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  style={{ color: 'var(--color-accent)' }}
-                >
-                  Documentation
-                </a>
-              </div>
             </div>
           </Section>
         </div>
