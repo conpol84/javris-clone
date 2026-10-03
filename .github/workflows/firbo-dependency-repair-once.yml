@@ -20,6 +20,17 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --global npm@11.19.0
+      - name: Ignore documentation comments in the CSS-only dependency usage check
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('scripts/firbo/repair-dependencies-once.mjs')
+          code = p.read_text()
+          old = 'const text = read(file);'
+          new = r"const text = read(file).replace(/\/\*[\s\S]*?\*\//g, '');"
+          assert code.count(old) == 1
+          p.write_text(code.replace(old, new))
+          PY
       - name: Prepare and verify isolated dependency candidate
         run: node scripts/firbo/repair-dependencies-once.mjs
       - name: Store verified candidate as Git objects only (NO branch updates)
