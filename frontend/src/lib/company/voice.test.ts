@@ -162,3 +162,51 @@ describe('microphone lifecycle',()=>{
   Object.assign(window,{SpeechRecognition:Recognition});const on=callbacks();const stop=listenOnce('en',on);const late=rec.onresult;stop();late({results:[Object.assign([{transcript:'late'}],{isFinal:true})]});expect(on.final).not.toHaveBeenCalled();
  });
 });
+
+describe('deployed speech transport compatibility',()=>{
+  it('live octet-stream MP3 parsed by the real SDK uses server playback',async()=>{
+    const { createClient } = await import('@supabase/supabase-js');
+    // ID3 header is envelope evidence, not an assertion this tiny fixture decodes.
+    const bytes = new Uint8Array([73,68,51,4,0,0,0,0,0,0,255,251,144,0]);
+    const transport=vi.fn(async(_url:RequestInfo|URL,_options?:RequestInit)=>new Response(bytes,{headers:{'content-type':'application/octet-stream'}}));
+    const sdk=createClient('https://voice-contract.invalid','sb_publishable_synthetic',{
+      auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:transport}
+    });
+    mocks.invoke.mockImplementation((name,options)=>sdk.functions.invoke(name,options));
+    const result=speak('synthetic-org','Transport contract check','en',{allowBrowserFallback:false});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(AudioMock.instances).toHaveLength(1);
+    const delivered=vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+    expect(delivered.type).toBe('audio/mpeg');
+    expect(new Uint8Array(await delivered.arrayBuffer())).toEqual(bytes);
+    AudioMock.instances[0].start();AudioMock.instances[0].end();
+    expect(await result).toMatchObject({status:'completed',source:'server'});
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(String(transport.mock.calls[0]?.[0])).toContain('/functions/v1/agent-speak');
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
+  it('raw MPEG frame with octet-stream type retains server playback',async()=>{
+    mocks.invoke.mockResolvedValue({data:new Blob([new Uint8Array([255,251,144,0,1,2,3,4])],{type:'application/octet-stream'}),error:null});
+    const result=speak('org','Test','en',{allowBrowserFallback:false});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(AudioMock.instances).toHaveLength(1);
+    AudioMock.instances[0].start();AudioMock.instances[0].end();
+    expect(await result).toMatchObject({status:'completed',source:'server'});
+  });
+  it('HTML hidden in an octet-stream body is not audio',async()=>{
+    mocks.invoke.mockResolvedValue({data:new Blob(['<!DOCTYPE html><html>error</html>'],{type:'application/octet-stream'}),error:null});
+    const result=speak('org','Test','en',{allowBrowserFallback:false});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect((await result).status).toBe('failed');
+    expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();
+  });
+  it('Stop fences a late binary-envelope read without playing it',async()=>{
+    let deliver:(data:ArrayBuffer)=>void=()=>{};
+    const data=new Blob([new Uint8Array([255,251,144,0])],{type:'application/octet-stream'});
+    vi.spyOn(data,'slice').mockReturnValue({arrayBuffer:()=>new Promise<ArrayBuffer>(r=>{deliver=r;})} as Blob);
+    mocks.invoke.mockResolvedValue({data,error:null});
+    const result=speak('org','Test','en',{allowBrowserFallback:false});await flush();stopSpeaking();
+    expect((await result).status).toBe('cancelled');deliver(new ArrayBuffer(12));await flush();
+    expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();
+  });
+});

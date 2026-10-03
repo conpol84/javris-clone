@@ -126,6 +126,21 @@ async function browserSpeech(text: string, lang: string, turn: VoiceTurn): Promi
     try { synth.speak(u); } catch { finish(new Error('speech_playback_failed')); }
   });
 }
+/** agent-speak v5 deliberately returns MP3 as octet-stream so the real
+ * Supabase SDK gives us a Blob. Validate its envelope, then label the
+ * SAME bytes for media playback. Decoder success is checked separately.
+ */
+async function speechAudioBlob(value:unknown):Promise<Blob> {
+  if (!(value instanceof Blob) || !value.size || value.size > 8_000_000) throw new Error('invalid_audio');
+  const type=value.type.split(';',1)[0].trim().toLowerCase();
+  if(type.startsWith('audio/')) return value;
+  if(type!=='application/octet-stream') throw new Error('invalid_audio');
+  const h=new Uint8Array(await value.slice(0,12).arrayBuffer());
+  const id3=h.length>=10 && h[0]===73 && h[1]===68 && h[2]===51 && h[3]>=2 && h[3]<=4 && h[4]!==255 && h.slice(6,10).every(b=>b<128);
+  const frame=h.length>=4 && h[0]===255 && (h[1]&224)===224 && (h[1]&24)!==8 && (h[1]&6)!==0 && (h[2]&240)!==240 && (h[2]&12)!==12;
+  if(!id3&&!frame) throw new Error('invalid_audio');
+  return value.slice(0,value.size,'audio/mpeg');
+}
 /** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */
 export async function speak(orgId: string, text: string, lang: string, options: Options = {}): Promise<SpeechResult> {
   const turn = options.turn ?? beginVoiceTurn();
@@ -140,8 +155,9 @@ export async function speak(orgId: string, text: string, lang: string, options: 
       const out = await voiceDeadline(signal => requireClient().functions.invoke('agent-speak', { body:{organization_id:orgId,text:clean}, signal }), turn.signal, 35_000);
       if (!turn.current()) return { status:'cancelled', source, truncated };
       if (out.error) throw out.error;
-      if (!(out.data instanceof Blob) || !out.data.size || out.data.size > 8_000_000 || !out.data.type.startsWith('audio/')) throw new Error('invalid_audio');
-      source = 'server'; await playAudio(out.data, turn);
+      const audio = await voiceDeadline(() => speechAudioBlob(out.data), turn.signal, 3000);
+      if (!turn.current()) return { status:'cancelled', source, truncated };
+      source = 'server'; await playAudio(audio, turn);
     } catch (error) {
       if (!turn.current()) return { status:'cancelled', source, truncated };
       const status = error instanceof FunctionsHttpError ? error.context.status : 0;
