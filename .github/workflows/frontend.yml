@@ -37,6 +37,6 @@ jobs:
       - name: Shared gateway and actual handler regression tests (mocked services)
         run: node --experimental-strip-types --test ../tests/firbo/gateway-routing.test.mjs ../tests/firbo/edge-entrypoints.test.mjs
       - name: Isolated Edge Function type check (SDK stub, not deployed runtime)
-        run: npx tsc --noEmit --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --skipLibCheck --strict ../tests/firbo/edge-typecheck.d.ts ../supabase/functions/_shared/gateway-routing.ts ../supabase/functions/agent-chat/index.ts ../supabase/functions/agent-runner/index.ts
+        run: npx tsc --project ../tests/firbo/tsconfig.edge.json
       - run: npx tsc -b
       - run: npm run build:tauri
