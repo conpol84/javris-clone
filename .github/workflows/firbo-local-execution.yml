@@ -2,10 +2,10 @@ name: Firbo real local-operation checks
 on:
   push:
     branches: [codex/firbo-unified-gateway, claude/omniroute-engine]
-    paths: ['frontend/public/firbo-connector.mjs', 'tests/firbo/connector-execution.test.mjs', '.github/workflows/firbo-local-execution.yml']
+    paths: ['frontend/public/firbo-connector.mjs', 'supabase/functions/connector/**', 'tests/firbo/connector-*.test.mjs', 'tests/firbo/helpers/connector-handler.mjs', '.github/workflows/firbo-local-execution.yml']
   pull_request:
     branches: [claude/omniroute-engine, main]
-    paths: ['frontend/public/firbo-connector.mjs', 'tests/firbo/connector-execution.test.mjs', '.github/workflows/firbo-local-execution.yml']
+    paths: ['frontend/public/firbo-connector.mjs', 'supabase/functions/connector/**', 'tests/firbo/connector-*.test.mjs', 'tests/firbo/helpers/connector-handler.mjs', '.github/workflows/firbo-local-execution.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,7 +19,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -27,5 +27,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - name: Real temporary file and process tests; mocked HTTP, no accounts
-        run: node --test tests/firbo/connector-execution.test.mjs
+      - name: Real files, processes, SQLite and loopback HTTP; synthetic auth/database
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap tests/firbo/connector-execution.test.mjs tests/firbo/connector-durable.test.mjs tests/firbo/connector-receipts.test.mjs | tee execution-e1.tap
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-execution-e1-${{ matrix.os }}
+          path: execution-e1.tap
+          retention-days: 7
+          if-no-files-found: error

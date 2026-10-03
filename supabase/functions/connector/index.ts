@@ -13,7 +13,7 @@ const cors = {
   'access-control-allow-methods': 'POST, OPTIONS',
 };
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
+  new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
 const OWNERS = ['owner', 'admin'];
 const MAX_DEVICES = 5;
@@ -36,6 +36,51 @@ function randomToken(): string {
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+
+/** Stable canonical JSON shared with the device's receipt calculation. */
+function canonicalReportValue(value: unknown, depth = 0): string {
+  if (depth > 32) throw new Error('bad_report');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(item => canonicalReportValue(item, depth + 1)).join(',') + ']';
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    return '{' + Object.keys(object).sort().map(key => JSON.stringify(key) + ':' + canonicalReportValue(object[key], depth + 1)).join(',') + '}';
+  }
+  throw new Error('bad_report');
+}
+
+/** Bound the actual body stream, not just an untrusted Content-Length. */
+async function boundedBody(req: Request): Promise<Record<string, any>> {
+  if (!req.body) throw new Error('bad_request');
+  const reader = req.body.getReader();
+  let stopped = false, size = 0;
+  const parts: Uint8Array[] = [];
+  const stop = () => { stopped = true; void reader.cancel().catch(() => {}); };
+  const timer = setTimeout(stop, 10_000);
+  req.signal.addEventListener('abort', stop, { once: true });
+  try {
+    if (req.signal.aborted) throw new Error('bad_request');
+    for (;;) {
+      const part = await reader.read();
+      if (stopped) throw new Error('bad_request');
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 256_000) throw new Error('too_large');
+      parts.push(part.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const part of parts) { bytes.set(part, offset); offset += part.byteLength; }
+    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('bad_request');
+    return data;
+  } finally {
+    clearTimeout(timer); req.signal.removeEventListener('abort', stop);
+    void reader.cancel().catch(() => {}); reader.releaseLock();
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -45,9 +90,9 @@ Deno.serve(async (req) => {
   const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   let body: Record<string, any> = {};
   try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: 'bad_request' });
+    body = await boundedBody(req);
+  } catch (error) {
+    return json(error instanceof Error && error.message === 'too_large' ? 413 : 400, { error: 'bad_request' });
   }
   const action = String(body.action ?? '');
 
@@ -70,28 +115,60 @@ Deno.serve(async (req) => {
     return json(200, { token, device_name: dev.name });
   }
 
-  if (action === 'poll' || action === 'report') {
+  if (action === 'poll' || action === 'report' || action === 'capabilities') {
     const token = str(body.token, 100);
-    if (token.length < 40) return json(401, { error: 'unauthorized' });
-    const { data: sec } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
+    if (!/^[a-f0-9]{64}$/.test(token)) return json(401, { error: 'unauthorized' });
+    const { data: sec, error: secretError } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
+    if (secretError) return json(503, { error: 'device_auth_unavailable' });
     if (!sec) return json(401, { error: 'unauthorized' });
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, revoked_at').eq('id', sec.device_id).maybeSingle();
-    if (!dev || dev.revoked_at) return json(401, { error: 'revoked' });
+    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at').eq('id', sec.device_id).maybeSingle();
+    if (deviceError) return json(503, { error: 'device_auth_unavailable' });
+    if (!dev || dev.revoked_at || dev.paired !== true) return json(401, { error: 'revoked' });
+
+    if (action === 'capabilities') return json(200, {
+      protocol: 'firbo-connector/v2', report_ack: 'sha256-v1',
+      result_max_bytes: 140_000, queued_cancel_only: true,
+      remote_stop: false, automatic_interrupted_reexecution: false,
+    });
 
     if (action === 'report') {
       const jobId = str(body.job_id, 60);
-      const ok = body.ok === true;
-      const result = body.result && typeof body.result === 'object' ? body.result : null;
-      if (result && JSON.stringify(result).length > 150_000) return json(413, { error: 'too_large' });
-      const { data: done } = await admin
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId) || typeof body.ok !== 'boolean') return json(400, { error: 'bad_report' });
+      const ok = body.ok;
+      const result = ok ? (body.result ?? null) : null;
+      if (result !== null && (typeof result !== 'object' || Array.isArray(result))) return json(400, { error: 'bad_report' });
+      const reportError = ok ? null : str(body.error, 500) || 'failed';
+      let canonical: string;
+      try { canonical = canonicalReportValue({ job_id: jobId, ok, result, error: reportError }); }
+      catch { return json(400, { error: 'bad_report' }); }
+      if (new TextEncoder().encode(canonical).byteLength > 150_000) return json(413, { error: 'too_large' });
+      const digest = await sha256(canonical);
+      if (body.report_sha256 !== undefined && body.report_sha256 !== digest) return json(400, { error: 'report_hash_mismatch' });
+      const ack = (duplicate: boolean) => json(200, { ok: true, job_id: jobId, report_sha256: digest, duplicate });
+      const { data: done, error: saveError } = await admin
         .from('connector_jobs')
-        .update({ status: ok ? 'done' : 'error', result: ok ? result : null, error: ok ? null : str(body.error, 500) || 'failed', finished_at: new Date().toISOString() })
+        .update({ status: ok ? 'done' : 'error', result, error: reportError, finished_at: new Date().toISOString() })
         .eq('id', jobId)
         .eq('device_id', dev.id)
+        .eq('organization_id', dev.organization_id)
         .eq('status', 'running')
         .select('id')
         .maybeSingle();
-      return done ? json(200, { ok: true }) : json(409, { error: 'not_running' });
+      if (saveError) return json(503, { error: 'save_failed' });
+      if (done) return ack(false);
+      // The first receipt may have been lost AFTER the conditional write committed.
+      // Re-acknowledge ONLY the same terminal result, never replace it or rerun work.
+      const { data: prior, error: readError } = await admin.from('connector_jobs')
+        .select('id,status,result,error').eq('id', jobId).eq('device_id', dev.id)
+        .eq('organization_id', dev.organization_id).maybeSingle();
+      if (readError) return json(503, { error: 'receipt_unavailable' });
+      if (!prior) return json(404, { error: 'not_found' });
+      if (prior.status !== (ok ? 'done' : 'error')) return json(409, { error: 'state_conflict' });
+      try {
+        const savedDigest = await sha256(canonicalReportValue({ job_id: jobId, ok, result: prior.result ?? null, error: prior.error ?? null }));
+        if (savedDigest !== digest) return json(409, { error: 'report_conflict' });
+      } catch { return json(409, { error: 'report_conflict' }); }
+      return ack(true);
     }
 
     // poll: hold the request open for a while so jobs start almost instantly without hammering the service
