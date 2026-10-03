@@ -8,6 +8,16 @@ from urllib.parse import urlparse, urlencode
 from playwright.sync_api import sync_playwright, expect
 import verify as v
 
+# R3F reports caught/recoverable renderer errors using reportError too. Record the
+# deliberately injected GLB 404, but never exempt other faults or normal pages.
+# Source: pmndrs/react-three-fiber packages/fiber/src/core/renderer.tsx (createRoot).
+EXPECTED_ASSET_REPORT = 'Could not load /models/firbo-head.glb: fetch for "http://127.0.0.1:5211/models/firbo-head.glb" responded with 404: Not Found'
+def unexpected_errors(errors, injected):
+ return [error for error in errors if not (injected and error == EXPECTED_ASSET_REPORT)]
+assert unexpected_errors([EXPECTED_ASSET_REPORT], False) == [EXPECTED_ASSET_REPORT]
+assert unexpected_errors([EXPECTED_ASSET_REPORT, 'unrelated failure'], True) == ['unrelated failure']
+assert unexpected_errors(['another asset failed'], True) == ['another asset failed']
+
 ROOT=v.OUT
 v.OUT=ROOT/'additional-profiles';v.OUT.mkdir(exist_ok=True)
 v.PROFILES=[(320,800,lang,'dark') for lang in ('es','fr','de','pt-BR','zh-CN')]
@@ -77,15 +87,15 @@ with sync_playwright() as pw:
    if spec.get('asset_error'):
     assert '/models/firbo-head.glb' in paths,'fault was not injected'
     expect(page.locator('.fb-ring-fallback')).to_be_visible()
-    # The row is the real Settings navigation action; the first header button
-    # folds the panel and is intentionally NOT the navigation target.
+    # Choose the actual navigation row, not the panel-collapse header button.
     page.locator('main .fb-a-overview button.fb-row').first.click()
     expect(page.locator('main[data-firbo-route="/settings"]')).to_be_visible()
-   assert not errors,errors
+   unexpected = unexpected_errors(errors, spec.get('asset_error', False))
+   assert not unexpected,unexpected
    assert not writes,writes
    assert all(w=='profiles.update' for w in page.evaluate('window.__firboM2.writes'))
    page.screenshot(path=str(ROOT/(name+'.png')))
-   reports.append({'case':name,'status':'passed','state':state,'role':role,'api_paths':sorted(set(paths)),'external_requests_blocked':len(blocked)})
+   reports.append({'case':name,'status':'passed','state':state,'role':role,'api_paths':sorted(set(paths)),'external_requests_blocked':len(blocked),'expected_injected_asset_reports':len(errors),'unexpected_page_errors':unexpected})
   except Exception as error:
    page.screenshot(path=str(ROOT/(name+'-FAILED.png')))
    reports.append({'case':name,'status':'failed','error':str(error)[:5000],'page_errors':errors})
