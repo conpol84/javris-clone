@@ -1,12 +1,21 @@
 import { apiFetch as legacyFetch, getBase as legacyBase, isTauri } from './api';
 
-/** The cloud gateway uses deployment-owned configuration, not editable desktop settings. */
+/** These deployed frontends have fixed, non-caching Vercel API rewrites. */
+export function hasFirboProxy(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  return host === 'firboai.app' || host === 'www.firboai.app'
+    || host === 'jarvis-command-center-nu.vercel.app'
+    || host === 'jarvis-command-center-conpol84s-projects.vercel.app'
+    || /^jarvis-command-center-[a-z0-9-]+-conpol84s-projects\.vercel\.app$/.test(host);
+}
+
+/** Empty base means same-origin, NOT missing configuration, on Firbo deployments. */
 export function resolveGatewayBase(input: {
   hostname: string; desktop: boolean; configuredBase: string; legacyBase: string;
 }): string {
   if (input.desktop) return input.legacyBase;
   const host = input.hostname.toLowerCase();
-  if (host === 'firboai.app' || host === 'www.firboai.app') return 'https://api.firboai.app';
+  if (hasFirboProxy(host)) return '';
   const configured = input.configuredBase.trim();
   if (configured) {
     try {
@@ -15,7 +24,6 @@ export function resolveGatewayBase(input: {
       return url.toString().replace(/\/+$/, '');
     } catch { throw new Error('gateway_api_url_invalid'); }
   }
-  // Local development and the upstream same-origin server remain supported.
   if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]') return input.legacyBase;
   return '';
 }
@@ -30,7 +38,7 @@ export function getBase(): string {
   });
 }
 
-/** A missing cloud session must not send a saved desktop/API key to any server. */
+/** No cloud request falls back to a desktop/server management key. */
 export function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   if (isTauri()) return legacyFetch(path, init);
   return Promise.reject(new Error('sign_in_required'));
