@@ -77,7 +77,9 @@ with sync_playwright() as pw:
    if spec.get('asset_error'):
     assert '/models/firbo-head.glb' in paths,'fault was not injected'
     expect(page.locator('.fb-ring-fallback')).to_be_visible()
-    page.locator('main .fb-a-overview button').first.click()
+    # The row is the real Settings navigation action; the first header button
+    # folds the panel and is intentionally NOT the navigation target.
+    page.locator('main .fb-a-overview button.fb-row').first.click()
     expect(page.locator('main[data-firbo-route="/settings"]')).to_be_visible()
    assert not errors,errors
    assert not writes,writes

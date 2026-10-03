@@ -1,7 +1,7 @@
 import { Glow } from './fx';
 import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
@@ -58,7 +58,7 @@ function Satellite({ sat, index, total, motion, onSelect }: { sat: OrbSatellite;
   );
 }
 
-function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void }) {
+function Scene({ satellites, motion, onSelect, onFailure }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void; onFailure: () => void }) {
   const group = useRef<THREE.Group>(null);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
   const glow = useMemo(() => glowTexture(), []);
@@ -80,11 +80,15 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
       <sprite scale={[4.6, 4.6, 1]}>
         <spriteMaterial map={glow} transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} />
       </sprite>
-      <Suspense fallback={null}>
-        <group position={[0, -0.35, 0]} scale={1.15}>
-          <HoloHead state="idle" motion={motion || 0.3} />
-        </group>
-      </Suspense>
+      {/* Catch loader render failures within the Canvas renderer before they
+          become uncaught renderer errors. No application actions are swallowed. */}
+      <SceneFallbackBoundary fallback={null} onFailure={onFailure}>
+        <Suspense fallback={null}>
+          <group position={[0, -0.35, 0]} scale={1.15}>
+            <HoloHead state="idle" motion={motion || 0.3} />
+          </group>
+        </Suspense>
+      </SceneFallbackBoundary>
       {[1.9, 2.18, 2.46].map((r, i) => (
         <mesh
           key={r}
@@ -115,7 +119,8 @@ function Fallback() {
 /** Animated AI core. Asset/canvas errors fall back without blanking the workspace. */
 export function CoreOrb({ satellites = [], className, onSelect }: { satellites?: OrbSatellite[]; className?: string; onSelect?: (id: string) => void }) {
   const reduced = usePrefersReducedMotion();
-  if (!supportsWebGL()) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !supportsWebGL()) {
     return <div className={className} aria-hidden="true"><Fallback /></div>;
   }
   return (
@@ -128,7 +133,7 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
           gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
           frameloop={reduced ? 'demand' : 'always'}
         >
-          <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} />
+          <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} onFailure={() => setFailed(true)} />
           <Glow />
         </Canvas>
       </SceneFallbackBoundary>
