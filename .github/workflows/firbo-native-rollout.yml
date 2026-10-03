@@ -1,0 +1,33 @@
+name: Firbo native API rollout and rollback
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/native_control_rollout.py','tests/firbo/test_native_rollout.py','tests/firbo/native_rollout_docker.py','.github/workflows/firbo-native-rollout.yml','src/openjarvis/server/firbo_app.py','src/openjarvis/server/firbo_control.py']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['deploy/hostinger/native_control_rollout.py','tests/firbo/test_native_rollout.py','tests/firbo/native_rollout_docker.py','.github/workflows/firbo-native-rollout.yml','src/openjarvis/server/firbo_app.py','src/openjarvis/server/firbo_control.py']
+permissions:
+  contents: read
+concurrency:
+  group: firbo-native-rollout-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  rollout:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Native API and installer unit tests without external credentials
+        run: |
+          python3 -m venv /tmp/native-test-python
+          /tmp/native-test-python/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/native-test-python/bin/python -m pytest -q tests/firbo/test_control_plane.py tests/firbo/test_native_rollout.py
+      - name: Actual Docker canary, API-only cutover, idempotency and both rollbacks
+        run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_REPOSITORY python3 tests/firbo/native_rollout_docker.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-native-rollout-evidence
+          path: /tmp/firbo-native-evidence/
+          retention-days: 7
