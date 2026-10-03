@@ -1,0 +1,147 @@
+name: Firbo voice MIME compatibility candidate
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-voice-mime-once.yml']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    if: github.repository == 'conpol84/javris-clone' && github.event.head_commit.message == 'Prepare verified voice MIME compatibility correction'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Add real SDK response-contract regression (no real network)
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib
+          p=Path('frontend/src/lib/company/voice.ts')
+          b=p.read_bytes()
+          assert hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()=='87c26c7064997eec8ef72180db19ba3c82d3f9cb'
+          tests=Path('frontend/src/lib/company/voice.test.ts')
+          tests.write_text(tests.read_text()+'''
+          describe('deployed speech transport compatibility',()=>{
+            it('live octet-stream MP3 parsed by the real SDK uses server playback',async()=>{
+              const { createClient } = await import('@supabase/supabase-js');
+              // ID3 header is envelope evidence, not an assertion this tiny fixture decodes.
+              const bytes = new Uint8Array([73,68,51,4,0,0,0,0,0,0,255,251,144,0]);
+              const transport=vi.fn(async()=>new Response(bytes,{headers:{'content-type':'application/octet-stream'}}));
+              const sdk=createClient('https://voice-contract.invalid','sb_publishable_synthetic',{
+                auth:{persistSession:false,autoRefreshToken:false,detectSessionInUrl:false},global:{fetch:transport}
+              });
+              mocks.invoke.mockImplementation((name,options)=>sdk.functions.invoke(name,options));
+              const result=speak('synthetic-org','Transport contract check','en',{allowBrowserFallback:false});
+              await vi.advanceTimersByTimeAsync(1);await flush();
+              expect(AudioMock.instances).toHaveLength(1);
+              const delivered=vi.mocked(URL.createObjectURL).mock.calls[0][0] as Blob;
+              expect(delivered.type).toBe('audio/mpeg');
+              expect(new Uint8Array(await delivered.arrayBuffer())).toEqual(bytes);
+              AudioMock.instances[0].start();AudioMock.instances[0].end();
+              expect(await result).toMatchObject({status:'completed',source:'server'});
+              expect(transport).toHaveBeenCalledTimes(1);
+              expect(String(transport.mock.calls[0]?.[0])).toContain('/functions/v1/agent-speak');
+              expect(synth.speak).not.toHaveBeenCalled();
+            });
+            it('raw MPEG frame with octet-stream type retains server playback',async()=>{
+              mocks.invoke.mockResolvedValue({data:new Blob([new Uint8Array([255,251,144,0,1,2,3,4])],{type:'application/octet-stream'}),error:null});
+              const result=speak('org','Test','en',{allowBrowserFallback:false});
+              await vi.advanceTimersByTimeAsync(1);await flush();
+              expect(AudioMock.instances).toHaveLength(1);
+              AudioMock.instances[0].start();AudioMock.instances[0].end();
+              expect(await result).toMatchObject({status:'completed',source:'server'});
+            });
+            it('HTML hidden in an octet-stream body is not audio',async()=>{
+              mocks.invoke.mockResolvedValue({data:new Blob(['<!DOCTYPE html><html>error</html>'],{type:'application/octet-stream'}),error:null});
+              const result=speak('org','Test','en',{allowBrowserFallback:false});
+              await vi.advanceTimersByTimeAsync(1);await flush();
+              expect((await result).status).toBe('failed');
+              expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();
+            });
+            it('Stop fences a late binary-envelope read without playing it',async()=>{
+              let deliver:(data:ArrayBuffer)=>void=()=>{};
+              const data=new Blob([new Uint8Array([255,251,144,0])],{type:'application/octet-stream'});
+              vi.spyOn(data,'slice').mockReturnValue({arrayBuffer:()=>new Promise<ArrayBuffer>(r=>{deliver=r;})} as Blob);
+              mocks.invoke.mockResolvedValue({data,error:null});
+              const result=speak('org','Test','en',{allowBrowserFallback:false});await flush();stopSpeaking();
+              expect((await result).status).toBe('cancelled');deliver(new ArrayBuffer(12));await flush();
+              expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();
+            });
+          });
+          ''')
+          PY
+      - name: Require the known MIME mismatch to reproduce before correction
+        working-directory: frontend
+        run: |
+          set +e
+          npx --no-install vitest run src/lib/company/voice.test.ts -t 'live octet-stream MP3 parsed by the real SDK' >/tmp/firbo-mime-before.log 2>&1
+          CODE=$?
+          set -e
+          cat /tmp/firbo-mime-before.log
+          test "$CODE" -ne 0
+          grep -q 'expected.*length.*1' /tmp/firbo-mime-before.log
+      - name: Normalize only the existing endpoint MP3 binary envelope
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('frontend/src/lib/company/voice.ts');code=p.read_text()
+          marker='/** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */'
+          helper='''/** agent-speak v5 deliberately returns MP3 as octet-stream so the real
+           * Supabase SDK gives us a Blob. Validate its envelope, then label the
+           * SAME bytes for media playback. Decoder success is checked separately.
+           */
+          async function speechAudioBlob(value:unknown):Promise<Blob> {
+            if (!(value instanceof Blob) || !value.size || value.size > 8_000_000) throw new Error('invalid_audio');
+            const type=value.type.split(';',1)[0].trim().toLowerCase();
+            if(type.startsWith('audio/')) return value;
+            if(type!=='application/octet-stream') throw new Error('invalid_audio');
+            const h=new Uint8Array(await value.slice(0,12).arrayBuffer());
+            const id3=h.length>=10 && h[0]===73 && h[1]===68 && h[2]===51 && h[3]>=2 && h[3]<=4 && h[4]!==255 && h.slice(6,10).every(b=>b<128);
+            const frame=h.length>=4 && h[0]===255 && (h[1]&224)===224 && (h[1]&24)!==8 && (h[1]&6)!==0 && (h[2]&240)!==240 && (h[2]&12)!==12;
+            if(!id3&&!frame) throw new Error('invalid_audio');
+            return value.slice(0,value.size,'audio/mpeg');
+          }
+          '''
+          assert code.count(marker)==1;code=code.replace(marker,helper+marker)
+          old="      if (!(out.data instanceof Blob) || !out.data.size || out.data.size > 8_000_000 || !out.data.type.startsWith('audio/')) throw new Error('invalid_audio');\n      source = 'server'; await playAudio(out.data, turn);"
+          new="      const audio = await voiceDeadline(() => speechAudioBlob(out.data), turn.signal, 3000);\n      if (!turn.current()) return { status:'cancelled', source, truncated };\n      source = 'server'; await playAudio(audio, turn);"
+          assert code.count(old)==1;code=code.replace(old,new);p.write_text(code)
+          # The fake transport deliberately exposes the standard fetch parameter types.
+          q=Path('frontend/src/lib/company/voice.test.ts');test=q.read_text()
+          test=test.replace("vi.fn(async()=>new Response(bytes,{headers:{'content-type':'application/octet-stream'}}))", "vi.fn(async(_url:RequestInfo|URL,_options?:RequestInit)=>new Response(bytes,{headers:{'content-type':'application/octet-stream'}}))")
+          q.write_text(test)
+          PY
+      - name: Full candidate regression and production compilation
+        working-directory: frontend
+        run: |
+          npm test
+          npx --no-install tsc -b
+          npm run build:tauri
+      - name: Store two verified file blobs and candidate tree only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const files=['frontend/src/lib/company/voice.ts','frontend/src/lib/company/voice.test.ts'];
+          async function api(path,body){const r=await fetch('https://api.github.com/repos/conpol84/javris-clone'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+process.env.GH_TOKEN,'content-type':'application/json',accept:'application/vnd.github+json'},...(body?{body:JSON.stringify(body)}:{})});if(!r.ok)throw new Error('Git API '+r.status);return r.json();}
+          const entries=[];
+          for(const path of files){const b=await api('/git/blobs',{content:fs.readFileSync(path,'utf8'),encoding:'utf-8'});entries.push({path,mode:'100644',type:'blob',sha:b.sha});}
+          entries.push({path:'.github/workflows/firbo-voice-mime-once.yml',mode:'100644',type:'blob',sha:null});
+          const parent=await api('/git/commits/'+process.env.GITHUB_SHA);
+          const tree=await api('/git/trees',{base_tree:parent.tree.sha,tree:entries});
+          console.log('FIRBO_MIME_CANDIDATE_TREE '+tree.sha);
+          console.log('FIRBO_MIME_CANDIDATE_PARENT '+process.env.GITHUB_SHA);
+          console.log('FIRBO_MIME_CANDIDATE_FILES '+JSON.stringify(entries));
+          NODE
