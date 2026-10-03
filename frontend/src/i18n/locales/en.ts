@@ -1001,6 +1001,14 @@ export const en = {
   'tasks.kpi.done': 'Done in 7 days',
   'tasks.view.board': 'Board',
   'tasks.view.list': 'List',
+  'landing.how.eyebrow': 'HOW IT WORKS',
+  'landing.how.h2': 'From zero to a working AI team in three steps',
+  'landing.how.s1.t': 'Create your company',
+  'landing.how.s1.d': 'Tell Firbo what your business does. Your AI CEO and first employees are ready in seconds.',
+  'landing.how.s2.t': 'Give them work',
+  'landing.how.s2.d': 'Talk to your CEO or write a task. The team plans, researches and prepares real deliverables.',
+  'landing.how.s3.t': 'Approve what matters',
+  'landing.how.s3.d': 'Anything that leaves the company waits for your yes. You stay in control, they do the work.',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

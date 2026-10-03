@@ -38,6 +38,7 @@ npx tsc -b             # type check (must print nothing)
 npx vitest run         # 196 tests, must all pass
 npm run build:tauri    # production build check
 ```
+**Preview without an account:** `npm run preview:mock` serves the real app on http://localhost:5200 against `frontend/preview/mock-client.ts` (fake Supabase with sample data); add `?guest=1` to see the public landing page. Use it to review any signed-in screen visually.
 Without the two `VITE_COMPANY_*` variables the app falls back to the legacy single-user OpenJarvis mode (no login) — if you see the old UI, that is why.
 Rules the tests enforce: every locale has the same keys and placeholders; no locale text may contain the old product name.
 

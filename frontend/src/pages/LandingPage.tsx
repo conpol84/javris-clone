@@ -61,7 +61,7 @@ export function LandingPage({ onSignIn, onSignUp }: { onSignIn: () => void; onSi
           </ul>
         </div>
 
-        <div className="relative h-[340px] md:h-[520px]">
+        <div className="relative h-[340px] md:h-[520px]" style={{ maskImage: 'radial-gradient(closest-side, #000 72%, transparent 100%)', WebkitMaskImage: 'radial-gradient(closest-side, #000 72%, transparent 100%)' }}>
           <div className="absolute inset-0 rounded-full" style={{ background: 'radial-gradient(closest-side, rgba(0, 212, 255,0.18), transparent)' }} />
           <Suspense fallback={null}>
             <CoreOrb satellites={SATELLITES} className="absolute inset-0" />
@@ -70,6 +70,20 @@ export function LandingPage({ onSignIn, onSignUp }: { onSignIn: () => void; onSi
             <div className="fb-eyebrow">{t('landing.orbLabel')}</div>
           </div>
         </div>
+      </section>
+
+      <section className="relative mx-auto max-w-6xl px-5 py-10">
+        <div className="fb-eyebrow">{t('landing.how.eyebrow')}</div>
+        <h2 className="fb-h2 mt-2 max-w-2xl">{t('landing.how.h2')}</h2>
+        <ol className="mt-8 grid gap-4 md:grid-cols-3">
+          {([1, 2, 3] as const).map((n) => (
+            <li key={n} className="fb-glass p-6">
+              <span className="grid h-9 w-9 place-items-center rounded-xl text-sm font-semibold" style={{ background: 'rgba(34,211,238,.12)', border: '1px solid var(--fb-border-strong)', color: 'var(--fb-accent)' }}>{n}</span>
+              <h3 className="mt-4 text-base font-semibold">{t(`landing.how.s${n}.t` as TKey)}</h3>
+              <p className="fb-muted mt-2 text-sm leading-relaxed">{t(`landing.how.s${n}.d` as TKey)}</p>
+            </li>
+          ))}
+        </ol>
       </section>
 
       <section id="team" className="relative mx-auto max-w-6xl px-5 py-16">

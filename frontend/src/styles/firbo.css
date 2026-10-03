@@ -335,3 +335,6 @@ html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
 .fb-kv { display: grid; grid-template-columns: 110px 1fr; gap: 6px 14px; font-size: 13px; }
 .fb-kv dt { color: var(--fb-dim); } .fb-kv dd { color: var(--fb-text); overflow-wrap: anywhere; }
 @media (max-width: 767px) { .fb-board { grid-auto-columns: 82%; } .fb-kv { grid-template-columns: 90px 1fr; } }
+
+.fb-root h1.fb-h1 { font-size: clamp(2.3rem, 4.8vw, 3.9rem); line-height: 1.03; letter-spacing: -0.035em; font-weight: 650; }
+.fb-root .fb-h2 { font-weight: 600; letter-spacing: -0.025em; }

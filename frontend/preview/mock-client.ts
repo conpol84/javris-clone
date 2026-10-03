@@ -27,9 +27,9 @@ const DB: Record<string, unknown[]> = {
   memories: [{ id: 'm1', content: 'Our ideal customer is a semi-pro athlete under 25.', memory_type: 'instruction', importance: 0.9, created_at: ago(2), agent_id: null }],
   integrations: [{ id: 'i1', kind: 'slack', name: 'Team Slack', config: {}, status: 'active', last_error: null, last_used_at: ago(1), created_at: ago(5) }, { id: 'i2', kind: 'stripe', name: 'Stripe', config: {}, status: 'active', last_error: null, last_used_at: ago(0.5), created_at: ago(6) }],
   plans: [
-    { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['2 AI employees', 'Voice CEO', 'Community support'], sort: 1, purchasable: false },
-    { id: 'pro', name: 'Pro', price_month_usd: 29, price_year_usd: 290, limits: { agents: 25, shifts: 10, members: 10, memories: 500, daily_runs: 300, integrations: 10 }, features: ['25 AI employees', 'Premium agents', 'All integrations', 'Priority models'], sort: 2, purchasable: true },
-    { id: 'business', name: 'Business', price_month_usd: 99, price_year_usd: 990, limits: { agents: 100, shifts: 50, members: 50, memories: 5000, daily_runs: 2000, integrations: 30 }, features: ['100 AI employees', 'Teams and roles', 'Audit log', 'Dedicated support'], sort: 3, purchasable: true },
+    { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['ai_ceo_text', 'missions', 'inbox_approvals'], sort: 1, purchasable: false },
+    { id: 'pro', name: 'Pro', price_month_usd: 29, price_year_usd: 290, limits: { agents: 25, shifts: 10, members: 10, memories: 500, daily_runs: 300, integrations: 10 }, features: ['ai_ceo_voice', 'missions', 'shifts', 'all_integrations', 'reviews', 'memory_map'], sort: 2, purchasable: true },
+    { id: 'business', name: 'Business', price_month_usd: 99, price_year_usd: 990, limits: { agents: 100, shifts: 50, members: 50, memories: 5000, daily_runs: 2000, integrations: 30 }, features: ['ai_ceo_voice', 'missions', 'shifts', 'all_integrations', 'reviews', 'memory_map', 'priority_support', 'audit_export'], sort: 3, purchasable: true },
   ],
   audit_log: [{ id: 'l1', action: 'agent.hired', entity_type: 'agent', entity_id: 'a8', details: { name: 'Data Analyst' }, created_at: ago(1), actor_id: 'u1' }, { id: 'l2', action: 'agent.updated', entity_type: 'agent', entity_id: 'a2', details: { name: 'Sales Agent', changed: ['autonomy'] }, created_at: ago(2), actor_id: 'u1' }],
   conversations: [], messages: [], shifts: [], connector_devices: [], connector_jobs: [], platform_admins: [], integration_votes: [],
@@ -43,10 +43,11 @@ function builder(table: string) {
   return b;
 }
 const RPC: Record<string, unknown> = {
-  get_plan_usage: { plan: { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['2 AI employees'], sort: 1, purchasable: false }, status: 'active', renews_at: null, has_subscription: false, usage: { agents: 9, shifts: 1, members: 1, memories: 1, daily_runs: 8, integrations: 2 } },
+  get_plan_usage: { plan: { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['ai_ceo_text'], sort: 1, purchasable: false }, status: 'active', renews_at: null, has_subscription: false, usage: { agents: 9, shifts: 1, members: 1, memories: 1, daily_runs: 8, integrations: 2 } },
     is_platform_admin: false, list_members: [{ user_id: 'u1', email: 'owner@tradeathletes.com', display_name: 'Constantinos', role: 'owner', created_at: ago(20) }],
 };
-const session = { access_token: 'preview', user: { id: 'u1', email: 'owner@tradeathletes.com' } };
+const guest = typeof location !== 'undefined' && location.search.includes('guest');
+const session = guest ? null : { access_token: 'preview', user: { id: 'u1', email: 'owner@tradeathletes.com' } } as { access_token: string; user: { id: string; email: string } } | null;
 export const COMPANY_ENABLED = true;
 export const companyClient = {
   from: (t: string) => builder(t),
@@ -56,7 +57,7 @@ export const companyClient = {
   removeChannel: () => Promise.resolve(),
   auth: {
     getSession: () => Promise.resolve({ data: { session }, error: null }),
-    getUser: () => Promise.resolve({ data: { user: session.user }, error: null }),
+    getUser: () => Promise.resolve({ data: { user: session?.user ?? null }, error: null }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
     signOut: () => Promise.resolve({ error: null }),
   },

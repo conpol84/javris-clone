@@ -266,13 +266,13 @@ export function IntegrationsPage() {
                       <li key={a.kind}>
                         <button
                           onClick={() => open(a.kind)}
-                          className="fb-row fb-glass--hover w-full cursor-pointer flex-col items-start gap-1.5 text-start"
+                          className="fb-row fb-glass--hover h-full w-full cursor-pointer !flex-col !items-start gap-1.5 !text-start"
                           style={adding === a.kind ? { borderColor: a.color } : undefined}
                         >
-                          <span className="fb-dot" style={{ background: a.color, boxShadow: `0 0 10px ${a.color}` }} />
+                          <span className="grid h-9 w-9 place-items-center rounded-xl text-sm font-bold" style={{ background: `${a.color}22`, border: `1px solid ${a.color}55`, color: a.color }}>{a.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase()}</span>
                           <span className="text-sm font-semibold">{a.name}</span>
                           <span className="fb-dim text-xs">{about(a)}</span>
-                          <span className="mt-1 inline-flex items-center gap-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
+                          <span className="mt-auto inline-flex items-center gap-1 pt-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
                         </button>
                       </li>
                     ))}

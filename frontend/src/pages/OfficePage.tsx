@@ -82,7 +82,7 @@ export function OfficePage() {
         </div>
       </div>
 
-      <aside className="w-full shrink-0 overflow-y-auto p-3 lg:w-[360px]">
+      <aside className="w-full shrink-0 overflow-y-auto p-3 lg:w-[360px] lg:pt-14">
         {selected ? (
           <Panel
             title={nameOf(selected)}
