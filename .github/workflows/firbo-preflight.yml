@@ -2,10 +2,10 @@ name: Firbo read-only VPS diagnostics
 on:
   push:
     branches: [main, claude/omniroute-engine, codex/firbo-unified-gateway]
-    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'deploy/hostinger/recovery_continue.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', 'tests/firbo/test_recovery_continue.py', '.github/workflows/firbo-preflight.yml']
+    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'deploy/hostinger/recovery_continue.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', 'tests/firbo/test_recovery_continue.py', 'tests/firbo/test_oci_artifacts.py', '.github/workflows/firbo-preflight.yml']
   pull_request:
     branches: [main, claude/omniroute-engine]
-    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'deploy/hostinger/recovery_continue.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', 'tests/firbo/test_recovery_continue.py', '.github/workflows/firbo-preflight.yml']
+    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'deploy/hostinger/recovery_continue.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', 'tests/firbo/test_recovery_continue.py', 'tests/firbo/test_oci_artifacts.py', '.github/workflows/firbo-preflight.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -23,3 +23,7 @@ jobs:
         run: python3 -m unittest discover -s tests/firbo -p test_recovery_checkpoint.py -v
       - name: Verify OCI identity compatibility and existing-archive continuation
         run: python3 -m unittest discover -s tests/firbo -p test_recovery_continue.py -v
+      - name: Verify OCI artifacts, empty configs and redacted failure diagnostics
+        run: python3 -m unittest discover -s tests/firbo -p test_oci_artifacts.py -v
+      - name: Record the reviewed standalone script checksum
+        run: sha256sum deploy/hostinger/recovery_continue.py

@@ -2,6 +2,7 @@
 """Revalidate an EXISTING private Firbo checkpoint; never export/restart/deploy.
 
 Accepts classic Docker config IDs and hash-linked OCI manifest/index IDs.
+Verifies OCI artifacts/attestations separately from runnable images (v2).
 Reads local private configuration and image archives; emits no secret values.
 Only side effects: new root-only checksum/report files inside the checkpoint.
 """
@@ -39,6 +40,7 @@ CONFIG_TYPES = {'application/vnd.oci.image.config.v1+json', 'application/vnd.doc
 
 class Blocked(Exception):
     """Exception text is always a fixed safe code, never upstream content."""
+    diagnostics: dict[str, Any] | None = None
 
 
 def require(ok: Any, code: str) -> None:
@@ -106,83 +108,218 @@ def blob_read(archive: tarfile.TarFile, members: dict[str, tarfile.TarInfo], nam
 
 
 def verify_image_archive(target: Path, expected: str) -> dict[str, Any]:
-    """Structural integrity proof only: no extraction, docker load or boot."""
+    """Verify stored bytes and a linked image identity, not application recovery.
+
+    OCI image indexes can include non-runnable artifacts (including BuildKit
+    attestations with an empty config). Those bytes are checked, but artifacts
+    and their configs can never satisfy the requested runnable image identity.
+    """
+    diagnostics: dict[str, Any] = {
+        'verifier_version': 'oci-artifacts-v2', 'stage': 'archive_open',
+        'oci_layout_detected': False, 'indexes_verified': 0,
+        'image_manifests_verified': 0, 'artifact_manifests_verified': 0,
+        'empty_configs_verified': 0, 'opaque_configs_verified': 0,
+        'payload_descriptors_verified': 0, 'last_config_kind': 'not_read',
+    }
+    try:
+        return _verify_image_archive(target, expected, diagnostics)
+    except Blocked as exc:
+        # Only fixed labels, booleans and counters; no config fields/annotations.
+        exc.diagnostics = dict(diagnostics)
+        raise
+
+
+def _verify_image_archive(target: Path, expected: str, diagnostics: dict[str, Any]) -> dict[str, Any]:
     require(re.fullmatch(r'sha256:[0-9a-f]{64}', expected), 'invalid_expected_image_id')
     with tarfile.open(target, 'r:') as archive:
         members = archive_members(archive)
         if 'index.json' in members and 'oci-layout' in members:
-            require(unique_json(blob_read(archive, members, 'oci-layout')).get('imageLayoutVersion') == '1.0.0', 'unsupported_oci_layout')
+            diagnostics['oci_layout_detected'] = True
+            layout = unique_json(blob_read(archive, members, 'oci-layout'))
+            require(isinstance(layout, dict) and layout.get('imageLayoutVersion') == '1.0.0', 'unsupported_oci_layout')
             raw_index = blob_read(archive, members, 'index.json')
             root = unique_json(raw_index)
-            verified: set[str] = set()
+            # A node's eligibility is computed only from its own descendants.
+            # A sibling image cannot turn an artifact-only index into an image.
+            nodes: dict[str, tuple[str, bool]] = {}
             active: set[str] = set()
-            identities: dict[str, str] = {}
-            manifests, layers = 0, 0
+            eligible_identities: dict[str, str] = {}
+            reference_count = 0
+            empty_type = 'application/vnd.oci.empty.v1+json'
+            empty_digest = sha(b'{}')
+            image_layer_types = {
+                'application/vnd.oci.image.layer.v1.tar',
+                'application/vnd.oci.image.layer.v1.tar+gzip',
+                'application/vnd.oci.image.layer.v1.tar+zstd',
+                'application/vnd.oci.image.layer.nondistributable.v1.tar',
+                'application/vnd.oci.image.layer.nondistributable.v1.tar+gzip',
+                'application/vnd.oci.image.layer.nondistributable.v1.tar+zstd',
+                'application/vnd.docker.image.rootfs.diff.tar',
+                'application/vnd.docker.image.rootfs.diff.tar.gzip',
+                'application/vnd.docker.image.rootfs.foreign.diff.tar.gzip',
+            }
 
             def descriptor(desc: Any, metadata: bool) -> bytes:
+                nonlocal reference_count
+                reference_count += 1
+                require(reference_count <= 8192, 'oci_graph_limit')
                 require(isinstance(desc, dict), 'invalid_oci_descriptor')
                 digest, size = desc.get('digest'), desc.get('size')
                 require(isinstance(digest, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', digest)
                         and type(size) is int and size >= 0, 'invalid_oci_descriptor')
-                member = members.get('blobs/sha256/' + digest[7:])
-                require(member is not None and member.isfile() and member.size == size, 'oci_blob_missing_or_wrong_size')
                 require(not metadata or size <= MAX_JSON, 'oci_metadata_too_large')
+                member = members.get('blobs/sha256/' + digest[7:])
+                # OCI permits embedded content. Only the canonical two-byte
+                # empty JSON descriptor may be supplied inline in this verifier.
+                # Do not use a network URL or conceal a present corrupt blob.
+                inline_empty = (desc.get('mediaType') == empty_type and digest == empty_digest
+                                and size == 2 and desc.get('data') == 'e30=')
+                if member is None and inline_empty:
+                    return b'{}' if metadata else b''
+                require(member is not None and member.isfile() and member.size == size, 'oci_blob_missing_or_wrong_size')
                 h = hashlib.sha256()
                 content: list[bytes] = []
+                read_bytes = 0
                 stream = archive.extractfile(member)
                 require(stream is not None, 'oci_blob_unreadable')
                 with stream:
                     for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                         h.update(chunk)
+                        read_bytes += len(chunk)
                         if metadata:
                             content.append(chunk)
-                require('sha256:' + h.hexdigest() == digest, 'oci_blob_digest_mismatch')
+                require(read_bytes == size and 'sha256:' + h.hexdigest() == digest, 'oci_blob_digest_mismatch')
                 return b''.join(content)
 
-            def walk(desc: Any, depth: int = 0) -> None:
-                nonlocal manifests, layers
-                require(isinstance(desc, dict) and depth <= 8 and len(verified) < 4096, 'oci_graph_limit')
+            def walk(desc: Any, depth: int = 0) -> bool:
+                require(isinstance(desc, dict) and depth <= 8 and len(nodes) < 4096, 'oci_graph_limit')
                 kind, digest = desc.get('mediaType'), desc.get('digest')
+                require(isinstance(kind, str) and kind in INDEX_TYPES | MANIFEST_TYPES, 'unsupported_oci_descriptor_type')
                 require(isinstance(digest, str) and digest not in active, 'invalid_oci_graph')
-                if digest in verified:
-                    return
-                active.add(digest)
+                # Validate each descriptor's own size/hash even when its target
+                # was seen before; a malformed alias must not bypass validation.
+                diagnostics['stage'] = 'manifest_descriptor'
                 value = unique_json(descriptor(desc, True))
                 require(isinstance(value, dict) and value.get('schemaVersion') == 2, 'invalid_oci_manifest')
+                require(value.get('mediaType', kind) == kind, 'oci_media_type_mismatch')
+                if digest in nodes:
+                    require(nodes[digest][0] == kind, 'oci_media_type_mismatch')
+                    return nodes[digest][1]
+                active.add(digest)
+                has_image = False
                 if kind in INDEX_TYPES:
-                    identities[digest] = 'index'
                     children = value.get('manifests')
                     require(isinstance(children, list) and 0 < len(children) <= 64, 'invalid_oci_index')
                     for child in children:
-                        walk(child, depth + 1)
-                elif kind in MANIFEST_TYPES:
-                    identities[digest] = 'manifest'
-                    config = value.get('config')
-                    require(isinstance(config, dict) and config.get('mediaType') in CONFIG_TYPES, 'invalid_oci_config')
-                    config_value = unique_json(descriptor(config, True))
-                    require(isinstance(config_value, dict), 'invalid_oci_config')
-                    identities[config['digest']] = 'config'
-                    items = value.get('layers')
-                    require(isinstance(items, list) and 0 < len(items) <= 1000, 'invalid_oci_layers')
-                    for layer in items:
-                        descriptor(layer, False)
-                        layers += 1
-                    manifests += 1
+                        child_has_image = walk(child, depth + 1)
+                        has_image = has_image or child_has_image
+                    diagnostics['indexes_verified'] += 1
+                    if has_image:
+                        eligible_identities[digest] = 'index'
                 else:
-                    raise Blocked('unsupported_oci_descriptor_type')
+                    diagnostics['stage'] = 'config_descriptor'
+                    config = value.get('config')
+                    require(isinstance(config, dict), 'missing_oci_config_descriptor')
+                    config_kind = config.get('mediaType')
+                    # Unknown media types are kept opaque, never parsed as JSON.
+                    require(isinstance(config_kind, str) and
+                            re.fullmatch(r'[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+', config_kind),
+                            'invalid_oci_config_media_type')
+                    diagnostics['last_config_kind'] = ('image' if config_kind in CONFIG_TYPES
+                                                       else 'empty' if config_kind == empty_type else 'opaque')
+                    artifact_type = value.get('artifactType')
+                    if artifact_type is not None:
+                        require(isinstance(artifact_type, str) and
+                                re.fullmatch(r'[A-Za-z0-9!#$&^_.+-]+/[A-Za-z0-9!#$&^_.+-]+', artifact_type),
+                                'invalid_oci_artifact_type')
+                    annotations = desc.get('annotations', {})
+                    require(isinstance(annotations, dict), 'invalid_oci_annotations')
+                    attestation = (artifact_type == 'application/vnd.docker.attestation.manifest.v1+json'
+                                   or annotations.get('vnd.docker.reference.type') == 'attestation-manifest')
+                    artifact = artifact_type is not None or attestation or config_kind not in CONFIG_TYPES
+                    diagnostics['stage'] = 'config_blob'
+                    if config_kind == empty_type:
+                        # Merely adding EMPTY to CONFIG_TYPES would falsely count
+                        # an attestation as a runnable image. Keep them distinct.
+                        require(artifact_type is not None, 'empty_config_requires_artifact_type')
+                        require(config.get('digest') == empty_digest and config.get('size') == 2,
+                                'invalid_empty_oci_config')
+                        require(descriptor(config, True) == b'{}', 'invalid_empty_oci_config')
+                        if 'data' in config:
+                            require(config['data'] == 'e30=', 'invalid_empty_oci_inline_data')
+                        config_value = None
+                        diagnostics['empty_configs_verified'] += 1
+                    elif config_kind in CONFIG_TYPES:
+                        config_value = unique_json(descriptor(config, True))
+                        require(isinstance(config_value, dict), 'invalid_oci_image_config_json')
+                    else:
+                        descriptor(config, False)
+                        config_value = None
+                        diagnostics['opaque_configs_verified'] += 1
+                    diagnostics['stage'] = 'layer_descriptors'
+                    items = value.get('layers')
+                    require(isinstance(items, list) and len(items) <= 1000, 'invalid_oci_layers')
+                    for layer in items:
+                        require(isinstance(layer, dict), 'invalid_oci_descriptor')
+                        if not artifact:
+                            require(isinstance(layer.get('mediaType'), str) and layer['mediaType'] in image_layer_types,
+                                    'unsupported_runnable_layer_type')
+                        descriptor(layer, False)
+                        diagnostics['payload_descriptors_verified'] += 1
+                    if artifact:
+                        diagnostics['artifact_manifests_verified'] += 1
+                    else:
+                        diagnostics['stage'] = 'runnable_image_config'
+                        require(isinstance(config_value, dict), 'invalid_oci_image_config_json')
+                        os_name, architecture = config_value.get('os'), config_value.get('architecture')
+                        require(isinstance(os_name, str) and os_name and os_name != 'unknown'
+                                and isinstance(architecture, str) and architecture and architecture != 'unknown',
+                                'runnable_platform_missing')
+                        rootfs = config_value.get('rootfs')
+                        require(isinstance(rootfs, dict) and rootfs.get('type') == 'layers'
+                                and isinstance(rootfs.get('diff_ids'), list)
+                                and len(rootfs['diff_ids']) == len(items)
+                                and all(isinstance(d, str) and re.fullmatch(r'sha256:[0-9a-f]{64}', d)
+                                        for d in rootfs['diff_ids']), 'runnable_rootfs_invalid')
+                        platform = desc.get('platform')
+                        if platform is not None:
+                            require(isinstance(platform, dict) and platform.get('os') == os_name
+                                    and platform.get('architecture') == architecture, 'runnable_platform_mismatch')
+                        has_image = True
+                        eligible_identities[digest] = 'manifest'
+                        eligible_identities[config['digest']] = 'config'
+                        diagnostics['image_manifests_verified'] += 1
                 active.remove(digest)
-                verified.add(digest)
+                nodes[digest] = (kind, has_image)
+                return has_image
 
+            diagnostics['stage'] = 'root_index'
             require(isinstance(root, dict) and root.get('schemaVersion') == 2, 'invalid_oci_index')
             children = root.get('manifests')
             require(isinstance(children, list) and 0 < len(children) <= 64, 'invalid_oci_index')
-            identities[sha(raw_index)] = 'index'
+            root_has_image = False
             for child in children:
-                walk(child)
-            require(expected in identities and manifests > 0, 'saved_image_identity_mismatch')
-            return {'format': 'oci', 'identity_kind': identities[expected], 'linked_manifests_verified': manifests,
-                    'layer_descriptor_hashes_verified': layers, 'application_boot_tested': False}
+                child_has_image = walk(child)
+                root_has_image = root_has_image or child_has_image
+            if root_has_image:
+                eligible_identities[sha(raw_index)] = 'index'
+            diagnostics['stage'] = 'expected_image_identity'
+            require(expected in eligible_identities and diagnostics['image_manifests_verified'] > 0,
+                    'saved_image_identity_mismatch')
+            diagnostics['stage'] = 'complete'
+            return {'format': 'oci', 'verifier_version': 'oci-artifacts-v2',
+                    'identity_kind': eligible_identities[expected],
+                    'linked_manifests_verified': diagnostics['image_manifests_verified'],
+                    'artifact_manifests_verified': diagnostics['artifact_manifests_verified'],
+                    'empty_configs_verified': diagnostics['empty_configs_verified'],
+                    'opaque_configs_verified': diagnostics['opaque_configs_verified'],
+                    'layer_descriptor_hashes_verified': diagnostics['payload_descriptors_verified'],
+                    'artifact_semantics_verified': False, 'uncompressed_layer_diff_ids_verified': False,
+                    'application_boot_tested': False}
 
+        # Classic Docker export compatibility is retained; no stronger layer
+        # verification is claimed for this format than the previous release.
+        diagnostics['stage'] = 'legacy_manifest'
         entries = unique_json(blob_read(archive, members, 'manifest.json'))
         require(isinstance(entries, list) and 0 < len(entries) <= 16, 'image_manifest_invalid')
         for entry in entries:
@@ -196,7 +333,8 @@ def verify_image_archive(target: Path, expected: str) -> dict[str, Any]:
                 require(isinstance(name, str), 'image_layers_invalid')
                 member = members.get(name)
                 require(member is not None and member.isfile() and member.size > 0, 'image_layer_missing')
-            return {'format': 'docker_legacy', 'identity_kind': 'config', 'linked_manifests_verified': 1,
+            return {'format': 'docker_legacy', 'verifier_version': 'oci-artifacts-v2',
+                    'identity_kind': 'config', 'linked_manifests_verified': 1,
                     'layer_descriptor_hashes_verified': 0, 'application_boot_tested': False}
         raise Blocked('saved_image_identity_mismatch')
 
@@ -307,6 +445,8 @@ def continue_checkpoint(directory: Path) -> tuple[dict[str, Any], int]:
         return report, 0
     except Blocked as exc:
         report['error'] = str(exc)
+        if exc.diagnostics is not None:
+            report['image_diagnostics'] = exc.diagnostics
     except Exception:
         report['error'] = 'resume_failed_no_runtime_changes'
     return report, 1
