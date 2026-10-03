@@ -2,10 +2,10 @@ name: Firbo free model catalogue
 on:
   push:
     branches: [codex/firbo-unified-gateway]
-    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models.py', '.github/workflows/firbo-free-models.yml']
+    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models*.py', '.github/workflows/firbo-free-models.yml']
   pull_request:
     branches: [claude/omniroute-engine]
-    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models.py', '.github/workflows/firbo-free-models.yml']
+    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models*.py', '.github/workflows/firbo-free-models.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,7 +21,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Verify bounded discovery and guarded registration using mocks
-        run: python3 -m unittest discover -s tests/firbo -p test_free_models.py -v
+        run: python3 -m unittest discover -s tests/firbo -p 'test_free_models*.py' -v
       - name: Record the reviewed standalone script checksum
         run: sha256sum deploy/hostinger/free_models.py
   public-catalogue:
