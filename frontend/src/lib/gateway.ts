@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiFetch, getBase } from './api';
+import { apiFetch, getBase } from './gateway-api';
 import { companyClient } from './company/client';
 
 export interface GatewayOverview {
