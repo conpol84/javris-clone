@@ -74,12 +74,16 @@ test('same ID with changed parameters is never executed',async t=>{
  await assert.rejects(executeJournaled({...job,params:{...job.params,content:'Changed'}},cfg,journal),/job_identity_changed/);
 });
 test('unowned journal cannot authorize a side effect',async t=>{
- const {root,cfg,directory}=await setup(t);const second=await LocalJobJournal.open(directory,scope);t.after(()=>second.close());
- await assert.rejects(executeJournaled(writeJob(root),cfg,second),/journal_not_owned/);
+ const {root,cfg,directory}=await setup(t);const second=await LocalJobJournal.open(directory,scope);
+ try { await assert.rejects(executeJournaled(writeJob(root),cfg,second),/journal_not_owned/); }
+ finally { second.close(); } // Close every SQLite handle before the fixture removes files (Windows).
+
 });
 test('two workers cannot own the same journal',async t=>{
- const {directory}=await setup(t);const second=await LocalJobJournal.open(directory,scope);t.after(()=>second.close());
- assert.throws(()=>second.acquire(),/connector_already_running/);
+ const {directory}=await setup(t);const second=await LocalJobJournal.open(directory,scope);
+ try { assert.throws(()=>second.acquire(),/connector_already_running/); }
+ finally { second.close(); } // Do not rely on after-hook ordering to release an open Windows file.
+
 });
 test('active STARTED work cannot be replayed by another call',async t=>{
  const {root,cfg,journal}=await setup(t);const job=writeJob(root);journal.begin(job);
