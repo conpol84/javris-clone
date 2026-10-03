@@ -2,10 +2,10 @@ name: Firbo read-only VPS diagnostics
 on:
   push:
     branches: [main, claude/omniroute-engine, codex/firbo-unified-gateway]
-    paths: ['deploy/hostinger/preflight.py', 'tests/firbo/test_preflight.py', '.github/workflows/firbo-preflight.yml']
+    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', '.github/workflows/firbo-preflight.yml']
   pull_request:
     branches: [main, claude/omniroute-engine]
-    paths: ['deploy/hostinger/preflight.py', 'tests/firbo/test_preflight.py', '.github/workflows/firbo-preflight.yml']
+    paths: ['deploy/hostinger/preflight.py', 'deploy/hostinger/recovery_checkpoint.py', 'tests/firbo/test_preflight.py', 'tests/firbo/test_recovery_checkpoint.py', '.github/workflows/firbo-preflight.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -19,3 +19,5 @@ jobs:
           persist-credentials: false
       - name: Verify diagnostics with mocked processes and network
         run: python3 -m unittest discover -s tests/firbo -p test_preflight.py -v
+      - name: Verify private config and API-image checkpoints with synthetic data
+        run: python3 -m unittest discover -s tests/firbo -p test_recovery_checkpoint.py -v
