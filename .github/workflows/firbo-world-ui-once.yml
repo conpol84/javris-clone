@@ -1,0 +1,62 @@
+name: Firbo reviewed connected-world integration
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-world-ui-once.yml','tests/firbo/connections/ui-edits.once.json']
+permissions:
+  contents: read
+jobs:
+  reviewed:
+    if: github.repository == 'conpol84/javris-clone' && github.event.head_commit.message == 'Prepare reviewed connected-world integration'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Apply five exact reviewed edits to the existing application, retaining other work
+        run: |
+          python3 - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          sha=lambda b:hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+          edits=json.loads(Path('tests/firbo/connections/ui-edits.once.json').read_text())
+          allowed={'frontend/src/pages/IntegrationsPage.tsx','frontend/src/pages/ComputersPage.tsx','frontend/src/pages/CommandCenterPage.tsx','frontend/src/lib/company/integrations.ts','supabase/functions/integrations/index.ts'}
+          assert set(edits)==allowed
+          for name,item in edits.items():
+            p=Path(name);b=p.read_bytes();assert sha(b)==item['before'],name
+            lines=b.decode().splitlines(True)
+            for start,end,value in reversed(item['edits']):lines[start:end]=[value]
+            result=''.join(lines).encode();assert sha(result)==item['after'],name
+            p.write_bytes(result)
+          PY
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Complete frontend tests and type checks
+        working-directory: frontend
+        run: |
+          npm test
+          npx --no-install tsc -b
+          npx --no-install tsc --ignoreConfig --noEmit --target es2022 --module esnext --moduleResolution bundler --allowImportingTsExtensions --lib ES2022,DOM --skipLibCheck ../supabase/functions/_shared/connected-providers.ts ../supabase/functions/_shared/connected-service.ts ../supabase/functions/_shared/device-bridges.ts
+          npm run build:tauri
+          npx --no-install vite build --config vite.world.config.ts
+      - name: Store verified candidate tree, without updating any ref or deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const edits=JSON.parse(fs.readFileSync('tests/firbo/connections/ui-edits.once.json','utf8'));
+          async function api(path,body){const r=await fetch('https://api.github.com/repos/conpol84/javris-clone'+path,{method:body?'POST':'GET',headers:{authorization:'Bearer '+process.env.GH_TOKEN,'content-type':'application/json',accept:'application/vnd.github+json'},...(body?{body:JSON.stringify(body)}:{})});if(!r.ok)throw new Error('Git API '+r.status);return r.json();}
+          const entries=[];
+          for(const[path,item]of Object.entries(edits)){const b=await api('/git/blobs',{content:fs.readFileSync(path,'utf8'),encoding:'utf-8'});if(b.sha!==item.after)throw new Error('hash mismatch '+path);entries.push({path,mode:'100644',type:'blob',sha:b.sha});}
+          for(const path of ['tests/firbo/connections/ui-edits.once.json','.github/workflows/firbo-world-ui-once.yml','.github/workflows/firbo-integrations-source-once.yml'])entries.push({path,mode:'100644',type:'blob',sha:null});
+          const parent=await api('/git/commits/'+process.env.GITHUB_SHA);
+          const tree=await api('/git/trees',{base_tree:parent.tree.sha,tree:entries});
+          console.log('FIRBO_WORLD_REVIEWED_TREE '+tree.sha);
+          console.log('FIRBO_WORLD_REVIEWED_PARENT '+process.env.GITHUB_SHA);
+          NODE
