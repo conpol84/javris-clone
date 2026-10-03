@@ -11,6 +11,7 @@ import { BottomNav } from './command/BottomNav';
 import { WindowControls } from './command/WindowControls';
 import { CommandProvider } from './command/CommandHost';
 import '../styles/mobile-foundation.css';
+import '../styles/mobile-pages.css';
 
 export function Layout() {
   const { t } = useI18n();
@@ -82,7 +83,7 @@ export function Layout() {
             onClick={() => useAppStore.getState().setSidebarOpen(false)}
           />
         )}
-        <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
+        <main data-firbo-route={pathname} className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
           <div className={`flex-1 flex flex-col min-w-0 min-h-0 relative z-[2] ${COMPANY_ENABLED ? 'fb-main-pad' : ''}`}>
             <Outlet />
           </div>

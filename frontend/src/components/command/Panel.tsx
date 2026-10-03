@@ -30,9 +30,9 @@ export function Panel({
     <>
       {max && <div className="fb-panel-backdrop" onClick={() => setMax(false)} aria-hidden="true" />}
       <section className={`fb-glass p-4 ${area ? `fb-a-${area}` : ''} ${max ? 'fb-panel-max' : ''} ${className}`} style={style}>
-        <header className={`${folded && !max ? '' : 'mb-3'} flex items-center justify-between gap-2`}>
+        <header className={`fb-panel-head ${folded && !max ? '' : 'mb-3'} flex items-center justify-between gap-2`}>
           <h2 className="fb-eyebrow">{title}</h2>
-          <div className="flex items-center gap-1.5">
+          <div className="fb-panel-actions flex items-center gap-1.5">
             {right}
             {!max && (
               <button type="button" className="fb-iconbtn" onClick={() => setFolded(!folded)} aria-expanded={!folded} title={t(folded ? 'panel.restore' : 'panel.minimize')} aria-label={t(folded ? 'panel.restore' : 'panel.minimize')}>

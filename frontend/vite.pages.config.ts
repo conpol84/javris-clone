@@ -5,16 +5,20 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 const root = path.resolve(import.meta.dirname, '..');
 const client = path.join(root, 'tests/firbo/pages/mock-client.ts');
+const realClient = path.join(root, 'frontend/src/lib/company/client');
 const isolate: Plugin = {
   name: 'firbo-m2-isolated-data', enforce: 'pre',
   resolveId(source, importer) {
-    if (importer && /lib[\\/]company[\\/]/.test(importer) && source === './client') return client;
-    if (/lib\/company\/client$/.test(source)) return client;
+    if (importer && source.startsWith('.')) {
+      const resolved = path.resolve(path.dirname(importer.split('?')[0]), source).replace(/\.tsx?$/, '');
+      if (resolved === realClient) return client;
+    }
     return null;
   },
 };
 export default defineConfig({
   root: path.join(root, 'tests/firbo/pages'),
+  publicDir: path.join(root, 'frontend/public'),
   plugins: [isolate, react(), tailwindcss()],
   resolve: { alias: {
     '@': path.join(root,'frontend/src'),

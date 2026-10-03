@@ -1,17 +1,17 @@
-"""M2 actual App/route/Layout browser checks. Mock identity/data; no remote calls.
+"""M2 actual App/route/Layout checks. Synthetic identity/data; no remote calls.
 
-The local request allowlist has no backend proxy. Service workers are blocked.
-Read-only page interactions only; forms are edited, never submitted externally.
+Only explicit, bounded horizontal table/code wrappers may scroll sideways.
+Service workers and remote requests are blocked. No execution forms are submitted.
 """
 import json, os
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs, urlencode
+from urllib.parse import urlparse, urlencode
 from playwright.sync_api import sync_playwright, expect
 
 BASE='http://127.0.0.1:5211'
 OUT=Path(os.environ.get('FIRBO_M2_OUTPUT','/tmp/firbo-m2-evidence'));OUT.mkdir(parents=True,exist_ok=True)
 NAME='DemonstrationOrganisationWithAVeryLongUnbrokenNameForReflowTesting'
-MODEL='demo-provider/'+'model-with-long-context-'.__mul__(5)
+MODEL='demo-provider/'+'model-with-long-context-'*5
 DATE='2026-10-01T09:00:00Z'
 OVERVIEW={'connected':True,'host':'http://gateway.invalid','has_key':True,'models':{'total':459,'providers':[{'provider':'demo','models':459}],'combo_ids':['firbo-economy','firbo-quality']},'connections':[{'provider':'demo','connections':1,'active':1,'healthy':1,'limited':0}], 'combos':[{'name':'firbo-economy','strategy':'priority','steps':7},{'name':'firbo-quality','strategy':'priority','steps':4}], 'stats':[{'provider':'demo','requests':1234567,'success_rate':1,'avg_latency_ms':1243,'tokens_in':9876543,'tokens_out':9876543}], 'errors':{}}
 CONTROL={'contract':'firbo-control/v1','reachable':True,'available':True,'writes_enabled':False,'providers':[{'id':'p1','provider':'demo','name':NAME,'active':True,'status':'active'}],'models':[{'id':MODEL,'provider':'demo'}],'combos':[{'name':'firbo-economy','strategy':'priority','models':[MODEL],'revision':'a'*64,'managed':True,'editable':True}],'errors':{}}
@@ -28,17 +28,20 @@ PAYLOADS={
  '/v1/firbo/control':CONTROL,
 }
 GEOMETRY=r'''() => {
- const main=document.querySelector('main');
- const bad=[];
+ const main=document.querySelector('main'),bad=[];
  for(const n of main.querySelectorAll('*')) {
    if(n instanceof SVGElement || ['PATH','SCRIPT','STYLE','OPTION'].includes(n.tagName))continue;
    const s=getComputedStyle(n),r=n.getBoundingClientRect();
    if(!r.width||!r.height||s.display==='none'||s.visibility==='hidden'||n.classList.contains('sr-only'))continue;
    if(n.closest('[aria-hidden="true"]'))continue;
-   let scrollParent=false;
-   for(let p=n.parentElement;p&&p!==main;p=p.parentElement){ const ps=getComputedStyle(p);if(['auto','scroll'].includes(ps.overflowX)&&p.scrollWidth>p.clientWidth+1){scrollParent=true;break;} }
-   if(scrollParent)continue; // Tables/pre are allowed to scroll INSIDE their bounded wrapper.
-   if(r.left < -1 || r.right > innerWidth+1 || (n.childElementCount===0 && n.scrollWidth>n.clientWidth+2 && !['auto','scroll'].includes(s.overflowX)))bad.push({tag:n.tagName,class:n.className,text:(n.textContent||'').slice(0,75),x:r.x,w:r.width,client:n.clientWidth,scroll:n.scrollWidth});
+   let boundedScroll=false;
+   for(let p=n.parentElement;p&&p!==main;p=p.parentElement){
+     const ps=getComputedStyle(p),pr=p.getBoundingClientRect();
+     if(p.matches('.overflow-x-auto, [data-horizontal-scroll]') && ['auto','scroll'].includes(ps.overflowX)&&p.scrollWidth>p.clientWidth+1 && pr.left>=-1 && pr.right<=innerWidth+1){boundedScroll=true;break;}
+   }
+   if(boundedScroll)continue;
+   const field=['INPUT','TEXTAREA','SELECT'].includes(n.tagName);
+   if(r.left < -1 || r.right > innerWidth+1 || (!field && n.childElementCount===0 && n.scrollWidth>n.clientWidth+2 && !['auto','scroll'].includes(s.overflowX)))bad.push({tag:n.tagName,class:n.className,text:(n.textContent||'').slice(0,75),x:r.x,w:r.width,client:n.clientWidth,scroll:n.scrollWidth});
  }
  return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,bad:bad.slice(0,18)};
 }'''
@@ -53,7 +56,7 @@ def run():
    for route in ROUTES:
     label=f'{width}x{height}-{lang}-{route.split("?")[0].strip("/") or "home"}'
     context=browser.new_context(viewport={'width':width,'height':height},reduced_motion='reduce',color_scheme=theme,has_touch=width<768,service_workers='block')
-    external=[]; writes=[]; paths=[]
+    external=[]; writes=[]; paths=[];states=[]
     def network(req):
      u=urlparse(req.request.url);path=u.path
      if u.netloc!='127.0.0.1:5211':external.append(u.hostname);return req.abort()
@@ -78,10 +81,16 @@ def run():
      def check(state='page'):
       m=page.evaluate(GEOMETRY)
       assert m['documentWidth']<=width+1 and not m['bad'],{'state':state,**m}
+      states.append(state)
      check()
+     if width<768:
+      nav=page.locator('.fb-bottomnav');expect(nav).to_be_visible()
+      assert nav.locator('a,button').count()==5,'navigation items lost'
+      for span in nav.locator('span').all():assert span.evaluate('(n)=>n.scrollWidth<=n.clientWidth+1'),'bottom-navigation label clipped'
+      assert page.locator('.fb-main-pad').evaluate('(n)=>parseFloat(getComputedStyle(n).paddingBottom)')>=nav.bounding_box()['height']-1,'navigation overlaps content'
      if route=='/gateway':
       tabs=page.locator('main [role="tablist"]').first.get_by_role('tab')
-      assert tabs.count()==10,'not the actual Gateway page'
+      expect(tabs).to_have_count(10)
       for i in range(1,10):
        tabs.nth(i).click();page.wait_for_load_state('networkidle');check(f'gateway-tab-{i}')
       tabs.first.click()
@@ -90,6 +99,7 @@ def run():
       for i in (1,2):
        tabs.nth(i).click();page.wait_for_load_state('networkidle');check(f'admin-tab-{i}')
       tabs.nth(3).click();expect(page.locator('main textarea')).to_be_visible();check('native-console')
+      expect(page.locator('main textarea')).to_have_attribute('readonly','')
      if route.startswith('/chat'):
       composer=page.locator('main form textarea');expect(composer).to_be_visible();composer.fill('Synthetic draft only — not sent')
       rect=composer.bounding_box();assert rect and rect['width']>=120,{'composer_width':rect}
@@ -99,10 +109,10 @@ def run():
      assert not writes,writes
      synthetic=page.evaluate('window.__firboM2.writes');assert all(x=='profiles.update' for x in synthetic),synthetic
      if width in (320,1440) and lang=='en':page.screenshot(path=str(OUT/(label+'.png')))
-     results.append({'case':label,'status':'passed','api_paths':sorted(set(paths))})
+     results.append({'case':label,'status':'passed','states':states,'api_paths':sorted(set(paths)),'external_requests_blocked':len(external)})
     except Exception as exc:
      page.screenshot(path=str(OUT/(label+'-FAILED.png')))
-     results.append({'case':label,'status':'failed','error':str(exc)[:6000],'page_errors':errors[:8]})
+     results.append({'case':label,'status':'failed','states':states,'error':str(exc)[:6000],'page_errors':errors[:8],'api_paths':sorted(set(paths))})
     finally:
      context.close();print('FIRBO_M2_CASE',json.dumps(results[-1]),flush=True)
      (OUT/'results.json').write_text(json.dumps({'scope':'M2 actual App and six priority pages, synthetic services','cases':results,'not_tested':['physical mobile keyboard','real-account authorization','other routes','real model calls','production deployment']},indent=2))
