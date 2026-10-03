@@ -36,7 +36,7 @@ export function CeoPage() {
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
-  const { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const [text, setText] = useState('');
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
@@ -109,7 +109,16 @@ export function CeoPage() {
           <section className="fb-glass fb-col gap-3 p-4">
             <div className="flex flex-wrap gap-2">
               {canTalk &&
-                (state === 'listening' || state === 'speaking' ? (
+                (state === 'listening' ? (
+                  <>
+                    <button className="fb-btn fb-btn--primary" onClick={sendNow}>
+                      <Send size={15} /> {t('voice.sendNow')}
+                    </button>
+                    <button className="fb-btn fb-btn--ghost" onClick={stop}>
+                      <Square size={15} /> {t('ceo.stop')}
+                    </button>
+                  </>
+                ) : state === 'speaking' ? (
                   <button className="fb-btn fb-btn--primary" onClick={stop}>
                     <Square size={15} /> {t('ceo.stop')}
                   </button>
@@ -143,6 +152,12 @@ export function CeoPage() {
               </label>
             )}
             {!canTalk && <p className="fb-dim text-xs">{t('ceo.noMic')}</p>}
+            {voiceLog.length > 0 && (
+              <details className="fb-dim text-[11px]">
+                <summary className="cursor-pointer">{t('voice.diag')}</summary>
+                <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{voiceLog.join('\n')}</pre>
+              </details>
+            )}
             <ul className="fb-col flex-1 gap-2 overflow-y-auto" style={{ maxHeight: 320 }} aria-live="polite">
               {lines.length === 0 && <li className="fb-dim text-sm">{t('ceo.empty')}</li>}
               {lines.map((l, i) => (

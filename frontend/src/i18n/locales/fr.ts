@@ -985,6 +985,8 @@ const fr: Dictionary = {
   'int.mcp.run': 'Exécuter l\'outil',
   'int.mcp.none': 'Ce serveur n\'offre aucun outil.',
   'int.mcp.badJson': 'Les arguments ne sont pas du JSON valide.',
+  'voice.sendNow': 'Envoyer',
+  'voice.diag': 'Diagnostic vocal',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

@@ -174,13 +174,21 @@ function pickMime(): string {
   return '';
 }
 
+export interface VoiceHandle {
+  /** Stop listening and throw the recording away. */
+  cancel: () => void;
+  /** Stop listening and use what was said so far. */
+  send: () => void;
+}
+
 /**
  * Records one spoken turn with the microphone (stops by itself after a pause) and has the server turn it into text.
  * The loudness feeds `voiceLevel`, so the hologram visibly reacts to the user's voice.
  */
-export function recordAndTranscribe(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): () => void {
+export function recordAndTranscribe(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): VoiceHandle {
   let cancelled = false;
   let stopNow = () => {};
+  let sendNow = () => {};
   void (async () => {
     let stream: MediaStream;
     on.status?.('Opening the microphone…');
@@ -205,6 +213,7 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
     let lastVoice = 0;
     let spoke = false;
     let timer = 0;
+    let forced = false;
     const finish = (send: boolean) => {
       window.clearInterval(timer);
       voiceLevel.value = 0;
@@ -212,7 +221,7 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
       void ac.close().catch(() => undefined);
       if (rec.state !== 'inactive') rec.stop();
       rec.onstop = async () => {
-        if (!send || !spoke || cancelled) {
+        if (!send || (!spoke && !forced) || cancelled) {
           if (send && !spoke) on.status?.('The microphone is on but I heard no sound. Check the input device.');
           return on.end();
         }
@@ -253,6 +262,10 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
       };
     };
     stopNow = () => finish(false);
+    sendNow = () => {
+      forced = true;
+      finish(true);
+    };
     rec.start(250);
     // Loudness from the waveform (RMS), compared with the room's own background level, so fans and hum do not count as speech.
     const wave = new Uint8Array(an.fftSize);
@@ -284,9 +297,12 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
       if ((spoke && now - lastVoice > 1200) || now - startedAt > 20_000 || (!spoke && now - startedAt > 9000)) finish(true);
     }, 80);
   })();
-  return () => {
-    cancelled = true;
-    stopNow();
+  return {
+    cancel: () => {
+      cancelled = true;
+      stopNow();
+    },
+    send: () => sendNow(),
   };
 }
 
@@ -294,8 +310,9 @@ export function recordAndTranscribe(orgId: string, lang: string, on: { interim: 
  * Listening for one turn. The microphone is recorded directly and transcribed on the server (reliable in every browser, any language).
  * If recording is impossible or the server fails, the browser's own speech recognition is used instead.
  */
-export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): () => void {
+export function listenSmart(orgId: string, lang: string, on: { interim: (t: string) => void; final: (t: string) => void; end: () => void; error?: (c: VoiceError | 'server') => void; status?: (s: string) => void }): VoiceHandle {
   let stopFn: () => void = () => {};
+  let sendFn: () => void = () => {};
   let off = false;
   const canRecord = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   const browser = () => {
@@ -306,12 +323,13 @@ export function listenSmart(orgId: string, lang: string, on: { interim: (t: stri
     }
     on.status?.('Listening with the browser’s speech recognition…');
     stopFn = listenOnce(lang, { interim: on.interim, final: on.final, end: on.end, error: on.error });
+    sendFn = stopFn;
   };
   if (!canRecord) {
     browser();
   } else {
     let sawError: VoiceError | 'server' | null = null;
-    stopFn = recordAndTranscribe(orgId, lang, {
+    const h = recordAndTranscribe(orgId, lang, {
       interim: on.interim,
       final: on.final,
       status: on.status,
@@ -329,9 +347,14 @@ export function listenSmart(orgId: string, lang: string, on: { interim: (t: stri
         }
       },
     });
+    stopFn = h.cancel;
+    sendFn = h.send;
   }
-  return () => {
-    off = true;
-    stopFn();
+  return {
+    cancel: () => {
+      off = true;
+      stopFn();
+    },
+    send: () => sendFn(),
   };
 }

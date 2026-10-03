@@ -993,6 +993,8 @@ export const en = {
   'int.mcp.run': 'Run tool',
   'int.mcp.none': 'This server offers no tools.',
   'int.mcp.badJson': 'The arguments are not valid JSON.',
+  'voice.sendNow': 'Send',
+  'voice.diag': 'Voice diagnostics',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

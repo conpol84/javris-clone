@@ -47,7 +47,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const canWrite = WRITER_ROLES.includes(role);
   const org = useOrgData(orgId, MANAGER_ROLES.includes(role), 10_000);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
-  const { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const briefed = useRef(false);
   const [tab, setTab] = useState<'talk' | 'command'>('talk');
   const [text, setText] = useState('');
@@ -198,12 +198,17 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
                     className="relative grid h-[72px] w-[72px] cursor-pointer place-items-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), rgba(0,212,255,0.08))', border: '2px solid var(--fb-accent)', boxShadow: listening ? '0 0 0 8px rgba(0,212,255,0.15), 0 0 40px rgba(0,212,255,0.6)' : '0 0 24px rgba(0,212,255,0.35)', color: 'var(--fb-accent)' }}
                     disabled={!canWrite || busyState}
-                    aria-label={t(listening || state === 'speaking' ? 'ceo.stop' : 'talk.tapToSpeak')}
+                    aria-label={t(listening ? 'voice.sendNow' : state === 'speaking' ? 'ceo.stop' : 'talk.tapToSpeak')} title={t(listening ? 'voice.sendNow' : state === 'speaking' ? 'ceo.stop' : 'talk.tapToSpeak')}
                     aria-pressed={listening}
-                    onClick={listening || state === 'speaking' ? stop : listen}
+                    onClick={listening ? sendNow : state === 'speaking' ? stop : listen}
                   >
-                    {listening || state === 'speaking' ? <Square size={24} /> : <Mic size={28} />}
+                    {listening ? <Send size={26} /> : state === 'speaking' ? <Square size={24} /> : <Mic size={28} />}
                   </button>
+                  {(listening || handsFree) && (
+                    <button className="fb-btn fb-btn--ghost" onClick={stop}>
+                      <Square size={13} /> {t('ceo.stop')}
+                    </button>
+                  )}
                   <button className="fb-btn fb-btn--ghost" disabled={!canWrite || busyState} onClick={() => void briefing()}>
                     {t('ceo.briefing')}
                   </button>
@@ -245,6 +250,12 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
                       </li>
                     ))}
                   </ul>
+                  {voiceLog.length > 0 && (
+                    <details className="fb-dim text-[11px]">
+                      <summary className="cursor-pointer">{t('voice.diag')}</summary>
+                      <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{voiceLog.join('\n')}</pre>
+                    </details>
+                  )}
                   <form onSubmit={submitTalk} className="flex gap-2">
                     <input className="fb-input flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
                     <button className="fb-btn fb-btn--primary" type="submit" disabled={!canWrite || !text.trim() || busyState} aria-label={t('ceo.send')}>

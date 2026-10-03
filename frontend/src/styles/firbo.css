@@ -282,3 +282,27 @@ html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
 .fb-hudmenu .fb-btn { height: 30px; padding: 0 10px; font-size: 12px; }
 .fb-hudmenu ul { width: 190px; }
 [dir='rtl'] .fb-hudmenu { right: auto; left: 84px; }
+
+/* ================= professional refinement pass =================
+   Calm, precise and premium: neutral typography, hairline borders, restrained glow. */
+.fb-root { font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', 'Noto Sans', sans-serif; --fb-border: rgba(148, 180, 220, 0.14); --fb-border-strong: rgba(103, 232, 249, 0.38); -webkit-font-smoothing: antialiased; }
+.fb-root::before { background-image: linear-gradient(rgba(148, 180, 220, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(148, 180, 220, 0.03) 1px, transparent 1px); background-size: 56px 56px; }
+.fb-glass { background-image: none; background-color: rgba(9, 17, 31, 0.74); border-radius: 14px; border: 1px solid var(--fb-border); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045), 0 12px 32px -16px rgba(0, 0, 0, 0.75); }
+.fb-glass::after { background: linear-gradient(160deg, rgba(103, 232, 249, 0.045), transparent 35%); }
+.fb-glass--hover:hover { transform: none; border-color: var(--fb-border-strong); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 16px 40px -18px rgba(14, 165, 233, 0.35); }
+.fb-eyebrow { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; font-size: 10.5px; font-weight: 500; letter-spacing: 0.14em; color: #7fb2cc; }
+.fb-root h1, .fb-grad-text { font-family: 'Inter', system-ui, sans-serif; font-weight: 600; letter-spacing: -0.02em; }
+.fb-root h1 { font-size: clamp(1.5rem, 2.4vw, 2rem); }
+.fb-grad-text { background: linear-gradient(180deg, #ffffff 20%, #9fd3ee 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.fb-btn { height: 38px; padding: 0 16px; border-radius: 10px; font-size: 13.5px; font-weight: 550; letter-spacing: 0; }
+.fb-btn--primary { color: #04131c; background: linear-gradient(180deg, #5eead4 -40%, #22d3ee 30%, #0ea5e9 130%); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 6px 18px -8px rgba(14, 165, 233, 0.65); }
+.fb-btn--primary:hover { box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 8px 24px -8px rgba(14, 165, 233, 0.85); filter: brightness(1.05); }
+.fb-btn--ghost { background: rgba(255, 255, 255, 0.035); border-color: var(--fb-border); }
+.fb-btn--ghost:hover { background: rgba(255, 255, 255, 0.07); border-color: var(--fb-border-strong); }
+.fb-chip { border-radius: 8px; padding: 3px 9px; font-weight: 500; letter-spacing: 0; background: rgba(255, 255, 255, 0.03); }
+.fb-input { height: 38px; border-radius: 10px; background: rgba(4, 9, 18, 0.6); }
+.fb-input:focus { box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.16); }
+.fb-dot--ok, .fb-dot--warn, .fb-dot--err { box-shadow: 0 0 6px currentColor; }
+.fb-talk { height: 52px; border-radius: 14px; letter-spacing: 0; font-weight: 550; box-shadow: 0 10px 30px -14px rgba(14, 165, 233, 0.55); }
+.fb-row { border-radius: 10px; }
+.fb-table th { letter-spacing: 0.08em; }

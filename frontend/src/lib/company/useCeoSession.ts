@@ -26,6 +26,8 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
   const listenRef = useRef<() => void>(() => {});
   const convo = useRef<string | null>(null);
   const stopListen = useRef<() => void>(() => {});
+  const sendListen = useRef<() => void>(() => {});
+  const [voiceLog, setVoiceLog] = useState<string[]>([]);
   const alive = useRef(true);
   const canTalk = typeof navigator !== 'undefined' && (recognitionSupported() || !!navigator.mediaDevices?.getUserMedia);
 
@@ -103,8 +105,11 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
     setInterim('');
     setState('listening');
     let heard = false;
-    stopListen.current = listenSmart(orgId, lang, {
-      status: setVoiceStatus,
+    const handle = listenSmart(orgId, lang, {
+      status: (m) => {
+        setVoiceStatus(m);
+        setVoiceLog((l) => [...l.slice(-7), `${new Date().toLocaleTimeString()}  ${m}`]);
+      },
       error: (c: VoiceError | 'server') => {
         if (c === 'no_speech') return;
         // A broken microphone or blocked permission must not loop forever.
@@ -128,8 +133,13 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
         if (!heard) resume(350);
       },
     });
+    stopListen.current = handle.cancel;
+    sendListen.current = handle.send;
   };
   listenRef.current = listen;
+
+  /** While listening: stop now and answer what was said. */
+  const sendNow = () => sendListen.current();
 
   const stop = () => {
     setHandsFree(false);
@@ -151,5 +161,5 @@ export function useCeoSession(orgId: string, userId: string | undefined, lang: s
     await ask(`${briefingText}. ${facts}`);
   };
 
-  return { ceo, state, lines, interim, voiceStatus, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing };
+  return { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing };
 }

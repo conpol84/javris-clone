@@ -986,6 +986,8 @@ const zhCN: Dictionary = {
   'int.mcp.run': '运行工具',
   'int.mcp.none': '此服务器未提供工具。',
   'int.mcp.badJson': '参数不是有效的 JSON。',
+  'voice.sendNow': '发送',
+  'voice.diag': '语音诊断',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

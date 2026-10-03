@@ -985,6 +985,8 @@ const es: Dictionary = {
   'int.mcp.run': 'Ejecutar herramienta',
   'int.mcp.none': 'Este servidor no ofrece herramientas.',
   'int.mcp.badJson': 'Los argumentos no son JSON válido.',
+  'voice.sendNow': 'Enviar',
+  'voice.diag': 'Diagnóstico de voz',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

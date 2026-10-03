@@ -990,6 +990,8 @@ const ar: Dictionary = {
   'int.mcp.run': 'تشغيل الأداة',
   'int.mcp.none': 'هذا الخادم لا يوفر أدوات.',
   'int.mcp.badJson': 'المعاملات ليست JSON صالحًا.',
+  'voice.sendNow': 'إرسال',
+  'voice.diag': 'تشخيص الصوت',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

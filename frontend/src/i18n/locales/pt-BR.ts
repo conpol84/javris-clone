@@ -985,6 +985,8 @@ const ptBR: Dictionary = {
   'int.mcp.run': 'Executar ferramenta',
   'int.mcp.none': 'Este servidor não oferece ferramentas.',
   'int.mcp.badJson': 'Os argumentos não são JSON válido.',
+  'voice.sendNow': 'Enviar',
+  'voice.diag': 'Diagnóstico de voz',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

@@ -985,6 +985,8 @@ const el: Dictionary = {
   'int.mcp.run': 'Εκτέλεση εργαλείου',
   'int.mcp.none': 'Ο server δεν προσφέρει εργαλεία.',
   'int.mcp.badJson': 'Οι παράμετροι δεν είναι έγκυρο JSON.',
+  'voice.sendNow': 'Αποστολή',
+  'voice.diag': 'Διαγνωστικά φωνής',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',
