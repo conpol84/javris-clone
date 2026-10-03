@@ -18,7 +18,7 @@ except SystemExit:layout_failed=True
 reports=[]
 CASES=[('computer-actions',w,'loaded','owner') for w in (320,390,768,1440)]
 CASES += [('computer-state',320,state,'owner') for state in ('loading','empty','error')]
-CASES += [('computer-member',320,'loaded','member'),('computer-race',390,'loaded','owner'),('computer-pair-expiry',390,'loaded','owner'),('computer-user-switch',390,'loaded','owner'),('task-board',320,'loaded','owner'),('task-board',768,'loaded','owner')]
+CASES += [('computer-member',320,'loaded','member'),('computer-race',390,'loaded','owner'),('computer-pair-expiry',390,'loaded','owner'),('computer-user-switch',390,'loaded','owner'),('task-board',320,'loaded','owner'),('task-board',768,'loaded','owner'),('team-selection',320,'loaded','owner'),('team-selection',1024,'loaded','owner')]
 with sync_playwright() as pw:
  browser=pw.chromium.launch(**({'executable_path':v.os.environ['FIRBO_CHROMIUM']} if v.os.environ.get('FIRBO_CHROMIUM') else {}))
  for kind,width,state,role in CASES:
@@ -31,7 +31,7 @@ with sync_playwright() as pw:
   ctx.route('**/*',intercept);page=ctx.new_page();page.set_default_timeout(7000);page.on('pageerror',lambda e:errors.append(str(e)))
   try:
    if kind=='computer-pair-expiry':page.clock.install()
-   path='/tasks' if kind=='task-board' else '/computers'
+   path='/tasks' if kind=='task-board' else '/team' if kind=='team-selection' else '/computers'
    page.goto(v.BASE+path+f'?lang=en&state={state}&role={role}&computer_actions=1&device_delay=900&pair_delay='+('900' if kind=='computer-user-switch' else '0'),wait_until='networkidle')
    expect(page.locator('main h1')).to_be_visible()
    if kind=='computer-state':
@@ -40,6 +40,10 @@ with sync_playwright() as pw:
     else:expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
    elif kind=='computer-member':
     expect(page.locator('main form')).to_have_count(0);expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
+   elif kind=='team-selection':
+    page.locator('main .fb-team-layout > ul > li > button').first.click()
+    expect(page.locator('main .fb-team-layout > aside')).to_be_visible()
+    assert page.locator('main .fb-team-layout > ul').bounding_box()['width'] >= 200,'team list squeezed beside editor'
    elif kind=='task-board':
     page.get_by_role('tab',name='Board',exact=True).click();expect(page.locator('.fb-board')).to_be_visible()
     assert page.locator('.fb-board > *').count()>=4,'task columns disappeared'

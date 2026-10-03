@@ -32,5 +32,5 @@ main[data-firbo-route='/computers'] [data-testid='computer-jobs'] { overflow-wra
  main[data-firbo-route='/computers'] article .flex { flex-wrap:wrap; }
  main[data-firbo-route='/computers'] section > form input.flex-1 { flex-basis:100%; }
  main[data-firbo-route='/inbox'] .fb-kv { grid-template-columns:minmax(0,90px) minmax(0,1fr); }
- main[data-firbo-route='/team'] .fb-agent-layout { grid-template-columns:minmax(0,1fr); }
+ main[data-firbo-route='/tasks'] li.fb-glass > .min-w-0.flex-1 { flex-basis:calc(100% - 24px); }
 }
