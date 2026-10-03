@@ -47,6 +47,11 @@ main[data-firbo-route='/companies'] .fb-wide { width: 100%; }
   main[data-firbo-route='/chat'] .group > button[aria-label] { display: grid; place-items: center; min-inline-size: 44px; min-block-size: 44px; }
   main[data-firbo-route='/chat'] .pe-6 { padding-inline-end: 44px; }
   main[data-firbo-route='/'] .fb-talk { min-inline-size: 0; max-inline-size: 100%; block-size: auto; min-block-size: 58px; white-space: normal; overflow-wrap: anywhere; }
+  main[data-firbo-route='/'] div:has(> .fb-talk) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  main[data-firbo-route='/'] div:has(> .fb-talk) > button { margin-inline: 0; height: auto !important; min-block-size: 58px; padding: 8px; border-radius: 14px !important; }
+  main[data-firbo-route='/'] .fb-talk { gap: 5px; }
+  main[data-firbo-route='/'] .fb-talk .fb-wave { gap: 1px; flex-shrink: 0; }
+  main[data-firbo-route='/'] .fb-talk .fb-wave i { width: 2px; }
 }
 
 /* The global sidebar and conversation list cannot both occupy a tablet row. */
