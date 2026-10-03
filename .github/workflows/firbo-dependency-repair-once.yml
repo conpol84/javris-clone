@@ -1,0 +1,50 @@
+name: Firbo one-shot dependency candidate
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['scripts/firbo/repair-dependencies-once.mjs', '.github/workflows/firbo-dependency-repair-once.yml']
+permissions:
+  contents: read
+jobs:
+  candidate:
+    if: github.repository == 'conpol84/javris-clone' && github.event.head_commit.message == 'Prepare one-shot U3 dependency repair'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - name: Prepare and verify isolated dependency candidate
+        run: node scripts/firbo/repair-dependencies-once.mjs
+      - name: Store verified candidate as Git objects only (NO branch updates)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const repo = 'conpol84/javris-clone';
+          const files = ['frontend/package.json','frontend/package-lock.json','frontend/src/index.css','frontend/src/styles/vendor/shadcn-tailwind.css','frontend/src/styles/vendor/shadcn-LICENSE.txt','frontend/src/styles/vendor/README.md','docs/FIRBO-DEPENDENCY-REMEDIATION.json'];
+          async function api(path, body) {
+            const r = await fetch(`https://api.github.com/repos/${repo}${path}`, {method:body ? 'POST':'GET',headers:{accept:'application/vnd.github+json',authorization:`Bearer ${process.env.GH_TOKEN}`,'content-type':'application/json'}, ...(body ? {body:JSON.stringify(body)} : {})});
+            if (!r.ok) throw new Error('Git object upload failed: '+r.status);
+            return r.json();
+          }
+          const head = await api('/git/commits/'+process.env.GITHUB_SHA);
+          const entries = [];
+          for (const file of files) {
+            const content = fs.readFileSync(file,'utf8');
+            if (Buffer.byteLength(content) > 1500000) throw new Error('Unexpected file size');
+            const blob = await api('/git/blobs',{content,encoding:'utf-8'});
+            entries.push({path:file,mode:'100644',type:'blob',sha:blob.sha});
+          }
+          const tree = await api('/git/trees',{base_tree:head.tree.sha,tree:entries});
+          console.log('FIRBO_VERIFIED_CANDIDATE_TREE '+tree.sha);
+          console.log('FIRBO_CANDIDATE_PARENT '+process.env.GITHUB_SHA);
+          console.log('FIRBO_VERIFIED_CANDIDATE_FILES '+JSON.stringify(entries));
+          NODE
