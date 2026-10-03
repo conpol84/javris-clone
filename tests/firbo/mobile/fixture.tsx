@@ -2,14 +2,25 @@ import { useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogTitle, DialogTrigger } from '../../../frontend/src/components/ui/dialog';
 import { PageHeader, Segmented, Stat } from '../../../frontend/src/components/ui/kit';
-import '../../../frontend/src/index.css';
+import './fixture.css';
 import '../../../frontend/src/styles/firbo.css';
 import '../../../frontend/src/styles/mobile-foundation.css';
 
 // REAL shared components, synthetic content only. No application auth/data client.
 const params = new URLSearchParams(location.search);
-const lang = params.get('lang') === 'ar' ? 'ar' : params.get('lang') === 'el' ? 'el' : 'en';
-const longLabel = lang === 'el' ? 'Αναλυτική διαχείριση συνδέσεων και δικαιωμάτων εταιρείας' : lang === 'ar' ? 'إدارة اتصالات الشركة والصلاحيات ومراجعة نتائج المهام' : 'Review company connections and permission settings';
+const labels: Record<string, string> = {
+  en: 'Review company connections and permission settings',
+  el: 'Αναλυτική διαχείριση συνδέσεων και δικαιωμάτων εταιρείας',
+  ar: 'إدارة اتصالات الشركة والصلاحيات ومراجعة نتائج المهام',
+  es: 'Revisión de las conexiones de la empresa y configuración de permisos',
+  fr: 'Vérification des connexions de l’entreprise et des autorisations',
+  de: 'Unternehmensverbindungen und Berechtigungseinstellungen überprüfen',
+  'pt-BR': 'Revisão das conexões da empresa e configurações de permissões',
+  'zh-CN': '检查公司连接与权限设置并查看智能体任务执行结果',
+};
+const requested = params.get('lang') ?? 'en';
+const lang = Object.hasOwn(labels, requested) ? requested : 'en';
+const longLabel = labels[lang];
 document.documentElement.lang = lang;
 document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
 document.documentElement.classList.add(params.get('theme') === 'light' ? 'light' : 'dark');
