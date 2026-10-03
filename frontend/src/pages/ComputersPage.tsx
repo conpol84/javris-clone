@@ -7,6 +7,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { addDevice, cancelJob, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, removeDevice, type DeviceRow, type JobRow } from '../lib/company/computers';
 import '../styles/firbo.css';
+import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
 import { formatComputerResult } from '../lib/company/computer-state';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
@@ -159,13 +160,14 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
           <h1 className="fb-grad-text mt-1 text-2xl font-semibold">{t('comp.title')}</h1>
           <p className="fb-muted mt-1 max-w-3xl text-sm">{t('comp.intro')}</p>
         </header>
+        <DeviceFabric deviceReady={deviceQuery.phase==='ready'} orgId={orgId} canManage={canManage} devices={devices} />
         <p className="fb-glass p-4 text-sm" data-testid="computer-capability-note">{l.capabilityNote}</p>
 
         {!canManage ? (
           <div className="fb-glass p-5 text-sm">{t('comp.ownersOnly')}</div>
         ) : (
           <>
-            <section className="fb-glass fb-col gap-3 p-5">
+            <section id="computer-enrollment" className="fb-glass fb-col gap-3 p-5">
               <h2 className="text-base font-semibold">{t('comp.addTitle')}</h2>
               <form onSubmit={add} className="flex flex-wrap gap-2">
                 <input className="fb-input flex-1" style={{ minWidth: 0 }} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t('comp.namePh')} aria-label={t('comp.namePh')} />

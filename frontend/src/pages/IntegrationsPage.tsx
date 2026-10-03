@@ -1,23 +1,30 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { BarChart3, Plug, Send, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
+import {Dialog,DialogContent,DialogTitle,DialogDescription} from '../components/ui/dialog';
 import { Panel, StatusDot } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, PLANNED_APPS, mcpCall, mcpTools, snapshotIntegration, startOAuth, testIntegration,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, mcpCall, mcpTools, snapshotIntegration, startOAuth, testIntegration,
   type IntegrationKind, type IntegrationRow, type McpTool,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/connected-world.css';
+import {beginConnection,connectionManifest,finishConnection,connectBridge,readConnection,disconnectConnection,isConnectedApp,type ConnectionManifest,type ConnectionSnapshot} from '../lib/company/connected-apps';
+import {deviceMessages} from '../lib/company/device-messages';
 
 const BRAND = Object.fromEntries(LIVE_APPS.map((a) => [a.kind, a.name])) as Record<IntegrationKind, string>;
 
 /** Connect the apps each company uses, and test them with one click. */
-export function IntegrationsPage() {
-  const { t, fmt } = useI18n();
+export function IntegrationsPage(){const {current,user}=useCompanyAuth();return <IntegrationWorkspace key={`${user?.id??''}:${current?.organization.id??''}:${current?.role??''}`} />;}
+
+function IntegrationWorkspace() {
+  const { t, fmt, lang } = useI18n();
+  const l=deviceMessages(lang);
   const { current } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canManage = MANAGER_ROLES.includes(current?.role ?? 'viewer');
@@ -34,16 +41,41 @@ export function IntegrationsPage() {
   const [mcpTool, setMcpTool] = useState('');
   const [mcpArgs, setMcpArgs] = useState('{}');
   const [mcpOut, setMcpOut] = useState('');
+  const [manifest,setManifest]=useState<ConnectionManifest|null>(null);
+  const [manifestError,setManifestError]=useState(false);
+  const [proof,setProof]=useState<ConnectionSnapshot|null>(null);
+  const alive=useRef(true);
+  const callback=useRef(new URLSearchParams(window.location.hash.slice(1)));
+  const complete=useRef<Promise<unknown>|null>(null);
+  useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+  useEffect(()=>{let active=true;if(!canManage||!orgId)return;
+    connectionManifest(orgId).then(m=>{if(active)setManifest(m);}).catch(()=>{if(active)setManifestError(true);});
+    const selected=params.get('connect');if(selected&&isConnectedApp(selected))open(selected);
+    return()=>{active=false;};
+  },[orgId,canManage]);
+  useEffect(()=>{
+    if(!canManage||!orgId||callback.current.get('firbo_connection')!=='1')return;
+    const q=callback.current;
+    window.history.replaceState(window.history.state,'',window.location.pathname+window.location.search);
+    if(q.get('error')){setBusy(null);return void toast.error(l.oauthFailed);}
+    const state=q.get('state'),code=q.get('code');if(!state||!code)return;
+    if(!complete.current)complete.current=finishConnection(state,code,q.get('realm_id')??undefined);
+    let active=true;setBusy('connect');
+    complete.current.then(()=>{if(active){toast.success(t('int.connectedOk',{app:'Account'}));void reload();}}).catch(()=>{if(active)toast.error(l.oauthFailed);}).finally(()=>{if(active)setBusy(null);});
+    return()=>{active=false;};
+  },[orgId,canManage]);
+  const newStatus=(kind:string)=>[...(manifest?.providers??[]),...(manifest?.bridges??[])].find(p=>p.kind===kind);
+
 
   const reload = useCallback(async () => {
     if (!orgId || !canManage) return;
     try {
-      setRows(await listIntegrations(orgId));
+      const next=await listIntegrations(orgId);if(alive.current)setRows(next);
     } catch (err) {
       console.error(err);
       toast.error(t('int.loadError'));
     } finally {
-      setLoaded(true);
+      if(alive.current)setLoaded(true);
     }
   }, [orgId, canManage, t]);
 
@@ -57,7 +89,7 @@ export function IntegrationsPage() {
     const ok = params.get('connected');
     const bad = params.get('oauth_error');
     if (!ok && !bad) return;
-    if (ok) toast.success(t('int.oauth.done', { app: BRAND[ok as IntegrationKind] ?? ok }));
+    if (ok && !isConnectedApp(ok)) toast.success(t('int.oauth.done', { app: BRAND[ok as IntegrationKind] ?? ok }));
     else toast.error(bad === 'plan_limit' ? t('int.err.limit') : t('int.oauth.failed', { code: String(bad).slice(0, 40) }));
     setParams({}, { replace: true });
     void reload();
@@ -65,6 +97,7 @@ export function IntegrationsPage() {
   }, []);
 
   const errText = (err: unknown) => {
+    if(err instanceof Error && !(err instanceof IntegrationError))return l.oauthFailed;
     const code = err instanceof IntegrationError ? err.code : 'unknown';
     return t(`int.err.${code === 'too_many' ? 'limit' : code}` as TKey);
   };
@@ -81,8 +114,8 @@ export function IntegrationsPage() {
     if (!adding || busy) return;
     setBusy('connect');
     try {
-      const { url } = await startOAuth(orgId, adding, name, values);
-      window.location.assign(url);
+      const {url}=isConnectedApp(adding)?await beginConnection(orgId,adding,name):await startOAuth(orgId,adding,name,values);
+      if(alive.current)window.location.assign(url);
     } catch (err) {
       if (err instanceof IntegrationError && err.code === 'not_configured' && err.detail?.redirect_uri) setSetup({ provider: err.detail.provider ?? '', redirect: err.detail.redirect_uri });
       else toast.error(errText(err));
@@ -95,7 +128,8 @@ export function IntegrationsPage() {
     if (!adding || busy) return;
     setBusy('connect');
     try {
-      await connectIntegration(orgId, adding, name, values);
+      if(isConnectedApp(adding))await connectBridge(orgId,adding,name,values);else await connectIntegration(orgId,adding,name,values);
+      if(!alive.current)return;
       toast.success(t('int.connectedOk', { app: name }));
       setAdding(null);
       await reload();
@@ -145,7 +179,8 @@ export function IntegrationsPage() {
   const test = async (r: IntegrationRow) => {
     setBusy(r.id);
     try {
-      if (r.kind === 'mcp') await mcpTools(r.id);
+      if(isConnectedApp(r.kind)){const response=await readConnection(r.id);if(alive.current)setProof(response);}
+      else if (r.kind === 'mcp') await mcpTools(r.id);
       else await testIntegration(r.id);
       toast.success(t('int.testOk', { app: r.name }));
     } catch (err) {
@@ -159,6 +194,7 @@ export function IntegrationsPage() {
   const peek = async (r: IntegrationRow) => {
     setBusy(r.id);
     try {
+      if(isConnectedApp(r.kind)){const response=await readConnection(r.id);if(alive.current)setProof(response);return;}
       const { text } = await snapshotIntegration(r.id);
       toast.message(r.name, { description: text, duration: 15000 });
     } catch (err) {
@@ -173,7 +209,8 @@ export function IntegrationsPage() {
     if (!window.confirm(t('int.confirmDisconnect', { app: r.name }))) return;
     setBusy(r.id);
     try {
-      await disconnectIntegration(r.id);
+      if(isConnectedApp(r.kind)){const result=await disconnectConnection(r.id);if(alive.current)toast.message(result.provider_revocation==='manual'?l.revokeManual:l.revoked);}
+      else await disconnectIntegration(r.id);
       await reload();
     } catch (err) {
       toast.error(errText(err));
@@ -190,10 +227,11 @@ export function IntegrationsPage() {
   return (
     <div className="fb-root h-full overflow-y-auto">
       <div className="mx-auto max-w-[1100px] space-y-4 px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header>
+        <header className="cw-app-head">
           <div className="fb-eyebrow">{current?.organization.name}</div>
           <h1 className="mt-1 text-2xl font-semibold">{t('int.title')}</h1>
           <p className="fb-muted mt-1 text-sm">{t('int.sub')}</p>
+          <Link to="/computers" className="fb-btn fb-btn--ghost">{l.deviceLink} →</Link>
           <Link to="/hub" className="mt-2 inline-block text-sm font-medium" style={{ color: 'var(--fb-accent)' }}>{t('hub.title')} →</Link>
         </header>
 
@@ -201,7 +239,20 @@ export function IntegrationsPage() {
           <Panel title={t('int.title')}><p className="fb-muted text-sm">{t('int.managersOnly')}</p></Panel>
         ) : (
           <>
+            <Panel title={l.returnApps}>
+              <ul className="cw-app-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {LIVE_APPS.filter(a=>isConnectedApp(a.kind)).map(a=><li key={a.kind}><button className="fb-row fb-glass--hover h-full w-full !flex-col !items-start gap-2 !text-start" onClick={()=>open(a.kind)} data-connection-kind={a.kind}>
+                  <span className="fb-chip" style={{color:a.color}}>{a.name}</span><strong className="text-sm">{about(a)}</strong>
+                  <span className="fb-dim text-xs">{l.readOnly} · {newStatus(a.kind)?.configured&&newStatus(a.kind)?.enabled?l.configured:l.needsSetup}</span>
+                  <span className="text-xs" style={{color:'var(--fb-accent)'}}>{l.setup} →</span>
+                </button></li>)}
+              </ul>
+              <p className="fb-dim mt-4 text-xs">{l.providerPolicy}</p>
+              {manifestError&&<p role="status" className="cw-readiness">{l.operatorSetup}</p>}
+            </Panel>
+            {proof&&<section className="cw-proof" role="region" aria-label={l.snapshot}><div className="flex items-center justify-between gap-3"><strong>{l.snapshot} · {proof.account}</strong><button className="fb-btn fb-btn--ghost" onClick={()=>setProof(null)}>{l.close}</button></div><p className="fb-dim text-xs">{fmt.dateTime(proof.observed_at)} · {l.readOnly}</p>{proof.sampled&&<p className="text-xs">{l.sample}</p>}<ul>{proof.rows.map(r=><li key={r.id}><strong>{r.label}</strong><pre>{r.detail??r.state??''}</pre></li>)}</ul></section>}
             <Panel title={t('int.connected')}>
+
               {!loaded ? (
                 <p className="fb-dim text-sm">{t('common.loading')}</p>
               ) : rows.length === 0 ? (
@@ -262,7 +313,7 @@ export function IntegrationsPage() {
                 <div key={cat} className="mb-4">
                   <div className="fb-eyebrow mb-2">{t(`int.cat.${cat}` as TKey)}</div>
                   <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    {LIVE_APPS.filter((a) => a.cat === cat).map((a) => (
+                    {LIVE_APPS.filter((a) => a.cat === cat && !isConnectedApp(a.kind)).map((a) => (
                       <li key={a.kind}>
                         <button
                           onClick={() => open(a.kind)}
@@ -280,10 +331,19 @@ export function IntegrationsPage() {
                 </div>
               ))}
 
+              <Dialog open={!!adding} onOpenChange={v=>{if(!v)setAdding(null);}}>
               {adding && def && (
-                <form onSubmit={def.oauth ? signIn : connect} className="mt-4 rounded-xl p-4" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
-                  <div className="text-sm font-semibold">{t('int.connectTitle', { app: BRAND[adding] })}</div>
-                  <p className="fb-muted mt-1 text-sm">{help(def)}</p>
+                <DialogContent className="cw-connect-dialog sm:max-w-2xl"><div className="fb-root" style={{minHeight:0,overflowX:'visible',background:'none'}}>
+                <form onSubmit={def.oauth ? signIn : connect} className="rounded-xl p-2" id="connection-setup" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
+                  <DialogTitle>{t('int.connectTitle', { app: BRAND[adding] })}</DialogTitle>
+                  <DialogDescription className="fb-muted mt-2 text-sm">{help(def)}</DialogDescription>
+                  {isConnectedApp(adding)&&<div className="cw-readiness" role="status">
+                    <strong>{newStatus(adding)?.configured&&newStatus(adding)?.enabled?l.configured:l.needsSetup}</strong>
+                    {(!newStatus(adding)?.configured||!newStatus(adding)?.enabled)&&<p>{l.operatorSetup}</p>}
+                    {manifest?.providers.find(x=>x.kind===adding)?.broad_provider_scope&&<p>{l.broadScope}</p>}
+                    {manifest?.redirect_uri&&def.oauth&&<><span>{t('int.oauth.redirect')}</span><code dir="ltr">{manifest.redirect_uri}</code></>}
+                    {oauthInfo&&<><code dir="ltr">{oauthInfo.secrets}</code><a href={oauthInfo.url} target="_blank" rel="noreferrer" className="fb-btn fb-btn--ghost">{oauthInfo.label} →</a></>}
+                  </div>}
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="block text-xs">
                       <span className="fb-dim">{t('int.name')}</span>
@@ -316,24 +376,14 @@ export function IntegrationsPage() {
                     </div>
                   )}
                   <div className="mt-3 flex gap-2">
-                    <button className="fb-btn fb-btn--primary" disabled={busy !== null}>{busy === 'connect' ? t('int.connecting') : def.oauth ? t('int.signIn', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.connectAndTest')}</button>
+                    <button className="fb-btn fb-btn--primary" disabled={busy !== null || (isConnectedApp(adding) && (!newStatus(adding)?.configured || !newStatus(adding)?.enabled))}>{busy === 'connect' ? t('int.connecting') : def.oauth ? t('int.signIn', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.connectAndTest')}</button>
                     <button type="button" className="fb-btn fb-btn--ghost" onClick={() => setAdding(null)}>{t('common.close')}</button>
                   </div>
-                </form>
-              )}
+                </form></div></DialogContent>
+              )}</Dialog>
             </Panel>
 
-            <Panel title={t('int.soon')}>
-              <ul className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-6">
-                {PLANNED_APPS.map((a) => (
-                  <li key={a.id} className="fb-row py-2 opacity-70" title={a.reason}>
-                    <span className="fb-dot" style={{ background: a.color }} />
-                    <span className="min-w-0 truncate text-xs font-medium">{a.name}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="fb-dim mt-3 text-xs">{t('int.soonHint')}</p>
-            </Panel>
+
           </>
         )}
       </div>

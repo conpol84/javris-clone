@@ -7,6 +7,9 @@
 //  - user-supplied hosts must be public https hosts (no localhost, no IP addresses, no internal names)
 //  - a connection is verified before it is saved: messaging apps get a test message, work tools a read-only credential check
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import {isConnectionAction,isConnectionCallback,forwardConnectionCallback,connectionAction} from '../_shared/connected-service.ts';
+import {ConnectionFailure,isConnectedKind} from '../_shared/connected-providers.ts';
+import {isBridgeKind} from '../_shared/device-bridges.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -924,6 +927,10 @@ async function oauthCallback(req: Request): Promise<Response> {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
+  if (isConnectionCallback(req)) {
+    try {return await forwardConnectionCallback(req,createClient(Deno.env.get('SUPABASE_URL')!,Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!),key=>Deno.env.get(key));}
+    catch {return json(400,{error:'bad_state'});}
+  }
   if (req.method === 'GET') return await oauthCallback(req);
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
 
@@ -946,6 +953,14 @@ Deno.serve(async (req) => {
     const { data } = await admin.from('organization_members').select('role').eq('organization_id', orgId).eq('user_id', user.id).maybeSingle();
     return !!data && MANAGERS.includes(data.role);
   };
+
+  if (isConnectionAction(body.action)) {
+    try {return json(200,await connectionAction(body,req,user,admin,key=>Deno.env.get(key)));}
+    catch(e){const code=e instanceof ConnectionFailure?e.code:'connection_failed';
+      return json(code==='forbidden'?403:code==='not_found'?404:code==='state_conflict'||code==='refresh_busy'?409:code==='backend_setup_required'||code==='not_configured'?503:422,{error:code});}
+  }
+  // New adapters may never be invoked through the less restrictive legacy path.
+  if (isConnectedKind(body.kind)||isBridgeKind(body.kind)) return json(400,{error:'bad_request'});
 
   if (body.action === 'oauth_start') {
     const orgId = String(body.organization_id ?? '');
@@ -1012,6 +1027,7 @@ Deno.serve(async (req) => {
   if (!id) return json(400, { error: 'bad_request' });
   const { data: integ } = await admin.from('integrations').select('id, organization_id, kind, name, config').eq('id', id).maybeSingle();
   if (!integ) return json(404, { error: 'not_found' });
+  if(isConnectedKind(integ.kind)||isBridgeKind(integ.kind)) return json(400,{error:'bad_request'});
   if (!(await isManager(integ.organization_id))) return json(403, { error: 'forbidden' });
 
   if (body.action === 'disconnect') {
