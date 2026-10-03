@@ -2,307 +2,63 @@
   "contract": "firbo-delivery-matrix/v1",
   "starting_checkpoint": "2f62836027a927ae8005aa9cce20914071d0f870",
   "release_boundary": "Candidate only; full PR9 is not production",
+  "last_tested_source": "46a936ecc3aa5de702874e873cd38088519ccab3",
+  "verification": "FIRBO-M2B-COMPUTER-VERIFICATION.md",
   "routes": [
-    {
-      "route": "/",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/chat",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/office",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/gateway",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/analytics",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/integrations",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/admin",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/studio",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/computers",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/coding",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/hub",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/billing",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/memory",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/reviews",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/store",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/ceo",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/missions",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/shifts",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/companies",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/team",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/inbox",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/activity",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/people",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/login",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "redirect"
-    },
-    {
-      "route": "/signup",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "redirect"
-    },
-    {
-      "route": "/dashboard",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "desktop-legacy"
-    },
-    {
-      "route": "/settings",
-      "mobile": "M2-A synthetic pass",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/get-started",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "desktop-legacy"
-    },
-    {
-      "route": "/data-sources",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "desktop-legacy"
-    },
-    {
-      "route": "/agents",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "desktop-legacy"
-    },
-    {
-      "route": "/logs",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "desktop-legacy"
-    },
-    {
-      "route": "/*",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "redirect"
-    },
-    {
-      "route": "/tasks",
-      "mobile": "M2-B candidate awaiting browser result",
-      "real_device": "unverified",
-      "kind": "workspace"
-    },
-    {
-      "route": "/company",
-      "mobile": "unverified",
-      "real_device": "unverified",
-      "kind": "redirect"
-    }
+    {"route":"/","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/chat","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/office","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/gateway","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/analytics","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/integrations","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/admin","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/studio","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/computers","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/coding","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/hub","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/billing","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/memory","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/reviews","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/store","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/ceo","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/missions","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/shifts","mobile":"unverified","real_device":"unverified","kind":"workspace"},
+    {"route":"/companies","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/team","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/inbox","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/activity","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/people","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/login","mobile":"unverified","real_device":"unverified","kind":"redirect"},
+    {"route":"/signup","mobile":"unverified","real_device":"unverified","kind":"redirect"},
+    {"route":"/dashboard","mobile":"unverified","real_device":"unverified","kind":"desktop-legacy"},
+    {"route":"/settings","mobile":"M2-A synthetic pass","real_device":"unverified","kind":"workspace"},
+    {"route":"/get-started","mobile":"unverified","real_device":"unverified","kind":"desktop-legacy"},
+    {"route":"/data-sources","mobile":"unverified","real_device":"unverified","kind":"desktop-legacy"},
+    {"route":"/agents","mobile":"unverified","real_device":"unverified","kind":"desktop-legacy"},
+    {"route":"/logs","mobile":"unverified","real_device":"unverified","kind":"desktop-legacy"},
+    {"route":"/*","mobile":"unverified","real_device":"unverified","kind":"redirect"},
+    {"route":"/tasks","mobile":"M2-B synthetic pass; full device/interaction acceptance open","real_device":"unverified","kind":"workspace"},
+    {"route":"/company","mobile":"unverified","real_device":"unverified","kind":"redirect"}
   ],
   "cross_cutting": [
-    {
-      "id": "public_auth",
-      "requirement": "Public landing, signup/login, onboarding, errors and keyboard",
-      "status": "open"
-    },
-    {
-      "id": "mobile_interactions",
-      "requirement": "Every menu, dialog, fullscreen panel, language and keyboard/zoom state",
-      "status": "open"
-    },
-    {
-      "id": "desktop_installer",
-      "requirement": "Signed Firbo installer/update chain, no upstream updater",
-      "status": "open"
-    },
-    {
-      "id": "computer_pairing",
-      "requirement": "One-time pairing, revoke, expiry and user-owned local permissions",
-      "status": "candidate; real device unverified"
-    },
-    {
-      "id": "computer_local_stop",
-      "requirement": "Offline-capable local Stop and interruption/reconciliation of running work",
-      "status": "open"
-    },
-    {
-      "id": "computer_browser",
-      "requirement": "Visible dedicated browser profile, click/fill/scroll under task grant",
-      "status": "open"
-    },
-    {
-      "id": "computer_os",
-      "requirement": "Opt-in real OS mouse/keyboard, takeover, sleep/lock handling",
-      "status": "open"
-    },
-    {
-      "id": "native_gateway",
-      "requirement": "Matching native API/console rollout and distinct scoped keys",
-      "status": "candidate; live unverified"
-    },
-    {
-      "id": "free_models",
-      "requirement": "Seven OpenCode entries registered; inference, quota and free-only runtime policy",
-      "status": "registration done; execution open"
-    },
-    {
-      "id": "missions_voice",
-      "requirement": "Unified missions, STT/TTS and real microphone test",
-      "status": "open"
-    },
-    {
-      "id": "ledger_budgets",
-      "requirement": "Durable server-owned request ledger and atomic budget reservations",
-      "status": "open"
-    },
-    {
-      "id": "integrations",
-      "requirement": "TikTok/YouTube/Salesforce/QuickBooks real authorized actions",
-      "status": "open"
-    },
-    {
-      "id": "recovery",
-      "requirement": "Consistent data/volume backups, encrypted off-host copy, isolated boot/restore",
-      "status": "local config/API image checked; full recovery open"
-    },
-    {
-      "id": "migrations",
-      "requirement": "Reproducible Supabase migration baseline",
-      "status": "open"
-    },
-    {
-      "id": "mcp_shifts",
-      "requirement": "Prior bounded IO, approvals/audit, SSRF and truthful scheduler results",
-      "status": "open"
-    },
-    {
-      "id": "isolation",
-      "requirement": "Two real-company adversarial role and device tests",
-      "status": "open"
-    },
-    {
-      "id": "operations",
-      "requirement": "Monitoring, alerts, performance and reviewed dependencies",
-      "status": "open"
-    },
-    {
-      "id": "release",
-      "requirement": "Coordinated release/rollback and real-account smoke tests",
-      "status": "open"
-    },
-    {
-      "id": "assessment",
-      "requirement": "Final evidence-based product score, feature inventory and limitations",
-      "status": "open"
-    }
+    {"id":"public_auth","requirement":"Public landing, signup/login, onboarding, errors and keyboard","status":"open"},
+    {"id":"mobile_interactions","requirement":"Every menu, dialog, fullscreen panel, language and keyboard/zoom state","status":"open"},
+    {"id":"desktop_installer","requirement":"Signed Firbo installer/update chain, no upstream updater","status":"open"},
+    {"id":"computer_pairing","requirement":"One-time pairing, revoke, expiry and user-owned local permissions","status":"client lifecycle tested synthetically; server atomic pairing/revoke and real device open"},
+    {"id":"computer_local_stop","requirement":"Offline-capable local Stop and interruption/reconciliation of running work","status":"open"},
+    {"id":"computer_browser","requirement":"Visible dedicated browser profile, click/fill/scroll under task grant","status":"open"},
+    {"id":"computer_os","requirement":"Opt-in real OS mouse/keyboard, takeover, sleep/lock handling","status":"open"},
+    {"id":"native_gateway","requirement":"Matching native API/console rollout and distinct scoped keys","status":"candidate; live unverified"},
+    {"id":"free_models","requirement":"Seven OpenCode entries registered; inference, quota and free-only runtime policy","status":"registration done; execution open"},
+    {"id":"missions_voice","requirement":"Unified missions, STT/TTS and real microphone test","status":"open"},
+    {"id":"ledger_budgets","requirement":"Durable server-owned request ledger and atomic budget reservations","status":"open"},
+    {"id":"integrations","requirement":"TikTok/YouTube/Salesforce/QuickBooks real authorized actions","status":"open"},
+    {"id":"recovery","requirement":"Consistent data/volume backups, encrypted off-host copy, isolated boot/restore","status":"local config/API image checked; full recovery open"},
+    {"id":"migrations","requirement":"Reproducible Supabase migration baseline","status":"open"},
+    {"id":"mcp_shifts","requirement":"Prior bounded IO, approvals/audit, SSRF and truthful scheduler results","status":"open"},
+    {"id":"isolation","requirement":"Two real-company adversarial role and device tests","status":"open"},
+    {"id":"operations","requirement":"Monitoring, alerts, performance and reviewed dependencies","status":"open"},
+    {"id":"release","requirement":"Coordinated release/rollback and real-account smoke tests","status":"open"},
+    {"id":"assessment","requirement":"Final evidence-based product score, feature inventory and limitations","status":"open"}
   ]
 }
