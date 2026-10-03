@@ -3,7 +3,7 @@ import { Person } from './Person';
 import { resolvePersona } from '../../lib/company/persona';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { Edges, Grid, OrbitControls } from '@react-three/drei';
+import { Edges, Line, Grid, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import type { AgentRow } from '../../lib/company/types';
 import { agentColor, type AgentState } from '../../lib/company/status';
@@ -222,34 +222,35 @@ export function Robot({ color, state }: { color: string; state: AgentState }) {
   );
 }
 
-function Desk({ color, state }: { color: string; state: AgentState }) {
-  const screen = useRef<THREE.MeshBasicMaterial>(null);
+/** A floating holographic display behind each employee: a framed glass plane with live-looking data bars. */
+function HoloScreen({ color, state }: { color: string; state: AgentState }) {
+  const bars = useRef<THREE.Group>(null);
   useFrame(({ clock }) => {
-    if (!screen.current) return;
     const t = clock.elapsedTime;
-    screen.current.opacity = state === 'active' ? 0.75 + Math.sin(t * 9) * 0.15 : state === 'disabled' ? 0.08 : 0.4;
+    bars.current?.children.forEach((c, i) => {
+      const base = 0.25 + ((i * 37) % 10) / 14;
+      c.scale.y = state === 'disabled' ? 0.1 : base * (state === 'active' ? 0.7 + Math.sin(t * 5 + i) * 0.3 : 0.85 + Math.sin(t * 0.8 + i) * 0.1);
+    });
   });
+  const W = 2.4;
+  const H = 1.3;
   return (
-    <group position={[0, 0, -0.55]}>
-      <mesh position={[0, 0.72, 0]}>
-        <boxGeometry args={[2, 0.07, 0.85]} />
-        <meshStandardMaterial color="#0f1f33" roughness={0.5} metalness={0.5} />
-        <Edges color={color} threshold={15} />
+    <group position={[0, 1.45, -1.3]}>
+      <mesh>
+        <planeGeometry args={[W, H]} />
+        <meshBasicMaterial color={color} transparent opacity={state === 'disabled' ? 0.03 : 0.07} depthWrite={false} side={THREE.DoubleSide} />
       </mesh>
-      {[-0.9, 0.9].map((x) => (
-        <mesh key={x} position={[x, 0.36, 0]}>
-          <boxGeometry args={[0.06, 0.72, 0.7]} />
-          <meshStandardMaterial color="#0b1626" />
-        </mesh>
-      ))}
-      <mesh position={[0, 1.12, -0.12]}>
-        <boxGeometry args={[1.05, 0.64, 0.05]} />
-        <meshStandardMaterial color="#05101c" />
-      </mesh>
-      <mesh position={[0, 1.12, -0.09]}>
-        <planeGeometry args={[0.95, 0.54]} />
-        <meshBasicMaterial ref={screen} color={color} transparent opacity={0.4} toneMapped={false} />
-      </mesh>
+      <Line points={[[-W / 2, -H / 2, 0], [W / 2, -H / 2, 0], [W / 2, H / 2, 0], [-W / 2, H / 2, 0], [-W / 2, -H / 2, 0]]} color={color} transparent opacity={state === 'disabled' ? 0.2 : 0.7} lineWidth={1} />
+      <group ref={bars} position={[-0.9, -0.4, 0.01]}>
+        {Array.from({ length: 10 }, (_, i) => (
+          <mesh key={i} position={[i * 0.2, 0.3, 0]}>
+            <planeGeometry args={[0.1, 0.6]} />
+            <meshBasicMaterial color={color} transparent opacity={0.55} toneMapped={false} />
+          </mesh>
+        ))}
+      </group>
+      <Line points={[[-W / 2 + 0.2, H / 2 - 0.25, 0.01], [-0.2, H / 2 - 0.25, 0.01]]} color={color} transparent opacity={0.8} lineWidth={2} />
+      <Line points={[[0, -H / 2, 0], [0, -1.15, 0]]} color={color} transparent opacity={0.4} lineWidth={1} />
     </group>
   );
 }
@@ -278,33 +279,18 @@ function Zone({
 
   return (
     <group position={[pos[0], 0, pos[1]]}>
-      <mesh position={[0, 0.05, 0]} receiveShadow>
-        <boxGeometry args={[4.6, 0.1, 3.6]} />
-        <meshStandardMaterial color="#0d2038" roughness={0.7} metalness={0.25} emissive="#0a2a44" emissiveIntensity={0.35} />
+      {/* platform: dark slab with a glowing edge, a faint grid and corner brackets */}
+      <mesh position={[0, 0.03, 0]}>
+        <boxGeometry args={[4.6, 0.06, 3.6]} />
+        <meshStandardMaterial color="#050d19" roughness={0.6} metalness={0.4} emissive="#071a2c" emissiveIntensity={0.5} />
         <Edges color={color} threshold={15} />
       </mesh>
-      {/* glass walls */}
-      <mesh position={[0, 0.65, -1.78]}>
-        <boxGeometry args={[4.6, 1.1, 0.05]} />
-        <meshStandardMaterial color={color} transparent opacity={0.1} roughness={0.1} metalness={0.6} />
-        <Edges color={color} threshold={15} />
-      </mesh>
-      <mesh position={[-2.28, 0.65, 0]}>
-        <boxGeometry args={[0.05, 1.1, 3.6]} />
-        <meshStandardMaterial color={color} transparent opacity={0.1} roughness={0.1} metalness={0.6} />
-        <Edges color={color} threshold={15} />
-      </mesh>
-      <Desk color={color} state={state} />
-      {/* chair */}
-      <mesh position={[0, 0.34, 0.12]}>
-        <cylinderGeometry args={[0.26, 0.26, 0.07, 16]} />
-        <meshStandardMaterial color="#13243b" />
-      </mesh>
-      <mesh position={[0, 0.17, 0.12]}>
-        <cylinderGeometry args={[0.03, 0.03, 0.34, 8]} />
-        <meshStandardMaterial color="#334155" />
-      </mesh>
-      <group position={[0, 0.1, -0.7]} scale={0.95}>
+      <gridHelper args={[3.8, 14, color, '#12304a']} position={[0, 0.07, 0.1]} />
+      {[[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sz]) => (
+        <Line key={`${sx}${sz}`} points={[[sx * 2.1, 0.08, sz * 1.6 - sz * 0.45], [sx * 2.1, 0.08, sz * 1.6], [sx * 2.1 - sx * 0.45, 0.08, sz * 1.6]]} color={color} lineWidth={2} toneMapped={false} />
+      ))}
+      <HoloScreen color={color} state={state} />
+      <group position={[0, 0.07, 0.15]} scale={1.05}>
         <Person persona={resolvePersona(agent)} color={color} state={state} />
       </group>
 

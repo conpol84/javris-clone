@@ -1,3 +1,4 @@
+import { Avatar, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import { useEffect, useMemo, useState } from 'react';
 import { Crown, Lock, Search, Sparkles } from 'lucide-react';
 import { Link } from 'react-router';
@@ -38,8 +39,8 @@ export function StorePage() {
     loadPlanUsage(orgId).then(setPlan).catch(() => undefined);
   }, [orgId, version]);
   const isFree = (plan?.plan.id ?? 'free') === 'free';
-  const limit = plan?.plan.limits.agents ?? 0;
-  const used = plan?.usage.agents ?? agents.length;
+  const limit = plan?.plan?.limits?.agents ?? 0;
+  const used = plan?.usage?.agents ?? agents.length;
   const full = !!plan && used >= limit;
 
   const hired = (tpl: AgentTemplate) => agents.filter((a) => a.slug === tpl.slug || a.slug.startsWith(`${tpl.slug}-`)).length;
@@ -57,11 +58,7 @@ export function StorePage() {
 
   return (
     <div className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
-      <header>
-        <div className="fb-eyebrow">{t('store.eyebrow')}</div>
-        <h1 className="fb-grad-text text-2xl font-semibold">{t('store.title')}</h1>
-        <p className="fb-muted mt-1 max-w-2xl text-sm">{t('store.intro', { n: AGENT_TEMPLATES.length })}</p>
-      </header>
+      <PageHeader eyebrow={t('store.eyebrow')} title={t('store.title')} sub={t('store.intro', { n: AGENT_TEMPLATES.length })} right={<Segmented value={tier} onChange={setTier} label={t('store.tier')} options={(['all', 'starter', 'pro'] as const).map((k) => ({ id: k, label: t(`store.tier.${k}` as TKey) }))} />} />
       {plan && (
         <section className="fb-glass flex flex-wrap items-center gap-4 p-4" aria-label={t('store.plan')}>
           <span className="grid h-12 w-12 place-items-center rounded-2xl" style={{ background: 'rgba(0,212,255,.12)', border: '1px solid var(--fb-border-strong)' }}><Crown size={22} style={{ color: 'var(--fb-accent)' }} /></span>
@@ -79,13 +76,6 @@ export function StorePage() {
           )}
         </section>
       )}
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t('store.tier')}>
-        {(['all', 'starter', 'pro'] as const).map((k) => (
-          <button key={k} className="fb-chip cursor-pointer" aria-pressed={tier === k} onClick={() => setTier(k)} style={tier === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
-            {t(`store.tier.${k}` as TKey)}
-          </button>
-        ))}
-      </div>
       <div className="flex flex-wrap items-center gap-2">
         <label className="fb-input flex min-w-[220px] flex-1 items-center gap-2">
           <Search size={15} aria-hidden />
@@ -111,25 +101,26 @@ export function StorePage() {
           const pro = isPremium(tpl.slug);
           const locked = pro && isFree;
           return (
-            <li key={tpl.slug} className="fb-glass fb-col gap-3 p-4">
-              <div className="flex items-center gap-3">
-                <span className="grid h-11 w-11 place-items-center rounded-xl" style={{ background: `${tpl.color}22`, border: `1px solid ${tpl.color}55`, boxShadow: `0 0 18px ${tpl.color}33` }}>
-                  <span className="fb-dot" style={{ background: tpl.color, boxShadow: `0 0 12px ${tpl.color}` }} />
-                </span>
-                <div className="min-w-0">
+            <li key={tpl.slug} className="fb-glass fb-glass--hover fb-col gap-3 p-5" style={{ ['--tpl' as string]: tpl.color }}>
+              <div className="flex items-start gap-3">
+                <Avatar name={t(`tpl.${tpl.slug}.name` as TKey)} color={tpl.color} size={46} />
+                <div className="min-w-0 flex-1">
                   <div className="truncate font-semibold">{t(`tpl.${tpl.slug}.name` as TKey)}</div>
                   <div className="fb-dim text-xs">{categoryLabel(tpl.category, i18n)}</div>
                 </div>
-                <span className="fb-chip ms-auto" style={pro ? { color: '#fbbf24', borderColor: 'rgba(251,191,36,.5)' } : { color: 'var(--fb-ok)' }}>{pro ? <><Crown size={11} /> {t('store.tier.pro')}</> : t('store.tier.starter')}</span>
-                {n > 0 && <span className="fb-chip">{t('store.hired', { n })}</span>}
+                <div className="flex flex-col items-end gap-1">
+                  <Pill tone={pro ? 'warn' : 'ok'}>{pro ? <><Crown size={11} /> {t('store.tier.pro')}</> : t('store.tier.starter')}</Pill>
+                  {n > 0 && <Pill tone="accent">{t('store.hired', { n })}</Pill>}
+                </div>
               </div>
               <p className="fb-muted flex-1 text-sm leading-relaxed">{t(`tpl.${tpl.slug}.tagline` as TKey)}</p>
               <div className="flex flex-wrap gap-1.5">
-                {tpl.tools.slice(0, 4).map((k) => (
+                {tpl.tools.slice(0, 3).map((k) => (
                   <span key={k.tool} className="fb-chip">{k.tool}</span>
                 ))}
+                {tpl.tools.length > 3 && <span className="fb-chip">+{tpl.tools.length - 3}</span>}
               </div>
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 border-t pt-3" style={{ borderColor: 'var(--fb-border)' }}>
                 <span className="fb-dim text-xs">{t('hire.meta', { tools: tpl.tools.length, ask })}</span>
                 {locked || full ? (
                   <Link to="/billing" className="fb-btn fb-btn--ghost" title={locked ? t('store.lockedHint') : t('store.fullHint')}>

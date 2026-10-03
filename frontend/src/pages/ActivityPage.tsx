@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { StatusDot } from '../components/command/Panel';
+import { Bot, CheckCircle2, History, ListChecks, Users, type LucideIcon } from 'lucide-react';
+import { EmptyState, PageHeader, Segmented } from '../components/ui/kit';
 import { describeAudit, type AuditGroup } from '../lib/company/audit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { listAudit, listAgents, listMembers } from '../lib/company/data';
@@ -12,7 +13,8 @@ import { useRealtimeReload } from '../lib/company/useRealtime';
 import '../styles/firbo.css';
 
 const GROUPS: (AuditGroup | 'all')[] = ['all', 'approvals', 'agents', 'tasks', 'people'];
-const TONE = { info: 'idle', ok: 'ok', warn: 'warn', err: 'err' } as const;
+const TONE_COLOR = { info: '#7f9fc4', ok: '#34d399', warn: '#fbbf24', err: '#f87171' } as const;
+const GROUP_ICON: Record<string, LucideIcon> = { approvals: CheckCircle2, agents: Bot, tasks: ListChecks, people: Users };
 
 export function ActivityPage() {
   const i18n = useI18n();
@@ -64,57 +66,52 @@ export function ActivityPage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="mb-5">
-          <div className="fb-eyebrow">{t('act.eyebrow')}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('act.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('act.sub')}</p>
-        </header>
+      <div className="mx-auto max-w-3xl px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader
+          eyebrow={t('act.eyebrow')}
+          title={t('act.title')}
+          sub={t('act.sub')}
+          right={isAdmin ? <Segmented value={group} onChange={setGroup} options={GROUPS.map((g) => ({ id: g, label: t(`act.group.${g}` as TKey) }))} /> : undefined}
+        />
 
         {!isAdmin ? (
           <div className="fb-glass p-5 text-sm fb-muted">{t('act.onlyAdmins')}</div>
         ) : (
           <>
-            <div className="mb-4 flex flex-wrap gap-2" role="tablist">
-              {GROUPS.map((g) => (
-                <button
-                  key={g}
-                  role="tab"
-                  aria-selected={group === g}
-                  onClick={() => setGroup(g)}
-                  className="fb-chip cursor-pointer"
-                  style={group === g ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,.1)' } : undefined}
-                >
-                  {t(`act.group.${g}` as TKey)}
-                </button>
-              ))}
-            </div>
             {error && (
-              <p role="alert" className="fb-chip mb-3" style={{ color: 'var(--fb-err)' }}>
+              <p role="alert" className="fb-pill fb-pill--err mb-3">
                 {error}
               </p>
             )}
-            <div className="fb-glass p-2">
-              {loading ? (
-                <p className="fb-dim p-4 text-sm">{t('common.loading')}</p>
-              ) : items.length === 0 ? (
-                <p className="fb-dim p-4 text-sm">{t('act.empty')}</p>
-              ) : (
-                <ul>
-                  {items.map(({ row, text, tone }) => (
-                    <li key={row.id} className="flex items-start gap-3 px-3 py-2.5" style={{ borderTop: '1px solid var(--fb-border)' }}>
-                      <span className="mt-1.5">
-                        <StatusDot tone={TONE[tone]} />
-                      </span>
-                      <div className="min-w-0 flex-1 text-sm">{text}</div>
-                      <time className="fb-dim shrink-0 text-xs" dateTime={row.created_at} title={fmt.dateTime(row.created_at)}>
-                        {timeAgo(Date.parse(row.created_at), Date.now(), fmt)}
-                      </time>
+            {loading ? (
+              <p className="fb-dim p-4 text-sm">{t('common.loading')}</p>
+            ) : items.length === 0 ? (
+              <EmptyState icon={<History size={24} />} title={t('act.empty')} />
+            ) : (
+              <ol className="fb-timeline">
+                {items.map(({ row, text, tone, group: g }, i) => {
+                  const Icon = GROUP_ICON[g] ?? History;
+                  const day = fmt.date(row.created_at);
+                  const newDay = i === 0 || day !== fmt.date(items[i - 1].row.created_at);
+                  return (
+                    <li key={row.id}>
+                      {newDay && <div className="fb-timeline__day">{day}</div>}
+                      <div className="fb-timeline__item">
+                        <span className="fb-timeline__dot" style={{ color: TONE_COLOR[tone], borderColor: `${TONE_COLOR[tone]}66`, background: `${TONE_COLOR[tone]}14` }}>
+                          <Icon size={14} />
+                        </span>
+                        <div className="fb-glass min-w-0 flex-1 px-4 py-3">
+                          <div className="text-sm leading-snug">{text}</div>
+                          <time className="fb-dim mt-1 block text-xs" dateTime={row.created_at} title={fmt.dateTime(row.created_at)}>
+                            {timeAgo(Date.parse(row.created_at), Date.now(), fmt)}
+                          </time>
+                        </div>
+                      </div>
                     </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                  );
+                })}
+              </ol>
+            )}
           </>
         )}
       </div>

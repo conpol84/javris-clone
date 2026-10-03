@@ -47,6 +47,7 @@ export async function loadAdminOverview(): Promise<AdminOverview> {
     }
     throw new AdminError(code);
   }
+  if (!data?.totals || !Array.isArray(data.companies)) throw new AdminError('unknown');
   return data as AdminOverview;
 }
 

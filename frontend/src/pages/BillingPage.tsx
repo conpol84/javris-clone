@@ -114,8 +114,8 @@ export function BillingPage() {
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {LIMIT_KEYS.map((k) => {
-                const used = info.usage[k] ?? 0;
-                const cap = info.plan.limits[k] ?? 0;
+                const used = info.usage?.[k] ?? 0;
+                const cap = info.plan?.limits?.[k] ?? 0;
                 const pct = cap > 0 ? Math.min(100, (used / cap) * 100) : 100;
                 const tone = pct >= 100 ? 'var(--fb-err)' : pct >= 80 ? 'var(--fb-warn)' : 'var(--fb-accent)';
                 return (
@@ -151,7 +151,7 @@ export function BillingPage() {
             const isCurrent = info?.plan.id === p.id;
             const color = ACCENT[p.id];
             return (
-              <li key={p.id} className="fb-glass fb-col gap-4 p-5" style={{ borderColor: isCurrent ? color : undefined, boxShadow: isCurrent ? `0 0 40px -12px ${color}` : undefined }}>
+              <li key={p.id} className="fb-glass fb-col gap-4 p-5" style={{ borderColor: isCurrent || p.id === 'pro' ? color : undefined, boxShadow: isCurrent ? `0 0 40px -12px ${color}` : p.id === 'pro' ? `0 0 50px -18px ${color}` : undefined, background: p.id === 'pro' ? `linear-gradient(180deg, ${color}14, transparent 45%), rgba(9,17,31,.74)` : undefined }}>
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="fb-dot" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
@@ -159,23 +159,24 @@ export function BillingPage() {
                     {p.id === 'pro' && <span className="fb-chip ms-auto" style={{ color }}>{t('bill.popular')}</span>}
                   </div>
                   <div className="mt-3 flex items-baseline gap-1">
-                    <span className="text-3xl font-bold tracking-tight" style={{ color }}>{price(p)}</span>
+                    <span className="text-4xl font-semibold tracking-tight">{price(p)}</span>
                     {p.purchasable && <span className="fb-dim text-xs">/ {t(interval === 'month' ? 'bill.perMonth' : 'bill.perYear')}</span>}
                   </div>
                   {p.id === 'enterprise' && <p className="fb-dim mt-1 text-xs">{t('bill.enterpriseNote')}</p>}
                 </div>
-                <ul className="fb-col flex-1 gap-1.5 text-sm">
-                  {LIMIT_KEYS.map((k) => (
-                    <li key={k} className="flex items-center justify-between gap-2">
-                      <span className="fb-muted">{t(`bill.limit.${k}` as TKey)}</span>
-                      <span className="font-semibold tabular-nums">{fmt.number(p.limits[k])}</span>
-                    </li>
-                  ))}
-                  <li className="my-1 border-t" style={{ borderColor: 'var(--fb-border)' }} />
+                <ul className="fb-col gap-2 text-sm">
                   {p.features.map((f) => (
                     <li key={f} className="flex items-start gap-2">
-                      <Check size={14} className="mt-0.5 shrink-0" style={{ color }} />
+                      <Check size={15} className="mt-0.5 shrink-0" style={{ color }} />
                       <span>{t(`bill.feat.${f}` as TKey)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <ul className="fb-col flex-1 gap-1.5 border-t pt-3 text-[13px]" style={{ borderColor: 'var(--fb-border)' }}>
+                  {LIMIT_KEYS.map((k) => (
+                    <li key={k} className="flex items-center justify-between gap-2">
+                      <span className="fb-dim">{t(`bill.limit.${k}` as TKey)}</span>
+                      <span className="font-semibold tabular-nums">{fmt.number(p.limits?.[k] ?? 0)}</span>
                     </li>
                   ))}
                 </ul>

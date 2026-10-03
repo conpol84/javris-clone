@@ -6,7 +6,10 @@ import { addMemberByEmail, listMembers, removeMember, setMemberRole } from '../l
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import type { MemberRow, Role } from '../lib/company/types';
+import { Avatar, PageHeader, Pill } from '../components/ui/kit';
 import '../styles/firbo.css';
+
+const ROLE_COLOR: Record<string, string> = { owner: '#fbbf24', admin: '#a78bfa', manager: '#22d3ee', member: '#34d399', viewer: '#7f9fc4' };
 
 const ROLES: { id: Role }[] = [{ id: 'owner' }, { id: 'admin' }, { id: 'manager' }, { id: 'member' }, { id: 'viewer' }];
 
@@ -87,12 +90,8 @@ export function PeoplePage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="mb-5">
-          <div className="fb-eyebrow">{current?.organization.name}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('ppl.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('ppl.sub')}</p>
-        </header>
+      <div className="mx-auto max-w-4xl px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader eyebrow={current?.organization.name} title={t('ppl.title')} sub={t('ppl.sub')} right={<Pill tone="accent">{members.length}</Pill>} />
 
         {isAdmin && (
           <form onSubmit={add} className="fb-glass mb-4 p-4">
@@ -122,19 +121,17 @@ export function PeoplePage() {
           </form>
         )}
 
-        <div className="fb-glass p-2">
+        <div>
           {loading ? (
             <p className="fb-dim p-4 text-sm">{t('common.loading')}</p>
           ) : (
-            <ul>
+            <ul className="grid gap-3 md:grid-cols-2">
               {members.map((m) => {
                 const self = m.user_id === user?.id;
                 const locked = !isAdmin || (m.role === 'owner' && !isOwner);
                 return (
-                  <li key={m.user_id} className="flex flex-wrap items-center gap-3 px-3 py-3" style={{ borderTop: '1px solid var(--fb-border)' }}>
-                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold" style={{ background: 'rgba(0, 212, 255,.14)', color: 'var(--fb-accent)' }}>
-                      {(m.full_name || m.email || '?').slice(0, 1).toUpperCase()}
-                    </span>
+                  <li key={m.user_id} className="fb-glass flex flex-wrap items-center gap-3 p-4">
+                    <Avatar name={m.full_name || m.email || '?'} color={ROLE_COLOR[m.role] ?? '#22d3ee'} size={40} />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium">
                         {m.full_name || m.email || t('ppl.member')} {self && <span className="fb-dim text-xs">{t('ppl.you')}</span>}
@@ -167,10 +164,11 @@ export function PeoplePage() {
             </ul>
           )}
         </div>
-        <ul className="fb-dim mt-4 space-y-1 text-xs">
+        <ul className="mt-6 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {ROLES.map((r) => (
-            <li key={r.id}>
-              <b className="text-[color:var(--fb-muted)]">{roleName(r.id)}</b> — {roleHint(r.id)}
+            <li key={r.id} className="fb-card">
+              <Pill tone={r.id === 'owner' ? 'accent' : 'neutral'}>{roleName(r.id)}</Pill>
+              <p className="fb-dim mt-2 text-xs leading-snug">{roleHint(r.id)}</p>
             </li>
           ))}
         </ul>
