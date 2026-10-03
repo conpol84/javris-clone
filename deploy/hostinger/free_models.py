@@ -158,8 +158,11 @@ def unique_ids(data: list[dict[str, Any]]) -> set[str]:
 
 
 def offer(provider: str, ident: str, name: str, basis: str) -> dict[str, Any]:
+    # NVIDIA trial-only offers remain visible for review, never auto-registered.
+    terms_review = provider == 'opencode' and ident.startswith('nemotron-')
     return {'provider': provider, 'model_id': ident, 'name': name[:160], 'price_evidence': basis,
-            'inference_tested': False, 'public_data_only': True}
+            'inference_tested': False, 'public_data_only': True,
+            'eligible_for_registration': not terms_review, 'terms_review_required': terms_review}
 
 
 def opencode_offers(catalogue: Any, html: str) -> list[dict[str, Any]]:
@@ -202,15 +205,16 @@ def opencode_offers(catalogue: Any, html: str) -> list[dict[str, Any]]:
 
 def openrouter_offers(catalogue: Any) -> list[dict[str, Any]]:
     data = rows(catalogue, 'data')
-    unique_ids(data)
     require(data, 'openrouter_empty_catalogue')
+    # Paid/non-candidate identifiers are never sent to the gateway. Their format
+    # must not prevent discovery of unrelated, strictly validated free variants.
+    candidates = [row for row in data if isinstance(row.get('id'), str)
+                  and (row['id'].endswith(':free') or row['id'] == 'openrouter/free')
+                  and (not row['id'].startswith('openrouter/') or row['id'] == 'openrouter/free')]
+    unique_ids(candidates)  # Duplicate/unsafe candidate IDs still block the source.
     result = []
-    for row in data:
+    for row in candidates:
         ident, pricing = row['id'], row.get('pricing')
-        if ident.startswith('openrouter/') and ident != 'openrouter/free':
-            continue  # auto:free is NOT a free-only router.
-        if not (ident.endswith(':free') or ident == 'openrouter/free'):
-            continue
         if not isinstance(pricing, dict) or not all(k in pricing for k in ('prompt', 'completion')):
             continue
         if not all(zero(v) for v in pricing.values()):
@@ -275,6 +279,8 @@ def registration_plan(offers: list[dict[str, Any]], active: set[str], custom: di
     out = []
     for item in offers:
         provider, ident = item['provider'], item['model_id']
+        if item.get('eligible_for_registration') is not True:
+            continue
         if provider not in active:
             continue
         existing = rows(custom[provider], 'models')
@@ -318,6 +324,7 @@ def register(plan: list[dict[str, Any]], call: Callable[..., Any], journal: Any,
     """No automatic retry, rollback deletion or mutation of an existing entry."""
     created: list[dict[str, str]] = [] if progress is None else progress
     for item in plan:
+        require(item.get('eligible_for_registration') is True and not item.get('terms_review_required'), 'offer_requires_terms_review')
         provider, ident = item['provider'], item['model_id']
         if any(r.get('id') == ident for r in rows(call('/api/provider-models?provider=' + provider), 'models')):
             continue
