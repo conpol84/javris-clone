@@ -98,22 +98,78 @@ The branded gateway image is built by a GitHub workflow in the OmniRoute fork (n
 4. Edge Function or SQL changes: apply to Supabase **and** commit the same change to the repo (migration file / function file) — this was not done consistently before (section 5).
 5. Users with the PWA may need a hard refresh (Ctrl+Shift+R) once.
 
-## 10. Honest status (what is NOT verified or not done)
-- Almost nothing was verified **with a real signed-in browser session and a real microphone** by the author; visuals were checked in a headless test renderer.
-- **Voice input** has been unreliable for the owner; the Talk console has a "Voice diagnostics" log — read it first. Needs a real-microphone test and a look at the `agent-listen` logs.
-- Redesign status: CEO page/Talk, Command Center hero and all AI-employee figures are the new holographic style. **3D Office rooms, Landing page and the 2D screens (Tasks, Inbox, Analytics, Billing, Store, Settings) still need a real design pass.**
-- The ~20 newly added integrations and the MCP client were written against public API docs and never run against real accounts.
-- OAuth one-click apps need the platform owner to create the OAuth apps (secrets above); not done.
-- Stripe is wired but has no production keys. Free plan limits and premium-agent gating exist only in the database + UI.
-- Agents cannot yet call connected MCP tools by themselves; Firbo is not yet an MCP server.
-- Test coverage is mostly unit tests for helpers and i18n; there are no end-to-end tests and no CI.
-- Single-tenant data volume so far: performance and RLS under many tenants is untested.
+## 10. Exact status: what is done, what is not
+**How "verified" is used below**
+- **V1 – automated:** `tsc`, 196 unit tests and the production build pass (run on every change).
+- **V2 – seen in preview:** opened with `npm run preview:mock` (fake data, headless Chromium, 3D software-rendered) and looked at a screenshot. Layout is confirmed; real data and real accounts are not.
+- **V3 – real account:** used by a real signed-in person. **Almost nothing has reached V3** except what the owner reported (see section 11). Treat every "V2" item as "probably right, please test".
 
-## 11. Suggested improvements, in order
-1. `supabase db pull` → commit a true baseline; add a CI job that applies migrations to an empty database.
-2. Fix the three security advisor items; rotate any key that was ever pasted in a chat.
-3. Add a GitHub Actions pipeline: typecheck + tests on every push; deploy functions with the CLI.
-4. End-to-end tests (Playwright) for login → create company → hire agent → run task → approve; and one for voice with a fake microphone.
-5. Real-device pass for mobile; finish the design pass on the screens listed in section 10.
-6. Monitoring: Supabase log drains + uptime check for gateway/api; automatic backups of `deploy/hostinger/data`.
-7. Merge the working branch into `main` once reviewed, and make Vercel deploy from it automatically.
+### 10.1 Screens (frontend/src/pages)
+| Screen | State | Verified |
+|---|---|---|
+| Landing (public) | New hologram hero, "how it works" (3 steps), team cards, pillars, 8 languages | V1 + V2 |
+| Sign in / sign up / onboarding wizard | Working since early on; only typography changed | V1 (+ V2 onboarding) |
+| Command Center `/` | New real-head hologram hero with orbiting agents, gauges, feed, HUD windows, search, focus mode | V1; hero seen in a test scene, page opens without error in preview |
+| AI CEO `/ceo` and Talk console (⌘K) | Hologram stage (real head scan, moving jaw, zoom buttons), agent cards, voice, command tab | V1 + V2 (stage); **voice not confirmed on a real microphone** |
+| 3D Office `/office` | New: holographic android per employee on a glowing pad with a floating data screen; right panel list | V1 + V2 |
+| Tasks | New: KPI cards with trends, board (4 columns) + list toggle | V1 + V2 |
+| Inbox | New: readable approval cards (labelled fields, risk bar, avatar), technical JSON collapsed | V1 + V2 |
+| Analytics | New: KPI trends, area chart, cost-share donut, per-agent table with bars | V1 + V2 |
+| Agent Store | New cards (avatar, tier pill), plan banner, Starter/Pro filter, locked premium agents | V1 + V2 |
+| Billing | Pro highlighted, features first, usage bars; Stripe not live | V1 + V2 |
+| Integrations | Brand tiles, 60+ apps, OAuth + token + read-only data apps + MCP tools panel | V1 + V2; **no app tested against a real account** |
+| Activity | New timeline grouped by day | V1 + V2 |
+| People | New member cards, role legend | V1 + V2 |
+| Companies | New cards, subtle "remove company" (typed-name confirmation, owner only) | V1 + V2; deletion function exists, never exercised on real data |
+| Settings | New layout (account card, language, appearance, shortcuts, server) | V1 + V2 |
+| Team, Memory, Reviews, Missions, Studio | Employees are the new holograms; layout/2D parts **only got the global typography pass** | V1 (opens without error in preview) |
+| Shifts | Still the old 24-hour dial (no hologram people) | V1 |
+| Computers (Firbo Connector), Coding, Hub, Gateway, Admin, Chat (agent chat) | Functional; **only global typography pass, no redesign** | V1 |
+| Error screen | New dark "This page hit a problem" with Reload / Back; technical text collapsed | V1 |
+
+### 10.2 Cross-cutting features
+| Feature | State |
+|---|---|
+| 8 languages (en, el, es, pt-BR, de, fr, zh-CN, ar, RTL) | Done; parity enforced by tests |
+| Fullscreen, "open in new window", per-panel minimize/maximize | Done (V2 not covered; browser features) |
+| Floating HUD windows (voice, workflow, analytics), desktop only | Done, draggable, remembered |
+| Mobile: bottom tab bar, safe areas, 16px inputs, bigger touch targets | Done; **never reviewed on a real phone** |
+| Voice input | Records the microphone, auto-stops on a pause, transcribes server-side (`agent-listen`), falls back to browser recognition; "Voice diagnostics" log. **Not confirmed working by the owner.** |
+| Voice output | `agent-speak` (OpenAI TTS) with browser fallback; confirmed working once |
+| Plans: free = 2 agents, premium agents locked on free | Done in DB + UI |
+| Company deletion | Done (RPC + UI) |
+| MCP client (connect remote MCP servers, list/run tools) | Done in `mcp` function + Integrations; **not tested against a real MCP server**; agents do not call MCP tools by themselves yet |
+| 20 new integrations (Threads, Instagram, DEV, Matrix, Zulip, Rocket.Chat, Todoist, monday, Home Assistant, IFTTT, Brevo, Mailchimp, Stripe, Shopify, WooCommerce, Lemon Squeezy, Gumroad, Calendly, Cal.com, Intercom) | Written from public API docs, **never run against real accounts** |
+| Still "coming soon" | TikTok, YouTube, Salesforce, QuickBooks |
+| Developer preview with fake data | `npm run preview:mock` (new) |
+
+### 10.3 Backend and operations
+| Item | State |
+|---|---|
+| Supabase schema, RLS, triggers, plan limits, pg_cron shifts | Live. **Repo migrations are incomplete** (section 5) |
+| 12 Edge Functions | Live (versions in the Supabase dashboard); repo files match what was deployed from here, but dashboard edits would not show up in git |
+| OmniRoute gateway on Hostinger | Running with providers persisted, combos `firbo-economy` / `firbo-quality`; owner confirmed paid models listed. Keys were pasted in a chat once: **rotate** |
+| Stripe | Code complete; no production keys or webhook configured |
+| OAuth one-click apps (Google, Microsoft, LinkedIn, Dropbox) | Code complete; no OAuth apps registered, so the buttons show a setup note |
+| CI/CD | **None.** Vercel is deployed by hand from a commit; functions by hand; no automated tests on push |
+| Monitoring, alerts, automatic backups | **None** |
+| Security advisors | 3 open items (section 5) |
+
+## 11. What the owner reported from real use (most recent first)
+- Voice: first "does not hear me", then "hears but does not answer", last "mouth does not move" (jaw animation added since). Cause not proven; the Voice diagnostics log is the next evidence to collect. No `agent-listen` request had reached the server in the logs I could see when this was written.
+- Old cartoon visuals were called childish → replaced in the CEO page, hero, office and all employee figures; 2D screens redesigned in the last rounds.
+- Free plan must be 2 agents and the Agent Store must look commercial → done.
+- Wanted fullscreen/pop-out windows and removable companies → done.
+- A blank "Something went wrong" page appeared for the owner on some screens → guards added and the screen restyled; root cause on the owner's data not reproduced (preview showed it came from sample data of the wrong shape).
+
+## 12. Suggested improvements, in order
+1. `supabase db pull`, commit the baseline, add a CI job that rebuilds the database from migrations.
+2. Fix the 3 security advisor items; rotate every key that was ever pasted in a chat.
+3. GitHub Actions: `tsc`, tests, build on every push; deploy functions with the CLI; Vercel auto-deploy from a protected branch.
+4. Playwright end-to-end tests on top of `preview:mock` (page opens, no console errors, key buttons) and a voice test with Chromium's fake microphone.
+5. **Real-account QA pass** of every row marked V2 above, on desktop and a real phone; fix what real data breaks.
+6. Voice: read the `agent-listen` logs while the owner speaks; confirm the OpenAI transcription model is enabled for the key.
+7. Finish redesign: Shifts, Team/Memory/Reviews/Missions/Studio 2D parts, Computers, Coding, Hub, Gateway, Admin, Chat.
+8. Let agents call connected MCP tools; expose Firbo itself as an MCP server.
+9. Register OAuth apps, add Stripe keys, test 5 top integrations with real accounts before advertising them.
+10. Merge the working branch into `main` after review.

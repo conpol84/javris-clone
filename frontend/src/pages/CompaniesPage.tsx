@@ -7,6 +7,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { deleteOrganization, loadOrgSummary, type OrgSummary } from '../lib/company/data';
 import { MANAGER_ROLES } from '../lib/company/types';
+import { Avatar, PageHeader, Pill } from '../components/ui/kit';
 import '../styles/firbo.css';
 
 /** One overview for every company you belong to. */
@@ -54,25 +55,22 @@ export function CompaniesPage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="mb-5">
-          <div className="fb-eyebrow">{t('nav.companies')}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('cmp.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('cmp.sub', { count: memberships.length })}</p>
-        </header>
-        <ul className="grid gap-4 md:grid-cols-2">
+      <div className="fb-wide mx-auto px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader eyebrow={t('nav.companies')} title={t('cmp.title')} sub={t('cmp.sub', { count: memberships.length })} />
+        <ul className="grid gap-4 lg:grid-cols-2">
           {memberships.map((m) => {
             const id = m.organization.id;
             const s = stats[id];
             const isCurrent = id === current?.organization.id;
             return (
-              <li key={id} className="fb-glass p-4" style={isCurrent ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+              <li key={id} className="fb-glass p-5" style={isCurrent ? { borderColor: 'var(--fb-border-strong)', boxShadow: '0 0 40px -18px var(--fb-accent)' } : undefined}>
+                <div className="flex items-center gap-3">
+                  <Avatar name={m.organization.name} color={isCurrent ? '#22d3ee' : '#a78bfa'} size={44} />
+                  <div className="min-w-0 flex-1">
                     <div className="truncate text-lg font-semibold">{m.organization.name}</div>
                     <div className="fb-dim text-xs">{t(`role.${m.role}` as TKey)}</div>
                   </div>
-                  {isCurrent && <span className="fb-chip">{t('cmp.current')}</span>}
+                  {isCurrent && <Pill tone="accent">{t('cmp.current')}</Pill>}
                 </div>
                 {s === undefined ? (
                   <p className="fb-dim mt-4 text-sm">{t('common.loading')}</p>
@@ -86,7 +84,7 @@ export function CompaniesPage() {
                     <Metric label={t('cmp.spend')} value={s.cost30d == null ? '–' : fmt.currency(s.cost30d)} onClick={() => open(id, '/analytics')} />
                   </div>
                 )}
-                <button className="fb-btn fb-btn--primary mt-4 w-full" onClick={() => open(id, '/')}>
+                <button className="fb-btn fb-btn--primary mt-5 w-full" onClick={() => open(id, '/')}>
                   {t('cmp.open')}
                 </button>
                 {m.role === 'owner' &&
@@ -102,8 +100,8 @@ export function CompaniesPage() {
                       </div>
                     </div>
                   ) : (
-                    <button className="fb-btn fb-btn--ghost mt-2 w-full" onClick={() => (setRemoving(id), setTyped(''))}>
-                      <Trash2 size={14} /> {t('cmp.remove')}
+                    <button className="mt-4 inline-flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--fb-dim)' }} onClick={() => (setRemoving(id), setTyped(''))}>
+                      <Trash2 size={12} /> {t('cmp.remove')}
                     </button>
                   ))}
               </li>
@@ -117,9 +115,9 @@ export function CompaniesPage() {
 
 function Metric({ label, value, onClick, warn }: { label: string; value: string; onClick: () => void; warn?: boolean }) {
   return (
-    <button onClick={onClick} className="fb-row fb-glass--hover cursor-pointer flex-col items-start gap-0.5 py-2.5 text-start">
-      <span className="fb-dim text-[11px]">{label}</span>
-      <span className="text-lg font-semibold tabular-nums" style={warn ? { color: 'var(--fb-warn)' } : undefined}>{value}</span>
+    <button onClick={onClick} className="fb-card w-full cursor-pointer !text-start">
+      <span className="fb-dim block text-[11px]">{label}</span>
+      <span className="mt-1 block text-xl font-semibold tabular-nums" style={warn ? { color: 'var(--fb-warn)' } : undefined}>{value}</span>
     </button>
   );
 }

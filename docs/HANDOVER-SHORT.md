@@ -17,6 +17,6 @@
 
 **Not verified:** almost everything was checked only in a test renderer, never with a real signed-in session; the ~20 new integrations and the MCP client never ran against real accounts; Stripe has no production keys.
 
-**Design status:** CEO/Talk, Command Center hero and AI-employee figures are the new holographic style; 3D Office rooms, Landing and 2D screens still need a real design pass.
+**Design status:** redesigned and seen in preview with fake data: Landing, Command Center hero, CEO/Talk, 3D Office, Tasks, Inbox, Analytics, Agent Store, Billing, Integrations, Activity, People, Companies, Settings. Only a global typography pass so far: Shifts, Team/Memory/Reviews/Missions/Studio (2D parts), Computers, Coding, Hub, Gateway, Admin, Chat. Nothing has been verified with a real account yet.
 
-Full details: `docs/HANDOVER.md`.
+Preview any screen without an account: `npm run preview:mock` (add `?guest=1` for the landing page). Full page-by-page status table: `docs/HANDOVER.md` section 10.

@@ -1,4 +1,3 @@
-import { Moon, Monitor, Sun } from 'lucide-react';
 import { LanguageSwitcher } from '../components/brand/LanguageSwitcher';
 import { Panel } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
@@ -6,14 +5,11 @@ import type { TKey } from '../i18n/locales/en';
 import { getBase } from '../lib/api';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { useAppStore } from '../lib/store';
+import { Avatar, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import '../styles/firbo.css';
 
 const GATEWAY_DASHBOARD = (import.meta.env.VITE_OMNIROUTE_URL as string | undefined) || '';
-const THEMES = [
-  { id: 'light', icon: Sun },
-  { id: 'dark', icon: Moon },
-  { id: 'system', icon: Monitor },
-] as const;
+const THEMES = [{ id: 'light' }, { id: 'dark' }, { id: 'system' }] as const;
 
 /** Workspace settings for the hosted Firbo product (the legacy settings page belongs to the desktop build). */
 export function FirboSettingsPage() {
@@ -33,60 +29,55 @@ export function FirboSettingsPage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-4 px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header>
-          <div className="fb-eyebrow">{current?.organization.name}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('settings.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('settings.sub')}</p>
-        </header>
+      <div className="mx-auto max-w-4xl space-y-5 px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader eyebrow={current?.organization.name} title={t('settings.title')} sub={t('settings.sub')} />
 
-        <Panel title={t('settings.account')}>
-          {row(t('settings.email'), user?.email ?? '–')}
-          {row(t('settings.company'), current?.organization.name ?? '–')}
-          {row(t('settings.role'), current ? t(`role.${current.role}` as TKey) : '–')}
-          <button className="fb-btn fb-btn--ghost mt-3" onClick={() => void signOut()}>
+        <section className="fb-glass flex flex-wrap items-center gap-4 p-5">
+          <Avatar name={user?.email ?? '?'} color="#22d3ee" size={56} />
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-base font-semibold">{user?.email ?? '–'}</div>
+            <div className="fb-dim mt-0.5 text-sm">{current?.organization.name ?? '–'}</div>
+          </div>
+          {current && <Pill tone="accent">{t(`role.${current.role}` as TKey)}</Pill>}
+          <button className="fb-btn fb-btn--ghost" onClick={() => void signOut()}>
             {t('common.signOut')}
           </button>
-        </Panel>
+        </section>
 
-        <Panel title={t('settings.language')}>
-          <p className="fb-muted mb-3 text-sm">{t('settings.languageHint')}</p>
-          <LanguageSwitcher />
-        </Panel>
+        <div className="grid gap-5 md:grid-cols-2">
+          <Panel title={t('settings.language')}>
+            <p className="fb-muted mb-3 text-sm">{t('settings.languageHint')}</p>
+            <LanguageSwitcher />
+          </Panel>
 
-        <Panel title={t('settings.appearance')}>
-          <div role="radiogroup" aria-label={t('settings.appearance')} className="flex flex-wrap gap-2">
-            {THEMES.map(({ id, icon: Icon }) => (
-              <button
-                key={id}
-                role="radio"
-                aria-checked={theme === id}
-                onClick={() => updateSettings({ theme: id })}
-                className="fb-chip cursor-pointer"
-                style={theme === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,.1)' } : undefined}
-              >
-                <Icon size={13} /> {t(`settings.theme.${id}` as TKey)}
-              </button>
-            ))}
-          </div>
-        </Panel>
+          <Panel title={t('settings.appearance')}>
+            <Segmented
+              value={theme as 'light' | 'dark' | 'system'}
+              onChange={(id) => updateSettings({ theme: id })}
+              label={t('settings.appearance')}
+              options={THEMES.map(({ id }) => ({ id, label: t(`settings.theme.${id}` as TKey) }))}
+            />
+          </Panel>
+        </div>
 
-        <Panel title={t('settings.shortcuts')}>
-          <div className="flex items-center justify-between gap-2 text-sm">
-            <span className="fb-muted">{t('settings.shortcutCmd')}</span>
-            <kbd dir="ltr" className="fb-chip font-mono">⌘ / Ctrl + K</kbd>
-          </div>
-        </Panel>
+        <div className="grid gap-5 md:grid-cols-2">
+          <Panel title={t('settings.shortcuts')}>
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="fb-muted">{t('settings.shortcutCmd')}</span>
+              <kbd dir="ltr" className="fb-chip font-mono">⌘ / Ctrl + K</kbd>
+            </div>
+          </Panel>
 
-        <Panel title={t('settings.server')}>
-          <p className="fb-muted text-sm">{t('settings.serverText')}</p>
-          {row(t('settings.apiAddress'), apiHost || t('settings.notConfigured'))}
-          {GATEWAY_DASHBOARD && (
-            <a className="fb-btn fb-btn--ghost mt-3 inline-flex" href={GATEWAY_DASHBOARD} target="_blank" rel="noopener noreferrer">
-              {t('gw.openDashboard')} →
-            </a>
-          )}
-        </Panel>
+          <Panel title={t('settings.server')}>
+            <p className="fb-muted text-sm">{t('settings.serverText')}</p>
+            {row(t('settings.apiAddress'), apiHost || t('settings.notConfigured'))}
+            {GATEWAY_DASHBOARD && (
+              <a className="fb-btn fb-btn--ghost mt-3 inline-flex" href={GATEWAY_DASHBOARD} target="_blank" rel="noopener noreferrer">
+                {t('gw.openDashboard')} →
+              </a>
+            )}
+          </Panel>
+        </div>
 
         <p className="fb-dim text-center text-xs">Firbo AI · © {new Date().getFullYear()}</p>
       </div>
