@@ -1,0 +1,21 @@
+name: Firbo read-only VPS diagnostics
+on:
+  push:
+    branches: [main, claude/omniroute-engine, codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/preflight.py', 'tests/firbo/test_preflight.py', '.github/workflows/firbo-preflight.yml']
+  pull_request:
+    branches: [main, claude/omniroute-engine]
+    paths: ['deploy/hostinger/preflight.py', 'tests/firbo/test_preflight.py', '.github/workflows/firbo-preflight.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify diagnostics with mocked processes and network
+        run: python3 -m unittest discover -s tests/firbo -p test_preflight.py -v
