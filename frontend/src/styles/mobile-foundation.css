@@ -13,6 +13,11 @@
 [data-slot='dialog-content'] > * { min-inline-size: 0; }
 [data-slot='dialog-title'] { padding-inline-end: 2rem; }
 [data-slot='dialog-footer'] { flex-wrap: wrap; }
+/* The close control belongs at the logical end, not always the physical right. */
+[data-slot='dialog-content'] > [data-slot='dialog-close'] {
+  inset-inline-start: auto;
+  inset-inline-end: 0.5rem;
+}
 
 .fb-root .fb-pagehead,
 .fb-root .fb-pagehead > *,
@@ -28,7 +33,9 @@
 .fb-root .fb-seg button { min-inline-size: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 767px) {
-  .fb-root .fb-btn {
+  /* Outrank the legacy .fb-root .fb-btn min-height:40px regardless of CSS
+   * chunk order; long labels must not accidentally hide a short touch target. */
+  :root .fb-root .fb-btn {
     height: auto;
     min-block-size: 44px;
     max-inline-size: 100%;
@@ -61,4 +68,6 @@
   [data-slot='dialog-content'] select,
   [data-slot='dialog-content'] textarea { min-inline-size: 0; max-inline-size: 100%; font-size: 16px; }
   [data-slot='dialog-footer'] button { min-block-size: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; }
+  [data-slot='dialog-content'] > [data-slot='dialog-close'] { min-inline-size: 44px; min-block-size: 44px; }
+  [data-slot='dialog-title'] { padding-inline-end: 3rem; }
 }

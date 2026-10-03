@@ -41,7 +41,10 @@ with sync_playwright() as pw:
             page.get_by_role('tab').nth(2).click()
             expect(page.get_by_test_id('selected-tab')).to_have_text('quota')
             if width < 768:
-                assert page.get_by_test_id('long-action').bounding_box()['height'] >= 44
+                action = page.get_by_test_id('long-action')
+                touch = action.bounding_box()
+                assert touch and touch['height'] >= 44, {'reason':'undersized_action','rect':touch,
+                    'computed':action.evaluate('(n) => ({minHeight:getComputedStyle(n).minHeight,height:getComputedStyle(n).height})')}
             if name in ('320x800-el-dark','390x800-ar-dark','1440x900-en-light'):
                 page.screenshot(path=str(OUT / (name + '-controls.png')), full_page=True)
             trigger.click()
@@ -51,6 +54,14 @@ with sync_playwright() as pw:
             expect(dialog).to_have_css('position', 'fixed')
             rect = dialog.bounding_box()
             assert rect and rect['x'] >= -1 and rect['y'] >= -1 and rect['x'] + rect['width'] <= width + 1 and rect['y'] + rect['height'] <= height + 1, rect
+            close_control = dialog.locator(':scope > [data-slot="dialog-close"]')
+            close_rect = close_control.bounding_box()
+            assert close_rect, 'missing close control'
+            if width < 768:
+                assert close_rect['width'] >= 44 and close_rect['height'] >= 44, {'reason':'undersized_close','rect':close_rect}
+            close_center = close_rect['x'] + close_rect['width'] / 2
+            dialog_center = rect['x'] + rect['width'] / 2
+            assert (close_center < dialog_center) if lang == 'ar' else (close_center > dialog_center), 'close control must use logical end'
             assert dialog.evaluate('(n) => n.scrollHeight > n.clientHeight'), 'long content must remain scrollable'
             assert dialog.evaluate('(n) => n.scrollWidth <= n.clientWidth + 1'), 'dialog horizontal overflow'
             field = page.get_by_test_id('field-11')
@@ -64,6 +75,12 @@ with sync_playwright() as pw:
             page.get_by_test_id('finish-dialog').click()
             expect(dialog).not_to_be_visible()
             expect(page.get_by_test_id('dialog-result')).to_have_text('closed')
+            expect(trigger).to_be_focused()
+            trigger.click()
+            expect(dialog).to_be_visible()
+            # The visible close button works, independently of footer and Escape.
+            dialog.locator(':scope > [data-slot="dialog-close"]').click()
+            expect(dialog).not_to_be_visible()
             expect(trigger).to_be_focused()
             trigger.click()
             expect(dialog).to_be_visible()
