@@ -22,7 +22,7 @@ jobs:
         run: |
           python3 -m venv /tmp/native-test-python
           /tmp/native-test-python/bin/pip install -r tests/firbo/requirements.txt
-          /tmp/native-test-python/bin/python -m pytest -q tests/firbo/test_control_plane.py tests/firbo/test_native_rollout.py
+          /tmp/native-test-python/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_native_rollout.py
       - name: Actual Docker canary, API-only cutover, idempotency and both rollbacks
         run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_REPOSITORY python3 tests/firbo/native_rollout_docker.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
