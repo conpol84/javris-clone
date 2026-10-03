@@ -43,6 +43,8 @@ with sync_playwright() as pw:
    elif kind=='team-selection':
     page.locator('main .fb-team-layout > ul > li > button').first.click()
     expect(page.locator('main .fb-team-layout > aside')).to_be_visible()
+    expect(page.locator('main .fb-team-layout')).not_to_contain_text('autonomy.ask_first')
+    expect(page.locator('main .fb-team-layout > ul')).to_contain_text('Ask first')
     assert page.locator('main .fb-team-layout > ul').bounding_box()['width'] >= 200,'team list squeezed beside editor'
    elif kind=='task-board':
     page.get_by_role('tab',name='Board',exact=True).click();expect(page.locator('.fb-board')).to_be_visible()

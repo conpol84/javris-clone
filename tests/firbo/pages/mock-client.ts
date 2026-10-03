@@ -41,6 +41,9 @@ function response(table: string, single: boolean, source: any, filters: Record<s
   if (table.startsWith('connector_')) rows = (rows as Record<string,unknown>[]).filter(r=>Object.entries(filters).every(([k,v])=>r[k]===v));
   // Clean old demo labels; never read private company data.
   const safe = JSON.parse(JSON.stringify(rows).replaceAll('Trade Athletes','Demo Company').replaceAll('Constantinos','Demo Owner').replaceAll('owner@tradeathletes.com',email));
+  // The legacy DEMO client predates the actual Autonomy enum (approval, not ask_first).
+  // Normalize invented agent records only; this adapter never touches live data.
+  if (table === 'agents' && Array.isArray(safe)) for (const a of safe) { if (a.autonomy === 'ask_first') a.autonomy = 'approval'; }
   return {data:single ? safe[0] ?? null : safe,error:null,count:safe.length};
 }
 function from(table:string) {
