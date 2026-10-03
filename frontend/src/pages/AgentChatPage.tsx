@@ -10,7 +10,9 @@ import { createConversation, deleteConversation, listAgents, listConversations, 
 import { agentLabel } from '../lib/company/labels';
 import { RunError, sendChat, type ChatMessage } from '../lib/company/runner';
 import { agentColor } from '../lib/company/status';
-import { listenOnce, recognitionSupported, speak, stopSpeaking, type VoiceError } from '../lib/company/voice';
+import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
+import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
+import { voiceMessages } from '../lib/company/voiceMessages';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
 
@@ -38,9 +40,17 @@ export function AgentChatPage() {
     }
   });
   const stopListen = useRef<() => void>(() => {});
-  const canTalk = recognitionSupported();
+  const canTalk = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
+  const voiceTurn = useRef<VoiceTurn | null>(null);
+  const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
   const end = useRef<HTMLDivElement>(null);
   const activeId = params.get('c');
+  const voiceScope = JSON.stringify([orgId, user?.id, activeId, lang, canWrite]);
+  const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
+  useEffect(() => {
+    setListening(false); setInterim(''); setSending(false);
+    return () => { stopListen.current(); voiceTurn.current?.cancel(); };
+  }, [voiceScope]);
   const active = convos.find((c) => c.id === activeId) ?? null;
   const agentOf = useCallback((id: string | null) => agents.find((a) => a.id === id) ?? null, [agents]);
   const nameOf = (a: AgentRow | null) => (a ? agentLabel(a, i18n).name : t('unassigned'));
@@ -117,29 +127,38 @@ export function AgentChatPage() {
   const send = async (e?: FormEvent, override?: string) => {
     e?.preventDefault();
     const msg = (override ?? text).trim();
-    if (!msg || !active || sending) return;
+    if (!msg || !active || sending || !canWrite) return;
+    const scopeAtSend = voiceScope;
+    unlockAudio();
     setSending(true);
     setText('');
     const temp: ChatMessage = { id: `tmp-${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages((m) => [...m, temp]);
     try {
       const out = await sendChat(active.id, msg, lang, speakOn);
+      if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
-      if (speakOn) void speak(orgId, out.message.content, lang);
+      if (speakOnRef.current) {
+        const turn = beginVoiceTurn(); voiceTurn.current = turn;
+        void speak(orgId, out.message.content, lang, { turn }).then(result => {
+          if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend) toast.error(voiceMessages(lang).playback);
+        });
+      }
     } catch (err) {
+      if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setText(msg);
       toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
     } finally {
-      setSending(false);
+      if (voiceScopeRef.current === scopeAtSend) setSending(false);
     }
   };
 
   const toggleSpeak = () => {
     const next = !speakOn;
-    setSpeakOn(next);
-    if (!next) stopSpeaking();
+    speakOnRef.current = next; setSpeakOn(next);
+    if (!next) voiceTurn.current?.cancel();
     try {
       localStorage.setItem('firbo.chat.speak', next ? '1' : '0');
     } catch {
@@ -148,26 +167,26 @@ export function AgentChatPage() {
   };
 
   const talk = () => {
+    if (!canWrite) return;
     if (listening) {
-      stopListen.current();
-      return;
+      stopListen.current(); voiceTurn.current?.cancel(); setListening(false); setInterim(''); return;
     }
-    stopSpeaking();
-    setListening(true);
-    stopListen.current = listenOnce(lang, {
-      error: (c: VoiceError) => c !== 'no_speech' && toast.error(t(`voice.err.${c}` as TKey)),
-      interim: setInterim,
-      final: (txt) => {
-        setInterim('');
-        if (txt) void send(undefined, txt);
-      },
-      end: () => {
-        setListening(false);
-        setInterim('');
-      },
+    const scopeAtListen = voiceScope;
+    const turn = beginVoiceTurn(snapshot => {
+      if (voiceScopeRef.current === scopeAtListen) setListening(['opening', 'listening', 'transcribing'].includes(snapshot.phase));
     });
+    voiceTurn.current = turn;
+    const handle = listenSmart(orgId, lang, {
+      error: (c: VoiceError | 'server') => { if (voiceScopeRef.current === scopeAtListen && c !== 'no_speech') toast.error(t(`voice.err.${c}` as TKey)); },
+      interim: value => { if (voiceScopeRef.current === scopeAtListen) setInterim(value); },
+      final: value => {
+        if (voiceScopeRef.current !== scopeAtListen) return;
+        setListening(false); setInterim(''); if (value) void send(undefined, value);
+      },
+      end: () => { if (voiceScopeRef.current === scopeAtListen) { setListening(false); setInterim(''); } },
+    }, { turn });
+    stopListen.current = handle.cancel;
   };
-  useEffect(() => () => (stopListen.current(), stopSpeaking()), []);
 
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) void send(e);

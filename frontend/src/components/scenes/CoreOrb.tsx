@@ -1,7 +1,9 @@
+import { getVoiceSnapshot, getServerVoiceSnapshot, subscribeVoice, hologramState } from '../../lib/company/voiceActivity';
+import type { HoloState } from './HologramScene';
 import { Glow } from './fx';
 import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
-import { Suspense, useMemo, useRef, useState } from 'react';
+import { Suspense, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
@@ -58,7 +60,7 @@ function Satellite({ sat, index, total, motion, onSelect }: { sat: OrbSatellite;
   );
 }
 
-function Scene({ satellites, motion, onSelect, onFailure }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void; onFailure: () => void }) {
+function Scene({ satellites, motion, onSelect, onFailure, state }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void; onFailure: () => void; state: HoloState }) {
   const group = useRef<THREE.Group>(null);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
   const glow = useMemo(() => glowTexture(), []);
@@ -85,7 +87,7 @@ function Scene({ satellites, motion, onSelect, onFailure }: { satellites: OrbSat
       <SceneFallbackBoundary fallback={null} onFailure={onFailure}>
         <Suspense fallback={null}>
           <group position={[0, -0.35, 0]} scale={1.15}>
-            <HoloHead state="idle" motion={motion || 0.3} />
+            <HoloHead state={state} motion={motion} />
           </group>
         </Suspense>
       </SceneFallbackBoundary>
@@ -119,12 +121,13 @@ function Fallback() {
 /** Animated AI core. Asset/canvas errors fall back without blanking the workspace. */
 export function CoreOrb({ satellites = [], className, onSelect }: { satellites?: OrbSatellite[]; className?: string; onSelect?: (id: string) => void }) {
   const reduced = usePrefersReducedMotion();
+  const voice = useSyncExternalStore(subscribeVoice, getVoiceSnapshot, getServerVoiceSnapshot);
   const [failed, setFailed] = useState(false);
   if (failed || !supportsWebGL()) {
-    return <div className={className} aria-hidden="true"><Fallback /></div>;
+    return <div className={className} aria-hidden="true" data-voice-phase={voice.phase}><Fallback /></div>;
   }
   return (
-    <div className={className} aria-hidden="true">
+    <div className={className} aria-hidden="true" data-voice-phase={voice.phase}>
       <SceneFallbackBoundary fallback={<Fallback />}>
         <Canvas
           style={{ position: 'absolute', inset: 0 }}
@@ -133,7 +136,7 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
           gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
           frameloop={reduced ? 'demand' : 'always'}
         >
-          <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} onFailure={() => setFailed(true)} />
+          <Scene state={hologramState(voice.phase)} satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} onFailure={() => setFailed(true)} />
           <Glow />
         </Canvas>
       </SceneFallbackBoundary>
