@@ -1,3 +1,4 @@
+import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import type { Satellite } from '../components/scenes/HologramScene';
@@ -66,6 +67,7 @@ export function CeoPage() {
         <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
+      <VoiceProfileControl />
 
       {!ceo ? (
         <div className="fb-glass p-6 text-sm">{t('ceo.none')}</div>

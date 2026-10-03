@@ -22,9 +22,9 @@ OUT = Path(os.environ.get('FIRBO_VOICE_OUTPUT', '/tmp/firbo-voice-evidence'))
 OUT.mkdir(parents=True, exist_ok=True)
 TONE = io.BytesIO()
 with wave.open(TONE, 'wb') as wav:
-    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(8000)
-    wav.writeframes(b''.join(struct.pack('<h', int(2300 * math.sin(i * math.pi * 2 * 440 / 8000))) for i in range(8000 * 4)))
-AUDIO = TONE.getvalue()
+    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(24000)
+    wav.writeframes(b''.join(struct.pack('<h', int(2300 * math.sin(i * math.pi * 2 * 440 / 24000))) for i in range(24000 * 4)))
+AUDIO = Path(os.environ['FIRBO_VOICE_WAV']).read_bytes() if os.environ.get('FIRBO_VOICE_WAV') else TONE.getvalue()
 ANSWER = 'Synthetic response for the isolated voice lifecycle check.'
 INIT = """(() => {
  window.__voiceTest={plays:0,streams:[],permissionCalls:0};
@@ -70,6 +70,9 @@ with sync_playwright() as pw:
             if u.netloc!='127.0.0.1:5212':external.append(u.hostname);return route.abort()
             if u.path.startswith('/__firbo_voice_fixture/'):
                 name=u.path.rsplit('/',1)[-1];calls.append(name)
+                if name=='agent-speak':
+                    payload=route.request.post_data_json
+                    assert payload.get('voice_profile')=='firbo-dark-v1' and payload.get('audio_format')=='wav',payload
                 if name not in ('agent-chat','agent-speak','agent-listen'):unexpected.append(u.path);return route.abort()
                 if name==hold_name:held.append((route,name));return
                 return reply(route,name)

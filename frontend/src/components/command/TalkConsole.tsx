@@ -1,3 +1,4 @@
+import { VoiceProfileControl } from '../voice/VoiceProfileControl';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Mic, Send, Square, Volume2, VolumeX, X } from 'lucide-react';
@@ -156,6 +157,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
             <X size={16} />
           </button>
         </header>
+        <VoiceProfileControl />
 
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <section className="fb-glass relative min-h-[360px] overflow-hidden">

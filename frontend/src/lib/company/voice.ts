@@ -2,6 +2,8 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { requireClient } from './client';
 import { beginVoiceTurn, stopVoiceActivity, voiceDeadline, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
+import { getVoiceProfile, type VoiceProfile } from './voiceProfile';
+import { speechAudioBlob } from './speechAudio';
 export { voiceLevel } from './voiceActivity';
 
 const SR_LANG: Record<string, string> = { en:'en-US', el:'el-GR', es:'es-ES', 'pt-BR':'pt-BR', de:'de-DE', fr:'fr-FR', 'zh-CN':'zh-CN', ar:'ar-SA' };
@@ -12,7 +14,7 @@ export interface VoiceCallbacks {
   error?: (code: VoiceError | 'server') => void; status?: (message: string) => void;
 }
 export type SpeechResult = { status:'completed'|'cancelled'|'failed'; source:'server'|'browser'|'none'; truncated:boolean };
-interface Options { turn?: VoiceTurn; allowBrowserFallback?: boolean }
+interface Options { turn?: VoiceTurn; allowBrowserFallback?: boolean; voiceProfile?: VoiceProfile }
 interface RecognitionLike {
   lang:string; interimResults:boolean; continuous:boolean;
   onstart:(() => void)|null; onresult:((e:{results:ArrayLike<ArrayLike<{transcript:string}>&{isFinal:boolean}>})=>void)|null;
@@ -126,24 +128,11 @@ async function browserSpeech(text: string, lang: string, turn: VoiceTurn): Promi
     try { synth.speak(u); } catch { finish(new Error('speech_playback_failed')); }
   });
 }
-/** agent-speak v5 deliberately returns MP3 as octet-stream so the real
- * Supabase SDK gives us a Blob. Validate its envelope, then label the
- * SAME bytes for media playback. Decoder success is checked separately.
- */
-async function speechAudioBlob(value:unknown):Promise<Blob> {
-  if (!(value instanceof Blob) || !value.size || value.size > 8_000_000) throw new Error('invalid_audio');
-  const type=value.type.split(';',1)[0].trim().toLowerCase();
-  if(type.startsWith('audio/')) return value;
-  if(type!=='application/octet-stream') throw new Error('invalid_audio');
-  const h=new Uint8Array(await value.slice(0,12).arrayBuffer());
-  const id3=h.length>=10 && h[0]===73 && h[1]===68 && h[2]===51 && h[3]>=2 && h[3]<=4 && h[4]!==255 && h.slice(6,10).every(b=>b<128);
-  const frame=h.length>=4 && h[0]===255 && (h[1]&224)===224 && (h[1]&24)!==8 && (h[1]&6)!==0 && (h[2]&240)!==240 && (h[2]&12)!==12;
-  if(!id3&&!frame) throw new Error('invalid_audio');
-  return value.slice(0,value.size,'audio/mpeg');
-}
 /** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */
 export async function speak(orgId: string, text: string, lang: string, options: Options = {}): Promise<SpeechResult> {
   const turn = options.turn ?? beginVoiceTurn();
+  const profile = options.voiceProfile ?? getVoiceProfile();
+  const dark = profile === 'firbo-dark-v1';
   const full = text.replace(/[*_`#>]/g, '').trim(); const clean = full.slice(0, 700);
   const truncated = full.length > clean.length;
   let source: SpeechResult['source'] = 'none';
@@ -152,17 +141,17 @@ export async function speak(orgId: string, text: string, lang: string, options: 
   turn.phase('preparing', 'server');
   try {
     try {
-      const out = await voiceDeadline(signal => requireClient().functions.invoke('agent-speak', { body:{organization_id:orgId,text:clean}, signal }), turn.signal, 35_000);
+      const out = await voiceDeadline(signal => requireClient().functions.invoke('agent-speak', { body:{organization_id:orgId,text:clean,voice_profile:profile,...(dark?{audio_format:'wav'}:{})}, signal }), turn.signal, 35_000);
       if (!turn.current()) return { status:'cancelled', source, truncated };
       if (out.error) throw out.error;
-      const audio = await voiceDeadline(() => speechAudioBlob(out.data), turn.signal, 3000);
+      const audio = await voiceDeadline(() => speechAudioBlob(out.data,dark), turn.signal, 3000);
       if (!turn.current()) return { status:'cancelled', source, truncated };
       source = 'server'; await playAudio(audio, turn);
     } catch (error) {
       if (!turn.current()) return { status:'cancelled', source, truncated };
       const status = error instanceof FunctionsHttpError ? error.context.status : 0;
       // Do not bypass authentication/budget/rate limits or repeat a partially spoken reply.
-      if (options.allowBrowserFallback === false || [401,402,403,429].includes(status) || (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
+      if (dark || options.allowBrowserFallback === false || [401,402,403,429].includes(status) || (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
       source = 'browser'; turn.phase('preparing', 'browser'); await browserSpeech(clean, lang, turn);
     }
     if (!turn.current()) return { status:'cancelled', source, truncated };
