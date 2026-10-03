@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
+import { LayoutGrid, List, ListChecks } from 'lucide-react';
 import { StatusDot } from '../components/command/Panel';
+import { Avatar, EmptyState, PageHeader, Pill, Segmented, Stat } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask, setTaskStatus } from '../lib/company/data';
 import { RunError, runTask } from '../lib/company/runner';
@@ -39,6 +41,7 @@ export function TasksPage() {
   const [busy, setBusy] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
 
   const now = Date.now();
   const shown = useMemo(
@@ -50,6 +53,24 @@ export function TasksPage() {
     [data.tasks, filter],
   );
   const openCount = data.tasks.filter((x) => OPEN_TASK_STATUSES.includes(x.status)).length;
+  const kpi = useMemo(() => {
+    const week = Date.now() - 7 * 86_400_000;
+    const perDay = (pred: (x: (typeof data.tasks)[number]) => boolean) =>
+      Array.from({ length: 7 }, (_, i) => data.tasks.filter((x) => pred(x) && new Date(x.created_at).toDateString() === new Date(Date.now() - (6 - i) * 86_400_000).toDateString()).length);
+    return {
+      running: data.tasks.filter((x) => x.status === 'running').length,
+      waiting: data.tasks.filter((x) => x.status === 'awaiting_approval').length,
+      done: data.tasks.filter((x) => x.status === 'completed' && Date.parse(x.created_at) >= week).length,
+      openSpark: perDay((x) => OPEN_TASK_STATUSES.includes(x.status)),
+      doneSpark: perDay((x) => x.status === 'completed'),
+    };
+  }, [data.tasks]);
+  const COLUMNS: { id: string; statuses: TaskStatus[]; tone: string }[] = [
+    { id: 'pending', statuses: ['pending', 'blocked'], tone: '#7f9fc4' },
+    { id: 'running', statuses: ['running'], tone: '#22d3ee' },
+    { id: 'awaiting_approval', statuses: ['awaiting_approval'], tone: '#fbbf24' },
+    { id: 'completed', statuses: ['completed', 'failed'], tone: '#34d399' },
+  ];
   const agent = (id: string | null) => data.agents.find((a) => a.id === id);
 
   const create = async (e: FormEvent) => {
@@ -97,12 +118,19 @@ export function TasksPage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="mb-5">
-          <div className="fb-eyebrow">{current?.organization.name}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('tasks.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('tasks.sub', { count: openCount })}</p>
-        </header>
+      <div className={`mx-auto px-4 pb-10 pt-14 md:px-8 md:pt-8 ${view === 'board' ? 'fb-wide' : 'max-w-3xl'}`}>
+        <PageHeader
+          eyebrow={current?.organization.name}
+          title={t('tasks.title')}
+          sub={t('tasks.sub', { count: openCount })}
+          right={<Segmented value={view} onChange={setView} label={t('tasks.title')} options={[{ id: 'board', label: t('tasks.view.board') }, { id: 'list', label: t('tasks.view.list') }]} />}
+        />
+        <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <Stat label={t('tasks.kpi.open')} value={String(openCount)} spark={kpi.openSpark} color="#22d3ee" />
+          <Stat label={t('tasks.kpi.running')} value={String(kpi.running)} hint={kpi.running ? undefined : '—'} color="#22d3ee" />
+          <Stat label={t('tasks.kpi.waiting')} value={String(kpi.waiting)} color="#fbbf24" />
+          <Stat label={t('tasks.kpi.done')} value={String(kpi.done)} spark={kpi.doneSpark} color="#34d399" />
+        </div>
 
         {canWrite && (
           <form onSubmit={create} className="fb-glass mb-4 p-4">
@@ -131,6 +159,7 @@ export function TasksPage() {
           </form>
         )}
 
+        {view === 'list' && (
         <div className="mb-3 flex gap-2" role="tablist">
           {(['open', 'done', 'all'] as const).map((f) => (
             <button
@@ -145,6 +174,7 @@ export function TasksPage() {
             </button>
           ))}
         </div>
+        )}
 
         {data.error && (
           <p role="alert" className="fb-chip mb-3" style={{ color: 'var(--fb-err)' }}>
@@ -152,10 +182,53 @@ export function TasksPage() {
           </p>
         )}
 
-        {shown.length === 0 ? (
-          <div className="fb-glass p-5 text-sm fb-muted">
-            {filter === 'open' ? t('tasks.empty.open') : t('tasks.empty.other')}
-          </div>
+        {view === 'board' ? (
+          data.tasks.length === 0 ? (
+            <EmptyState icon={<ListChecks size={24} />} title={t('tasks.empty.open')} />
+          ) : (
+            <div className="fb-board">
+              {COLUMNS.map((col) => {
+                const items = data.tasks.filter((x) => col.statuses.includes(x.status));
+                return (
+                  <section key={col.id} aria-label={t(`status.${col.id}` as TKey)}>
+                    <div className="fb-col-head">
+                      <span className="fb-dot" style={{ background: col.tone, boxShadow: `0 0 8px ${col.tone}` }} />
+                      {t(`status.${col.id}` as TKey)}
+                      <span className="fb-dim ms-auto tabular-nums">{items.length}</span>
+                    </div>
+                    <ul className="flex flex-col gap-2.5">
+                      {items.map((task) => {
+                        const a = agent(task.assigned_agent_id);
+                        const color = a ? agentColor(a.type, a.slug) : '#7f9fc4';
+                        const overdue = task.due_at && OPEN_TASK_STATUSES.includes(task.status) && Date.parse(task.due_at) < now;
+                        return (
+                          <li key={task.id} className="fb-card">
+                            <div className="text-[13.5px] font-medium leading-snug">{task.title}</div>
+                            <div className="mt-2.5 flex flex-wrap items-center gap-2">
+                              <Avatar name={a ? agentLabel(a, i18n).name : '?'} color={color} size={24} />
+                              <span className="fb-dim min-w-0 flex-1 truncate text-xs">{a ? agentLabel(a, i18n).name : t('unassigned')}</span>
+                              <Pill tone={task.priority === 'urgent' ? 'err' : task.priority === 'high' ? 'warn' : 'neutral'}>{t(`priority.${task.priority}` as TKey)}</Pill>
+                              {task.status === 'failed' && <Pill tone="err">{t('status.failed')}</Pill>}
+                              {task.status === 'blocked' && <Pill tone="warn">{t('status.blocked')}</Pill>}
+                            </div>
+                            {task.due_at && <div className="mt-2 text-[11px]" style={{ color: overdue ? 'var(--fb-warn)' : 'var(--fb-dim)' }}>{t(overdue ? 'tasks.overdue' : 'tasks.due', { date: fmt.dateTime(task.due_at) })}</div>}
+                            {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
+                              <button className="fb-btn fb-btn--primary mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} disabled={runningId !== null} onClick={() => void run(task.id)}>
+                                {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+                      {items.length === 0 && <li className="fb-dim rounded-xl border border-dashed px-3 py-6 text-center text-xs" style={{ borderColor: 'var(--fb-border)' }}>—</li>}
+                    </ul>
+                  </section>
+                );
+              })}
+            </div>
+          )
+        ) : shown.length === 0 ? (
+          <EmptyState icon={<ListChecks size={24} />} title={filter === 'open' ? t('tasks.empty.open') : t('tasks.empty.other')} />
         ) : (
           <ul className="flex flex-col gap-2">
             {shown.map((task) => {

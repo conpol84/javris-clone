@@ -995,6 +995,12 @@ export const en = {
   'int.mcp.badJson': 'The arguments are not valid JSON.',
   'voice.sendNow': 'Send',
   'voice.diag': 'Voice diagnostics',
+  'tasks.kpi.open': 'Open',
+  'tasks.kpi.running': 'Running',
+  'tasks.kpi.waiting': 'Need approval',
+  'tasks.kpi.done': 'Done in 7 days',
+  'tasks.view.board': 'Board',
+  'tasks.view.list': 'List',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

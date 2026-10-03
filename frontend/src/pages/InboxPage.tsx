@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Panel } from '../components/command/Panel';
+import { CheckCircle2, Inbox as InboxIcon } from 'lucide-react';
+import { Avatar, EmptyState, humanize, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { decideApproval, listApprovalHistory } from '../lib/company/data';
 import { listIntegrations, sendIntegration, type IntegrationRow } from '../lib/company/integrations';
@@ -24,6 +25,39 @@ function deliverText(a: ApprovalRow): string {
 }
 
 const RISK_COLOR = { low: 'var(--fb-ok)', medium: 'var(--fb-warn)', high: 'var(--fb-err)' } as const;
+
+const HIDDEN = new Set(['ai_generated', 'disclosure']);
+const LONG = new Set(['text', 'message', 'body', 'content', 'post']);
+
+/** What the agent wants to do, as plain labelled rows instead of a JSON blob. */
+function Summary({ payload }: { payload: Record<string, unknown> }) {
+  const rows = Object.entries(payload ?? {}).filter(([k, v]) => !HIDDEN.has(k) && v != null && v !== '');
+  if (rows.length === 0) return null;
+  const small = rows.filter(([k, v]) => !LONG.has(k) && typeof v !== 'object' && String(v).length <= 120);
+  const big = rows.filter(([k, v]) => !small.some(([sk]) => sk === k) && (typeof v === 'string' || typeof v === 'object'));
+  return (
+    <div className="fb-col gap-3">
+      {small.length > 0 && (
+        <dl className="fb-kv">
+          {small.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt>{humanize(k)}</dt>
+              <dd>{typeof v === 'number' && /usd|amount|cost|price/i.test(k) ? `$${v.toLocaleString()}` : String(v)}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+      {big.map(([k, v]) => (
+        <div key={k}>
+          <div className="fb-dim mb-1.5 mt-1 text-[11px]">{humanize(k)}</div>
+          <blockquote className="rounded-xl px-4 py-3 text-sm leading-relaxed" style={{ background: 'rgba(255,255,255,.03)', borderInlineStart: '3px solid var(--fb-border-strong)' }}>
+            {typeof v === 'string' ? v : JSON.stringify(v, null, 2)}
+          </blockquote>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Payload({ payload }: { payload: Record<string, unknown> }) {
   const { t } = useI18n();
@@ -128,59 +162,41 @@ export function InboxPage() {
 
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="mb-5">
-          <div className="fb-eyebrow">{t('inbox.eyebrow')}</div>
-          <h1 className="mt-1 text-2xl font-semibold">{t('inbox.title')}</h1>
-          <p className="fb-muted mt-1 text-sm">{t('inbox.sub')}</p>
-        </header>
-
-        <div className="mb-4 flex gap-2" role="tablist">
-          {(['pending', 'history'] as const).map((id) => (
-            <button
-              key={id}
-              role="tab"
-              aria-selected={tab === id}
-              onClick={() => setTab(id)}
-              className="fb-chip cursor-pointer"
-              style={tab === id ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,.1)' } : undefined}
-            >
-              {id === 'pending' ? t('inbox.tab.pending', { count: data.approvals.length }) : t('inbox.tab.history')}
-            </button>
-          ))}
-        </div>
+      <div className="mx-auto max-w-4xl px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader
+          eyebrow={t('inbox.eyebrow')}
+          title={t('inbox.title')}
+          sub={t('inbox.sub')}
+          right={<Segmented value={tab} onChange={setTab} options={[{ id: 'pending', label: t('inbox.tab.pending', { count: data.approvals.length }) }, { id: 'history', label: t('inbox.tab.history') }]} />}
+        />
 
         {list.length === 0 ? (
-          <Panel title={tab === 'pending' ? t('inbox.empty.pendingTitle') : t('inbox.empty.historyTitle')}>
-            <p className="fb-muted text-sm">
-              {tab === 'pending'
-                ? t('inbox.empty.pendingText')
-                : t('inbox.empty.historyText')}
-            </p>
-          </Panel>
+          <EmptyState
+            icon={tab === 'pending' ? <CheckCircle2 size={24} /> : <InboxIcon size={24} />}
+            title={tab === 'pending' ? t('inbox.empty.pendingTitle') : t('inbox.empty.historyTitle')}
+            text={tab === 'pending' ? t('inbox.empty.pendingText') : t('inbox.empty.historyText')}
+          />
         ) : (
           <ul className="flex flex-col gap-3">
             {list.map((a) => {
               const agent = agentName(a.agent_id);
               const color = agent ? agentColor(agent.type, agent.slug) : '#94a3b8';
               return (
-                <li key={a.id} className="fb-glass p-4">
+                <li key={a.id} className="fb-glass p-5" style={{ borderInlineStart: `3px solid ${RISK_COLOR[a.risk]}` }}>
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-3">
-                      <span className="fb-dot" style={{ background: color, boxShadow: `0 0 10px ${color}` }} />
+                      <Avatar name={agent ? agentLabel(agent, i18n).name : '?'} color={color} />
                       <div className="min-w-0">
-                        <div className="truncate text-sm font-semibold">{a.action}</div>
+                        <div className="truncate text-[15px] font-semibold">{humanize(a.action)}</div>
                         <div className="fb-dim text-xs">
                           {agent ? agentLabel(agent, i18n).name : t('agent.fallbackName')} · {timeAgo(Date.parse(a.requested_at), Date.now(), fmt)}
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {a.payload?.ai_generated === true && <span className="fb-chip">{t('inbox.aiBadge')}</span>}
-                      <span className="fb-chip" style={{ color: RISK_COLOR[a.risk] }}>{t('inbox.risk', { risk: t(`risk.${a.risk}` as TKey) })}</span>
-                      {a.status !== 'pending' && (
-                        <span className="fb-chip" style={{ color: a.status === 'approved' ? 'var(--fb-ok)' : 'var(--fb-err)' }}>{t(`inbox.${a.status}` as TKey)}</span>
-                      )}
+                      {a.payload?.ai_generated === true && <Pill tone="accent">{t('inbox.aiBadge')}</Pill>}
+                      <Pill tone={a.risk === 'high' ? 'err' : a.risk === 'medium' ? 'warn' : 'ok'}>{t('inbox.risk', { risk: t(`risk.${a.risk}` as TKey) })}</Pill>
+                      {a.status !== 'pending' && <Pill tone={a.status === 'approved' ? 'ok' : 'err'}>{t(`inbox.${a.status}` as TKey)}</Pill>}
                     </div>
                   </div>
                   <div className="mt-3">
@@ -194,7 +210,15 @@ export function InboxPage() {
                         onChange={(e) => setEdits({ ...edits, [a.id]: e.target.value })}
                       />
                     ) : (
-                      <Payload payload={a.payload} />
+                      <>
+                        <Summary payload={a.payload} />
+                        {Object.keys(a.payload ?? {}).length > 0 && (
+                          <details className="mt-3">
+                            <summary className="fb-dim cursor-pointer text-xs">{t('inbox.showAll')}</summary>
+                            <div className="mt-2"><Payload payload={a.payload} /></div>
+                          </details>
+                        )}
+                      </>
                     )}
                     {a.status === 'pending' && canDecide && edits[a.id] === undefined && Object.keys(a.payload ?? {}).length > 0 && (
                       <button className="fb-link fb-muted mt-1 cursor-pointer text-xs underline" onClick={() => setEdits({ ...edits, [a.id]: JSON.stringify(a.payload, null, 2) })}>

@@ -14,7 +14,8 @@
     "build:tauri": "tsc -b && vite build --outDir dist",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "vitest run"
+    "test": "vitest run",
+    "preview:mock": "vite --config vite.preview.config.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

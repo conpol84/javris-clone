@@ -992,6 +992,12 @@ const ar: Dictionary = {
   'int.mcp.badJson': 'المعاملات ليست JSON صالحًا.',
   'voice.sendNow': 'إرسال',
   'voice.diag': 'تشخيص الصوت',
+  'tasks.kpi.open': 'مفتوحة',
+  'tasks.kpi.running': 'قيد التنفيذ',
+  'tasks.kpi.waiting': 'بانتظار الموافقة',
+  'tasks.kpi.done': 'أُنجزت خلال 7 أيام',
+  'tasks.view.board': 'لوحة',
+  'tasks.view.list': 'قائمة',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

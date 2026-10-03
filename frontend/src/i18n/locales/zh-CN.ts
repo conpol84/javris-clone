@@ -988,6 +988,12 @@ const zhCN: Dictionary = {
   'int.mcp.badJson': '参数不是有效的 JSON。',
   'voice.sendNow': '发送',
   'voice.diag': '语音诊断',
+  'tasks.kpi.open': '未完成',
+  'tasks.kpi.running': '进行中',
+  'tasks.kpi.waiting': '待批准',
+  'tasks.kpi.done': '7 天内完成',
+  'tasks.view.board': '看板',
+  'tasks.view.list': '列表',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

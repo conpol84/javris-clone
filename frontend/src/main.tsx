@@ -12,7 +12,8 @@ function applyTheme() {
   try {
     const raw = localStorage.getItem('openjarvis-settings');
     const settings = raw ? JSON.parse(raw) : {};
-    const theme = settings.theme || 'system';
+    // The company workspace is designed dark-first; only an explicit choice switches it.
+    const theme = settings.theme || (import.meta.env.VITE_COMPANY_SUPABASE_URL || import.meta.env.MODE === 'preview' ? 'dark' : 'system');
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
       document.documentElement.classList.remove('light');

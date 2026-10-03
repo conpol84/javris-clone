@@ -987,6 +987,12 @@ const ptBR: Dictionary = {
   'int.mcp.badJson': 'Os argumentos não são JSON válido.',
   'voice.sendNow': 'Enviar',
   'voice.diag': 'Diagnóstico de voz',
+  'tasks.kpi.open': 'Abertas',
+  'tasks.kpi.running': 'Em andamento',
+  'tasks.kpi.waiting': 'Aguardam aprovação',
+  'tasks.kpi.done': 'Concluídas em 7 dias',
+  'tasks.view.board': 'Quadro',
+  'tasks.view.list': 'Lista',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

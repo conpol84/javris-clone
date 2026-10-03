@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '../i18n/I18nProvider';
 import { Panel } from '../components/command/Panel';
+import { AreaChart, Avatar, Donut, PageHeader, Segmented, Stat } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { listAgents, loadUsageSince, type UsageRow } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
@@ -60,8 +61,6 @@ export function AnalyticsPage() {
     }
     return [...map.entries()];
   }, [rows, days]);
-  const maxDay = Math.max(0.0001, ...daily.map(([, v]) => v));
-
   const perAgent = useMemo(() => {
     const map = new Map<string, { runs: number; tokens: number; cost: number }>();
     for (const x of rows ?? []) {
@@ -77,24 +76,48 @@ export function AnalyticsPage() {
       .sort((a, b) => b.cost - a.cost);
   }, [rows, agents]);
 
+  const series = useMemo(() => {
+    const cost = new Map<string, number>(), tokens = new Map<string, number>(), runs = new Map<string, number>();
+    for (let i = days - 1; i >= 0; i--) {
+      const k = dayKey(new Date(Date.now() - i * 86_400_000).toISOString());
+      cost.set(k, 0); tokens.set(k, 0); runs.set(k, 0);
+    }
+    for (const x of rows ?? []) {
+      const k = dayKey(x.created_at);
+      if (!cost.has(k)) continue;
+      cost.set(k, (cost.get(k) ?? 0) + x.cost_usd);
+      tokens.set(k, (tokens.get(k) ?? 0) + x.input_tokens + x.output_tokens);
+      runs.set(k, (runs.get(k) ?? 0) + 1);
+    }
+    return { cost: [...cost.values()], tokens: [...tokens.values()], runs: [...runs.values()] };
+  }, [rows, days]);
+  /** Second half of the period against the first half. */
+  const trend = (v: number[]) => {
+    const h = Math.floor(v.length / 2);
+    const a = v.slice(0, h).reduce((n, x) => n + x, 0);
+    const b = v.slice(h).reduce((n, x) => n + x, 0);
+    if (!a) return undefined;
+    const pct = Math.round(((b - a) / a) * 100);
+    return { text: `${pct > 0 ? '+' : ''}${pct}%`, good: pct <= 0 };
+  };
+
+
+  const shareColor = (p: (typeof perAgent)[number]) => (p.agent ? agentColor(p.agent.type, p.agent.slug) : '#64748b');
+  const top = perAgent.slice(0, 5);
+  const rest = perAgent.slice(5).reduce((n, p) => n + p.cost, 0);
+  const donut = [...top.map((p) => ({ value: p.cost, color: shareColor(p) })), ...(rest > 0 ? [{ value: rest, color: '#475569' }] : [])];
+  const maxAgentCost = Math.max(0.0001, ...perAgent.map((p) => p.cost));
+  const range: [string, string] = [fmt.date(daily[0]?.[0] ?? ''), fmt.date(daily[daily.length - 1]?.[0] ?? '')];
+
   return (
     <div className="fb-root h-full overflow-y-auto">
-      <div className="mx-auto max-w-[1100px] space-y-4 px-4 pb-8 pt-14 md:px-6 md:pt-6">
-        <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="fb-eyebrow">{current?.organization.name}</div>
-            <h1 className="mt-1 text-2xl font-semibold">{t('an.title')}</h1>
-            <p className="fb-muted mt-1 text-sm">{t('an.sub')}</p>
-          </div>
-          <div role="tablist" className="flex gap-1.5">
-            {RANGES.map((d) => (
-              <button key={d} role="tab" aria-selected={days === d} onClick={() => setDays(d)} className="fb-chip cursor-pointer"
-                style={days === d ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
-                {t('an.days', { count: d })}
-              </button>
-            ))}
-          </div>
-        </header>
+      <div className="fb-wide mx-auto space-y-4 px-4 pb-10 pt-14 md:px-8 md:pt-8">
+        <PageHeader
+          eyebrow={current?.organization.name}
+          title={t('an.title')}
+          sub={t('an.sub')}
+          right={<Segmented value={String(days) as '7' | '30' | '90'} onChange={(v) => setDays(Number(v) as (typeof RANGES)[number])} options={RANGES.map((d) => ({ id: String(d) as '7' | '30' | '90', label: t('an.days', { count: d }) }))} />}
+        />
 
         {!canSee ? (
           <Panel title={t('an.title')}><p className="fb-muted text-sm">{t('an.managersOnly')}</p></Panel>
@@ -104,33 +127,36 @@ export function AnalyticsPage() {
           <p className="fb-dim text-sm">{t('common.loading')}</p>
         ) : (
           <>
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              {[
-                [t('an.cost'), fmt.currency(totals.cost)],
-                [t('an.tokens'), fmt.number(totals.tokens)],
-                [t('an.runs'), fmt.number(totals.runs)],
-                [t('an.avg'), fmt.currency(totals.avg)],
-              ].map(([label, value]) => (
-                <div key={label} className="fb-glass p-4">
-                  <div className="fb-eyebrow">{label}</div>
-                  <div className="fb-grad-text mt-2 text-2xl font-bold tabular-nums">{value}</div>
-                </div>
-              ))}
+            <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat label={t('an.cost')} value={fmt.currency(totals.cost)} spark={series.cost} delta={trend(series.cost)} color="#22d3ee" />
+              <Stat label={t('an.tokens')} value={fmt.number(totals.tokens)} spark={series.tokens} delta={trend(series.tokens)} color="#a78bfa" />
+              <Stat label={t('an.runs')} value={fmt.number(totals.runs)} spark={series.runs} delta={trend(series.runs)} color="#34d399" />
+              <Stat label={t('an.avg')} value={fmt.currency(totals.avg)} color="#fbbf24" />
             </section>
 
-            <Panel title={t('an.daily')}>
-              {rows.length === 0 ? (
-                <p className="fb-dim text-sm">{t('an.noData')}</p>
-              ) : (
-                <div className="flex h-36 items-end gap-[3px]" role="img" aria-label={t('an.daily')}>
-                  {daily.map(([d, v]) => (
-                    <div key={d} className="flex h-full flex-1 items-end" title={`${fmt.date(d)} · ${fmt.currency(v)}`}>
-                      <div className="w-full rounded-t" style={{ height: `${v ? Math.max(4, (v / maxDay) * 100) : 2}%`, background: v ? 'linear-gradient(180deg,var(--fb-accent),rgba(0, 212, 255,.25))' : 'rgba(255,255,255,.06)' }} />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </Panel>
+            <div className="grid gap-4 lg:grid-cols-[1.7fr_1fr]">
+              <Panel title={t('an.daily')}>
+                {rows.length === 0 ? <p className="fb-dim text-sm">{t('an.noData')}</p> : <AreaChart values={series.cost} labels={range} format={(v) => fmt.currency(v)} />}
+              </Panel>
+              <Panel title={t('an.byAgent')}>
+                {perAgent.length === 0 ? (
+                  <p className="fb-dim text-sm">{t('an.noData')}</p>
+                ) : (
+                  <div className="fb-col items-center gap-4">
+                    <Donut parts={donut} center={fmt.currency(totals.cost)} sub={t('an.cost')} />
+                    <ul className="w-full space-y-1.5">
+                      {top.map((p) => (
+                        <li key={p.id || 'none'} className="flex items-center gap-2 text-xs">
+                          <span className="fb-dot" style={{ background: shareColor(p) }} />
+                          <span className="min-w-0 flex-1 truncate">{p.agent ? agentLabel(p.agent, i18n).name : t('unassigned')}</span>
+                          <span className="fb-dim tabular-nums">{Math.round((p.cost / (totals.cost || 1)) * 100)}%</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </Panel>
+            </div>
 
             <Panel title={t('an.byAgent')}>
               {perAgent.length === 0 ? (
@@ -139,18 +165,27 @@ export function AnalyticsPage() {
                 <div className="overflow-x-auto">
                   <table className="fb-table">
                     <thead>
-                      <tr><th>{t('an.col.agent')}</th><th>{t('an.runs')}</th><th>{t('an.tokens')}</th><th>{t('an.cost')}</th></tr>
+                      <tr><th>{t('an.col.agent')}</th><th>{t('an.runs')}</th><th>{t('an.tokens')}</th><th style={{ width: '32%' }}>{t('an.cost')}</th></tr>
                     </thead>
                     <tbody>
                       {perAgent.map((p) => (
                         <tr key={p.id || 'none'}>
                           <td className="font-medium">
-                            <span className="fb-dot me-2 inline-block" style={{ background: p.agent ? agentColor(p.agent.type, p.agent.slug) : 'var(--fb-dim)' }} />
-                            {p.agent ? agentLabel(p.agent, i18n).name : t('unassigned')}
+                            <span className="inline-flex items-center gap-2.5">
+                              <Avatar name={p.agent ? agentLabel(p.agent, i18n).name : '?'} color={shareColor(p)} size={26} />
+                              {p.agent ? agentLabel(p.agent, i18n).name : t('unassigned')}
+                            </span>
                           </td>
-                          <td>{fmt.number(p.runs)}</td>
-                          <td>{fmt.number(p.tokens)}</td>
-                          <td>{fmt.currency(p.cost)}</td>
+                          <td className="tabular-nums">{fmt.number(p.runs)}</td>
+                          <td className="tabular-nums">{fmt.number(p.tokens)}</td>
+                          <td>
+                            <div className="flex items-center gap-2">
+                              <div className="h-1.5 flex-1 overflow-hidden rounded-full" style={{ background: 'rgba(148,180,220,.1)' }}>
+                                <div className="h-full rounded-full" style={{ width: `${(p.cost / maxAgentCost) * 100}%`, background: shareColor(p) }} />
+                              </div>
+                              <span className="w-14 text-end tabular-nums">{fmt.currency(p.cost)}</span>
+                            </div>
+                          </td>
                         </tr>
                       ))}
                     </tbody>

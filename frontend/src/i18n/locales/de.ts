@@ -987,6 +987,12 @@ const de: Dictionary = {
   'int.mcp.badJson': 'Die Argumente sind kein gültiges JSON.',
   'voice.sendNow': 'Senden',
   'voice.diag': 'Sprach-Diagnose',
+  'tasks.kpi.open': 'Offen',
+  'tasks.kpi.running': 'Läuft',
+  'tasks.kpi.waiting': 'Brauchen Freigabe',
+  'tasks.kpi.done': 'In 7 Tagen erledigt',
+  'tasks.view.board': 'Board',
+  'tasks.view.list': 'Liste',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

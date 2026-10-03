@@ -987,6 +987,12 @@ const es: Dictionary = {
   'int.mcp.badJson': 'Los argumentos no son JSON válido.',
   'voice.sendNow': 'Enviar',
   'voice.diag': 'Diagnóstico de voz',
+  'tasks.kpi.open': 'Abiertas',
+  'tasks.kpi.running': 'En curso',
+  'tasks.kpi.waiting': 'Esperan aprobación',
+  'tasks.kpi.done': 'Hechas en 7 días',
+  'tasks.view.board': 'Tablero',
+  'tasks.view.list': 'Lista',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

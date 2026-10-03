@@ -987,6 +987,12 @@ const el: Dictionary = {
   'int.mcp.badJson': 'Οι παράμετροι δεν είναι έγκυρο JSON.',
   'voice.sendNow': 'Αποστολή',
   'voice.diag': 'Διαγνωστικά φωνής',
+  'tasks.kpi.open': 'Ανοιχτές',
+  'tasks.kpi.running': 'Σε εξέλιξη',
+  'tasks.kpi.waiting': 'Θέλουν έγκριση',
+  'tasks.kpi.done': 'Ολοκληρώθηκαν σε 7 ημέρες',
+  'tasks.view.board': 'Πίνακας',
+  'tasks.view.list': 'Λίστα',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',
