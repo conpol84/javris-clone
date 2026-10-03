@@ -1,219 +1,141 @@
-import { useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import type { Persona } from '../../lib/company/persona';
-import { HAIR_COLORS, OUTFITS, SKINS } from '../../lib/company/persona';
+import { OUTFITS } from '../../lib/company/persona';
+import { voiceLevel } from '../../lib/company/voice';
 import type { AgentState } from '../../lib/company/status';
 
-const HALF = [0, Math.PI * 2, 0, Math.PI / 2] as const;
+// Body: Khronos/three.js "Xbot" humanoid (CC0 / MIT sample model), idle pose baked to 8 500 surface points. See public/CREDITS.txt.
+const BODY_URL = '/models/firbo-body.bin';
 
-function Hair({ style, color, cap }: { style: number; color: string; cap: string }) {
-  if (style === 0) return null;
-  const mat = <meshStandardMaterial color={color} roughness={0.7} />;
-  if (style === 4) {
-    return (
-      <group>
-        <mesh position={[0, 0.03, 0]}>
-          <sphereGeometry args={[0.215, 24, 16, ...HALF]} />
-          <meshStandardMaterial color={cap} roughness={0.5} />
-        </mesh>
-        <mesh position={[0, 0.04, 0.2]} rotation={[-0.15, 0, 0]}>
-          <boxGeometry args={[0.3, 0.02, 0.2]} />
-          <meshStandardMaterial color={cap} roughness={0.5} />
-        </mesh>
-      </group>
-    );
-  }
-  return (
-    <group>
-      <mesh position={[0, 0.02, -0.01]}>
-        <sphereGeometry args={[0.22, 24, 16, ...HALF]} />
-        {mat}
-      </mesh>
-      {style === 2 && (
-        <mesh position={[0, -0.13, -0.1]} scale={[1, 1.5, 0.7]}>
-          <sphereGeometry args={[0.2, 20, 14]} />
-          {mat}
-        </mesh>
-      )}
-      {style === 3 && (
-        <mesh position={[0, 0.25, -0.05]}>
-          <sphereGeometry args={[0.09, 14, 12]} />
-          {mat}
-        </mesh>
-      )}
-    </group>
-  );
+interface Body {
+  position: Float32Array;
+  normal: Float32Array;
+  seed: Float32Array;
+}
+let bodyPromise: Promise<Body> | null = null;
+function loadBody(): Promise<Body> {
+  bodyPromise ??= fetch(BODY_URL)
+    .then((r) => r.arrayBuffer())
+    .then((buf) => {
+      const n = new Uint32Array(buf, 0, 1)[0];
+      const q = new Int16Array(buf, 4, n * 3);
+      const nn = new Int8Array(buf, 4 + n * 6, n * 3);
+      const position = new Float32Array(n * 3);
+      const normal = new Float32Array(n * 3);
+      const seed = new Float32Array(n);
+      for (let i = 0; i < n * 3; i++) {
+        position[i] = q[i] / 4000;
+        normal[i] = nn[i] / 127;
+      }
+      for (let i = 0; i < n; i++) seed[i] = Math.abs(Math.sin(i * 12.9898) * 43758.5453) % 1;
+      return { position, normal, seed };
+    });
+  return bodyPromise;
 }
 
-function Accessory({ kind, outfit }: { kind: number; outfit: string }) {
-  if (kind === 1) {
-    return (
-      <group position={[0, 0.0, 0.205]}>
-        {[-0.075, 0.075].map((x) => (
-          <mesh key={x} position={[x, 0, 0]}>
-            <torusGeometry args={[0.052, 0.008, 8, 24]} />
-            <meshStandardMaterial color="#111827" metalness={0.6} roughness={0.3} />
-          </mesh>
-        ))}
-        <mesh>
-          <boxGeometry args={[0.04, 0.008, 0.008]} />
-          <meshStandardMaterial color="#111827" />
-        </mesh>
-      </group>
-    );
+const vertex = /* glsl */ `
+  uniform float uTime;
+  uniform float uScan;
+  uniform float uPx;
+  uniform float uPower;
+  attribute float aSeed;
+  attribute vec3 aNormal;
+  varying float vGlow;
+  varying float vRim;
+  void main() {
+    vec3 p = position;
+    p.x += sin(uTime * 1.3 + p.y * 2.0) * 0.004 * uPower;
+    p += aNormal * sin(uTime * 2.2 + aSeed * 50.0) * 0.004;
+    vec4 mv = modelViewMatrix * vec4(p, 1.0);
+    vec3 n = normalize(normalMatrix * aNormal);
+    vRim = pow(1.0 - abs(dot(n, normalize(-mv.xyz))), 1.5);
+    float d = (p.y - uScan) * 7.0;
+    vGlow = exp(-d * d);
+    gl_PointSize = max(1.4, uPx * (0.6 + aSeed * 0.8 + vGlow * 0.35) * (9.0 / -mv.z));
+    gl_Position = projectionMatrix * mv;
   }
-  if (kind === 2) {
-    return (
-      <group>
-        <mesh position={[0, 0.03, 0]} rotation={[0, 0, 0]}>
-          <torusGeometry args={[0.235, 0.014, 8, 36, Math.PI]} />
-          <meshStandardMaterial color="#1f2937" metalness={0.5} roughness={0.4} />
-        </mesh>
-        <mesh position={[0.235, -0.01, 0]}>
-          <sphereGeometry args={[0.05, 12, 12]} />
-          <meshStandardMaterial color="#1f2937" />
-        </mesh>
-        <mesh position={[0.2, -0.1, 0.16]}>
-          <sphereGeometry args={[0.017, 8, 8]} />
-          <meshBasicMaterial color={outfit} toneMapped={false} />
-        </mesh>
-      </group>
-    );
+`;
+const fragment = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uPower;
+  varying float vGlow;
+  varying float vRim;
+  void main() {
+    vec2 c = gl_PointCoord - 0.5;
+    float r = length(c);
+    if (r > 0.5) discard;
+    float soft = smoothstep(0.5, 0.05, r);
+    float a = soft * (0.22 + vRim * 0.6 + vGlow * 0.22) * uPower;
+    gl_FragColor = vec4(mix(uColor, vec3(1.0), vGlow * 0.3 + vRim * 0.1), a);
   }
-  if (kind === 4) {
-    return (
-      <mesh position={[0, 0.0, 0.2]}>
-        <boxGeometry args={[0.34, 0.08, 0.05]} />
-        <meshBasicMaterial color={outfit} transparent opacity={0.75} toneMapped={false} />
-      </mesh>
-    );
-  }
-  return null;
-}
+`;
 
-/** A stylised full-body character: breathes, looks around, types when working, raises a hand when waiting. */
+/** An AI employee as a living hologram of 8 500 light points: tinted with the employee's colour, scanned by a moving beam, brighter while working. */
 export function Person({ persona, color, state, speaking = false }: { persona: Persona; color: string; state: AgentState; speaking?: boolean }) {
+  const [body, setBody] = useState<Body | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadBody().then((b) => live && setBody(b));
+    return () => {
+      live = false;
+    };
+  }, []);
+  const mat = useRef<THREE.ShaderMaterial>(null);
+  const ring = useRef<THREE.Mesh>(null);
   const root = useRef<THREE.Group>(null);
-  const head = useRef<THREE.Group>(null);
-  const armL = useRef<THREE.Group>(null);
-  const armR = useRef<THREE.Group>(null);
-  const mouth = useRef<THREE.Mesh>(null);
-  const aura = useRef<THREE.Mesh>(null);
   const disabled = state === 'disabled';
-  const skin = SKINS[persona.skin] ?? SKINS[0];
-  const hairC = HAIR_COLORS[persona.hairColor] ?? HAIR_COLORS[0];
-  const outfit = disabled ? '#475569' : OUTFITS[persona.outfit] ?? color;
-  const pants = '#1e293b';
+  const tint = useMemo(() => new THREE.Color(disabled ? '#475569' : color).lerp(new THREE.Color(OUTFITS[persona.outfit] ?? '#00d4ff'), 0.25), [color, persona.outfit, disabled]);
+  const seed = useMemo(() => Math.random() * 10, []);
+  const uniforms = useMemo(() => ({ uTime: { value: 0 }, uScan: { value: 0 }, uPx: { value: 2.3 }, uPower: { value: 1 }, uColor: { value: new THREE.Color() } }), []);
+  const geo = useMemo(() => {
+    if (!body) return null;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(body.position, 3));
+    g.setAttribute('aNormal', new THREE.BufferAttribute(body.normal, 3));
+    g.setAttribute('aSeed', new THREE.BufferAttribute(body.seed, 1));
+    return g;
+  }, [body]);
 
-  useFrame(({ clock }) => {
-    const t = clock.elapsedTime;
-    if (!root.current || !head.current || !armL.current || !armR.current) return;
-    const breathe = Math.sin(t * 1.6) * 0.012;
-    root.current.position.y = disabled ? -0.02 : breathe;
-    head.current.rotation.set(disabled ? 0.4 : Math.sin(t * 0.5) * 0.04, state === 'idle' ? Math.sin(t * 0.35) * 0.35 : state === 'active' ? -0.2 + Math.sin(t * 2) * 0.05 : 0, 0);
-    if (state === 'active') {
-      armL.current.rotation.x = -1.1 + Math.sin(t * 14) * 0.22;
-      armR.current.rotation.x = -1.1 + Math.cos(t * 14) * 0.22;
-    } else if (state === 'waiting') {
-      armL.current.rotation.x = -0.1;
-      armR.current.rotation.set(-2.6 + Math.sin(t * 3.5) * 0.25, 0, -0.2);
-    } else if (speaking) {
-      armL.current.rotation.set(-0.5 + Math.sin(t * 2.1) * 0.15, 0, 0.1);
-      armR.current.rotation.set(-0.9 + Math.sin(t * 2.7) * 0.35, 0, -0.15 + Math.sin(t * 1.9) * 0.1);
-    } else {
-      armL.current.rotation.x = Math.sin(t * 1.6) * 0.04;
-      armR.current.rotation.set(Math.sin(t * 1.6 + 1) * 0.04, 0, 0);
+  useFrame(({ clock, gl }) => {
+    const t = clock.elapsedTime + seed;
+    const u = mat.current?.uniforms;
+    if (u) {
+      const speed = state === 'active' ? 0.7 : 0.3;
+      u.uTime.value = t;
+      u.uScan.value = -0.1 + ((t * speed) % 1) * 2.0;
+      u.uPower.value = disabled ? 0.35 : state === 'active' ? 1.25 : speaking ? 1.1 + voiceLevel.value * 0.6 : 0.95;
+      u.uPx.value = 2.3 * gl.getPixelRatio();
+      (u.uColor.value as THREE.Color).copy(tint);
     }
-    if (mouth.current) mouth.current.scale.y = speaking ? 0.6 + Math.abs(Math.sin(t * 12)) * 1.6 : 0.6;
-    if (aura.current) {
-      aura.current.rotation.z = t * 0.5;
-      (aura.current.material as THREE.MeshBasicMaterial).opacity = disabled ? 0.12 : state === 'active' ? 0.9 : state === 'waiting' ? 0.55 + Math.sin(t * 5) * 0.3 : 0.45;
+    if (root.current) {
+      root.current.position.y = disabled ? 0 : Math.sin(t * 1.6) * 0.012;
+      root.current.rotation.y = Math.sin(t * 0.4) * (state === 'idle' ? 0.12 : 0.04);
+    }
+    if (ring.current) {
+      ring.current.rotation.z = t * 0.5;
+      (ring.current.material as THREE.MeshBasicMaterial).opacity = disabled ? 0.12 : state === 'active' ? 0.9 : state === 'waiting' ? 0.55 + Math.sin(t * 5) * 0.3 : 0.45;
     }
   });
 
   return (
     <group>
-      <mesh ref={aura} position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <ringGeometry args={[0.52, 0.58, 48]} />
-        <meshBasicMaterial color={color} transparent opacity={0.5} toneMapped={false} />
+      <mesh ref={ring} position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.5, 0.55, 64]} />
+        <meshBasicMaterial color={state === 'waiting' ? '#fbbf24' : color} transparent opacity={0.5} toneMapped={false} />
       </mesh>
-      <group ref={root}>
-        {/* legs and shoes */}
-        {[-0.1, 0.1].map((x) => (
-          <group key={x}>
-            <mesh position={[x, 0.42, 0]}>
-              <capsuleGeometry args={[0.07, 0.62, 6, 12]} />
-              <meshStandardMaterial color={pants} roughness={0.8} />
-            </mesh>
-            <mesh position={[x, 0.05, 0.05]}>
-              <boxGeometry args={[0.13, 0.09, 0.26]} />
-              <meshStandardMaterial color="#0b1220" roughness={0.5} />
-            </mesh>
-          </group>
-        ))}
-        {/* torso */}
-        <mesh position={[0, 1.12, 0]}>
-          <capsuleGeometry args={[0.22, 0.42, 8, 16]} />
-          <meshStandardMaterial color={outfit} roughness={0.55} metalness={0.15} emissive={outfit} emissiveIntensity={state === 'active' ? 0.25 : 0.06} />
-        </mesh>
-        <mesh position={[0, 1.02, 0.215]}>
-          <boxGeometry args={[0.1, 0.1, 0.01]} />
-          <meshBasicMaterial color={color} toneMapped={false} />
-        </mesh>
-        {persona.accessory === 3 && (
-          <mesh position={[0, 1.22, 0.225]}>
-            <boxGeometry args={[0.05, 0.28, 0.02]} />
-            <meshStandardMaterial color="#111827" />
-          </mesh>
-        )}
-        {/* arms pivot at the shoulders */}
-        {([['L', -0.3, armL], ['R', 0.3, armR]] as const).map(([k, x, ref]) => (
-          <group key={k} ref={ref} position={[x, 1.38, 0]}>
-            <mesh position={[0, -0.26, 0]}>
-              <capsuleGeometry args={[0.065, 0.4, 6, 12]} />
-              <meshStandardMaterial color={outfit} roughness={0.6} />
-            </mesh>
-            <mesh position={[0, -0.55, 0]}>
-              <sphereGeometry args={[0.065, 12, 12]} />
-              <meshStandardMaterial color={skin} roughness={0.7} />
-            </mesh>
-          </group>
-        ))}
-        {/* neck + head */}
-        <mesh position={[0, 1.5, 0]}>
-          <cylinderGeometry args={[0.07, 0.08, 0.1, 12]} />
-          <meshStandardMaterial color={skin} roughness={0.7} />
-        </mesh>
-        <group ref={head} position={[0, 1.72, 0]}>
-          <mesh>
-            <sphereGeometry args={[0.2, 28, 22]} />
-            <meshStandardMaterial color={skin} roughness={0.65} />
-          </mesh>
-          {[-0.075, 0.075].map((x) => (
-            <group key={x} position={[x, 0.02, 0.17]}>
-              <mesh>
-                <sphereGeometry args={[0.032, 12, 12]} />
-                <meshStandardMaterial color="#f8fafc" />
-              </mesh>
-              <mesh position={[0, 0, 0.022]}>
-                <sphereGeometry args={[0.016, 10, 10]} />
-                <meshBasicMaterial color={disabled ? '#334155' : '#0b1b2b'} />
-              </mesh>
-            </group>
-          ))}
-          <mesh position={[0, -0.075, 0.185]}>
-            <sphereGeometry args={[0.026, 10, 10]} />
-            <meshStandardMaterial color={skin} roughness={0.7} />
-          </mesh>
-          <mesh ref={mouth} position={[0, -0.1, 0.18]} scale={[1, 0.6, 1]}>
-            <boxGeometry args={[0.07, 0.018, 0.012]} />
-            <meshStandardMaterial color="#7f1d1d" />
-          </mesh>
-          <Hair style={persona.hair} color={hairC} cap={outfit} />
-          <Accessory kind={persona.accessory} outfit={disabled ? '#475569' : color} />
+      <mesh position={[0, 0.005, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <circleGeometry args={[0.5, 48]} />
+        <meshBasicMaterial color={color} transparent opacity={disabled ? 0.03 : 0.1} toneMapped={false} depthWrite={false} />
+      </mesh>
+      {geo && (
+        <group ref={root} scale={1.08}>
+          <points geometry={geo} frustumCulled={false}>
+            <shaderMaterial ref={mat} uniforms={uniforms} vertexShader={vertex} fragmentShader={fragment} transparent depthWrite={false} blending={THREE.AdditiveBlending} />
+          </points>
         </group>
-      </group>
+      )}
     </group>
   );
 }

@@ -1,5 +1,6 @@
 import { Glow } from './fx';
-import { useMemo, useRef } from 'react';
+import { HoloHead } from './HoloHead';
+import { Suspense, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
@@ -8,20 +9,6 @@ export interface OrbSatellite {
   id: string;
   color: string;
   active: boolean;
-}
-
-function fibonacciSphere(count: number, radius: number): Float32Array {
-  const pts = new Float32Array(count * 3);
-  const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < count; i++) {
-    const y = 1 - (i / (count - 1)) * 2;
-    const r = Math.sqrt(1 - y * y);
-    const th = golden * i;
-    pts[i * 3] = Math.cos(th) * r * radius;
-    pts[i * 3 + 1] = y * radius;
-    pts[i * 3 + 2] = Math.sin(th) * r * radius;
-  }
-  return pts;
 }
 
 function glowTexture(): THREE.Texture {
@@ -72,17 +59,12 @@ function Satellite({ sat, index, total, motion, onSelect }: { sat: OrbSatellite;
 
 function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void }) {
   const group = useRef<THREE.Group>(null);
-  const points = useRef<THREE.Points>(null);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
-  const positions = useMemo(() => fibonacciSphere(1500, 1.45), []);
   const glow = useMemo(() => glowTexture(), []);
 
   useFrame((s, dt) => {
     const t = s.clock.elapsedTime * motion;
-    if (points.current) {
-      points.current.rotation.y = t * 0.12;
-      points.current.rotation.x = Math.sin(t * 0.15) * 0.12;
-    }
+    void t;
     rings.current.forEach((r, i) => {
       if (r) r.rotation.z += dt * motion * (0.08 + i * 0.05) * (i % 2 ? -1 : 1);
     });
@@ -95,30 +77,13 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
   return (
     <group ref={group}>
       <sprite scale={[4.6, 4.6, 1]}>
-        <spriteMaterial map={glow} transparent opacity={0.8} blending={THREE.AdditiveBlending} depthWrite={false} />
+        <spriteMaterial map={glow} transparent opacity={0.3} blending={THREE.AdditiveBlending} depthWrite={false} />
       </sprite>
-      <points ref={points}>
-        <bufferGeometry>
-          <bufferAttribute attach="attributes-position" args={[positions, 3]} />
-        </bufferGeometry>
-        <pointsMaterial
-          color="#67e8f9"
-          size={0.026}
-          sizeAttenuation
-          transparent
-          opacity={0.9}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
-      </points>
-      <mesh>
-        <icosahedronGeometry args={[1.38, 2]} />
-        <meshBasicMaterial color="#00d4ff" wireframe transparent opacity={0.13} />
-      </mesh>
-      <mesh>
-        <icosahedronGeometry args={[0.55, 1]} />
-        <meshBasicMaterial color="#7dd3fc" wireframe transparent opacity={0.55} toneMapped={false} />
-      </mesh>
+      <Suspense fallback={null}>
+        <group position={[0, -0.35, 0]} scale={1.15}>
+          <HoloHead state="idle" motion={motion || 0.3} />
+        </group>
+      </Suspense>
       {[1.9, 2.18, 2.46].map((r, i) => (
         <mesh
           key={r}

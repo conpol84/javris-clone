@@ -3,3 +3,6 @@ Firbo AI – third-party credits
 3D head scan: "Lee Perry-Smith" by Infinite Realities (https://ir-ltd.net), licensed CC BY 3.0
 (https://creativecommons.org/licenses/by/3.0/), distributed with the three.js examples (MIT).
 Used as the surface of the AI CEO hologram (/models/firbo-head.glb).
+
+3D body: "X Bot" humanoid character from Adobe Mixamo, as distributed with the three.js examples (MIT).
+Only a baked, non-animated point cloud of its surface (/models/firbo-body.bin) is shipped, used for the AI employees' holograms.
