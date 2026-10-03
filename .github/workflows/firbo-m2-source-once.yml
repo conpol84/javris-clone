@@ -1,0 +1,35 @@
+name: Firbo M2 isolated workbench snapshot
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-m2-source-once.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    if: github.repository == 'conpol84/javris-clone' && github.event.head_commit.message == 'Prepare isolated M2 page workbench snapshot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Capture only tracked source and test configuration, never secrets
+        run: |
+          python3 - <<'PY'
+          import pathlib, subprocess, shutil
+          out=pathlib.Path('/tmp/firbo-m2-source')
+          files=subprocess.check_output(['git','ls-files','-z','frontend/src','frontend/preview','tests/firbo','docs','frontend/package.json','frontend/package-lock.json','frontend/tsconfig.json','frontend/tsconfig.app.json','frontend/tsconfig.node.json','frontend/vite.config.ts','frontend/vite.mobile.config.ts','frontend/vite.preview.config.ts','frontend/vitest.config.ts','frontend/.npmrc','frontend/index.html','.github/workflows']).decode().split('\0')
+          for f in filter(None,files):
+              p=pathlib.Path(f)
+              if not p.is_file() or p.is_symlink() or p.stat().st_size>1500000: continue
+              if '.env' in p.name or p.suffix.lower() in {'.pem','.key','.p12','.pfx'}: continue
+              t=out/p;t.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(p,t)
+          (out/'SOURCE_COMMIT.txt').write_text(subprocess.check_output(['git','rev-parse','HEAD']).decode())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firbo-m2-isolated-source
+          path: /tmp/firbo-m2-source
+          retention-days: 3
+          include-hidden-files: true
