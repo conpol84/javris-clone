@@ -1,0 +1,64 @@
+/* M1: shared reflow fixes. Never hide overflow to conceal missing content.
+ * Per-page, keyboard and physical-device acceptance are separate release gates.
+ */
+[data-slot='dialog-content'] {
+  min-inline-size: 0;
+  max-inline-size: calc(100vw - 2rem);
+  max-block-size: calc(100vh - 2rem);
+  max-block-size: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-wrap: anywhere;
+}
+[data-slot='dialog-content'] > * { min-inline-size: 0; }
+[data-slot='dialog-title'] { padding-inline-end: 2rem; }
+[data-slot='dialog-footer'] { flex-wrap: wrap; }
+
+.fb-root .fb-pagehead,
+.fb-root .fb-pagehead > *,
+.fb-root .fb-pagehead__right {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+.fb-root .fb-pagehead h1,
+.fb-root .fb-pagehead p,
+.fb-root .fb-stat__value,
+.fb-root .fb-stat .fb-eyebrow { overflow-wrap: anywhere; }
+.fb-root .fb-seg { min-inline-size: 0; max-inline-size: 100%; }
+.fb-root .fb-seg button { min-inline-size: 0; overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  .fb-root .fb-btn {
+    height: auto;
+    min-block-size: 44px;
+    max-inline-size: 100%;
+    padding-block: 0.6rem;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+    line-height: 1.35;
+  }
+  .fb-root .fb-btn > svg { flex-shrink: 0; }
+  .fb-root .fb-seg {
+    display: flex;
+    flex-wrap: wrap;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  .fb-root .fb-seg button {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 44px;
+    max-inline-size: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .fb-root .fb-stat__foot { flex-wrap: wrap; }
+  .fb-root .fb-stat__foot > * { min-inline-size: 0; overflow-wrap: anywhere; }
+  .fb-root .fb-kv { grid-template-columns: minmax(0, 90px) minmax(0, 1fr); }
+  .fb-root .fb-kv dt, .fb-root .fb-kv dd { min-inline-size: 0; overflow-wrap: anywhere; }
+  [data-slot='dialog-content'] input:not([type='checkbox']):not([type='radio']),
+  [data-slot='dialog-content'] select,
+  [data-slot='dialog-content'] textarea { min-inline-size: 0; max-inline-size: 100%; font-size: 16px; }
+  [data-slot='dialog-footer'] button { min-block-size: 44px; height: auto; white-space: normal; overflow-wrap: anywhere; }
+}
