@@ -9,3 +9,15 @@
 @media(prefers-reduced-motion:reduce){.cw-orbit-grid:before,.cw-orbit-grid:after{animation:none}.cw-device,.cw-app-grid button{transition:none}.cw-device:hover,.cw-app-grid button:hover{transform:none}}
 
 .cw-connect-dialog{background:#0a1624;color:#dfedf6;border:1px solid #367b9166}.cw-connect-dialog form .fb-input{min-width:0;width:100%;font-size:16px}.cw-connect-dialog .fb-btn{min-height:44px;height:auto;white-space:normal;overflow-wrap:anywhere}.cw-connect-dialog form>div:last-child{flex-wrap:wrap}
+
+/* Actual-page reflow: long company/connection names remain readable. The scope
+ * is the existing integrations page header and its sibling panels only. */
+.cw-app-head > *{min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.cw-app-head > :is(.fb-eyebrow,h1,p){flex:1 1 100%}
+.cw-app-head ~ section li.fb-row > .min-w-0{min-inline-size:0;max-inline-size:100%;overflow-wrap:anywhere}
+.cw-app-head ~ section li.fb-row .truncate{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}
+.cw-app-head ~ section li.fb-row .fb-dim{overflow-wrap:anywhere}
+@media(max-width:1023px){
+ .cw-app-head ~ section li.fb-row > .min-w-0.flex-1{flex:1 0 calc(100% - 28px)}
+ .cw-app-head ~ section li.fb-row > .fb-btn{min-block-size:44px;height:auto!important;max-inline-size:100%;white-space:normal}
+}

@@ -23,7 +23,7 @@ jobs:
           POSTGRES_DB: firbo_test
         ports: ['5432:5432']
         options: >-
-          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+          --health-cmd "pg_isready -U postgres -d firbo_test" --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with: {persist-credentials: false}
@@ -47,15 +47,11 @@ jobs:
           psql -h localhost -U postgres -d firbo_test -v ON_ERROR_STOP=1 -f deploy/schema/firbo_connections.sql
           mkdir -p /tmp/firbo-world-evidence
           psql -h localhost -U postgres -d firbo_test -v ON_ERROR_STOP=1 -f tests/firbo/connections/postgres-assertions.sql | tee /tmp/firbo-world-evidence/postgres-results.txt
-      - name: Generate a candidate migration with the official CLI, never apply remotely
+      - name: Verify the committed CLI-generated migration and preserve exact evidence
         run: |
           set -euo pipefail
-          npx --yes supabase@2.119.0 --help > /tmp/firbo-world-evidence/cli-help.txt
-          npx --yes supabase@2.119.0 migration new --help > /tmp/firbo-world-evidence/migration-help.txt
-          npx --yes supabase@2.119.0 migration new firbo_connected_services
-          FILE=$(find supabase/migrations -name '*_firbo_connected_services.sql' | sort | tail -1)
-          test -n "$FILE"
-          cp deploy/schema/firbo_connections.sql "$FILE"
+          FILE=supabase/migrations/20261003221256_firbo_connected_services.sql
+          cmp deploy/schema/firbo_connections.sql "$FILE"
           cp "$FILE" /tmp/firbo-world-evidence/
           echo "FIRBO_CANDIDATE_MIGRATION=$FILE"
       - name: Install isolated browser test dependencies
