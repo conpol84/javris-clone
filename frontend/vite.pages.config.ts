@@ -16,7 +16,13 @@ const isolate: Plugin = {
 export default defineConfig({
   root: path.join(root, 'tests/firbo/pages'),
   plugins: [isolate, react(), tailwindcss()],
-  resolve: { alias: { '@': path.join(root,'frontend/src'), 'react-dom': path.join(root,'frontend/node_modules/react-dom'), 'react': path.join(root,'frontend/node_modules/react') } },
+  resolve: { alias: {
+    '@': path.join(root,'frontend/src'),
+    'react-dom': path.join(root,'frontend/node_modules/react-dom'),
+    'react': path.join(root,'frontend/node_modules/react'),
+    'react-router': path.join(root,'frontend/node_modules/react-router'),
+    '@supabase/supabase-js': path.join(root,'frontend/node_modules/@supabase/supabase-js'),
+  } },
   define: { 'import.meta.env.VITE_COMPANY_SUPABASE_URL': JSON.stringify('https://firbo.invalid'), 'import.meta.env.VITE_API_URL': JSON.stringify(''), 'import.meta.env.VITE_OMNIROUTE_URL': JSON.stringify('https://gateway.invalid'), 'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify('') },
   server: { host:'127.0.0.1', port:5211, strictPort:true, fs:{allow:[root]} },
   build: {outDir:path.join(root,'frontend/dist-m2'),emptyOutDir:true},
