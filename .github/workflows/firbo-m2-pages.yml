@@ -40,7 +40,11 @@ jobs:
           PID=$!
           trap 'kill "$PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5211/ >/dev/null && break; sleep 1; done
-          /tmp/firbo-m2-venv/bin/python tests/firbo/pages/verify.py
+          BASE_RESULT=0
+          /tmp/firbo-m2-venv/bin/python tests/firbo/pages/verify.py || BASE_RESULT=$?
+          EXTRA_RESULT=0
+          /tmp/firbo-m2-venv/bin/python tests/firbo/pages/verify_extra.py || EXTRA_RESULT=$?
+          test "$BASE_RESULT" -eq 0 && test "$EXTRA_RESULT" -eq 0
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -49,12 +53,3 @@ jobs:
             /tmp/firbo-m2-evidence/
             /tmp/firbo-m2-vite.log
           retention-days: 7
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        if: always()
-        with:
-          name: firbo-m2-local-workbench
-          path: |
-            frontend/dist-m2/**/*.js
-            frontend/dist-m2/**/*.css
-            frontend/dist-m2/**/*.html
-          retention-days: 3

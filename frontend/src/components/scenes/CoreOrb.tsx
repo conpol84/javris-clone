@@ -1,4 +1,5 @@
 import { Glow } from './fx';
+import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
 import { Suspense, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
@@ -87,9 +88,7 @@ function Scene({ satellites, motion, onSelect }: { satellites: OrbSatellite[]; m
       {[1.9, 2.18, 2.46].map((r, i) => (
         <mesh
           key={r}
-          ref={(el) => {
-            rings.current[i] = el;
-          }}
+          ref={(el) => { rings.current[i] = el; }}
           rotation={[Math.PI / 2 - (i * 0.55 + 0.25), 0, 0]}
         >
           <torusGeometry args={[r, 0.0035, 8, 160]} />
@@ -113,28 +112,26 @@ function Fallback() {
   );
 }
 
-/** Animated AI core. Falls back to CSS rings without WebGL. */
+/** Animated AI core. Asset/canvas errors fall back without blanking the workspace. */
 export function CoreOrb({ satellites = [], className, onSelect }: { satellites?: OrbSatellite[]; className?: string; onSelect?: (id: string) => void }) {
   const reduced = usePrefersReducedMotion();
   if (!supportsWebGL()) {
-    return (
-      <div className={className} aria-hidden="true">
-        <Fallback />
-      </div>
-    );
+    return <div className={className} aria-hidden="true"><Fallback /></div>;
   }
   return (
     <div className={className} aria-hidden="true">
-      <Canvas
-        style={{ position: 'absolute', inset: 0 }}
-        dpr={[1, 1.75]}
-        camera={{ position: [0, 0, 7.2], fov: 42 }}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-        frameloop={reduced ? 'demand' : 'always'}
-      >
-        <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} />
-        <Glow />
-      </Canvas>
+      <SceneFallbackBoundary fallback={<Fallback />}>
+        <Canvas
+          style={{ position: 'absolute', inset: 0 }}
+          dpr={[1, 1.75]}
+          camera={{ position: [0, 0, 7.2], fov: 42 }}
+          gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+          frameloop={reduced ? 'demand' : 'always'}
+        >
+          <Scene satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} />
+          <Glow />
+        </Canvas>
+      </SceneFallbackBoundary>
     </div>
   );
 }

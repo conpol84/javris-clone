@@ -48,3 +48,14 @@ main[data-firbo-route='/companies'] .fb-wide { width: 100%; }
   main[data-firbo-route='/chat'] .pe-6 { padding-inline-end: 44px; }
   main[data-firbo-route='/'] .fb-talk { min-inline-size: 0; max-inline-size: 100%; block-size: auto; min-block-size: 58px; white-space: normal; overflow-wrap: anywhere; }
 }
+
+/* The global sidebar and conversation list cannot both occupy a tablet row. */
+@media (min-width: 768px) and (max-width: 1023px) {
+  main[data-firbo-route='/chat'] .fb-root { flex-direction: column; }
+  main[data-firbo-route='/chat'] aside {
+    inline-size: 100%;
+    max-block-size: 38%;
+    border-inline-end-width: 0;
+    border-block-end-width: 1px;
+  }
+}
