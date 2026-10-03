@@ -1,0 +1,36 @@
+name: Firbo free model catalogue
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models.py', '.github/workflows/firbo-free-models.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['deploy/hostinger/free_models.py', 'tests/firbo/test_free_models.py', '.github/workflows/firbo-free-models.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-free-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify bounded discovery and guarded registration using mocks
+        run: python3 -m unittest discover -s tests/firbo -p test_free_models.py -v
+      - name: Record the reviewed standalone script checksum
+        run: sha256sum deploy/hostinger/free_models.py
+  public-catalogue:
+    if: github.repository == 'conpol84/javris-clone'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify current official public sources; no keys, Docker or inference
+        run: python3 deploy/hostinger/free_models.py --public-only
