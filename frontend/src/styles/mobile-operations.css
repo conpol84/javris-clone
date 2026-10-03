@@ -1,0 +1,36 @@
+/* M2-B: operational pages and Computer Manager. Keep full content and actions.
+ * Explicit tables/logs may scroll inside their own bounded region.
+ */
+:where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+:where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(.fb-root,.fb-glass,.fb-card,.fb-row,.grid > *,.flex > *,header > *,form > *,section,aside) { min-inline-size:0; max-inline-size:100%; }
+:where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(.truncate,.fb-eyebrow,.tabular-nums) { white-space:normal; overflow-wrap:anywhere; text-overflow:clip; overflow:visible; }
+:where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(input,select,textarea,pre) { min-inline-size:0; max-inline-size:100%; }
+:where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(button,.fb-chip) { max-inline-size:100%; overflow-wrap:anywhere; white-space:normal; }
+main[data-firbo-route='/tasks'] .fb-board { grid-auto-flow:row; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-columns:auto; overflow-x:visible; }
+main[data-firbo-route='/tasks'] .fb-col-head { flex-wrap:wrap; overflow-wrap:anywhere; }
+main[data-firbo-route='/computers'] .fb-copyline { display:grid; grid-template-columns:minmax(0,1fr) 44px; gap:8px; align-items:start; }
+main[data-firbo-route='/computers'] .fb-copyline button { padding-inline:8px; min-block-size:44px; }
+main[data-firbo-route='/computers'] .fb-device-select { inline-size:100%; min-inline-size:0; min-block-size:44px; cursor:pointer; border-radius:8px; }
+main[data-firbo-route='/computers'] .fb-device-select:disabled { cursor:default; }
+main[data-firbo-route='/computers'] .fb-device-select:focus-visible { outline:2px solid var(--fb-accent); outline-offset:4px; }
+main[data-firbo-route='/computers'] pre { overflow-wrap:anywhere; }
+main[data-firbo-route='/computers'] [data-testid='computer-jobs'] { overflow-wrap:anywhere; }
+@media(max-width:1023px) {
+ main[data-firbo-route='/tasks'] .fb-board { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:767px) {
+ main[data-firbo-route='/tasks'] .fb-board { grid-template-columns:minmax(0,1fr); }
+ :where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(form,.fb-row) { min-inline-size:0; }
+ :where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) :is(input,select,textarea) { font-size:16px; }
+ :where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) button { min-block-size:44px; height:auto; }
+ :where(main[data-firbo-route='/tasks'],main[data-firbo-route='/inbox'],main[data-firbo-route='/team'],main[data-firbo-route='/people'],main[data-firbo-route='/activity'],main[data-firbo-route='/computers']) [role='tablist'] { flex-wrap:wrap; }
+ main[data-firbo-route='/people'] li.fb-glass > .min-w-0 { flex-basis:calc(100% - 60px); }
+ main[data-firbo-route='/people'] li.fb-glass select { inline-size:100%; }
+ main[data-firbo-route='/computers'] article .flex { flex-wrap:wrap; }
+ main[data-firbo-route='/computers'] section > form input.flex-1 { flex-basis:100%; }
+ main[data-firbo-route='/inbox'] .fb-kv { grid-template-columns:minmax(0,90px) minmax(0,1fr); }
+ main[data-firbo-route='/team'] .fb-agent-layout { grid-template-columns:minmax(0,1fr); }
+}

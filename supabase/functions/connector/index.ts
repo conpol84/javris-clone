@@ -204,7 +204,13 @@ Deno.serve(async (req) => {
     const { data: job } = await admin.from('connector_jobs').select('id, organization_id, status').eq('id', str(body.job_id, 60)).maybeSingle();
     if (!job) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(job.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
-    await admin.from('connector_jobs').update({ status: 'cancelled', finished_at: new Date().toISOString() }).eq('id', job.id).eq('status', 'queued');
+    // A queued job may be claimed between the read and the update. No matched row
+    // means no cancellation; never return success for a running or changed job.
+    const { data: cancelled, error: cancelError } = await admin.from('connector_jobs')
+      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+      .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
+    if (cancelError) return json(503, { error: 'save_failed' });
+    if (!cancelled) return json(409, { error: 'state_conflict' });
     return json(200, { ok: true });
   }
 

@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { requireClient } from './client';
+import { devicePresence } from './computer-state';
 
 export interface DeviceRow {
   id: string;
@@ -23,7 +24,7 @@ export interface JobRow {
   finished_at: string | null;
 }
 
-export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'unknown';
+export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'unknown';
 export class ComputerError extends Error {
   constructor(public code: ComputerErrorCode) {
     super(code);
@@ -37,13 +38,19 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
     if (error instanceof FunctionsHttpError) {
       try {
         const b = await error.context.json();
-        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found'].includes(b?.error)) code = b.error;
+        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed'].includes(b?.error)) code = b.error;
       } catch {
         /* keep unknown */
       }
     }
     throw new ComputerError(code);
   }
+  const action = body.action;
+  const valid = data && typeof data === 'object' && (
+    action === 'create_device' ? typeof data.device_id === 'string' && /^[A-Z2-9]{8}$/.test(data.code) :
+    action === 'new_code' ? /^[A-Z2-9]{8}$/.test(data.code) :
+    action === 'create_job' ? typeof data.job_id === 'string' && data.job_id.length > 0 : data.ok === true);
+  if (!valid) throw new ComputerError('unknown');
   return data as T;
 }
 
@@ -79,5 +86,5 @@ export const cancelJob = (job_id: string) => call<{ ok: true }>({ action: 'cance
 
 /** A computer counts as online while its Connector has asked for work in the last minute. */
 export function isOnline(d: DeviceRow, now = Date.now()): boolean {
-  return !!d.last_seen_at && now - Date.parse(d.last_seen_at) < 60_000;
+  return devicePresence(d, now) === 'online';
 }

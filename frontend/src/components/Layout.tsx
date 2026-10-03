@@ -12,6 +12,7 @@ import { WindowControls } from './command/WindowControls';
 import { CommandProvider } from './command/CommandHost';
 import '../styles/mobile-foundation.css';
 import '../styles/mobile-pages.css';
+import '../styles/mobile-operations.css';
 
 export function Layout() {
   const { t } = useI18n();

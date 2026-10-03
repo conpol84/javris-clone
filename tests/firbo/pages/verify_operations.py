@@ -1,0 +1,86 @@
+"""M2-B: six actual operational pages and Computer Manager lifecycle.
+Mock identity/read responses; deliberately permitted mutations are in-memory only.
+No physical PC, remote account, command, file operation or agent is used.
+"""
+import json
+from urllib.parse import urlparse
+from playwright.sync_api import sync_playwright, expect
+import verify as v
+ROOT=v.OUT/'operations';ROOT.mkdir(parents=True,exist_ok=True)
+v.OUT=ROOT/'layouts';v.OUT.mkdir(exist_ok=True)
+v.ROUTES=['/tasks','/inbox','/team','/people','/activity','/computers']
+v.PROFILES=[(w,800,'en','dark') for w in (320,360,390,412,768,1024)]
+v.PROFILES += [(1440,900,'en','light')]+[(320,800,lang,'dark') for lang in ('el','ar','es','fr','de','pt-BR','zh-CN')]
+v.results=[]
+layout_failed=False
+try:v.run()
+except SystemExit:layout_failed=True
+reports=[]
+CASES=[('computer-actions',w,'loaded','owner') for w in (320,390,768,1440)]
+CASES += [('computer-state',320,state,'owner') for state in ('loading','empty','error')]
+CASES += [('computer-member',320,'loaded','member'),('computer-race',390,'loaded','owner'),('computer-pair-expiry',390,'loaded','owner'),('computer-user-switch',390,'loaded','owner'),('task-board',320,'loaded','owner'),('task-board',768,'loaded','owner')]
+with sync_playwright() as pw:
+ browser=pw.chromium.launch(**({'executable_path':v.os.environ['FIRBO_CHROMIUM']} if v.os.environ.get('FIRBO_CHROMIUM') else {}))
+ for kind,width,state,role in CASES:
+  label=f'{kind}-{width}-{state}-{role}';ctx=browser.new_context(viewport={'width':width,'height':800},reduced_motion='reduce',service_workers='block');errors=[];external=[]
+  def intercept(r):
+   u=urlparse(r.request.url)
+   if u.netloc!='127.0.0.1:5211':external.append(u.hostname);return r.abort()
+   if u.path.startswith('/v1/'):return r.fulfill(status=404,json={'detail':'no_execution_in_fixture'})
+   return r.continue_()
+  ctx.route('**/*',intercept);page=ctx.new_page();page.set_default_timeout(7000);page.on('pageerror',lambda e:errors.append(str(e)))
+  try:
+   if kind=='computer-pair-expiry':page.clock.install()
+   path='/tasks' if kind=='task-board' else '/computers'
+   page.goto(v.BASE+path+f'?lang=en&state={state}&role={role}&computer_actions=1&device_delay=900&pair_delay='+('900' if kind=='computer-user-switch' else '0'),wait_until='networkidle')
+   expect(page.locator('main h1')).to_be_visible()
+   if kind=='computer-state':
+    if state=='error':expect(page.get_by_role('alert').filter(has_text='Computer status could not be refreshed')).to_be_visible();expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
+    elif state=='loading':expect(page.locator('main [role="status"]').first).to_be_visible()
+    else:expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
+   elif kind=='computer-member':
+    expect(page.locator('main form')).to_have_count(0);expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
+   elif kind=='task-board':
+    page.get_by_role('tab',name='Board',exact=True).click();expect(page.locator('.fb-board')).to_be_visible()
+    assert page.locator('.fb-board > *').count()>=4,'task columns disappeared'
+   elif kind in ('computer-actions','computer-race'):
+    expect(page.get_by_test_id('select-device-d1')).to_be_visible();page.get_by_test_id('select-device-d1').click()
+    workspace=page.get_by_test_id('computer-workspace');expect(workspace).to_be_visible()
+    workspace.locator('input').first.fill('C:/Demo/draft-not-sent')
+    if kind=='computer-race':
+     page.get_by_test_id('select-device-d2').click();expect(workspace.locator('input').first).to_have_value('')
+     expect(page.get_by_test_id('computer-jobs')).to_contain_text('d2-result-');page.wait_for_timeout(1200)
+     expect(page.get_by_test_id('computer-jobs')).not_to_contain_text('d1-result-')
+    else:
+     expect(page.get_by_test_id('computer-jobs')).to_contain_text('d1-result-')
+     expect(page.get_by_role('button',name='Cancel queued job',exact=True)).to_have_count(1)
+     for i in range(4):
+      workspace.get_by_role('tab').nth(i).click();m=page.evaluate(v.GEOMETRY);assert not m['bad'],m
+     expect(workspace.get_by_text('Advanced:',exact=False)).to_be_visible()
+     page.get_by_role('button',name='Cancel queued job',exact=True).click()
+     page.get_by_test_id('select-device-offline').click();expect(page.get_by_test_id('computer-workspace').locator('button[type="submit"],form button')).to_be_disabled()
+   else:
+    # Pairing is a synthetic in-memory service, not a real device registration.
+    form=page.locator('main form').first;form.locator('input').fill('Demo workstation');form.locator('button').click()
+    if kind=='computer-user-switch':
+     page.evaluate('window.__firboM2.switchUser()');page.wait_for_timeout(1300)
+     expect(page.get_by_test_id('pair-code')).to_have_count(0);expect(page.get_by_test_id('select-device-d1')).to_have_count(0)
+    else:
+     expect(page.get_by_test_id('pair-code')).to_have_text('DEMO2345');page.clock.fast_forward(9*60*1000+1001)
+     expect(page.get_by_test_id('pair-code')).to_have_count(0)
+   m=page.evaluate(v.GEOMETRY);assert m['documentWidth']<=width+1 and not m['bad'],m
+   assert not errors,errors
+   writes=page.evaluate('window.__firboM2.writes')
+   assert all(x in ('profiles.update','connector:create_device','connector:cancel_job') for x in writes),writes
+   page.screenshot(path=str(ROOT/(label+'.png')))
+   reports.append({'case':label,'status':'passed','synthetic_writes':writes,'external_requests_blocked':len(external)})
+  except Exception as e:
+   page.screenshot(path=str(ROOT/(label+'-FAILED.png')))
+   reports.append({'case':label,'status':'failed','error':str(e)[:7000],'page_errors':errors})
+  finally:
+   print('FIRBO_M2B_CASE',json.dumps(reports[-1]),flush=True);ctx.close()
+   (ROOT/'computer-interactions.json').write_text(json.dumps({'scope':'actual Computer Manager/tasks with synthetic services','cases':reports},indent=2))
+ browser.close()
+failed=sum(r['status']!='passed' for r in reports)
+print('FIRBO_M2B_SUMMARY',len(reports),failed)
+if failed or layout_failed:raise SystemExit(1)
