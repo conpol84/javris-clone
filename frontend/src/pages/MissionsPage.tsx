@@ -143,7 +143,7 @@ export function MissionsPage() {
 
   return (
     <div className="fb-root flex h-full flex-col lg:flex-row">
-      <aside className="flex max-h-[34%] w-full shrink-0 flex-col border-b lg:max-h-none lg:w-[300px] lg:border-b-0 lg:border-e" style={{ borderColor: 'var(--fb-border)' }}>
+      <aside className="flex max-h-[34%] w-full shrink-0 flex-col border-b lg:max-h-none lg:w-[340px] lg:border-b-0 lg:border-e" style={{ borderColor: 'var(--fb-border)' }}>
         <div className="p-3 pt-14 lg:pt-3">
           <h1 className="flex items-center gap-2 text-base font-semibold"><Rocket size={16} style={{ color: 'var(--fb-accent)' }} /> {t('mis.title')}</h1>
           <p className="fb-dim mt-0.5 text-xs">{t('mis.sub')}</p>

@@ -11,6 +11,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_TYPES, memoriesReadBy, type MemoryRow, type MemoryType } from '../lib/company/memory';
 import { MANAGER_ROLES, WRITER_ROLES, type AgentRow } from '../lib/company/types';
+import { PageHeader } from '../components/ui/kit';
 import '../styles/firbo.css';
 
 /** What the company knows: a 3D constellation of memories every AI employee can draw on. */
@@ -87,14 +88,11 @@ export function MemoryPage() {
   };
 
   return (
-    <div className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
-      <header>
-        <div className="fb-eyebrow">{t('mem.eyebrow')}</div>
-        <h1 className="fb-grad-text text-2xl font-semibold">{t('mem.title')}</h1>
-        <p className="fb-muted mt-1 max-w-2xl text-sm">{t('mem.intro')}</p>
-      </header>
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <section className="fb-glass relative overflow-hidden" style={{ minHeight: 440 }}>
+    <div className="fb-root h-full overflow-y-auto">
+    <div className="fb-wide mx-auto px-4 pb-10 pt-14 md:px-8 md:pt-8">
+      <PageHeader eyebrow={t('mem.eyebrow')} title={t('mem.title')} sub={t('mem.intro')} />
+      <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
+        <section className="fb-glass relative overflow-hidden" style={{ minHeight: 520 }}>
           <div className="absolute inset-0">
             <MemoryScene stars={stars} types={types} selected={selected} onSelect={setSelected} agents={sceneAgents} activeAgent={activeAgent} onPickAgent={setActiveAgent} readIds={readIds} labels={{ noWebgl: t('office.noWebgl') }} />
           </div>
@@ -107,8 +105,8 @@ export function MemoryPage() {
             ))}
           </div>
         </section>
-        <section className="fb-glass fb-col gap-3 p-4">
-          <div className="fb-col gap-2">
+        <section className="fb-glass fb-col gap-4 p-5">
+          <div className="fb-col gap-2 pb-4" style={{ borderBottom: '1px solid var(--fb-border)' }}>
             <div className="fb-eyebrow">{t('mem.readers')}</div>
             <div className="flex flex-wrap gap-1.5">
               {sceneAgents.map((a) => (
@@ -137,7 +135,7 @@ export function MemoryPage() {
             <p className="fb-dim text-sm">{t('mem.pick')}</p>
           )}
           {canWrite && (
-            <form onSubmit={submit} className="fb-col gap-2">
+            <form onSubmit={submit} className="fb-col gap-3 pt-4" style={{ borderTop: '1px solid var(--fb-border)' }}>
               <div className="fb-eyebrow">{t('mem.add')}</div>
               <textarea className="fb-input" rows={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} placeholder={t('mem.placeholder')} aria-label={t('mem.placeholder')} />
               <div className="flex flex-wrap items-center gap-2">
@@ -159,6 +157,7 @@ export function MemoryPage() {
           )}
         </section>
       </div>
+    </div>
     </div>
   );
 }
