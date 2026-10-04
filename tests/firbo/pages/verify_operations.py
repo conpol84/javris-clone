@@ -64,6 +64,7 @@ with sync_playwright() as pw:
      expect(page.get_by_role('button',name='Cancel queued job',exact=True)).to_have_count(1)
      for i in range(5):
       workspace.get_by_role('tab').nth(i).click();m=page.evaluate(v.GEOMETRY);assert not m['bad'],m
+     workspace.get_by_role('tab').nth(3).click()
      expect(workspace.get_by_text('Advanced:',exact=False)).to_be_visible()
      page.get_by_role('button',name='Cancel queued job',exact=True).click()
      page.get_by_test_id('select-device-offline').click();expect(page.get_by_test_id('computer-workspace').locator('button[type="submit"],form button')).to_be_disabled()
