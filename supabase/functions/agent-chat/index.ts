@@ -43,6 +43,27 @@ function priceOf(provider: string, which: 'IN' | 'OUT'): number {
   return Number(v ?? (which === 'IN' ? 3 : 15));
 }
 
+/** Shrinks the conversation to fit the local model's context. Oldest turns and snapshot detail go first. */
+function compactForFree(i: { agent: any; org: any; profile: Record<string, string>; snapshot: string; voice: boolean; lang: string; past: { role: string; content: string }[]; text: string }) {
+  const clipTo = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const bytes = (m: unknown) => new TextEncoder().encode(JSON.stringify(m)).length;
+  const build = (snapChars: number, turns: number) => {
+    const system = [
+      clipTo(i.agent.system_prompt || `You are ${i.agent.name}, an AI employee.`, 260),
+      `Company: ${clipTo(i.org?.name, 60)}.${i.profile.goal ? ` Goal: ${clipTo(i.profile.goal, 120)}.` : ''}`,
+      i.voice && snapChars > 0 ? clipTo(i.snapshot, snapChars) : '',
+      `Reply in ${LANG_NAME[i.lang] ?? 'English'} unless the teammate writes in another language. ${i.voice ? 'Spoken conversation: answer in one to three short natural sentences, no markdown or lists. Use only the company data above and never invent numbers.' : 'Be concise.'}`,
+    ].filter(Boolean).join('\n');
+    const recent = (turns > 0 ? i.past.slice(-turns) : []).map(m => ({ role: m.role, content: clipTo(m.content, 280) }));
+    return [{ role: 'system', content: system }, ...recent, { role: 'user', content: clipTo(i.text, 500) }];
+  };
+  for (const [snap, turns] of [[900, 4], [700, 3], [500, 2], [300, 1], [150, 0], [0, 0]] as const) {
+    const messages = build(snap, turns);
+    if (bytes(messages) <= 2700) return messages;
+  }
+  return build(0, 0);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -156,7 +177,8 @@ Deno.serve(async (req) => {
   let lastError = 'model_error';
   if (free) {
     try {
-      routed = await completeViaFree(convo.organization_id, auth, crypto.randomUUID(), [{ role: 'system', content: system }, ...past, { role: 'user', content: text }], { signal: req.signal });
+      // The local model has a small context (the route accepts at most 2800 bytes), so it gets a compact prompt.
+      routed = await completeViaFree(convo.organization_id, auth, crypto.randomUUID(), compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }), { signal: req.signal });
       completion = routed.completion; routing = routed.trace;
       used = { provider: 'firbo-free', model: routed.trace.reported_model };
     } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
