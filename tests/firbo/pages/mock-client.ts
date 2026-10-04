@@ -14,7 +14,7 @@ const messages = [
   {id:'m1',role:'user',content:'Synthetic UI test. No actual agent was invoked.',created_at:date},
   {id:'m2',role:'assistant',content:'Report: https://example.invalid/' + 'long-unbroken-'.repeat(24) + '\n\n' + 'Sample report text. '.repeat(80),created_at:date},
 ];
-const device = (id:string,paired:boolean,last_seen_at:string|null) => ({id,name:`${SAMPLE_NAME}-${id}`,organization_id:'org-1',platform:'Windows 11 x64',paired,last_seen_at,revoked_at:null,created_at:date});
+const device = (id:string,paired:boolean,last_seen_at:string|null) => ({id,name:`${SAMPLE_NAME}-${id}`,organization_id:'org-1',platform:'Windows 11 x64',paired,last_seen_at,capabilities:{job_kinds:paired?['list','read','browser_open']:[]},revoked_at:null,created_at:date});
 const devices = [device('d1',true,new Date().toISOString()),device('d2',true,new Date().toISOString()),device('offline',true,date),device('unpaired',false,null)];
 const jobs = (id:string) => [
  {id:`${id}-j1`,device_id:id,organization_id:'org-1',kind:'list',params:{path:'C:/Demo/'+'selected-folder-'.repeat(16)},status:'done',result:{entries:[{name:`${id}-result-`+'long-file-name-'.repeat(12),type:'file',size:12345}]},error:null,created_at:date,finished_at:date},
