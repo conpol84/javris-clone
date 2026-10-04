@@ -19,7 +19,7 @@ const ASKS_FOR_RESULT = /task|report|result|finding|εργασ|αναφορ|απ
 
 const flat = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const clip = (v: unknown, n: number) => { const s = flat(v); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
-const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const fold = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const words = (s: string) => new Set(fold(s).match(/[\p{L}\p{N}]{4,}/gu) ?? []);
 
 function parseJson(text: string): Record<string, unknown> | null {
