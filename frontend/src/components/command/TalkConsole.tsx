@@ -48,7 +48,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
   const org = useOrgData(orgId, MANAGER_ROLES.includes(role), 10_000);
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite);
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const briefed = useRef(false);
   const [tab, setTab] = useState<'talk' | 'command'>('talk');
