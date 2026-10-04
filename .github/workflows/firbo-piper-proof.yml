@@ -37,7 +37,25 @@ jobs:
           ENTRYPOINT ["python","/app/server.py"]
           EOF
           docker build --progress=plain --pull=false -t firbo-piper-proof:exact /tmp/firbo-piper-image
-          docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json,pathlib,g2pw,requests;p=pathlib.Path(g2pw.__file__).resolve().parent;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'requests':importlib.metadata.version('requests'),'onnx':sum(1 for _ in p.rglob('*.onnx'))}))"
+          docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW')}))"
+          mkdir -p /tmp/firbo-piper-docker-voices
+          sudo chown 10001:10001 /tmp/firbo-piper-docker-voices
+          docker run --rm --user 10001:10001 --mount type=bind,src=/tmp/firbo-piper-docker-voices,dst=/voices --entrypoint python firbo-piper-proof:exact -m piper.download_voices --data-dir /voices el_GR-rapunzelina-low zh_CN-chaowen-medium
+          docker run -d --name firbo-piper-exact --user 10001:10001 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m,uid=10001,gid=10001 --mount type=bind,src=/tmp/firbo-piper-docker-voices,dst=/voices,readonly -p 127.0.0.1:15000:5000 firbo-piper-proof:exact
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:15000/health >/dev/null && break; sleep 1; done
+          python - <<'PY'
+          import json,urllib.request,wave,io
+          for voice,text in [('el_GR-rapunzelina-low','Γεια σου. Είμαι ο Firbo.'),('zh_CN-chaowen-medium','你好，我是 Firbo。')]:
+              req=urllib.request.Request('http://127.0.0.1:15000/synthesize',data=json.dumps({'text':text,'voice':voice,'length_scale':1.04},ensure_ascii=False).encode(),headers={'content-type':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as r:
+                  raw=r.read(6_000_001)
+                  assert r.headers.get_content_type()=='audio/wav'
+              assert raw[:4]==b'RIFF' and raw[8:12]==b'WAVE'
+              with wave.open(io.BytesIO(raw),'rb') as w:
+                  assert w.getnchannels()==1 and w.getsampwidth()==2 and w.getnframes()>0
+          print('FIRBO_EXACT_DOCKER_SYNTH_OK')
+          PY
+          docker rm -f firbo-piper-exact
       - name: Download all reviewed server voices
         run: |
           set -euo pipefail
