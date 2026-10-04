@@ -68,5 +68,17 @@ test('thoughts instead of an answer are asked again; <think> blocks are ignored'
 test('a plain-text answer is accepted after two nudges', async () => {
   let n = 0;
   const out = await runAgentLoop({ call: async () => { n++; return 'just text'; }, system: 'S', user: 'U', tools: { web_search: async () => 'r' } });
-  assert.equal(n, 3); assert.equal(out.text, 'just text');
+  assert.equal(n, 4); assert.equal(out.text, 'just text');
+});
+test('out of time with thoughts instead of the answer: one repair request returns the final object', async () => {
+  let clock = 0;
+  const replies = ['{"action":"web_search","input":"q"}', 'I should now write the report but first let me think about', final];
+  const seen = [];
+  const out = await runAgentLoop({
+    call: async (messages) => { seen.push(messages.at(-1).content); clock += 40_000; return replies.shift(); },
+    system: 'S', user: 'U', tools: { web_search: async () => 'r' }, budgetMs: 70_000, now: () => clock,
+  });
+  assert.equal(out.text, final); assert.equal(out.calls, 3);
+  assert.match(seen.at(-1), /ONLY the final JSON object/);
+  assert.match(loopInstructions(['web_search'], 5), /instead of inventing/);
 });

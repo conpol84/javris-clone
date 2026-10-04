@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseDuckDuckGo, parseRss, freeWebSearch, isPublicHost, readPageDirect } from '../../supabase/functions/_shared/free-search.ts';
+import { parseDuckDuckGo, parseRss, parseWikipedia, freeWebSearch, isPublicHost, readPageDirect } from '../../supabase/functions/_shared/free-search.ts';
 
 const DDG = `<div><h2><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.sgieurope.com%2Fhome%2Ftopics&amp;rut=abc">Latest News &amp; Analysis | Sports Retail</a></h2>
 <a class="result__snippet" href="x">Sports <b>retail</b> news, every day.</a></div>
@@ -25,7 +25,23 @@ test('web and Greek news are combined; a failing source does not break the other
   const out = await freeWebSearch('αθλητικά νέα', 'el', async (url) => { seen.push(String(url)); return String(url).includes('duckduckgo') ? new Response(DDG) : new Response('down', { status: 500 }); });
   assert.match(out, /sgieurope/); assert.doesNotMatch(out, /Recent news/);
   assert.ok(seen.some(u => u.includes('hl=el&gl=GR')));
-  await assert.rejects(freeWebSearch('x', 'en', async () => new Response('', { status: 500 })), /free_search_ddg:search_http_500\|news:search_http_500/);
+  assert.ok(seen.some(u => u.includes('bing.com/news') && u.includes('setlang=el&cc=GR')));
+  assert.ok(seen.some(u => u.startsWith('https://el.wikipedia.org/')));
+  await assert.rejects(freeWebSearch('x', 'en', async () => new Response('', { status: 500 })), /free_search_ddg:search_http_500\|gnews:search_http_500\|bnews/);
+});
+const BING = `<rss><channel><item><title>Η τεχνητή νοημοσύνη &#171;αλλάζει&#187; τις τράπεζες</title><link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;aid=&amp;tid=1&amp;url=https%3a%2f%2fwww.naftemporiki.gr%2fai%2f123&amp;c=9</link><pubDate>Sun, 04 Oct 2026 08:00:00 GMT</pubDate><description>Νέα μελέτη.</description></item></channel></rss>`;
+const WIKI = JSON.stringify({ query: { search: [{ title: 'Τεχνητή νοημοσύνη', snippet: '<span class="searchmatch">Τεχνητή</span> νοημοσύνη είναι' }] } });
+test('when DuckDuckGo and Google News refuse the server, Bing News and Wikipedia still answer', async () => {
+  const out = await freeWebSearch('τεχνητή νοημοσύνη', 'el', async (url) => {
+    const u = String(url);
+    if (u.includes('duckduckgo')) return new Response('<html>challenge</html>', { status: 202 });
+    if (u.includes('news.google')) return new Response('Sorry', { status: 503 });
+    if (u.includes('bing.com/news')) return new Response(BING);
+    return new Response(WIKI);
+  });
+  assert.match(out, /Recent news:\nN1\. Η τεχνητή νοημοσύνη «αλλάζει» τις τράπεζες \(Sun, 04 Oct 2026 08:00:00 GMT\) - https:\/\/www\.naftemporiki\.gr\/ai\/123/);
+  assert.match(out, /Encyclopedia:\nW1\. Τεχνητή νοημοσύνη - https:\/\/el\.wikipedia\.org\/wiki\/%CE/);
+  assert.equal(parseWikipedia('not json', 'el').length, 0);
 });
 test('only public hosts can be read', () => {
   for (const h of ['localhost', '127.0.0.1', '10.0.0.5', '192.168.1.1', '172.20.0.1', '169.254.169.254', '100.64.0.1', 'metadata', 'db.internal', '[::1]']) assert.equal(isPublicHost(h), false, h);

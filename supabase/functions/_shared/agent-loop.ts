@@ -24,6 +24,7 @@ export function loopInstructions(tools: ToolName[], maxSteps: number): string {
     ...tools.map(t => `- ${TOOL_HELP[t]}`),
     'You will receive the result and can use another tool. Research properly: search, then read the most relevant pages, then answer.',
     'When you have enough, reply with the final JSON object described above. In the report, cite the source URLs you used.',
+    'Only state facts, names, dates and links that appear in tool results or in what you were given. If the tools found nothing useful, say so plainly in the report instead of inventing an answer.',
   ].join('\n');
 }
 
@@ -81,6 +82,7 @@ export async function runAgentLoop(o: {
   let calls = 0;
   let insisted = false;
   let nudges = 0;
+  let repaired = false;
   while (true) {
     const left = budget - (now() - started);
     const last = steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
@@ -106,6 +108,16 @@ export async function runAgentLoop(o: {
         messages.push({ role: 'assistant', content: text.slice(0, 1500) });
         messages.push({ role: 'user', content: 'That reply was not valid. Reply with ONLY one JSON object and nothing else: either {"action": ..., "input": ...} to use a tool, or the final {"summary", "report", "actions"} answer.' });
         continue;
+      }
+      // Out of time but still not the final object (e.g. the model wrote its thoughts): one short request to put it in shape.
+      if (!isFinalAnswer(text) && !repaired) {
+        repaired = true;
+        messages.push({ role: 'assistant', content: text.slice(0, 1500) });
+        messages.push({ role: 'user', content: 'Reply now with ONLY the final JSON object {"summary", "report", "actions"} and nothing else. Use what you already found; if nothing was found, say so in the report.' });
+        const fixed = await o.call(messages, Math.min(o.finalTimeoutMs ?? 50_000, 30_000)).catch(() => '');
+        calls++;
+        const clean = fixed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+        return { text: isFinalAnswer(clean) ? clean : text, steps, calls };
       }
       return { text, steps, calls };
     }

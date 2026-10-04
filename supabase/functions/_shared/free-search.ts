@@ -1,5 +1,5 @@
 // Keyless web search and page reading for agents, used when the gateway has no search provider configured
-// (or returns nothing). DuckDuckGo's HTML page for web results, Google News RSS for recent news.
+// (or returns nothing). DuckDuckGo's HTML page for web results, Google News / Bing News RSS for recent news, Wikipedia for background.
 // Page reading fetches public http(s) pages only: private, local and metadata addresses are refused at every redirect.
 
 export interface SearchHit { title: string; url: string; snippet: string; date?: string }
@@ -37,13 +37,20 @@ export function parseDuckDuckGo(html: string, max = 6): SearchHit[] {
   return out;
 }
 
-/** Items of an RSS feed (Google News). */
+/** Bing News wraps article links in apiclick.aspx?...&url=<real link>; return the real link. */
+function unwrapNewsLink(link: string): string {
+  const wrapped = /^https?:\/\/www\.bing\.com\/news\/apiclick\.aspx\?[^#]*?[?&]url=([^&]+)/i.exec(link);
+  if (!wrapped) return link;
+  try { return decodeURIComponent(wrapped[1]); } catch { return link; }
+}
+
+/** Items of an RSS feed (Google News, Bing News). */
 export function parseRss(xml: string, max = 5): SearchHit[] {
   const out: SearchHit[] = [];
   for (const item of xml.split('<item>').slice(1)) {
     const pick = (tag: string) => new RegExp(`<${tag}[^>]*>([\\s\\S]*?)</${tag}>`).exec(item)?.[1] ?? '';
     const title = text(pick('title'));
-    const url = text(pick('link'));
+    const url = unwrapNewsLink(text(pick('link')));
     if (!title || !/^https?:\/\//.test(url)) continue;
     const date = text(pick('pubDate'));
     out.push({ title: title.slice(0, 160), url: url.slice(0, 600), snippet: text(pick('description')).slice(0, 200), ...(date ? { date } : {}) });
@@ -52,35 +59,54 @@ export function parseRss(xml: string, max = 5): SearchHit[] {
   return out;
 }
 
+/** Results of the Wikipedia search API (JSON). */
+export function parseWikipedia(json: string, wiki: string, max = 3): SearchHit[] {
+  let rows: { title?: unknown; snippet?: unknown }[] = [];
+  try { rows = JSON.parse(json)?.query?.search ?? []; } catch { return []; }
+  return (Array.isArray(rows) ? rows : []).slice(0, max)
+    .filter(r => typeof r?.title === 'string' && r.title)
+    .map(r => ({ title: String(r.title).slice(0, 160), url: `https://${wiki}.wikipedia.org/wiki/${encodeURIComponent(String(r.title).replace(/ /g, '_'))}`, snippet: text(String(r.snippet ?? '')).slice(0, 300) }));
+}
+
 const NEWS_REGION: Record<string, string> = {
   el: 'hl=el&gl=GR&ceid=GR:el', es: 'hl=es&gl=ES&ceid=ES:es', 'pt-BR': 'hl=pt-BR&gl=BR&ceid=BR:pt-419', de: 'hl=de&gl=DE&ceid=DE:de',
   fr: 'hl=fr&gl=FR&ceid=FR:fr', 'zh-CN': 'hl=zh-CN&gl=CN&ceid=CN:zh-Hans', ar: 'hl=ar&gl=EG&ceid=EG:ar', en: 'hl=en-US&gl=US&ceid=US:en',
 };
+const BING_MARKET: Record<string, string> = {
+  el: 'setlang=el&cc=GR', es: 'setlang=es&cc=ES', 'pt-BR': 'setlang=pt-BR&cc=BR', de: 'setlang=de&cc=DE',
+  fr: 'setlang=fr&cc=FR', 'zh-CN': 'setlang=zh-Hans&cc=CN', ar: 'setlang=ar&cc=EG', en: 'setlang=en-US&cc=US',
+};
 
-/** Web results plus recent news for a query, formatted for the model. Throws (with the reason per source) when nothing was found. */
+/**
+ * Web results, recent news and encyclopedia entries for a query, formatted for the model.
+ * Several keyless sources are asked at once because some refuse cloud servers (DuckDuckGo and Google News
+ * do from Supabase's edge network); Bing News RSS and Wikipedia answer there.
+ * Throws (with the reason per source) when nothing was found.
+ */
 export async function freeWebSearch(query: string, lang: string, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
   const q = encodeURIComponent(query.slice(0, 200));
+  const wiki = (lang.split('-')[0] || 'en').toLowerCase();
   const get = async (url: string) => {
-    const res = await fetcher(url, { headers: { 'user-agent': UA, accept: 'text/html,application/xml' }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000) });
+    const res = await fetcher(url, { headers: { 'user-agent': UA, accept: 'text/html,application/xml,application/json' }, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`search_http_${res.status}`);
     return (await res.text()).slice(0, 600_000);
   };
   const problems: string[] = [];
-  const failed = (source: string) => (error: unknown) => { problems.push(`${source}:${error instanceof Error ? error.message.slice(0, 40) : 'error'}`); return [] as SearchHit[]; };
-  const parsed = (source: string, parse: (body: string) => SearchHit[]) => (body: string) => {
-    const hits = parse(body);
-    if (!hits.length) problems.push(`${source}:empty_${body.length}`);
-    return hits;
-  };
-  const [web, news] = await Promise.all([
-    get(`https://html.duckduckgo.com/html/?q=${q}`).then(parsed('ddg', h => parseDuckDuckGo(h))).catch(failed('ddg')),
-    get(`https://news.google.com/rss/search?q=${q}&${NEWS_REGION[lang] ?? NEWS_REGION.en}`).then(parsed('news', x => parseRss(x))).catch(failed('news')),
+  const ask = (source: string, url: string, parse: (body: string) => SearchHit[]) => get(url)
+    .then(body => { const hits = parse(body); if (!hits.length) problems.push(`${source}:empty_${body.length}`); return hits; })
+    .catch((error: unknown) => { problems.push(`${source}:${error instanceof Error ? error.message.slice(0, 30) : 'error'}`); return [] as SearchHit[]; });
+  const [web, gnews, bnews, encyclopedia] = await Promise.all([
+    ask('ddg', `https://html.duckduckgo.com/html/?q=${q}`, h => parseDuckDuckGo(h)),
+    ask('gnews', `https://news.google.com/rss/search?q=${q}&${NEWS_REGION[lang] ?? NEWS_REGION.en}`, x => parseRss(x)),
+    ask('bnews', `https://www.bing.com/news/search?q=${q}&format=rss&${BING_MARKET[lang] ?? BING_MARKET.en}`, x => parseRss(x, 6)),
+    ask('wiki', `https://${wiki}.wikipedia.org/w/api.php?action=query&list=search&format=json&utf8=1&srlimit=3&srsearch=${q}`, j => parseWikipedia(j, wiki)),
   ]);
-  // Nothing from either source: say why (status / empty page size), so the caller can log it.
-  if (!web.length && !news.length) throw new Error(`free_search_${problems.join('|')}`.slice(0, 160));
+  const news = gnews.length ? gnews : bnews;
+  if (!web.length && !news.length && !encyclopedia.length) throw new Error(`free_search_${problems.join('|')}`.slice(0, 160));
   const lines: string[] = [];
   web.forEach((h, i) => lines.push(`${i + 1}. ${h.title} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
-  if (news.length) lines.push('Recent news:', ...news.map((h, i) => `N${i + 1}. ${h.title}${h.date ? ` (${h.date})` : ''} - ${h.url}`));
+  if (news.length) lines.push('Recent news:', ...news.map((h, i) => `N${i + 1}. ${h.title}${h.date ? ` (${h.date})` : ''} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
+  if (encyclopedia.length) lines.push('Encyclopedia:', ...encyclopedia.map((h, i) => `W${i + 1}. ${h.title} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
   return lines.join('\n');
 }
 
