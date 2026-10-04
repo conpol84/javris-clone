@@ -9,7 +9,7 @@ def test_runtime_hashes_match_exact_source():
 def test_voice_manifest_is_complete_and_no_arabic_server_voice():
     assert len(v.VOICE_NAMES)==7 and len(v.VOICE_HASHES)==14
     assert not any(x.startswith('ar_') for x in v.VOICE_NAMES)
-    assert 'zh_CN-chaowen-medium' in v.VOICE_NAMES and 'g2pW/g2pw.onnx' in v.VOICE_HASHES
+    assert 'zh_CN-chaowen-medium' in v.VOICE_NAMES and not any(path.startswith('g2pW/') for path in v.VOICE_HASHES)
 def test_runtime_is_pinned_and_private_by_construction():
     text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
     assert '@sha256:' in v.BASE_IMAGE and v.PIPER_VERSION=='1.8.0'
