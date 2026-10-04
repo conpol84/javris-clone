@@ -35,13 +35,15 @@ jobs:
            && python -c "from piper.phonemize_chinese import download_model; download_model('/opt/firbo-resources/g2pW')" \
            && test -s /opt/firbo-resources/g2pW/g2pw.onnx \
            && chmod -R a=rX /opt/firbo-resources
-          COPY --chmod=0644 firbo_piper_server.py /app/server.py
+          RUN install -d -m 0755 /opt/firbo-voice
+          COPY --chmod=0444 firbo_piper_server.py /opt/firbo-voice/server.py
           ENV HOME=/tmp FIRBO_PIPER_DATA=/voices FIRBO_PIPER_RESOURCES=/opt/firbo-resources
           USER 10001:10001
-          ENTRYPOINT ["python","/app/server.py"]
+          ENTRYPOINT ["python","/opt/firbo-voice/server.py"]
           EOF
           docker build --progress=plain --pull=false -t firbo-piper-proof:exact /tmp/firbo-piper-image
           docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW')}))"
+          docker run --rm --user 10001:10001 --entrypoint python firbo-piper-proof:exact -c "open('/opt/firbo-voice/server.py','rb').read(16);print('FIRBO_ENTRYPOINT_READ_OK')"
           mkdir -p /tmp/firbo-piper-docker-voices
           sudo chown 10001:10001 /tmp/firbo-piper-docker-voices
           docker run --rm --user 10001:10001 --mount type=bind,src=/tmp/firbo-piper-docker-voices,dst=/voices --entrypoint python firbo-piper-proof:exact -m piper.download_voices --data-dir /voices el_GR-rapunzelina-low zh_CN-chaowen-medium
