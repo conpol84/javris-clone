@@ -43,9 +43,11 @@ def test_source_staging_uses_file_paths_not_directory_and_name_args():
     assert "private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))" in text
     assert "private_write(source,name,download" not in text
 
-def test_chinese_support_is_verified_in_image_not_voice_directory():
+def test_chinese_support_is_verified_without_legacy_g2pw_api_import():
     text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
     assert not any(path.startswith('g2pW/') for path in v.VOICE_HASHES)
-    assert '"g2pW==0.1.1"' in text
-    assert "p.rglob('*.onnx')" in text
+    assert '"piper-tts[zh]=={PIPER_VERSION}"' in text
+    assert "m.version('g2pW')=='0.1.1'" in text
+    assert "import pathlib, g2pw" not in text
+    assert "import g2pw" not in text
     assert "pkg.get('g2pw')=='0.1.1'" in text
