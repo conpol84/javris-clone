@@ -5,7 +5,14 @@ const ago = (d: number) => new Date(Date.now() - d * day).toISOString();
 const ORG = 'org-1';
 const agent = (id: string, name: string, slug: string, type: string, enabled = true) => ({ id, name, slug, type, description: `${name} for Trade Athletes`, model: 'auto', enabled, autonomous: true, autonomy: 'approval', monthly_budget_usd: 50, persona: null, organization_id: ORG, agent_tools: ['think', 'memory_search', 'web_search'].map((tool_name, i) => ({ id: `${id}-t${i}`, tool_name, enabled: true, policy: 'allow' })) });
 const agents = [agent('a1', 'CEO Agent', 'ceo', 'ceo'), agent('a2', 'Sales Agent', 'sales', 'sales'), agent('a3', 'Operations Agent', 'operations', 'operations'), agent('a4', 'Marketing Agent', 'marketing', 'marketing'), agent('a5', 'Research Agent', 'research', 'research'), agent('a6', 'Finance Agent', 'finance', 'finance'), agent('a7', 'Developer Agent', 'developer', 'developer'), agent('a8', 'Data Analyst', 'data-analyst-1', 'analyst'), agent('a9', 'Bookkeeper', 'bookkeeper-1', 'finance', false)];
-const T = (id: string, title: string, status: string, priority: string, a: string, d: number, due: number | null = null) => ({ id, title, description: null, status, priority, assigned_agent_id: a, due_at: due == null ? null : ago(-due), created_at: ago(d), result: status === 'completed' ? { report: 'Done. Summary of findings with sources.' } : null, organization_id: ORG, kind: 'task' });
+const MOCK_RESULT = {
+  ai_generated: true,
+  summary: 'Three main sports-market stories this week: sales up 5%, a new running-shoe line, and a retail merger.',
+  report: '## Key findings\n\n1. **Sales up 5%** in Q3 across Europe ([source](https://news.example/sales)).\n2. A new **running-shoe line** launches in November.\n3. Two retailers announced a **merger**.\n\n| Story | Impact |\n|---|---|\n| Sales | High |\n| Merger | Medium |\n\nSources: https://news.example/sales, https://retail.example/merger',
+  steps: [{ action: 'web_search', input: 'sports products market news this week', ok: true }, { action: 'read_page', input: 'https://news.example/sales', ok: true }, { action: 'read_page', input: 'https://retail.example/merger', ok: true }],
+  actions: [{ action: 'share_with_marketing', risk: 'low', payload: {} }],
+};
+const T = (id: string, title: string, status: string, priority: string, a: string, d: number, due: number | null = null) => ({ id, title, description: null, status, priority, assigned_agent_id: a, due_at: due == null ? null : ago(-due), created_at: ago(d), result: status === 'completed' ? MOCK_RESULT : null, organization_id: ORG, kind: 'task' });
 const tasks = [
   T('t1', 'Check my company and report the top three risks', 'running', 'high', 'a1', 0.1), T('t2', 'Identify and profile the top 3 competitors', 'awaiting_approval', 'normal', 'a5', 0.3),
   T('t3', 'Create a detailed feature, price and positioning matrix', 'awaiting_approval', 'normal', 'a5', 0.4), T('t4', 'Quantitative analysis: market sizing', 'awaiting_approval', 'high', 'a8', 0.5, 1),

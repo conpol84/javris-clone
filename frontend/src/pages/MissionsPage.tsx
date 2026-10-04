@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { ReportView } from '../components/company/ReportView';
 import { useSearchParams } from 'react-router';
 import { Rocket } from 'lucide-react';
 import { toast } from 'sonner';
@@ -234,7 +235,7 @@ export function MissionsPage() {
                           <div className="text-[13px]">
                             {s.description && <p className="fb-muted mb-2 whitespace-pre-wrap break-words">{s.description.split('\n\nResults from teammates so far:')[0]}</p>}
                             {s.result?.report ? (
-                              <div className="max-h-72 overflow-y-auto whitespace-pre-wrap break-words rounded-lg p-3 leading-relaxed" style={{ background: 'rgba(5,10,20,.7)', border: '1px solid var(--fb-border)' }}>{s.result.report}</div>
+                              <div className="rounded-lg p-3" style={{ background: 'rgba(5,10,20,.7)', border: '1px solid var(--fb-border)' }}><ReportView result={s.result} compact /></div>
                             ) : (
                               <p className="fb-dim">{t('mis.noOutput')}</p>
                             )}
@@ -248,7 +249,7 @@ export function MissionsPage() {
               {mission.result?.report && (
                 <Panel title={t('mis.report')} right={mission.result.ai_generated ? <span className="fb-chip">{t('run.ai')}</span> : undefined}>
                   {mission.result.summary && <p className="mb-2 font-medium">{mission.result.summary}</p>}
-                  <div className="fb-muted whitespace-pre-wrap break-words text-[13px] leading-relaxed">{mission.result.report}</div>
+                  <ReportView result={mission.result} />
                 </Panel>
               )}
             </div>

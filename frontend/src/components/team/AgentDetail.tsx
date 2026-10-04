@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ReportView } from '../company/ReportView';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { StatusDot } from '../command/Panel';
@@ -144,7 +145,7 @@ export function AgentDetail({
               {openId === task.id && task.result && (
                 <div className="text-[13px]">
                   {task.result.summary && <p className="mb-1 font-medium">{task.result.summary}</p>}
-                  {task.result.report && <div className="fb-muted max-h-56 overflow-y-auto whitespace-pre-wrap break-words leading-relaxed">{task.result.report}</div>}
+                  <ReportView result={task.result} compact />
                   {task.result.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${task.result.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
                 </div>
               )}

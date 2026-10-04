@@ -14,7 +14,7 @@ import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 import '../styles/voice-experience.css';
 
-const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
+const QUICK = ['report', 'urgent', 'team', 'spend', 'next', 'results'] as const;
 
 /** Reveals text letter by letter, like a film caption. */
 function useTypewriter(text: string, cps = 60): string {

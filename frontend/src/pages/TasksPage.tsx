@@ -8,6 +8,7 @@ import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
 import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { Modal } from '../components/team/Modal';
+import { ReportView } from '../components/company/ReportView';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -316,7 +317,7 @@ export function TasksPage() {
                         {task.result.ai_generated && <span className="fb-chip">{t('run.ai')}</span>}
                       </div>
                       {task.result.summary && <p className="mb-2 font-medium">{task.result.summary}</p>}
-                      {task.result.report && <div className="fb-muted whitespace-pre-wrap break-words text-[13px] leading-relaxed">{task.result.report}</div>}
+                      <ReportView result={task.result} compact />
                       {task.result.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${task.result.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
                       {task.result.actions && task.result.actions.length > 0 && (
                         <div className="mt-3">
@@ -382,7 +383,7 @@ export function TasksPage() {
             <div className="fb-col gap-3 text-sm">
               {r.ai_generated && <span className="fb-chip self-start">{t('run.ai')}</span>}
               {r.summary && <p className="font-medium">{r.summary}</p>}
-              {r.report && <div className="fb-muted whitespace-pre-wrap break-words text-[13px] leading-relaxed">{r.report}</div>}
+              <ReportView result={r} />
               {r.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${r.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
               {r.actions && r.actions.length > 0 && (
                 <div>

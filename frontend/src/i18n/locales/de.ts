@@ -1052,6 +1052,9 @@ const de: Dictionary = {
   'drawer.ownKeyPlan': "Eigene OpenAI- oder Anthropic-Schlüssel gibt es mit Pro und Business.",
   'drawer.budgetFree': "Kostenlose Modelle kosten $0, dieses Limit zählt also nur in einem bezahlten Tarif.",
   'drawer.budgetWhat': "Ein Ausgabenlimit, keine Abbuchung: Erreicht die KI-Nutzung dieser Person im Monat das Limit, pausiert sie bis zum nächsten Monat. Nutzung über Ihren eigenen Schlüssel zählt hier mit $0 (Ihr Anbieter rechnet ab).",
+  'report.steps': "Rechercheschritte ({count})",
+  'report.sources': "Quellen ({count})",
+  'ceo.q.report': "Lies mir den neuesten Bericht vor",
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

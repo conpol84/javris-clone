@@ -57,6 +57,9 @@ export interface TaskResult {
   ai_generated?: boolean;
   summary?: string;
   report?: string;
+  /** Research steps the agent took (search, read a page, memory), newest runner only. */
+  steps?: { action: string; input: string; ok?: boolean }[];
+  powers_used?: string[];
   actions?: { action: string; risk: string; payload: Record<string, unknown> }[];
   queued?: number;
   dropped?: string[];

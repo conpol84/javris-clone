@@ -1060,6 +1060,9 @@ export const en = {
   'drawer.ownKeyPlan': "Your own OpenAI or Anthropic keys come with Pro and Business.",
   'drawer.budgetFree': "Free models cost $0, so this limit only matters on a paid plan.",
   'drawer.budgetWhat': "A spending limit, not a charge: when this employee’s AI usage this month reaches it, the employee pauses until next month. Usage through your own key counts as $0 here (your provider bills you).",
+  'report.steps': "Research steps ({count})",
+  'report.sources': "Sources ({count})",
+  'ceo.q.report': "Read me the latest report",
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

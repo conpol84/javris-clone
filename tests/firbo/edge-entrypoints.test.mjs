@@ -87,6 +87,9 @@ function fixture(options={}) {
         firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
     }
     if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
+    if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
+    if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
+    if(options.chatReplies&&String(url).endsWith('/chat/completions'))return Response.json({model:'provider/resolved',choices:[{message:{content:options.chatReplies.shift()}}],usage:{prompt_tokens:100,completion_tokens:20}});
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:'Result',actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
   };
@@ -220,3 +223,29 @@ for (const name of ['agent-chat','agent-runner']) {
     assert.notEqual(state.writes.find(w=>w.table==='usage_events').payload.own_key,true);
   });
 }
+
+test('agent-runner: the agent searches, reads a page, then reports; usage and steps are recorded once', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'},{tool_name:'browser_extract',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"web_search","input":"sports market 2026"}','{"action":"read_page","input":"https://news.example/a"}',JSON.stringify({summary:'Market up 5%',report:'Source: https://news.example/a',actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies});
+  assert.equal(response.status,200);
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
+  assert.equal(chats.length,3);
+  const lastBody=JSON.parse(chats[2].init.body);
+  assert.ok(lastBody.messages.some(m=>/Full article text/.test(m.content)));
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,1);
+  assert.equal(usage[0].payload.input_tokens,300);
+  assert.equal(usage[0].payload.cost_usd,Math.round((300*1+60*2))/1e6);
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.summary,'Market up 5%');
+  assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
+  assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
+});
+test('agent-runner: a blocked tool is never offered to the model', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'block'}];
+  const {state}=await invoke('agent-runner',{tools});
+  const chat=state.calls.find(c=>String(c.url).endsWith('/chat/completions'));
+  assert.doesNotMatch(JSON.parse(chat.init.body).messages[0].content,/"action": "web_search"/);
+  assert.ok(!state.calls.some(c=>String(c.url).endsWith('/search')));
+});

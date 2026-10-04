@@ -1052,6 +1052,9 @@ const es: Dictionary = {
   'drawer.ownKeyPlan': "Las claves propias de OpenAI o Anthropic vienen con Pro y Business.",
   'drawer.budgetFree': "Los modelos gratuitos cuestan $0, así que este límite solo importa en un plan de pago.",
   'drawer.budgetWhat': "Un límite de gasto, no un cargo: cuando el uso de IA de este empleado en el mes lo alcanza, se pausa hasta el mes siguiente. El uso con tu propia clave cuenta aquí como $0 (te cobra tu proveedor).",
+  'report.steps': "Pasos de investigación ({count})",
+  'report.sources': "Fuentes ({count})",
+  'ceo.q.report': "Léeme el último informe",
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

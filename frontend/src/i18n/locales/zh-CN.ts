@@ -1053,6 +1053,9 @@ const zhCN: Dictionary = {
   'drawer.ownKeyPlan': "自有 OpenAI 或 Anthropic 密钥包含在 Pro 和 Business 中。",
   'drawer.budgetFree': "免费模型费用为 $0，因此此限额只在付费方案中起作用。",
   'drawer.budgetWhat': "这是支出上限，不是扣费：当此员工本月的 AI 用量达到上限时，会暂停到下个月。通过你自己密钥产生的用量在这里计为 $0（由你的服务商收费）。",
+  'report.steps': "研究步骤（{count}）",
+  'report.sources': "来源（{count}）",
+  'ceo.q.report': "给我读一下最新的报告",
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

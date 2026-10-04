@@ -5,6 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
+import { runAgentLoop, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -197,7 +198,7 @@ Deno.serve(async (req) => {
   try {
     if (!free) web = await Promise.race([
       gatherWeb(agent.agent_tools ?? [], task.title ?? '', task.description ?? '', AbortSignal.any([webController.signal, req.signal])).catch(() => noWeb),
-      new Promise<typeof noWeb>(resolve => { webTimer = setTimeout(() => { webController.abort(); resolve(noWeb); }, 25_000); }),
+      new Promise<typeof noWeb>(resolve => { webTimer = setTimeout(() => { webController.abort(); resolve(noWeb); }, 15_000); }),
     ]);
   } finally { clearTimeout(webTimer); webController.abort(); }
   const system = [
@@ -211,52 +212,109 @@ Deno.serve(async (req) => {
   ].join('\n\n');
   const userMsg = `<task>\nTitle: ${task.title}\nPriority: ${task.priority}\nDescription: ${task.description ?? ''}\n</task>`;
   const t0 = Date.now();
-  let completion: any = null;
   let used: { provider: string; model: string } | null = null;
   let routed: GatewayCompletion | FreeCompletion | null = null;
   let routing: GatewayTrace | FreeTrace | undefined;
   let lastError = 'model_error';
-  if (free) {
-    try {
-      routed = await completeViaFree(task.organization_id, auth, task.id, [{ role: 'system', content: system }, { role: 'user', content: userMsg }], { signal: req.signal });
-      completion = routed.completion; routing = routed.trace;
-      used = { provider: 'firbo-free', model: routed.trace.reported_model };
-    } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
-  } else if (gateway) {
-    try {
-      routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, { role: 'user', content: userMsg }], Number(agent.temperature ?? 0.4), { signal: req.signal });
-      completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
-    } catch (error) { lastError = error instanceof GatewayError ? error.code : 'gateway_error'; routing = error instanceof GatewayError ? error.trace : undefined; }
-    console.info(JSON.stringify({ event: 'firbo_gateway_inference', source: 'agent-runner', organization_id: task.organization_id, agent_id: agent.id, task_id: task.id, routing }));
-  }
-  for (const target of targets) {
-    try {
-      const openai = target.provider === 'openai';
-      const res = await fetch(`${target.base}/chat/completions`, { method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
-        body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
-          messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }] }), signal: AbortSignal.timeout(90_000) });
-      if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
-      completion = await res.json();
-      if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
-      used = target; break;
-    } catch (error) {
-      // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
-      lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+  let inTok = 0;
+  let outTok = 0;
+  let routedCost = 0;
+  // One model request on the company's route (free pilot, gateway, or direct/own key). Throws with lastError set.
+  const callOnce = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
+    let completion: any = null;
+    if (free) {
+      try {
+        routed = await completeViaFree(task.organization_id, auth, task.id, messages, { signal: req.signal });
+        completion = routed.completion; routing = routed.trace;
+        used = { provider: 'firbo-free', model: routed.trace.reported_model };
+      } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
+    } else if (gateway) {
+      try {
+        routed = await completeViaGateway(gateway, messages, Number(agent.temperature ?? 0.4), { signal: req.signal, timeoutMs: Math.min(90_000, timeoutMs) });
+        completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
+      } catch (error) { lastError = error instanceof GatewayError ? error.code : 'gateway_error'; routing = error instanceof GatewayError ? error.trace : undefined; }
+      console.info(JSON.stringify({ event: 'firbo_gateway_inference', source: 'agent-runner', organization_id: task.organization_id, agent_id: agent.id, task_id: task.id, routing }));
     }
-  }
-  if (!completion || !used) {
+    for (const target of targets) {
+      try {
+        const openai = target.provider === 'openai';
+        const res = await fetch(`${target.base}/chat/completions`, { method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
+          body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
+            messages }), signal: AbortSignal.timeout(Math.min(90_000, timeoutMs)) });
+        if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
+        completion = await res.json();
+        if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
+        used = target; routed = null; break;
+      } catch (error) {
+        completion = null;
+        // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
+        lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+      }
+    }
+    if (!completion || !used) throw new Error(lastError);
+    const i = Number(completion?.usage?.prompt_tokens ?? 0);
+    const o = Number(completion?.usage?.completion_tokens ?? 0);
+    inTok += i; outTok += o;
+    if (routed) routedCost += routed.cost;
+    else if (!(own && used === own)) routedCost += Math.round(((i * priceOf(used.provider, 'IN') + o * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+    return String(completion.choices[0].message.content);
+  };
+  // Tools the agent may use inside the loop: the same powers its tool policies allow (blocked tools are never offered).
+  const usable = (name: string) => (agent.agent_tools ?? []).some((t: any) => t.tool_name === name && t.enabled && t.policy !== 'block');
+  const gw = resolveTarget('omniroute:gateway');
+  const gwCall = async (path: string, payload: unknown) => {
+    const res = await fetch(`${gw!.base}${path}`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${gw!.key}` },
+      body: JSON.stringify(payload), signal: AbortSignal.any([req.signal, AbortSignal.timeout(12_000)]) });
+    if (!res.ok) throw new Error('web_gateway_error');
+    return res.json();
+  };
+  const flat = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
+  const loopTools: LoopTools = {};
+  if (!free && gw && usable('web_search')) loopTools.web_search = async (q) => {
+    for (const provider of [undefined, 'duckduckgo-free']) {
+      try {
+        const out = await gwCall('/search', { query: q, max_results: 6, ...(provider ? { provider } : {}) });
+        const results = Array.isArray(out?.results) ? out.results.slice(0, 6) : [];
+        if (results.length) return results.map((r: any, n: number) => `${n + 1}. ${flat(r.title, 120)} - ${flat(r.url, 200)}\n   ${flat(r.snippet, 300)}`).join('\n');
+      } catch { /* next provider */ }
+    }
+    return 'No results.';
+  };
+  if (!free && gw && (usable('browser_extract') || usable('browser_navigate'))) loopTools.read_page = async (u) => {
+    if (!/^https?:\/\/[^\s]+$/.test(u)) return 'Give a full http(s) link.';
+    const out = await gwCall('/web/fetch', { url: u });
+    return flat(out?.content, 3500) || 'The page had no readable text.';
+  };
+  if (usable('memory_search') || usable('knowledge_search')) loopTools.memory_search = async (q) => {
+    const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 4);
+    const { data } = await admin.from('memories').select('content').eq('organization_id', task.organization_id)
+      .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(words.length ? words.map(w => `content.ilike.%${w.replace(/[%,()]/g, '')}%`).join(',') : 'content.neq.').limit(6);
+    return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
+  };
+  let text = '';
+  let steps: LoopStep[] = [];
+  let calls = 0;
+  try {
+    const out = await runAgentLoop({
+      call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
+      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000,
+    });
+    text = out.text; steps = out.steps; calls = out.calls;
+  } catch { /* lastError says why */ }
+  if (!text || !used) {
+    // Earlier successful steps were real model calls: keep their usage so budgets stay honest.
+    if (inTok + outTok > 0 && used) await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model: `${(used as any).provider}:${(used as any).model}`, input_tokens: inTok, output_tokens: outTok, cost_usd: routedCost, latency_ms: Date.now() - t0, ...(own && used === own ? { own_key: true } : {}) });
     await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) } }).eq('id', task.id);
     return json(502, { error: 'model_error', reason: lastError, routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
   }
-  const model = `${used.provider}:${used.model}`;
+  const usedNow = used as { provider: string; model: string };
+  const model = `${usedNow.provider}:${usedNow.model}`;
   const latency = Date.now() - t0;
-  const text: string = completion.choices[0].message.content;
-  const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
-  const outTok = Number(completion?.usage?.completion_tokens ?? 0);
   const ownUsed = !!own && used === own;
   // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
-  const cost = routed ? routed.cost : ownUsed ? 0 : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+  const cost = ownUsed ? 0 : Math.round(routedCost * 1e6) / 1e6;
+  const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => s.action === 'read_page' ? 'browser_extract' : s.action)])];
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];
@@ -277,7 +335,7 @@ Deno.serve(async (req) => {
   const finalStatus = reconcile ? 'blocked' : queue.length ? 'awaiting_approval' : 'completed';
   const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
     result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-      queued: reconcile ? null : queue.length, dropped, powers_used: web.used, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
+      queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
       ran_at: new Date().toISOString(), routing, ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
   if (reconcile || resultError) {
     console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner', organization_id: task.organization_id, task_id: task.id, request_id: routing?.request_id, usage_saved: !usageError, result_saved: !resultError }));
