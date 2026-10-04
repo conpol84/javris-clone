@@ -25,3 +25,15 @@ class Fake:
 def test_public_voice_requires_anonymous_denial():
     assert v.public_voice(Fake()) is True
     f=Fake();f.get_json=lambda url:(200,{'ok':True});assert v.public_voice(f) is False
+
+def test_preflight_targets_the_already_live_local_model_api_not_pre_ollama_native():
+    text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
+    assert "openjarvis.server.firbo_free_app:app" in text
+    assert "s=local_model_state(n)" in text
+    assert "s=n.parse_state()" not in text
+    assert "names=['free_inference.py','firbo_free_app.py']" in text
+    assert "names=['free_inference.py','firbo_free_app.py','local_tts.py']" in text
+
+def test_current_base_and_post_install_hash_sets_are_distinct():
+    assert set(v.LOCAL_API_HASHES)=={'free_inference.py','firbo_free_app.py'}
+    assert set(v.SOURCE_HASHES)=={'free_inference.py','firbo_free_app.py','local_tts.py','firbo_piper_server.py'}
