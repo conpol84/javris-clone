@@ -37,3 +37,8 @@ def test_preflight_targets_the_already_live_local_model_api_not_pre_ollama_nativ
 def test_current_base_and_post_install_hash_sets_are_distinct():
     assert set(v.LOCAL_API_HASHES)=={'free_inference.py','firbo_free_app.py'}
     assert set(v.SOURCE_HASHES)=={'free_inference.py','firbo_free_app.py','local_tts.py','firbo_piper_server.py'}
+
+def test_source_staging_uses_file_paths_not_directory_and_name_args():
+    text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
+    assert "private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))" in text
+    assert "private_write(source,name,download" not in text
