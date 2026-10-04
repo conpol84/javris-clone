@@ -7,6 +7,7 @@
 //  - the planner can only assign steps to enabled agents of the same company, at most 5 steps
 //  - nothing leaves the company here: steps are ordinary tasks and outward actions still need human approval
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan } from '../_shared/gateway-routing.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -50,8 +51,17 @@ function priceOf(provider: string, which: 'IN' | 'OUT'): number {
   return Number(v ?? (which === 'IN' ? 3 : 15));
 }
 
-async function ask(targets: Target[], system: string, user: string, temperature: number) {
+async function ask(targets: Target[], gateway: GatewayPlan | null, system: string, user: string, temperature: number) {
   const t0 = Date.now();
+  if (gateway) {
+    // Free-plan companies: one request to the admin-managed free combo, never a paid fallback.
+    try {
+      const r = await completeViaGateway(gateway, [{ role: 'system', content: system }, { role: 'user', content: user }], temperature, { maxTokens: 2400 });
+      return { text: r.completion.choices[0].message.content, model: `omniroute:${gateway.model}`, inTok: r.completion.usage.prompt_tokens, outTok: r.completion.usage.completion_tokens, latency: Date.now() - t0, cost: r.cost };
+    } catch {
+      return null;
+    }
+  }
   for (const target of targets) {
     try {
       const openai = target.provider === 'openai';
@@ -146,8 +156,16 @@ Deno.serve(async (req) => {
 
   const primary = ceo.model && ceo.model !== 'auto' ? ceo.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map((x) => x.trim())].filter(Boolean);
-  const targets = specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (targets.length === 0) return json(503, { error: 'not_configured' });
+  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', mission.organization_id).maybeSingle();
+  let gateway: GatewayPlan | null = null;
+  try {
+    // Only the Free plan with the switch on is moved to the free combo; every other company keeps its normal routing.
+    if (orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway') gateway = gatewayForOrgPlan(ceo, 'free', (name) => Deno.env.get(name));
+  } catch (error) {
+    return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' });
+  }
+  const targets = gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!gateway && targets.length === 0) return json(503, { error: 'not_configured', reason: 'no_model_for_agent' });
 
   // ---- cost guards, before any model call
   const monthStart = new Date();
@@ -190,7 +208,7 @@ Deno.serve(async (req) => {
       `Write titles and descriptions in ${LANG_NAME[lang]}.`,
       'Reply with ONLY a JSON object: {"steps":[{"title": string (max 90 chars), "description": string (what exactly to deliver), "agent": string (a slug from the roster)}]}.',
     ].join('\n\n');
-    const out = await ask(targets, system, `<mission>\nGoal: ${mission.title}\nDetails: ${mission.description ?? ''}\n</mission>\n\nRoster:\n${roster}`, 0.3);
+    const out = await ask(targets, gateway, system, `<mission>\nGoal: ${mission.title}\nDetails: ${mission.description ?? ''}\n</mission>\n\nRoster:\n${roster}`, 0.3);
     const parsed = out ? parseJson(out.text) : null;
     const rawSteps: any[] = Array.isArray(parsed?.steps) ? parsed.steps.slice(0, MAX_STEPS) : [];
     if (!out || rawSteps.length === 0) {
@@ -241,7 +259,7 @@ Deno.serve(async (req) => {
     `Write in ${LANG_NAME[lang]}.`,
     'Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown)}.',
   ].join('\n\n');
-  const out = await ask(targets, system, `<team_work>\nMission: ${mission.title}\n\n${digest}\n</team_work>`, 0.4);
+  const out = await ask(targets, gateway, system, `<team_work>\nMission: ${mission.title}\n\n${digest}\n</team_work>`, 0.4);
   const parsed = out ? parseJson(out.text) : null;
   if (!out) {
     await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error' } }).eq('id', mission.id);

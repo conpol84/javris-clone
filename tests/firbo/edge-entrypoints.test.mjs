@@ -179,3 +179,11 @@ test('a failed free-plan run stays retryable; other gateway failures still requi
   assert.match(source,/const planFree = orgPlan\?\.plan === 'free' && Deno\.env\.get\('FIRBO_FREE_PLAN_ROUTING'\) === 'gateway'/);
   assert.match(source,/reconcile_required: !!free \|\| \(!!gateway && !planFree\)/);
 });
+
+test('mission-runner moves only free-plan companies to the free combo and reports a reason when no model exists',async()=>{
+  const source=await readFile(new URL('../../supabase/functions/mission-runner/index.ts',import.meta.url),'utf8');
+  assert.match(source,/orgPlan\?\.plan === 'free' && Deno\.env\.get\('FIRBO_FREE_PLAN_ROUTING'\) === 'gateway'/);
+  assert.match(source,/const targets = gateway \? \[\] : specs\.map\(resolveTarget\)/);
+  assert.match(source,/reason: 'no_model_for_agent'/);
+  assert.equal((source.match(/await ask\(targets, gateway,/g)||[]).length,2);
+});
