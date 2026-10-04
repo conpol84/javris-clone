@@ -5,7 +5,8 @@ import { StatusDot } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { addDevice, cancelJob, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, removeDevice, type DeviceRow, type JobRow } from '../lib/company/computers';
+import { addDevice, cancelJob, canOpenBrowser, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, removeDevice, type DeviceRow, type JobRow } from '../lib/company/computers';
+import { getVoiceLaptop, setVoiceLaptop } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
@@ -13,7 +14,7 @@ import { formatComputerResult } from '../lib/company/computer-state';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
 
 type Kind = JobRow['kind'];
-const KINDS: Kind[] = ['list', 'read', 'write', 'exec'];
+const KINDS: Kind[] = ['list', 'read', 'write', 'exec', 'browser_open'];
 
 function CopyLine({ text }: { text: string }) {
   const [done, setDone] = useState(false);
@@ -61,6 +62,8 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const [content, setContent] = useState('');
   const [command, setCommand] = useState('');
   const [busy, setBusy] = useState(false);
+  const [voiceLaptop, setVoiceLaptopState] = useState(() => getVoiceLaptop(orgId));
+  const web = lang === 'el' ? {title:'Website ↔ Laptop',body:'Διάλεξε ποιο online laptop θα λαμβάνει browser εντολές που λες ή γράφεις στο Firbo website.',select:'Χρήση ως Voice laptop',selected:'Επιλεγμένο Voice laptop',permission:'Χρειάζεται νέος Connector με άδεια browser',none:'Δεν υπάρχει online laptop έτοιμο για browser.',upgrade:'Για ήδη συνδεδεμένο laptop: κατέβασε τον νέο Connector, σταμάτησε τον παλιό, τρέξε “node firbo-connector.mjs allow-browser” και μετά ξανά run.',browser:'Άνοιγμα browser',url:'https://example.com',pair:'Σύνδεση μόνο για browser',pairNote:'Δεν δίνει πρόσβαση σε αρχεία ή shell· επιτρέπει μόνο άνοιγμα δημόσιων HTTPS σελίδων.'} : {title:'Website ↔ Laptop',body:'Choose which online laptop receives browser commands spoken or typed into Firbo on this website.',select:'Use as Voice laptop',selected:'Voice laptop selected',permission:'Needs the new Connector with browser permission',none:'No browser-ready laptop is online.',upgrade:'Existing laptop: download the current Connector, stop the old one, run “node firbo-connector.mjs allow-browser”, then run it again.',browser:'Open browser',url:'https://example.com',pair:'Browser-only pairing',pairNote:'This grants no file or shell access; it only opens public HTTPS pages.'};
 
   const deviceLoader = useCallback(() => listDevices(orgId), [orgId]);
   const deviceQuery = useComputerQuery(orgId, !!orgId && canManage, deviceLoader, 8000);
@@ -102,7 +105,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const give = async (e: FormEvent) => {
     e.preventDefault();
     if (!canManage || !chosen || deviceQuery.phase !== 'ready' || !isOnline(chosen, now) || mutation.current) return;
-    const params = kind === 'exec' ? { command, cwd: pathText } : kind === 'write' ? { path: pathText, content } : { path: pathText };
+    const params = kind === 'exec' ? { command, cwd: pathText } : kind === 'write' ? { path: pathText, content } : kind === 'browser_open' ? { url: pathText } : { path: pathText };
     if ((kind === 'write' || kind === 'exec') && !window.confirm(t(kind === 'write' ? 'comp.confirmWrite' : 'comp.confirmExec'))) return;
     mutation.current = true; setBusy(true);
     try {
@@ -124,6 +127,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
       await removeDevice(d.id);
       if (!live.current) return;
       if (sel === d.id) setSel(null);
+      if (voiceLaptop === d.id) { setVoiceLaptop(orgId, null); setVoiceLaptopState(null); }
       if (pair?.device_id === d.id) setPair(null);
       await load();
     } catch (err) {
@@ -151,6 +155,9 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
 
   const chosen = devices.find((d) => d.id === sel && d.paired && !d.revoked_at) ?? null;
   const unpaired = (d: DeviceRow) => !d.paired;
+  const voiceChosen = devices.find((d) => d.id === voiceLaptop && canOpenBrowser(d) && isOnline(d, now)) ?? null;
+  const kindLabel = (k: Kind) => k === 'browser_open' ? web.browser : t(`comp.kind.${k}` as TKey);
+  const chooseVoice = (d: DeviceRow) => { if (!canOpenBrowser(d) || !isOnline(d, now)) return; setVoiceLaptop(orgId, d.id); setVoiceLaptopState(d.id); };
 
   return (
     <div className="fb-root h-full overflow-y-auto">
@@ -179,6 +186,9 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                   <div data-testid="pair-code" dir="ltr" className="break-all text-2xl font-bold tracking-[0.15em]" style={{ color: 'var(--fb-accent)' }}>{visiblePair.code}</div>
                   <p className="fb-dim text-xs">{t('comp.codeExpires')}</p>
                   <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> {t('comp.download')}</a>
+                  <div className="fb-eyebrow">{web.pair}</div>
+                  <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow-browser`} />
+                  <p className="fb-dim text-xs">{web.pairNote}</p>
                   <div className="fb-eyebrow">{t('comp.stepSafe')}</div>
                   <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow ~/Documents`} />
                   <details><summary className="cursor-pointer">{t('comp.stepMore')}</summary>
@@ -215,8 +225,9 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                             </span>
                             <span className="fb-dim mt-2 block text-xs">{d.platform ?? '–'} {d.last_seen_at && Number.isFinite(Date.parse(d.last_seen_at)) ? `· ${t('comp.seen', { when: fmt.dateTime(d.last_seen_at) })}` : ''}</span>
                           </button>
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             {unpaired(d) && <button disabled={busy} className="fb-btn fb-btn--ghost" onClick={(e) => (e.stopPropagation(), void regen(d))}>{t('comp.newCode')}</button>}
+                            {!unpaired(d) && <button type="button" data-testid={`voice-device-${d.id}`} disabled={busy || !online || !canOpenBrowser(d)} aria-pressed={voiceLaptop === d.id} className="fb-btn fb-btn--ghost" onClick={(e) => (e.stopPropagation(), chooseVoice(d))}>{voiceLaptop === d.id ? web.selected : canOpenBrowser(d) ? web.select : web.permission}</button>}
                             <button disabled={busy} className="fb-btn fb-btn--ghost ms-auto" aria-label={t('comp.remove')} onClick={(e) => (e.stopPropagation(), void remove(d))}><Trash2 size={14} /></button>
                           </div>
                         </article>
@@ -227,6 +238,17 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
               )}
             </section>
 
+            <section className="fb-glass fb-col gap-2 p-5" data-testid="website-laptop-bridge">
+              <h2 className="text-base font-semibold">{web.title}</h2>
+              <p className="fb-muted text-sm">{web.body}</p>
+              <p className="text-sm" role="status">{voiceChosen ? `${web.selected}: ${voiceChosen.name}` : web.none}</p>
+              {!voiceChosen && devices.some(d => d.paired && !d.revoked_at) && <>
+                <p className="fb-dim text-xs">{web.upgrade}</p>
+                <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> {t('comp.download')}</a>
+                <CopyLine text="node firbo-connector.mjs allow-browser" />
+              </>}
+            </section>
+
             {chosen && (
               <section key={chosen.id} data-testid="computer-workspace" className="fb-glass fb-col gap-3 p-5">
                 <h2 className="text-base font-semibold">{t('comp.workOn', { name: chosen.name })}</h2>
@@ -234,13 +256,13 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                 <div className="flex flex-wrap gap-2" role="tablist">
                   {KINDS.map((k) => (
                     <button key={k} role="tab" aria-selected={kind === k} className="fb-chip cursor-pointer" onClick={() => setKind(k)} style={kind === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
-                      {t(`comp.kind.${k}` as TKey)}
+                      {kindLabel(k)}
                     </button>
                   ))}
                 </div>
                 {kind === 'exec' && <p role="note" className="text-sm">{l.execWarning}</p>}
                 <form onSubmit={give} className="fb-col gap-2">
-                  <input className="fb-input" value={pathText} onChange={(e) => setPathText(e.target.value)} spellCheck={false} placeholder={t(kind === 'exec' ? 'comp.cwdPh' : 'comp.pathPh')} aria-label={t(kind === 'exec' ? 'comp.cwdPh' : 'comp.pathPh')} required={kind === 'read' || kind === 'write'} />
+                  <input className="fb-input" value={pathText} onChange={(e) => setPathText(e.target.value)} spellCheck={false} placeholder={kind === 'browser_open' ? web.url : t(kind === 'exec' ? 'comp.cwdPh' : 'comp.pathPh')} aria-label={kind === 'browser_open' ? web.url : t(kind === 'exec' ? 'comp.cwdPh' : 'comp.pathPh')} required={kind === 'read' || kind === 'write' || kind === 'browser_open'} />
                   {kind === 'write' && <textarea className="fb-input" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder={t('comp.contentPh')} aria-label={t('comp.contentPh')} />}
                   {kind === 'exec' && <input className="fb-input font-mono" value={command} onChange={(e) => setCommand(e.target.value)} spellCheck={false} placeholder={t('comp.commandPh')} aria-label={t('comp.commandPh')} required />}
                   <button className="fb-btn fb-btn--primary self-start" disabled={busy || deviceQuery.phase !== 'ready' || !isOnline(chosen, now)}>{t('comp.send')}</button>
@@ -253,8 +275,8 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                   {jobs.map((j) => (
                     <li key={j.id} className="fb-row fb-col gap-1 p-3">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="fb-chip">{t(`comp.kind.${j.kind}` as TKey)}</span>
-                        <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? '')}</span>
+                        <span className="fb-chip">{kindLabel(j.kind)}</span>
+                        <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? j.params.url ?? '')}</span>
                         <span style={{ color: j.status === 'done' ? 'var(--fb-ok)' : j.status === 'error' ? 'var(--fb-err)' : 'var(--fb-warn)' }}>{t(`comp.status.${j.status}` as TKey)}</span>
                         {j.status === 'queued' && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.cancelQueued}</button>}
                       </div>
