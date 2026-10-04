@@ -17,6 +17,9 @@ jobs:
           python3 -m venv /tmp/fv
           /tmp/fv/bin/pip install -r tests/firbo/requirements.txt
           /tmp/fv/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_tts.py tests/firbo/test_local_rollout.py
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
       - run: |
           npm install --global npm@11.19.0
           cd frontend && npm ci && npm test && npx --no-install tsc -b
