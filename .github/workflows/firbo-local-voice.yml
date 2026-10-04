@@ -1,0 +1,22 @@
+name: Firbo local voice and model compatibility
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['src/openjarvis/server/local_tts.py','src/openjarvis/server/firbo_piper_server.py','src/openjarvis/server/firbo_free_app.py','deploy/hostinger/local_model_rollout.py','tests/firbo/test_local_tts.py','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-voice.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+permissions: {contents: read}
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - run: |
+          python3 -m venv /tmp/fv
+          /tmp/fv/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/fv/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_tts.py tests/firbo/test_local_rollout.py
+      - run: |
+          npm install --global npm@11.19.0
+          cd frontend && npm ci && npm test && npx --no-install tsc -b

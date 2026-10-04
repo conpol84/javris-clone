@@ -7,7 +7,7 @@ spec=importlib.util.spec_from_file_location('local_rollout',ROOT/'deploy/hosting
 l=importlib.util.module_from_spec(spec);spec.loader.exec_module(l)
 
 def test_exact_runtime_hashes():
-    assert set(l.SOURCE_HASHES)=={'firbo_free_app.py','free_inference.py'}
+    assert set(l.SOURCE_HASHES)=={'firbo_free_app.py','free_inference.py','local_tts.py'}
     for n,h in l.SOURCE_HASHES.items():assert l.sha((ROOT/'src/openjarvis/server'/n).read_bytes())==h
 
 def test_native_source_library_stays_pinned():
