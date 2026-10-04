@@ -8,6 +8,7 @@ export interface DeviceRow {
   platform: string | null;
   paired: boolean;
   last_seen_at: string | null;
+  capabilities: { job_kinds?: string[] } | null;
   revoked_at: string | null;
   created_at: string;
 }
@@ -15,7 +16,7 @@ export interface DeviceRow {
 export interface JobRow {
   id: string;
   device_id: string;
-  kind: 'list' | 'read' | 'write' | 'exec';
+  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open';
   params: Record<string, unknown>;
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   result: Record<string, unknown> | null;
@@ -62,7 +63,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
 export async function listDevices(orgId: string): Promise<DeviceRow[]> {
   const { data, error } = await requireClient()
     .from('connector_devices')
-    .select('id, name, platform, paired, last_seen_at, revoked_at, created_at')
+    .select('id, name, platform, paired, last_seen_at, capabilities, revoked_at, created_at')
     .eq('organization_id', orgId)
     .is('revoked_at', null)
     .order('created_at', { ascending: false });
@@ -101,4 +102,7 @@ export const decideComputerApproval = (input: {
 /** A computer counts as online while its Connector has asked for work in the last minute. */
 export function isOnline(d: DeviceRow, now = Date.now()): boolean {
   return devicePresence(d, now) === 'online';
+}
+export function canOpenBrowser(d: DeviceRow): boolean {
+  return d.paired === true && !d.revoked_at && Array.isArray(d.capabilities?.job_kinds) && d.capabilities!.job_kinds!.includes('browser_open');
 }
