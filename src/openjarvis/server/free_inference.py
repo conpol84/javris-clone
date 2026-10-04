@@ -180,10 +180,13 @@ def normalize_completion(data: Any, route: Route) -> tuple[str,int,int,bool]:
     except (KeyError, IndexError, TypeError, ValueError): raise FreeError('free_invalid_completion', 502) from None
 
 class FreeEngine:
-    def __init__(self, routes: list[Route], ledger: Ledger, *, transport=None, clock=time.time):
+    def __init__(self, routes: list[Route], ledger: Ledger, *, transport=None, clock=time.time, max_output=MAX_OUTPUT, context_tokens=4096, threads=1):
         if not routes or len(routes)>4 or len({(r.kind,r.model) for r in routes})!=len(routes):
             raise FreeError('invalid_free_routes')
         if len({r.key for r in routes if r.kind=='openrouter'})>1: raise FreeError('one_provider_account_only')
+        if type(max_output) is not int or not 32 <= max_output <= MAX_OUTPUT or type(context_tokens) is not int or not 1024 <= context_tokens <= 4096 or type(threads) is not int or not 1 <= threads <= 4:
+            raise FreeError('invalid_local_runtime_limits')
+        self.max_output, self.context_tokens, self.threads = max_output, context_tokens, threads
         self.routes, self.ledger, self.transport, self.clock = tuple(routes), ledger, transport, clock
     async def infer(self, org: str, uid: str, rid: str, messages: list[dict[str,str]], *, cloud_allowed: bool = False):
         if not isinstance(messages,list) or not 1 <= len(messages)<=24: raise FreeError('invalid_free_messages',400)
@@ -212,13 +215,13 @@ class FreeEngine:
                                     self.ledger.cool(route.pool,self.clock()+300);continue
                                 endpoint=CLOUD_URL+'/chat/completions'
                                 headers={'Authorization':'Bearer '+route.key}
-                                body={'model':route.model,'messages':messages,'max_tokens':MAX_OUTPUT,'stream':False,
+                                body={'model':route.model,'messages':messages,'max_tokens':self.max_output,'stream':False,
                                       'provider':{'allow_fallbacks':False,'data_collection':'deny',
                                                   'max_price':{'prompt':0,'completion':0,'request':0,'image':0}}}
                             else:
                                 endpoint=LOCAL_URL+'/api/chat';headers={}
                                 body={'model':route.model,'messages':messages,'stream':False,'think':False,'keep_alive':'2m',
-                                      'options':{'num_ctx':4096,'num_predict':MAX_OUTPUT,'temperature':0.4}}
+                                      'options':{'num_ctx':self.context_tokens,'num_predict':self.max_output,'num_thread':self.threads,'temperature':0.4}}
                             attempts += 1
                             async with client.stream('POST',endpoint,headers=headers,json=body) as response:
                                 if response.status_code in {429,503}:

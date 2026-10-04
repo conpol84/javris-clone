@@ -1,3 +1,4 @@
+import { LocalComputePanel } from '../components/gateway/LocalComputePanel';
 import { useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router';
@@ -76,7 +77,7 @@ export function GatewayPage() {
         {tab === 'quota' && <QuotaTab />}
         {tab === 'keys' && <KeysTab />}
         {tab === 'calls' && <CallsTab />}
-        {tab === 'free' && <FreeModelsTab />}
+        {tab === 'free' && <><LocalComputePanel /><FreeModelsTab /></>}
         {tab === 'overview' && (
           <>
         {gw.status === 'unreachable' && (
