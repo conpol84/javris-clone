@@ -25,7 +25,8 @@ for (const name of ['agent-chat','agent-runner']) {
   const source=await readFile(new URL(`supabase/functions/${name}/index.ts`,root),'utf8');
   const replacement="const createClient = (...args: any[]) => (globalThis as any).__firboTestCreateClient(...args);";
   const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",replacement)
-    .replace("'../_shared/gateway-routing.ts'",JSON.stringify(new URL('supabase/functions/_shared/gateway-routing.ts',root).href));
+    .replace("'../_shared/gateway-routing.ts'",JSON.stringify(new URL('supabase/functions/_shared/gateway-routing.ts',root).href))
+    .replace("'../_shared/free-routing.ts'",JSON.stringify(new URL('supabase/functions/_shared/free-routing.ts',root).href));
   assert.notEqual(code,source);
   const path=join(temp,`${name}.ts`);await writeFile(path,code);await import(pathToFileURL(path).href);handlers[name]=captured;
 }
@@ -80,6 +81,12 @@ function fixture(options={}) {
   state.client=client;current=state;
   globalThis.fetch=async(url,init)=>{
     state.calls.push({url,init});
+    if(String(url).includes('api.firboai.app/v1/firbo/free/')){
+      if(options.freeFailure)return Response.json({error:'unavailable'},{status:503});
+      const request=JSON.parse(init.body);
+      return Response.json({model:'ollama:qwen3:1.7b',choices:[{message:{content:JSON.stringify({summary:'Draft',report:'Synthetic draft',actions:[{action:'send_email',risk:'medium',payload:{}}]})},finish_reason:'stop'}],usage:{prompt_tokens:20,completion_tokens:10},
+        firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
+    }
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:'Result',actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
   };
@@ -128,3 +135,34 @@ test('task persists gateway routing trace',async()=>{const {state}=await invoke(
 test('approval save failure is blocked and marked for reconciliation',async()=>{const {state,response}=await invoke('agent-runner',{approvalError:true});assert.equal(response.status,503);const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result);assert.equal(result.payload.status,'blocked');assert.equal(result.payload.result.reconcile_required,true);});
 test('cron identity is preserved only with valid secret and company permission',async()=>{const {state,response}=await invoke('agent-runner',{unsigned:true,cron:'cron-test'},{system_user_id:USER});assert.equal(response.status,200);assert.equal(state.calls.length,1);});
 test('wrong cron secret cannot substitute for user authentication',async()=>{const {state,response}=await invoke('agent-runner',{unsigned:true,cron:'wrong'},{system_user_id:USER});assert.equal(response.status,401);assert.equal(state.calls.length,0);});
+
+for(const handler of ['agent-chat','agent-runner']){
+ test(handler+' free pilot uses authenticated native lane, not configured paid fallbacks',async()=>{
+  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG,FIRBO_TEXT_ROUTING_MODE:'legacy'},monthlyBudget:0});
+  assert.equal(response.status,200);assert.equal(state.calls.length,1);assert.ok(state.calls[0].url.includes('api.firboai.app/v1/firbo/free/'));
+  assert.equal(state.calls[0].init.headers.authorization,'Bearer user-test');
+  assert.equal(JSON.parse(state.calls[0].init.body).organization_id,ORG);
+  assert.equal(state.writes.filter(x=>x.table==='usage_events')[0].payload.cost_usd,0);
+  assert.equal(state.writes.filter(x=>x.table==='approvals').length,0);
+ });
+ test(handler+' free outage cannot fall back to paid gateway or legacy',async()=>{
+  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG},freeFailure:true});
+  assert.equal(response.status,502);assert.equal(state.calls.length,1);
+ });
+ test(handler+' nonzero free report is refused',async()=>{
+  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG},badFreeCost:true});
+  assert.equal(response.status,502);assert.equal(state.calls.length,1);assert.equal(state.writes.filter(x=>x.table==='usage_events').length,0);
+ });
+ test(handler+' malformed free entitlement fails closed',async()=>{
+  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:'not-a-company'}});
+  assert.equal(response.status,503);assert.equal(state.calls.length,0);
+ });
+ test(handler+' client cannot choose its own free entitlement',async()=>{
+  const {state,response}=await invoke(handler,{}, {free:true,plan:'free'});assert.equal(response.status,200);
+  assert.ok(state.calls[0].url.includes('gateway.firboai.app'));
+ });
+}
+test('free runner refuses cron pseudo-identity before task claim',async()=>{
+ const {state,response}=await invoke('agent-runner',{unsigned:true,cron:'cron-test',env:{FIRBO_FREE_ORGANIZATIONS:ORG}},{system_user_id:USER});
+ assert.equal(response.status,503);assert.equal(state.calls.length,0);assert.equal(state.writes.filter(x=>x.table==='tasks').length,0);
+});

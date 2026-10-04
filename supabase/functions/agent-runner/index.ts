@@ -4,6 +4,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForAgent, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
+import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+
 const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
@@ -149,18 +151,21 @@ Deno.serve(async (req) => {
     .eq('id', task.assigned_agent_id).eq('organization_id', task.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
+  let free = false;
   let gateway: GatewayPlan | null;
-  try { gateway = gatewayForAgent(agent, name => Deno.env.get(name)); }
+  try { free = freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForAgent(agent, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
+  if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
-  const targets = gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (!gateway && !targets.length) return json(503, { error: 'not_configured' });
+  const targets = free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
   if (spendError) return json(503, { error: 'budget_unavailable' });
   const spent = (spendRows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd ?? 0), 0);
-  if (agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
+  if (!free && agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
   const { count: lastHour, error: hourError } = await admin.from('usage_events').select('id', { count: 'exact', head: true }).eq('agent_id', agent.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
   if (hourError) return json(503, { error: 'budget_unavailable' });
   if ((lastHour ?? 0) >= HOURLY_RUN_LIMIT) return json(429, { error: 'rate_limited' });
@@ -182,7 +187,7 @@ Deno.serve(async (req) => {
   let webTimer: ReturnType<typeof setTimeout> | undefined;
   let web = noWeb;
   try {
-    web = await Promise.race([
+    if (!free) web = await Promise.race([
       gatherWeb(agent.agent_tools ?? [], task.title ?? '', task.description ?? '', AbortSignal.any([webController.signal, req.signal])).catch(() => noWeb),
       new Promise<typeof noWeb>(resolve => { webTimer = setTimeout(() => { webController.abort(); resolve(noWeb); }, 25_000); }),
     ]);
@@ -200,10 +205,16 @@ Deno.serve(async (req) => {
   const t0 = Date.now();
   let completion: any = null;
   let used: { provider: string; model: string } | null = null;
-  let routed: GatewayCompletion | null = null;
-  let routing: GatewayTrace | undefined;
+  let routed: GatewayCompletion | FreeCompletion | null = null;
+  let routing: GatewayTrace | FreeTrace | undefined;
   let lastError = 'model_error';
-  if (gateway) {
+  if (free) {
+    try {
+      routed = await completeViaFree(task.organization_id, auth, task.id, [{ role: 'system', content: system }, { role: 'user', content: userMsg }], { signal: req.signal });
+      completion = routed.completion; routing = routed.trace;
+      used = { provider: 'firbo-free', model: routed.trace.reported_model };
+    } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
+  } else if (gateway) {
     try {
       routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, { role: 'user', content: userMsg }], Number(agent.temperature ?? 0.4), { signal: req.signal });
       completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
@@ -224,8 +235,8 @@ Deno.serve(async (req) => {
     } catch { lastError = 'model_error'; }
   }
   if (!completion || !used) {
-    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!gateway } }).eq('id', task.id);
-    return json(502, { error: 'model_error', routing, ...(gateway ? { retry_safe: false } : {}) });
+    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!(free || gateway) } }).eq('id', task.id);
+    return json(502, { error: 'model_error', routing, ...((free || gateway) ? { retry_safe: false } : {}) });
   }
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
@@ -242,7 +253,7 @@ Deno.serve(async (req) => {
     if (tool && (!tool.enabled || tool.policy === 'block')) { dropped.push(a.action); return false; }
     return true;
   }).map(a => ({ ...a, payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] } }));
-  const queue = agent.autonomy === 'suggest' ? [] : marked;
+  const queue = free || agent.autonomy === 'suggest' ? [] : marked;
   const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency });
   let approvalError = false;
   if (!usageError && queue.length) {

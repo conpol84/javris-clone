@@ -4,6 +4,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForAgent, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
+import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+
 const cors = {
   'access-control-allow-origin': '*',
   'access-control-allow-headers': 'authorization, x-client-info, apikey, content-type',
@@ -77,21 +79,22 @@ Deno.serve(async (req) => {
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
 
+  let free = false;
   let gateway: GatewayPlan | null;
-  try { gateway = gatewayForAgent(agent, name => Deno.env.get(name)); }
+  try { free = freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForAgent(agent, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   // A gateway-selected request NEVER also enters the legacy direct-provider loop.
-  const targets = gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (!gateway && targets.length === 0) return json(503, { error: 'not_configured' });
+  const targets = free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
   const monthStart = new Date();
   monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
   if (spendError) return json(503, { error: 'budget_unavailable' });
   const spent = (spendRows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd ?? 0), 0);
-  if (agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
+  if (!free && agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
   const { count: lastHour, error: hourError } = await admin.from('usage_events').select('id', { count: 'exact', head: true })
     .eq('agent_id', agent.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
   if (hourError) return json(503, { error: 'budget_unavailable' });
@@ -148,10 +151,16 @@ Deno.serve(async (req) => {
   const t0 = Date.now();
   let completion: any = null;
   let used: { provider: string; model: string } | null = null;
-  let routed: GatewayCompletion | null = null;
-  let routing: GatewayTrace | undefined;
+  let routed: GatewayCompletion | FreeCompletion | null = null;
+  let routing: GatewayTrace | FreeTrace | undefined;
   let lastError = 'model_error';
-  if (gateway) {
+  if (free) {
+    try {
+      routed = await completeViaFree(convo.organization_id, auth, crypto.randomUUID(), [{ role: 'system', content: system }, ...past, { role: 'user', content: text }], { signal: req.signal });
+      completion = routed.completion; routing = routed.trace;
+      used = { provider: 'firbo-free', model: routed.trace.reported_model };
+    } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
+  } else if (gateway) {
     try {
       routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, ...past, { role: 'user', content: text }], Number(agent.temperature ?? 0.5), { signal: req.signal });
       completion = routed.completion; routing = routed.trace;
