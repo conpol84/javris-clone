@@ -2,7 +2,8 @@
 // Firbo Connector: lets your Firbo AI team work on THIS computer, only as far as you allow.
 //
 //   node firbo-connector.mjs pair ABCD2345 --allow ~/Projects            (read-only: list and read files)
-//   node firbo-connector.mjs pair ABCD2345 --allow ~/Projects --allow-write --allow-exec
+//   node firbo-connector.mjs pair ABCD2345 --allow-browser                (website/voice may open HTTPS pages)
+//   node firbo-connector.mjs pair ABCD2345 --allow ~/Projects --allow-write --allow-exec --allow-browser
 //   node firbo-connector.mjs run                                         (keep this window open)
 //   node firbo-connector.mjs status | forget
 //
@@ -10,6 +11,7 @@
 //   - file operations check --allow roots; this is NOT an OS sandbox or a complete filesystem race defense
 //   - --allow-exec is a general shell as your local user; its cwd does NOT confine what it can access
 //   - writing files needs --allow-write, running commands needs --allow-exec; without them those jobs are refused
+//   - opening HTTPS pages needs --allow-browser; it never grants file or shell access
 //   - unless you pass --auto, every write and command waits for your y/n in this window
 //   - nothing is installed, nothing listens on your network: this program only calls Firbo and asks for jobs
 // Needs Node.js 22.13+ for durable execution (built-in SQLite). No npm packages.
@@ -38,13 +40,14 @@ const LOCAL_ERRORS = new Set([
   'not_a_file', 'file_too_large', 'binary_file', 'writing_disabled', 'file_exists',
   'declined_on_this_computer', 'commands_disabled', 'unknown_job',
   'operation_stopped', 'unsafe_file_type', 'write_verification_failed', 'process_spawn_failed', 'reserved_local_path',
+  'browser_disabled', 'invalid_browser_url', 'browser_open_failed',
 ]);
 const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'ENOTDIR', 'EISDIR', 'ELOOP']);
 
 /** Validate independently of the server. A job cannot grant its own local powers. */
 export function validateJob(job) {
   if (!job || typeof job !== 'object' || Array.isArray(job)) throw new Error('bad_job');
-  if (!['list', 'read', 'write', 'exec'].includes(job.kind)) throw new Error('unknown_job');
+  if (!['list', 'read', 'write', 'exec', 'browser_open'].includes(job.kind)) throw new Error('unknown_job');
   const p = job.params ?? {};
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('bad_job_params');
   const validPath = value => value === undefined || (typeof value === 'string' && value.length <= 500 && !value.includes('\0'));
@@ -52,7 +55,38 @@ export function validateJob(job) {
   if (['read', 'write'].includes(job.kind) && (typeof p.path !== 'string' || !p.path.trim())) throw new Error('bad_job_params');
   if (job.kind === 'write' && (typeof p.content !== 'string' || p.content.length > MAX_CONTENT || (p.overwrite !== undefined && typeof p.overwrite !== 'boolean'))) throw new Error('bad_job_params');
   if (job.kind === 'exec' && (typeof p.command !== 'string' || !p.command.trim() || p.command.length > 500 || p.command.includes('\0'))) throw new Error('bad_job_params');
+  if (job.kind === 'browser_open' && (typeof p.url !== 'string' || !p.url.trim() || p.url.length > 2048 || /[\r\n\0]/.test(p.url))) throw new Error('bad_job_params');
   return p;
+}
+
+export function normalizeBrowserUrl(value) {
+  if (typeof value !== 'string' || !value.trim() || value.length > 2048 || /[\r\n\0]/.test(value)) throw new Error('invalid_browser_url');
+  let url;
+  try { url = new URL(value.trim()); } catch { throw new Error('invalid_browser_url'); }
+  if (url.protocol !== 'https:' || url.username || url.password || !url.hostname || url.hostname === 'localhost'
+      || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':')) throw new Error('invalid_browser_url');
+  return url.href;
+}
+
+export async function openBrowser(value, { spawnImpl = spawn, platform = process.platform } = {}) {
+  const url = normalizeBrowserUrl(value);
+  const launch = platform === 'win32' ? ['explorer.exe', [url]]
+    : platform === 'darwin' ? ['/usr/bin/open', [url]] : ['xdg-open', [url]];
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error); else resolve({ url, launched: true, launcher: launch[0] });
+    };
+    const timer = setTimeout(() => finish(new Error('browser_open_failed')), 8000);
+    try {
+      const child = spawnImpl(launch[0], launch[1], { shell: false, windowsHide: true, stdio: 'ignore' });
+      child.once('error', () => finish(new Error('browser_open_failed')));
+      child.once('close', code => finish(code === 0 ? undefined : new Error('browser_open_failed')));
+    } catch { finish(new Error('browser_open_failed')); }
+  });
 }
 
 function safeLocalError(error) {
@@ -142,11 +176,17 @@ async function confirmLocally(cfg, question, signal) {
   return /^y(es)?$/i.test(String(answer).trim());
 }
 
-export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000 } = {}) {
+export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, browserLauncher = openBrowser } = {}) {
   stopCheck(signal);
   const p = validateJob(job);
   if (!cfg || !Array.isArray(cfg.roots) || cfg.roots.some(root => typeof root !== 'string' || !root)) throw new Error('no_folder_allowed');
   const roots = cfg.roots;
+  if (job.kind === 'browser_open') {
+    if (cfg.allowBrowser !== true) throw new Error('browser_disabled');
+    stopCheck(signal);
+    return await browserLauncher(normalizeBrowserUrl(p.url));
+  }
+  if (!roots.length) throw new Error('no_folder_allowed');
   if (job.kind === 'list') {
     const dir = await jobPath(p.path || roots[0], roots, cfg);
     const out = [];
@@ -585,8 +625,16 @@ function delay(ms, signal) {
     signal?.addEventListener('abort', finish, { once: true });
   });
 }
+export function localCapabilities(cfg) {
+  const kinds = [];
+  if (Array.isArray(cfg?.roots) && cfg.roots.length) kinds.push('list', 'read');
+  if (cfg?.allowWrite === true && cfg?.roots?.length) kinds.push('write');
+  if (cfg?.allowExec === true && cfg?.roots?.length) kinds.push('exec');
+  if (cfg?.allowBrowser === true) kinds.push('browser_open');
+  return { job_kinds: kinds };
+}
 export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
-  if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || !cfg.roots.length) throw new Error('invalid_local_config');
+  if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true)) throw new Error('invalid_local_config');
   cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
   const scope = hashBytes(API + '\n' + cfg.token);
   const journal = await LocalJobJournal.open(directory, scope);
@@ -594,7 +642,7 @@ export async function runDurableConnector(cfg, { directory, signal, callFn = con
   const emit = event => { try { onEvent(event); } catch {} };
   try {
     journal.acquire();
-    const protocol = await callFn('capabilities', { token: cfg.token }, { signal });
+    const protocol = await callFn('capabilities', { token: cfg.token, client_capabilities: localCapabilities(cfg) }, { signal });
     if (protocol?.protocol !== 'firbo-connector/v2' || protocol.report_ack !== 'sha256-v1') throw new Error('matching_connector_backend_required');
     const recovered = journal.recoverInterrupted();
     if (recovered) emit('interrupted_work_preserved_for_review');
@@ -641,6 +689,7 @@ export function parseArgs(argv) {
     }
     else if (a === '--allow-write') out.allowWrite = true;
     else if (a === '--allow-exec') out.allowExec = true;
+    else if (a === '--allow-browser') out.allowBrowser = true;
     else if (a === '--auto') out.auto = true;
     else out._.push(a);
   }
@@ -652,18 +701,18 @@ async function main() {
   const [cmd, arg] = args._;
   if (cmd === 'run' || cmd === 'pair') requireDurableNode();
   if (cmd === 'pair') {
-    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> --allow <folder> [--allow-write] [--allow-exec]');
+    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser]');
     const roots = [];
     for (const r of args.allow) roots.push(await fs.realpath(path.resolve(expand(r))));
-    if (!roots.length) throw new Error('no_folder_allowed');
+    if (!roots.length && !args.allowBrowser) throw new Error('no_folder_allowed');
     // Validate local folders before consuming a one-use pairing code.
     const res = await call('pair', { code: arg, platform: `${os.platform()} ${os.arch()}` });
     if (typeof res.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: !!args.allowWrite, allowExec: !!args.allowExec, auto: !!args.auto };
+    const cfg = { token: res.token, roots, allowWrite: !!args.allowWrite, allowExec: !!args.allowExec, allowBrowser: !!args.allowBrowser, auto: !!args.auto };
     await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
     console.log(`Paired as "${res.device_name}".`);
     console.log(roots.length ? `Allowed folders: ${roots.join(', ')}` : 'No folder allowed yet: add --allow <folder> (run pair again with a new code).');
-    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Ask me each time: ${cfg.auto ? 'no' : 'yes'}`);
+    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Ask for write/exec: ${cfg.auto ? 'no' : 'yes'}`);
     console.log('Now run:  node firbo-connector.mjs run');
     return;
   }
@@ -674,12 +723,18 @@ async function main() {
     console.log('Private local journals are retained; they may contain undelivered file data. Review before deleting.');
     return;
   }
-  if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then: node firbo-connector.mjs pair <CODE> --allow <folder>');
+  if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then pair with --allow <folder> and/or --allow-browser.');
+  if (cmd === 'allow-browser') {
+    cfg.allowBrowser = true;
+    await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+    console.log('Website/voice browser opening is now allowed. Restart with: node firbo-connector.mjs run');
+    return;
+  }
   if (cmd === 'status') {
     console.log(JSON.stringify({ ...cfg, token: '(hidden)' }, null, 2));
     return;
   }
-  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | forget');
+  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | allow-browser | forget');
   console.log('Firbo Connector: local consent and folder rules remain active. Ctrl+C requests Stop.');
   console.log('Pending results are stored privately on this computer, UNENCRYPTED, until acknowledged.');
   const controller = new AbortController();
