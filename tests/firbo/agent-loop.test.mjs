@@ -60,3 +60,13 @@ test('native tool syntax from some free models is understood', () => {
   assert.equal(parseToolRequest('I will use web_search later.', ['web_search']), null);
   assert.equal(parseToolRequest(final, ['web_search']), null);
 });
+test('thoughts instead of an answer are asked again; <think> blocks are ignored', async () => {
+  const replies = ['The user wants me to research... Let me start with web', '<think>plan</think>{"action":"web_search","input":"q"}', final];
+  const out = await runAgentLoop({ call: async () => replies.shift(), system: 'S', user: 'U', tools: { web_search: async () => 'r' } });
+  assert.equal(out.text, final); assert.equal(out.calls, 3); assert.equal(out.steps.length, 1);
+});
+test('a plain-text answer is accepted after two nudges', async () => {
+  let n = 0;
+  const out = await runAgentLoop({ call: async () => { n++; return 'just text'; }, system: 'S', user: 'U', tools: { web_search: async () => 'r' } });
+  assert.equal(n, 3); assert.equal(out.text, 'just text');
+});

@@ -46,6 +46,12 @@ export function parseToolRequest(text: string, allowed: ToolName[]): { action: T
   return action && allowed.includes(action) && input ? { action, input } : null;
 }
 
+/** True when the text holds the final {summary, report} object. */
+export function isFinalAnswer(text: string): boolean {
+  const o = extractModelJson(text);
+  return !!o && (typeof o.report === 'string' || typeof o.summary === 'string');
+}
+
 /**
  * Runs the loop. `call` performs one model request and returns its text; it throws on failure.
  * Stops asking for tools when the step limit or the time budget is reached and asks for the final answer.
@@ -74,12 +80,15 @@ export async function runAgentLoop(o: {
   const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'think'];
   let calls = 0;
   let insisted = false;
+  let nudges = 0;
   while (true) {
     const left = budget - (now() - started);
     const last = steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
     if (last && steps.length > 0) messages.push({ role: 'user', content: 'No more tools. Reply now with the final JSON object only.' });
-    const text = await o.call(messages, last ? (o.finalTimeoutMs ?? 50_000) : Math.max(8_000, Math.min(45_000, left)));
+    const raw = await o.call(messages, last ? (o.finalTimeoutMs ?? 50_000) : Math.max(8_000, Math.min(45_000, left)));
     calls++;
+    // Reasoning models may wrap their thoughts in <think>; only what follows is the answer.
+    const text = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() || raw;
     const want = last ? null : parseToolRequest(text, allowed);
     if (!want) {
       // Still asking for a tool when it must answer (or for one it does not have): insist once on the final answer.
@@ -90,6 +99,13 @@ export async function runAgentLoop(o: {
         const again = await o.call(messages, o.finalTimeoutMs ?? 50_000);
         calls++;
         return { text: again, steps, calls };
+      }
+      // Neither a tool request nor the final answer (e.g. the model wrote its thoughts): ask again, at most twice.
+      if (!isFinalAnswer(text) && nudges < 2 && budget - (now() - started) > 8_000) {
+        nudges++;
+        messages.push({ role: 'assistant', content: text.slice(0, 1500) });
+        messages.push({ role: 'user', content: 'That reply was not valid. Reply with ONLY one JSON object and nothing else: either {"action": ..., "input": ...} to use a tool, or the final {"summary", "report", "actions"} answer.' });
+        continue;
       }
       return { text, steps, calls };
     }
