@@ -29,15 +29,15 @@ jobs:
           cp src/openjarvis/server/firbo_piper_server.py /tmp/firbo-piper-image/
           cat > /tmp/firbo-piper-image/Dockerfile <<'EOF'
           FROM python:3.12.14-slim-bookworm@sha256:1aaa65a85fda306ffb8b910824d4e93bdce61e212c7e87168123ea3073b41a1a
-          RUN pip install --no-cache-dir "piper-tts[zh]==1.8.0" "g2pW==0.1.1" \
-           && python -c "import importlib.metadata, pathlib, g2pw; assert importlib.metadata.version('g2pW')=='0.1.1'; p=pathlib.Path(g2pw.__file__).resolve().parent; assert any(p.rglob('*.onnx')), p"
+          RUN pip install --no-cache-dir "piper-tts[zh]==1.8.0" "g2pW==0.1.1" "requests==2.32.5" \
+           && python -c "import importlib.metadata, pathlib, g2pw, requests; assert importlib.metadata.version('g2pW')=='0.1.1'; assert importlib.metadata.version('requests')=='2.32.5'; p=pathlib.Path(g2pw.__file__).resolve().parent; assert any(p.rglob('*.onnx')), p"
           COPY --chmod=0644 firbo_piper_server.py /app/server.py
           ENV HOME=/tmp FIRBO_PIPER_DATA=/voices
           USER 10001:10001
           ENTRYPOINT ["python","/app/server.py"]
           EOF
           docker build --progress=plain --pull=false -t firbo-piper-proof:exact /tmp/firbo-piper-image
-          docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json,pathlib,g2pw;p=pathlib.Path(g2pw.__file__).resolve().parent;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'onnx':sum(1 for _ in p.rglob('*.onnx'))}))"
+          docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json,pathlib,g2pw,requests;p=pathlib.Path(g2pw.__file__).resolve().parent;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'requests':importlib.metadata.version('requests'),'onnx':sum(1 for _ in p.rglob('*.onnx'))}))"
       - name: Download all reviewed server voices
         run: |
           set -euo pipefail
