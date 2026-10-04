@@ -250,10 +250,11 @@ RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}" \
  && python -c "from piper.phonemize_chinese import download_model; download_model('/opt/firbo-resources/g2pW')" \
  && test -s /opt/firbo-resources/g2pW/g2pw.onnx \
  && chmod -R a=rX /opt/firbo-resources
-COPY --chmod=0644 firbo_piper_server.py /app/server.py
+RUN install -d -m 0755 /opt/firbo-voice
+COPY --chmod=0444 firbo_piper_server.py /opt/firbo-voice/server.py
 ENV HOME=/tmp FIRBO_PIPER_DATA=/voices FIRBO_PIPER_RESOURCES=/opt/firbo-resources
 USER 10001:10001
-ENTRYPOINT ["python","/app/server.py"]
+ENTRYPOINT ["python","/opt/firbo-voice/server.py"]
 '''
     private_write(source/'Dockerfile.piper',dockerfile)
     tag='firbo-piper:'+release.name.lower()
