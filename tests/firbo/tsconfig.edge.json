@@ -7,13 +7,21 @@
     "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "strict": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "types": []
   },
   "files": [
     "edge-typecheck.d.ts",
     "../../supabase/functions/_shared/gateway-routing.ts",
     "../../supabase/functions/agent-chat/index.ts",
-    "../../supabase/functions/agent-runner/index.ts"
+    "../../supabase/functions/agent-runner/index.ts",
+    "../../supabase/functions/_shared/own-keys.ts",
+    "../../supabase/functions/_shared/task-briefing.ts",
+    "../../supabase/functions/_shared/model-json.ts",
+    "../../supabase/functions/provider-keys/index.ts"
   ]
 }

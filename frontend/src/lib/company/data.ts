@@ -1,3 +1,4 @@
+import { cleanTaskResult } from './taskResult';
 import { requireClient } from './client';
 import type {
   AgentRow,
@@ -68,7 +69,8 @@ export async function listTasks(orgId: string): Promise<TaskRow[]> {
     .eq('kind', 'task') // missions have their own page; their steps are ordinary tasks
     .order('created_at', { ascending: false })
     .limit(100);
-  return fail(error, data) as unknown as TaskRow[];
+  const rows = fail(error, data) as unknown as TaskRow[];
+  return rows.map((row) => (row.result ? { ...row, result: cleanTaskResult(row.result) } : row));
 }
 
 export async function createTask(input: {
@@ -286,8 +288,10 @@ export async function updateAgent(
 
 /** Removes an AI employee. Its history (tasks, chats, usage) stays; its tools and shifts go with it. */
 export async function deleteAgent(agentId: string): Promise<void> {
-  const { error } = await requireClient().from('agents').delete().eq('id', agentId);
+  // select() returns the deleted rows: an empty list means row-level security kept the row, so say so instead of pretending.
+  const { data, error } = await requireClient().from('agents').delete().eq('id', agentId).select('id');
   fail(error, null);
+  if (!data || data.length === 0) throw new Error('not_removed');
 }
 
 export async function updateTool(

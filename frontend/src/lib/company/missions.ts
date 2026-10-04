@@ -1,3 +1,4 @@
+import { cleanTaskResult } from './taskResult';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { requireClient } from './client';
 import { RunError, runTask } from './runner';
@@ -53,7 +54,7 @@ export async function listSteps(missionId: string): Promise<StepRow[]> {
     .eq('parent_task_id', missionId)
     .order('created_at', { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as StepRow[];
+  return ((data ?? []) as unknown as StepRow[]).map((s) => (s.result ? { ...s, result: cleanTaskResult(s.result) } : s));
 }
 
 export async function getMission(id: string): Promise<MissionRow | null> {

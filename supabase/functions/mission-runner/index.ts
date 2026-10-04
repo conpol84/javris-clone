@@ -8,6 +8,7 @@
 //  - nothing leaves the company here: steps are ordinary tasks and outward actions still need human approval
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan } from '../_shared/gateway-routing.ts';
+import { ownKeyTarget } from '../_shared/own-keys.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -31,7 +32,7 @@ const BASE_URLS: Record<string, string> = {
   glm: 'https://api.z.ai/api/paas/v4',
 };
 
-interface Target { provider: string; model: string; base: string; key: string }
+interface Target { provider: string; model: string; base: string; key: string; own?: true }
 
 function resolveTarget(spec: string): Target | null {
   const i = spec.indexOf(':');
@@ -87,7 +88,9 @@ async function ask(targets: Target[], gateway: GatewayPlan | null, system: strin
         inTok,
         outTok,
         latency: Date.now() - t0,
-        cost: Math.round(((inTok * priceOf(target.provider, 'IN') + outTok * priceOf(target.provider, 'OUT')) / 1e6) * 1e6) / 1e6,
+        // Own-key usage is billed by the provider to the company, so it costs nothing at Firbo.
+        cost: target.own ? 0 : Math.round(((inTok * priceOf(target.provider, 'IN') + outTok * priceOf(target.provider, 'OUT')) / 1e6) * 1e6) / 1e6,
+        own: !!target.own,
       };
     } catch {
       /* try the next target */
@@ -157,14 +160,16 @@ Deno.serve(async (req) => {
   const primary = ceo.model && ceo.model !== 'auto' ? ceo.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map((x) => x.trim())].filter(Boolean);
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', mission.organization_id).maybeSingle();
+  // The company's own key (Pro and up) goes straight to its provider and nothing else is tried.
+  const own = await ownKeyTarget(admin, mission.organization_id, ceo.model);
   let gateway: GatewayPlan | null = null;
   try {
     // Only the Free plan with the switch on is moved to the free combo; every other company keeps its normal routing.
-    if (orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway') gateway = gatewayForOrgPlan(ceo, 'free', (name) => Deno.env.get(name));
+    if (!own && orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway') gateway = gatewayForOrgPlan(ceo, 'free', (name) => Deno.env.get(name));
   } catch (error) {
     return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' });
   }
-  const targets = gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  const targets: Target[] = own ? [own] : gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!gateway && targets.length === 0) return json(503, { error: 'not_configured', reason: 'no_model_for_agent' });
 
   // ---- cost guards, before any model call
@@ -190,10 +195,10 @@ Deno.serve(async (req) => {
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', mission.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const company = `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`;
-  const record = async (r: { model: string; inTok: number; outTok: number; cost: number; latency: number }) => {
+  const record = async (r: { model: string; inTok: number; outTok: number; cost: number; latency: number; own?: boolean }) => {
     await admin.from('usage_events').insert({
       organization_id: mission.organization_id, user_id: user.id, agent_id: ceo.id, model: r.model,
-      input_tokens: r.inTok, output_tokens: r.outTok, cost_usd: r.cost, latency_ms: r.latency,
+      input_tokens: r.inTok, output_tokens: r.outTok, cost_usd: r.cost, latency_ms: r.latency, ...(r.own ? { own_key: true } : {}),
     });
   };
 

@@ -46,7 +46,7 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/;
 const list = (value: string | undefined) => (value ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 /** Pass ONLY an agent already loaded with a verified organization/role check. */
-export function gatewayForAgent(agent: { id: string; model?: string | null }, env: EnvReader, options: { force?: boolean } = {}): GatewayPlan | null {
+export function gatewayForAgent(agent: { id: string; model?: string | null }, env: EnvReader, options: { force?: boolean; zeroCost?: boolean } = {}): GatewayPlan | null {
   const mode = options.force ? 'gateway' : env('FIRBO_TEXT_ROUTING_MODE') ?? 'legacy';
   if (mode === 'legacy') return null;
   if (mode !== 'canary' && mode !== 'gateway') throw new GatewayError('invalid_routing_mode');
@@ -85,8 +85,9 @@ export function gatewayForAgent(agent: { id: string; model?: string | null }, en
     if (!raw || !Number.isFinite(n) || n < 0 || n > 1_000_000) throw new GatewayError('gateway_cost_rates_required');
     return n;
   };
+  // The Free plan's combo only holds free models, so it is always $0 whatever the paid-model estimates say.
   const plan = { mode, base: endpoint.origin + '/v1', key, model,
-    priceIn: rate('OMNIROUTE_PRICE_IN_PER_M'), priceOut: rate('OMNIROUTE_PRICE_OUT_PER_M') } as GatewayPlan;
+    priceIn: options.zeroCost ? 0 : rate('OMNIROUTE_PRICE_IN_PER_M'), priceOut: options.zeroCost ? 0 : rate('OMNIROUTE_PRICE_OUT_PER_M') } as GatewayPlan;
   // An accidental JSON log of the plan must not reveal the inference key.
   Object.defineProperty(plan, 'key', { value: key, enumerable: false });
   Object.defineProperty(plan, 'toJSON', { value: () => ({ mode, model, key: '[redacted]' }), enumerable: false });
@@ -101,7 +102,7 @@ export function gatewayForAgent(agent: { id: string; model?: string | null }, en
 export function gatewayForOrgPlan(agent: { id: string; model?: string | null }, orgPlan: string | null | undefined, env: EnvReader): GatewayPlan | null {
   if (orgPlan !== 'free' || (env('FIRBO_FREE_PLAN_ROUTING') ?? 'off') !== 'gateway') return gatewayForAgent(agent, env);
   const model = env('FIRBO_FREE_PLAN_MODEL')?.trim() || 'firbo-free';
-  return gatewayForAgent({ ...agent, model: 'omniroute:' + model }, env, { force: true });
+  return gatewayForAgent({ ...agent, model: 'omniroute:' + model }, env, { force: true, zeroCost: true });
 }
 
 function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

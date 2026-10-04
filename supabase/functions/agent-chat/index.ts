@@ -5,6 +5,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+import { taskBriefing, type BriefTask } from '../_shared/task-briefing.ts';
+import { ownKeyTarget } from '../_shared/own-keys.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -95,20 +97,24 @@ Deno.serve(async (req) => {
   if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
   if (!convo.agent_id) return json(422, { error: 'no_agent' });
   const admin = createClient(url, service);
-  const { data: agent } = await admin.from('agents').select('id, name, system_prompt, model, temperature, enabled, monthly_budget_usd')
+  const { data: agent } = await admin.from('agents').select('id, name, type, system_prompt, model, temperature, enabled, monthly_budget_usd')
     .eq('id', convo.agent_id).eq('organization_id', convo.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
 
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', convo.organization_id).maybeSingle();
+  // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
+  const own = await ownKeyTarget(admin, convo.organization_id, agent.model);
   let free = false;
-  let gateway: GatewayPlan | null;
-  try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
-  catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  let gateway: GatewayPlan | null = null;
+  if (!own) {
+    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
+    catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   // A gateway-selected request NEVER also enters the legacy direct-provider loop.
-  const targets = free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
   const monthStart = new Date();
@@ -142,25 +148,33 @@ Deno.serve(async (req) => {
     .order('importance', { ascending: false }).limit(12);
   const memoryBlock = (memRows ?? []).length
     ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}` : '';
-  let snapshot = '';
-  if (body.voice === true) {
-    const [{ data: tk }, { data: ap }, { data: ag }] = await Promise.all([
-      admin.from('tasks').select('title, status, priority, result, completed_at, assigned_agent_id').eq('organization_id', convo.organization_id).eq('kind', 'task').order('updated_at', { ascending: false }).limit(12),
-      admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8),
-      admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
-    ]);
-    const names = new Map((ag ?? []).map((x: any) => [x.id, x.name]));
-    const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
-    const { data: spendMonth } = await admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString());
-    const monthCost = (spendMonth ?? []).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
-    snapshot = [
-      'LIVE COMPANY DATA (use it; never invent numbers):',
-      `Team: ${(ag ?? []).map((x: any) => `${x.name}${x.enabled ? '' : ' (paused)'}`).join(', ') || 'none'}.`,
-      `Spend this month: $${monthCost.toFixed(2)}.`,
-      `Pending approvals (${(ap ?? []).length}): ${(ap ?? []).map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
-      `Recent tasks: ${(tk ?? []).map((x: any) => `"${clip(x.title, 60)}" ${x.status}${x.assigned_agent_id ? ` by ${names.get(x.assigned_agent_id) ?? 'agent'}` : ' (unassigned)'}${x.result ? ` -> ${clip(x.result, 140)}` : ''}`).join(' | ') || 'none'}.`,
-    ].join('\n');
-  }
+  // Live company data and finished task results, in text chat and in voice, so the owner can ask
+  // "what did the team finish?" or "read me the research report" and get the real result.
+  // The CEO sees the whole company's work; any other agent sees only its own tasks.
+  const isCeo = agent.type === 'ceo';
+  let tasksQuery = admin.from('tasks').select('title, status, priority, result, completed_at, updated_at, assigned_agent_id')
+    .eq('organization_id', convo.organization_id).eq('kind', 'task');
+  if (!isCeo) tasksQuery = tasksQuery.eq('assigned_agent_id', agent.id);
+  const [{ data: tkRows }, { data: apRows }, { data: agRows }, { data: spendMonth }] = await Promise.all([
+    tasksQuery.order('updated_at', { ascending: false }).limit(30),
+    admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8),
+    admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
+    admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString()),
+  ]);
+  const list = (v: unknown): any[] => (Array.isArray(v) ? v : []);
+  const [tk, ap, ag] = [list(tkRows), list(apRows), list(agRows)];
+  const names = new Map<string, string>(ag.map((x: any) => [x.id, x.name]));
+  const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
+  const monthCost = list(spendMonth).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
+  const open = tk.filter((x: any) => !['completed', 'awaiting_approval', 'blocked', 'failed', 'cancelled'].includes(x.status)).slice(0, 10);
+  const snapshot = [
+    'LIVE COMPANY DATA (use it; never invent numbers):',
+    `Team: ${ag.map((x: any) => `${x.name}${x.enabled ? '' : ' (paused)'}`).join(', ') || 'none'}.`,
+    `Spend this month: $${monthCost.toFixed(2)}.`,
+    `Pending approvals (${ap.length}): ${ap.map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
+    `Open tasks: ${open.map((x: any) => `"${clip(x.title, 60)}" ${x.status}${x.assigned_agent_id ? ` by ${names.get(x.assigned_agent_id) ?? 'agent'}` : ' (unassigned)'}`).join(' | ') || 'none'}.`,
+    taskBriefing(tk as BriefTask[], names, text, { focusChars: body.voice === true ? 2000 : 3500 }),
+  ].join('\n');
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
@@ -168,7 +182,11 @@ Deno.serve(async (req) => {
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     'You cannot send, publish, pay or change anything yourself. If the teammate wants work delivered or an outward step taken, suggest creating a task for you so it goes through approval.',
     `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
-    ...(body.voice === true ? [snapshot, 'This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
+    snapshot,
+    body.voice === true
+      ? 'When the founder asks what a task found or asks you to read a result, read it from FINISHED TASKS / FULL RESULT: the main findings in plain words, up to six short sentences (under 600 characters), then say the full report is in Tasks.'
+      : 'When the teammate asks about a task or its result, answer from FINISHED TASKS / FULL RESULT: give the summary and the key findings, and say the full report is in Tasks, Show result. If a task is waiting for approval or needs more information, say so and what is needed.',
+    ...(body.voice === true ? ['This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences unless you are reading a task result, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
   const t0 = Date.now();
   let completion: any = null;
@@ -208,7 +226,10 @@ Deno.serve(async (req) => {
       completion = await res.json();
       if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
       used = target; break;
-    } catch { lastError = 'model_error'; }
+    } catch (error) {
+      // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
+      lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+    }
   }
   if (!completion || !used) return json(502, { error: 'model_error', reason: lastError, user_message: userRow, routing });
   const model = `${used.provider}:${used.model}`;
@@ -216,10 +237,12 @@ Deno.serve(async (req) => {
   const reply: string = String(completion.choices[0].message.content);
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
-  const cost = routed ? routed.cost : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+  const ownUsed = !!own && used === own;
+  // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
+  const cost = routed ? routed.cost : ownUsed ? 0 : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
   // Do not report success when either usage accounting or the assistant message failed to persist.
   const { error: usageError } = await admin.from('usage_events').insert({ organization_id: convo.organization_id, user_id: user.id, agent_id: agent.id, model,
-    input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency });
+    input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
   const { data: botRow, error: botError } = await admin.from('messages')
     .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'assistant', content: reply, model, input_tokens: inTok, output_tokens: outTok, latency_ms: latency })
     .select('id, role, content, created_at, model').single();

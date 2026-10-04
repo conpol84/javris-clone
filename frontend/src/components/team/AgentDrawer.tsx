@@ -3,6 +3,10 @@ import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 import { Panel, StatusDot } from '../command/Panel';
 import { deleteAgent, updateAgent, updateTool } from '../../lib/company/data';
+import { Modal } from './Modal';
+import { useCompanyAuth } from '../../lib/company/AuthProvider';
+import { OWN_KEY_PROVIDERS } from '../../lib/company/ownKeys';
+import { planHas, useOwnKeys, usePlanUsage } from '../../lib/company/usePlan';
 import { AUTONOMY_LEVELS } from '../../lib/company/templates';
 import { agentLabel } from '../../lib/company/labels';
 import { agentColor, STATE_KEY, type AgentState } from '../../lib/company/status';
@@ -48,7 +52,15 @@ export function AgentDrawer({
   const [budget, setBudget] = useState(agent.monthly_budget_usd?.toString() ?? '');
   const [model, setModel] = useState(agent.model ?? 'auto');
   const [confirmRemove, setConfirmRemove] = useState(false);
+  const [removing, setRemoving] = useState(false);
   const suggestion = autonomySuggestion(stats, agent.autonomy);
+  const { current } = useCompanyAuth();
+  const orgId = current?.organization.id;
+  const plan = usePlanUsage(orgId);
+  const [ownKeys] = useOwnKeys(orgId);
+  // Free companies always run on Firbo's free models (server rule), so the model choice is locked there instead of pretending.
+  const freePlan = plan?.plan.id === 'free';
+  const ownAllowed = planHas(plan, 'byo_keys');
 
   const run = async (fn: () => Promise<void>, ok?: string) => {
     try {
@@ -57,7 +69,9 @@ export function AgentDrawer({
       onChanged();
     } catch (err) {
       console.error(err);
-      toast.error(t('drawer.saveError'));
+      // Show the short reason (e.g. not_removed) so a failure is never silent or vague.
+      const code = err instanceof Error && /^[a-z0-9_ .:-]{1,80}$/i.test(err.message) ? ` [${err.message}]` : '';
+      toast.error(t('drawer.saveError') + code);
     }
   };
 
@@ -137,6 +151,50 @@ export function AgentDrawer({
       )}
 
       <div className="fb-eyebrow mb-2 mt-5">{t('drawer.model')}</div>
+      {freePlan ? (
+        <p className="rounded-xl p-3 text-xs" style={{ border: '1px solid var(--fb-border)', background: 'rgba(34,211,238,0.06)' }}>
+          {t('drawer.freeModel')}{' '}
+          <a className="fb-link font-semibold" href="/billing">
+            {t('bill.seePlans')}
+          </a>
+        </p>
+      ) : (
+      <>
+      {ownAllowed && ownKeys.length > 0 && (
+        <div className="mb-2">
+          <select
+            className="fb-input text-xs"
+            disabled={!canManage}
+            aria-label={t('drawer.ownKeyPick')}
+            value={ownKeys.some((k) => k.models.some((m) => `${k.provider}:${m}` === model)) ? model : ''}
+            onChange={(e) => {
+              const v = e.target.value;
+              if (!v) return;
+              setModel(v);
+              void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved'));
+            }}
+          >
+            <option value="">{t('drawer.ownKeyPick')}</option>
+            {ownKeys.map((k) => (
+              <optgroup key={k.provider} label={`${OWN_KEY_PROVIDERS.find((p) => p.id === k.provider)?.name ?? k.provider} · ${t('drawer.ownKeyTag')}`}>
+                {k.models.map((m) => (
+                  <option key={m} value={`${k.provider}:${m}`}>
+                    {m}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+      )}
+      {ownKeys.length === 0 && (
+        <p className="fb-dim mb-2 text-[11px]">
+          {t(ownAllowed ? 'drawer.ownKeyHint' : 'drawer.ownKeyPlan')}{' '}
+          <a className="fb-link" href={ownAllowed ? '/settings' : '/billing'}>
+            {t(ownAllowed ? 'drawer.ownKeyGo' : 'bill.seePlans')}
+          </a>
+        </p>
+      )}
       <div className="mb-2 flex flex-wrap gap-2" role="group" aria-label={t('drawer.tier')}>
         {(['omniroute:firbo-economy', 'omniroute:firbo-quality', 'auto'] as const).map((v) => (
           <button
@@ -168,11 +226,13 @@ export function AgentDrawer({
             <option key={m} value={m} />
           ))}
         </datalist>
-        <button className="fb-btn fb-btn--ghost" style={{ height: 42 }} disabled={!canManage} onClick={saveModel}>
+        <button className="fb-btn fb-btn--ghost shrink-0 whitespace-nowrap" style={{ height: 42 }} disabled={!canManage} onClick={saveModel}>
           {t('common.save')}
         </button>
       </div>
       <p className="fb-dim mt-1 text-[11px]">{t('drawer.modelHint')}</p>
+      </>
+      )}
 
       <div className="fb-eyebrow mb-2 mt-5">{t('drawer.budget')}</div>
       <div className="flex gap-2">
@@ -186,10 +246,11 @@ export function AgentDrawer({
           onChange={(e) => setBudget(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && saveBudget()}
         />
-        <button className="fb-btn fb-btn--ghost" style={{ height: 42 }} disabled={!canManage} onClick={saveBudget}>
+        <button className="fb-btn fb-btn--ghost shrink-0 whitespace-nowrap" style={{ height: 42 }} disabled={!canManage} onClick={saveBudget}>
           {t('common.save')}
         </button>
       </div>
+      <p className="fb-dim mt-1 text-[11px]">{t(freePlan ? 'drawer.budgetFree' : 'drawer.budgetWhat')}</p>
       {budgetValue != null && (
         <div className="mt-2">
           <div className="h-1.5 overflow-hidden rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
@@ -238,26 +299,34 @@ export function AgentDrawer({
       </ul>
       {canManage && agent.type !== 'ceo' && (
         <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--fb-border)' }}>
-          {confirmRemove ? (
-            <div className="fb-col gap-2">
-              <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('drawer.removeAsk', { name: label.name })}</p>
-              <div className="flex gap-2">
-                <button className="fb-btn fb-btn--ghost flex-1" onClick={() => setConfirmRemove(false)}>{t('drawer.removeNo')}</button>
-                <button
-                  className="fb-btn flex-1"
-                  style={{ color: 'var(--fb-warn)' }}
-                  onClick={() => void run(async () => { await deleteAgent(agent.id); onClose(); }, t('drawer.removed'))}
-                >
-                  <Trash2 size={14} /> {t('drawer.removeYes')}
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button className="inline-flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--fb-dim)' }} onClick={() => setConfirmRemove(true)}>
-              <Trash2 size={12} /> {t('drawer.remove')}
-            </button>
-          )}
+          <button className="fb-btn fb-btn--ghost w-full justify-center" style={{ color: 'var(--fb-warn)' }} onClick={() => setConfirmRemove(true)}>
+            <Trash2 size={14} /> {t('drawer.remove')}
+          </button>
         </div>
+      )}
+      {confirmRemove && (
+        // A dialog on top of everything: an inline question at the bottom of a long panel was easy to miss.
+        <Modal title={t('drawer.remove')} onClose={() => !removing && setConfirmRemove(false)}>
+          <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('drawer.removeAsk', { name: label.name })}</p>
+          <div className="mt-4 flex gap-2">
+            <button className="fb-btn fb-btn--ghost flex-1" disabled={removing} onClick={() => setConfirmRemove(false)}>{t('drawer.removeNo')}</button>
+            <button
+              className="fb-btn flex-1"
+              style={{ color: 'var(--fb-warn)' }}
+              disabled={removing}
+              onClick={() => {
+                setRemoving(true);
+                void run(async () => {
+                  await deleteAgent(agent.id);
+                  setConfirmRemove(false);
+                  onClose();
+                }, t('drawer.removed')).finally(() => setRemoving(false));
+              }}
+            >
+              <Trash2 size={14} /> {removing ? '…' : t('drawer.removeYes')}
+            </button>
+          </div>
+        </Modal>
       )}
       {!canManage && <p className="fb-dim mt-3 text-xs">{t('drawer.readonly')}</p>}
     </Panel>

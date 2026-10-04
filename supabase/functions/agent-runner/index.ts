@@ -3,6 +3,8 @@
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
+import { extractModelJson } from '../_shared/model-json.ts';
+import { ownKeyTarget } from '../_shared/own-keys.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -95,16 +97,15 @@ async function gatherWeb(tools: { tool_name: string; enabled: boolean; policy: s
 }
 type Action = { action: string; risk: 'low' | 'medium' | 'high'; payload: Record<string, unknown> };
 function parseModelJson(text: string): { summary: string; report: string; actions: Action[] } {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
-  const candidate = fenced ? fenced[1] : text;
-  try {
-    const o = JSON.parse(candidate.slice(candidate.indexOf('{'), candidate.lastIndexOf('}') + 1));
-    const actions: Action[] = Array.isArray(o.actions) ? o.actions
-      .filter((a: any) => a && typeof a.action === 'string' && a.action.trim()).slice(0, MAX_ACTIONS)
-      .map((a: any) => ({ action: String(a.action).slice(0, 120), risk: ['low','medium','high'].includes(a.risk) ? a.risk : 'medium',
-        payload: a.payload && typeof a.payload === 'object' && !Array.isArray(a.payload) ? a.payload : {} })) : [];
-    return { summary: String(o.summary ?? '').slice(0, 400), report: String(o.report ?? ''), actions };
-  } catch { return { summary: text.slice(0, 200), report: text, actions: [] }; }
+  const o = extractModelJson(text);
+  if (!o) return { summary: text.replace(/\s+/g, ' ').trim().slice(0, 200), report: text, actions: [] };
+  const actions: Action[] = Array.isArray(o.actions) ? o.actions
+    .filter((a: any) => a && typeof a.action === 'string' && a.action.trim()).slice(0, MAX_ACTIONS)
+    .map((a: any) => ({ action: String(a.action).slice(0, 120), risk: ['low','medium','high'].includes(a.risk) ? a.risk : 'medium',
+      payload: a.payload && typeof a.payload === 'object' && !Array.isArray(a.payload) ? a.payload : {} })) : [];
+  const report = String(o.report ?? '');
+  const summary = String(o.summary ?? '').trim() || report.replace(/\s+/g, ' ').trim().slice(0, 200);
+  return { summary: summary.slice(0, 400), report: report || text, actions };
 }
 
 Deno.serve(async (req) => {
@@ -152,17 +153,21 @@ Deno.serve(async (req) => {
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', task.organization_id).maybeSingle();
+  // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
+  const own = await ownKeyTarget(admin, task.organization_id, agent.model);
   let free = false;
-  let gateway: GatewayPlan | null;
-  try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
-  catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  let gateway: GatewayPlan | null = null;
+  if (!own) {
+    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
+    catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  }
   // Free-plan routing uses zero-cost models, so a failed run can safely be retried (nothing to reconcile).
   const planFree = orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway';
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
-  const targets = free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
@@ -231,22 +236,27 @@ Deno.serve(async (req) => {
         headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
         body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
           messages: [{ role: 'system', content: system }, { role: 'user', content: userMsg }] }), signal: AbortSignal.timeout(90_000) });
-      if (!res.ok) throw new Error('model_http_error');
+      if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
       completion = await res.json();
-      if (!completion?.choices?.[0]?.message?.content) throw new Error('model_empty');
+      if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
       used = target; break;
-    } catch { lastError = 'model_error'; }
+    } catch (error) {
+      // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
+      lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+    }
   }
   if (!completion || !used) {
     await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) } }).eq('id', task.id);
-    return json(502, { error: 'model_error', routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
+    return json(502, { error: 'model_error', reason: lastError, routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
   }
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
   const text: string = completion.choices[0].message.content;
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
-  const cost = routed ? routed.cost : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+  const ownUsed = !!own && used === own;
+  // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
+  const cost = routed ? routed.cost : ownUsed ? 0 : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];
@@ -257,7 +267,7 @@ Deno.serve(async (req) => {
     return true;
   }).map(a => ({ ...a, payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] } }));
   const queue = free || agent.autonomy === 'suggest' ? [] : marked;
-  const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency });
+  const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
   let approvalError = false;
   if (!usageError && queue.length) {
     const saved = await admin.from('approvals').insert(queue.map(a => ({ organization_id: task.organization_id, task_id: task.id, agent_id: agent.id, action: a.action, payload: a.payload, status: 'pending', risk: a.risk })));

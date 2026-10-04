@@ -25,8 +25,7 @@ for (const name of ['agent-chat','agent-runner']) {
   const source=await readFile(new URL(`supabase/functions/${name}/index.ts`,root),'utf8');
   const replacement="const createClient = (...args: any[]) => (globalThis as any).__firboTestCreateClient(...args);";
   const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",replacement)
-    .replace("'../_shared/gateway-routing.ts'",JSON.stringify(new URL('supabase/functions/_shared/gateway-routing.ts',root).href))
-    .replace("'../_shared/free-routing.ts'",JSON.stringify(new URL('supabase/functions/_shared/free-routing.ts',root).href));
+    .replace(/'\.\.\/_shared\/([a-z-]+\.ts)'/g,(_m,file)=>JSON.stringify(new URL(`supabase/functions/_shared/${file}`,root).href));
   assert.notEqual(code,source);
   const path=join(temp,`${name}.ts`);await writeFile(path,code);await import(pathToFileURL(path).href);handlers[name]=captured;
 }
@@ -40,7 +39,7 @@ function fixture(options={}) {
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
   const task={id:TASK,organization_id:ORG,title:'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
-  const agent={id:AGENT,name:'Test agent',model:'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
+  const agent={id:AGENT,name:'Test agent',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
   const execute=(table,op,payload,filters,selection)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
@@ -60,14 +59,14 @@ function fixture(options={}) {
     }
     if(table==='tasks')return{data:options.missingTask?null:task,error:null};
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
-    if(table==='memories'||table==='messages')return{data:[],error:null};
+    if(table==='memories'||table==='messages'||table==='approvals')return{data:[],error:null};
     if(table==='organizations')return{data:{name:'Test company',profile:{}},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
   const client=(_url,key)=>({
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
-    rpc:async()=>({data:100,error:options.planError?{message:'db failure'}:null}),
+    rpc:async(fn,args)=>{state.rpcs=[...(state.rpcs??[]),{fn,args}];if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};return{data:100,error:options.planError?{message:'db failure'}:null};},
     from:table=>{
       let op='select',payload,selection;const filters=[];
       const b={
@@ -87,6 +86,7 @@ function fixture(options={}) {
       return Response.json({model:'ollama:qwen3:1.7b',choices:[{message:{content:JSON.stringify({summary:'Draft',report:'Synthetic draft',actions:[{action:'send_email',risk:'medium',payload:{}}]})},finish_reason:'stop'}],usage:{prompt_tokens:20,completion_tokens:10},
         firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
     }
+    if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:'Result',actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
   };
@@ -183,7 +183,40 @@ test('a failed free-plan run stays retryable; other gateway failures still requi
 test('mission-runner moves only free-plan companies to the free combo and reports a reason when no model exists',async()=>{
   const source=await readFile(new URL('../../supabase/functions/mission-runner/index.ts',import.meta.url),'utf8');
   assert.match(source,/orgPlan\?\.plan === 'free' && Deno\.env\.get\('FIRBO_FREE_PLAN_ROUTING'\) === 'gateway'/);
-  assert.match(source,/const targets = gateway \? \[\] : specs\.map\(resolveTarget\)/);
+  assert.match(source,/const targets: Target\[\] = own \? \[own\] : gateway \? \[\] : specs\.map\(resolveTarget\)/);
+  assert.match(source,/if \(!own && orgPlan\?\.plan === 'free'/);
+  assert.match(source,/cost: target\.own \? 0 :/);
   assert.match(source,/reason: 'no_model_for_agent'/);
   assert.equal((source.match(/await ask\(targets, gateway,/g)||[]).length,2);
 });
+
+const OWN='sk-own-company-key-1234567890';
+for (const name of ['agent-chat','agent-runner']) {
+  test(`${name}: an own key goes straight to the provider, once, at $0 for Firbo`, async () => {
+    const {state,response}=await invoke(name,{model:'openai:gpt-5-mini',ownKey:OWN});
+    assert.equal(response.status,200);
+    assert.equal(state.calls.length,1);
+    assert.equal(String(state.calls[0].url),'https://api.openai.com/v1/chat/completions');
+    assert.equal(state.calls[0].init.headers.authorization,`Bearer ${OWN}`);
+    assert.equal(JSON.parse(state.calls[0].init.body).model,'gpt-5-mini');
+    const usage=state.writes.find(w=>w.table==='usage_events');
+    assert.equal(usage.payload.cost_usd,0);
+    assert.equal(usage.payload.own_key,true);
+    assert.ok(state.rpcs.some(r=>r.fn==='provider_key_for_runtime'&&r.args.p_provider==='openai'));
+  });
+  test(`${name}: a failing own key says why and never falls back to Firbo's models`, async () => {
+    const {state,response,body}=await invoke(name,{model:'openai:gpt-5-mini',ownKey:OWN,ownFailure:true});
+    assert.equal(response.status,502);
+    assert.equal(body.reason,'own_key_openai_http_401');
+    assert.equal(state.calls.length,1);
+    assert.ok(!state.calls.some(c=>String(c.url).includes('gateway.firboai.app')));
+    assert.ok(!state.writes.some(w=>w.table==='usage_events'));
+  });
+  test(`${name}: without a saved key the normal route is used and the key is never sent`, async () => {
+    const {state,response}=await invoke(name,{model:'openai:gpt-5-mini',env:{FIRBO_TEXT_ROUTING_MODE:'legacy'}});
+    assert.equal(response.status,200);
+    assert.equal(state.calls[0].init.headers.authorization,'Bearer direct-secret');
+    assert.ok(!state.calls.some(c=>JSON.stringify(c.init?.headers??{}).includes(OWN)));
+    assert.notEqual(state.writes.find(w=>w.table==='usage_events').payload.own_key,true);
+  });
+}

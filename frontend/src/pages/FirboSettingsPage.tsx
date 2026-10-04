@@ -1,5 +1,6 @@
 import { LanguageSwitcher } from '../components/brand/LanguageSwitcher';
 import { Panel } from '../components/command/Panel';
+import { OwnKeysPanel } from '../components/company/OwnKeysPanel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { getBase } from '../lib/api';
@@ -43,6 +44,8 @@ export function FirboSettingsPage() {
             {t('common.signOut')}
           </button>
         </section>
+
+        {current && <OwnKeysPanel orgId={current.organization.id} canManage={current.role === 'owner' || current.role === 'admin'} />}
 
         <div className="grid gap-5 md:grid-cols-2">
           <Panel title={t('settings.language')}>

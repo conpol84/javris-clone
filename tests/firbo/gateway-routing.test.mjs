@@ -108,3 +108,12 @@ for (const bad of ['http://evil/x', 'a b', '']) {
   });
 }
 test('free plan still fails closed without gateway credentials', () => assert.throws(() => forPlan('free', { ...freeOn, OMNIROUTE_API_KEY: undefined }), GatewayError));
+test('free-plan combo is always $0, even when paid estimates are set or missing', () => {
+  const p = forPlan('free', { FIRBO_FREE_PLAN_ROUTING: 'gateway', OMNIROUTE_PRICE_IN_PER_M: '5', OMNIROUTE_PRICE_OUT_PER_M: '20' });
+  assert.equal(p.priceIn, 0); assert.equal(p.priceOut, 0); assert.equal(p.model, 'firbo-free');
+  const q = forPlan('free', { FIRBO_FREE_PLAN_ROUTING: 'gateway', OMNIROUTE_PRICE_IN_PER_M: undefined, OMNIROUTE_PRICE_OUT_PER_M: undefined });
+  assert.equal(q.priceIn, 0);
+  // Paid plans keep the configured estimates, so their budgets and analytics stay real.
+  const paid = forPlan('pro', { FIRBO_FREE_PLAN_ROUTING: 'gateway', OMNIROUTE_PRICE_IN_PER_M: '5', OMNIROUTE_PRICE_OUT_PER_M: '20' }, 'omniroute:firbo-economy');
+  assert.equal(paid.priceIn, 5); assert.equal(paid.priceOut, 20);
+});

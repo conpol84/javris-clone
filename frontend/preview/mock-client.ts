@@ -20,6 +20,7 @@ const approvals = [
 ];
 const usage: unknown[] = [];
 for (let d = 29; d >= 0; d--) for (let k = 0; k < 2 + ((d * 7) % 6); k++) usage.push({ id: `u${d}-${k}`, agent_id: agents[(d + k) % 8].id, input_tokens: 800 + ((d * 131 + k * 57) % 2400), output_tokens: 300 + ((d * 91 + k * 31) % 1200), cost_usd: 0.004 + ((d * 13 + k * 7) % 40) / 1000, created_at: ago(d + k / 10), organization_id: ORG, model: 'openai:gpt-5-mini' });
+const mockPaid = typeof location !== 'undefined' && /mockplan=pro/.test(location.search);
 const DB: Record<string, unknown[]> = {
   organization_members: [{ role: 'owner', user_id: 'u1', organization_id: ORG, organizations: { id: ORG, name: 'Trade Athletes', slug: 'trade-athletes', profile: { industry: 'Sports', onboarded: true } } }],
   organizations: [{ id: ORG, name: 'Trade Athletes', slug: 'trade-athletes', plan: 'free', profile: {} }],
@@ -33,6 +34,8 @@ const DB: Record<string, unknown[]> = {
   ],
   audit_log: [{ id: 'l1', action: 'agent.hired', entity_type: 'agent', entity_id: 'a8', details: { name: 'Data Analyst' }, created_at: ago(1), actor_id: 'u1' }, { id: 'l2', action: 'agent.updated', entity_type: 'agent', entity_id: 'a2', details: { name: 'Sales Agent', changed: ['autonomy'] }, created_at: ago(2), actor_id: 'u1' }],
   conversations: [], messages: [], shifts: [], connector_devices: [], connector_jobs: [], platform_admins: [], integration_votes: [],
+  // ?mockplan=pro previews a paid company with one connected own key.
+  org_provider_keys: mockPaid ? [{ provider: 'openai', key_hint: '…a1b2', models: ['gpt-5-mini', 'gpt-5', 'o4-mini'], updated_at: ago(1) }] : [],
 };
 function builder(table: string) {
   const rows = () => DB[table] ?? [];
@@ -43,7 +46,7 @@ function builder(table: string) {
   return b;
 }
 const RPC: Record<string, unknown> = {
-  get_plan_usage: { plan: { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['ai_ceo_text'], sort: 1, purchasable: false }, status: 'active', renews_at: null, has_subscription: false, usage: { agents: 9, shifts: 1, members: 1, memories: 1, daily_runs: 8, integrations: 2 } },
+  get_plan_usage: { plan: mockPaid ? { id: 'pro', name: 'Pro', price_month_usd: 29, price_year_usd: 290, limits: { agents: 25, shifts: 10, members: 10, memories: 500, daily_runs: 300, integrations: 10 }, features: ['ai_ceo_voice', 'byo_keys'], sort: 2, purchasable: true } : { id: 'free', name: 'Free', price_month_usd: 0, price_year_usd: 0, limits: { agents: 2, shifts: 1, members: 2, memories: 25, daily_runs: 25, integrations: 2 }, features: ['ai_ceo_text'], sort: 1, purchasable: false }, status: 'active', renews_at: null, has_subscription: false, usage: { agents: 9, shifts: 1, members: 1, memories: 1, daily_runs: 8, integrations: 2 } },
     is_platform_admin: false, list_members: [{ user_id: 'u1', email: 'owner@tradeathletes.com', display_name: 'Constantinos', role: 'owner', created_at: ago(20) }],
 };
 const guest = typeof location !== 'undefined' && location.search.includes('guest');
