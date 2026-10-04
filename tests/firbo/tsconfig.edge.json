@@ -23,6 +23,7 @@
     "../../supabase/functions/_shared/task-briefing.ts",
     "../../supabase/functions/_shared/model-json.ts",
     "../../supabase/functions/provider-keys/index.ts",
-    "../../supabase/functions/_shared/agent-loop.ts"
+    "../../supabase/functions/_shared/agent-loop.ts",
+    "../../supabase/functions/_shared/free-search.ts"
   ]
 }
