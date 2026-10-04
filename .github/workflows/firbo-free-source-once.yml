@@ -1,0 +1,87 @@
+name: Firbo reviewed free compute candidate
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-free-source-once.yml','tests/firbo/free-transfer-*.once.b64']
+permissions:
+  contents: read
+jobs:
+  reviewed:
+    if: github.repository == 'conpol84/javris-clone' && github.event.head_commit.message == 'Verify reviewed free compute pilot source'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Apply exact reviewed edits without changing any other source
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json
+          from pathlib import Path
+          packed=base64.b64decode(''.join(Path(f'tests/firbo/free-transfer-{i}.once.b64').read_text() for i in range(2)),validate=True)
+          assert hashlib.sha256(packed).hexdigest()=='8ac1ca248674bf154ca5c193b242c094ff3baa24cad6c5b8e7e7c1652b227eaf'
+          edits=json.loads(gzip.decompress(packed))
+          allowed={'src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','supabase/functions/_shared/free-routing.ts','supabase/functions/agent-chat/index.ts','supabase/functions/agent-runner/index.ts','tests/firbo/edge-entrypoints.test.mjs','tests/firbo/test_free_inference.py','tests/firbo/test_free_app.py','tests/firbo/free-routing.test.mjs','tests/firbo/test_local_capacity.py','deploy/hostinger/local_model_capacity.py','deploy/hostinger/compose.ollama-candidate.yaml','docs/FIRBO-FREE-COMPUTE.md'}
+          assert set(edits)==allowed
+          blob=lambda b:hashlib.sha1(b'blob '+str(len(b)).encode()+b'\0'+b).hexdigest()
+          for name,item in edits.items():
+            p=Path(name)
+            if 'before' in item:
+              old=p.read_bytes();assert blob(old)==item['before'],name
+              lines=old.decode().splitlines(True)
+              for start,end,new in reversed(item['edits']):lines[start:end]=[new]
+              data=''.join(lines).encode()
+            else:
+              assert not p.exists(),name
+              data=item['content'].encode()
+            assert blob(data)==item['after'],name
+            p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes(data)
+          Path('/tmp/firbo-free-manifest.json').write_text(json.dumps(edits))
+          PY
+      - name: Native auth, real SQLite and bounded fallback without live providers
+        run: |
+          python3 -m venv /tmp/firbo-free-python
+          /tmp/firbo-free-python/bin/pip install -r tests/firbo/requirements.txt
+          mkdir -p /tmp/firbo-free-evidence
+          set -o pipefail
+          /tmp/firbo-free-python/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_capacity.py | tee /tmp/firbo-free-evidence/python.txt
+      - name: Real Edge handler code with fake identity and inference services
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test tests/firbo/gateway-routing.test.mjs tests/firbo/edge-entrypoints.test.mjs tests/firbo/free-routing.test.mjs | tee /tmp/firbo-free-evidence/node.txt
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Strict Edge types and complete current frontend regression
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+          npm test | tee /tmp/firbo-free-evidence/frontend.txt
+          npm run build:tauri | tee /tmp/firbo-free-evidence/build.txt
+      - name: Store only verified source blobs, not a tree, ref or deployment
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const edits=JSON.parse(fs.readFileSync('/tmp/firbo-free-manifest.json','utf8'));
+          const entries=[];
+          for(const[path,item]of Object.entries(edits)){
+            const response=await fetch('https://api.github.com/repos/conpol84/javris-clone/git/blobs',{method:'POST',headers:{authorization:'Bearer '+process.env.GH_TOKEN,'content-type':'application/json',accept:'application/vnd.github+json'},body:JSON.stringify({content:fs.readFileSync(path,'utf8'),encoding:'utf-8'})});
+            if(!response.ok)throw new Error('Blob write failed HTTP '+response.status);
+            const blob=await response.json();if(blob.sha!==item.after)throw new Error('Hash mismatch '+path);
+            entries.push({path,mode:'100644',type:'blob',sha:blob.sha});
+            console.log('FIRBO_FREE_VERIFIED_BLOB '+path+' '+blob.sha);
+          }
+          fs.writeFileSync('/tmp/firbo-free-evidence/reviewed-blobs.json',JSON.stringify({source_parent:process.env.GITHUB_SHA,entries,scope:'Disabled text-only pilot; real SQLite; synthetic HTTP and identity; no live Ollama/provider/customer tests'},null,2));
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-free-pilot-reviewed
+          path: /tmp/firbo-free-evidence/
+          retention-days: 7
