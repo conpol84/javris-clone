@@ -36,8 +36,9 @@ export function CeoPage() {
   const { t, lang } = i18n;
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
-  const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite);
+  const role = current?.role ?? 'viewer';
+  const canWrite = WRITER_ROLES.includes(role);
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const [text, setText] = useState('');
   const org = useOrgData(orgId, false, 12_000);
