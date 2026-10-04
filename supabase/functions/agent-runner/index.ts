@@ -281,6 +281,7 @@ Deno.serve(async (req) => {
         if (results.length) return results.map((r: any, n: number) => `${n + 1}. ${flat(r.title, 120)} - ${flat(r.url, 200)}\n   ${flat(r.snippet, 300)}`).join('\n');
       } catch (error) { toolFailed('web_search', error); }
     }
+    toolFailed('web_search', new Error('no_results'));
     return 'No results.';
   };
   if (!free && gw && (usable('browser_extract') || usable('browser_navigate'))) loopTools.read_page = async (u) => {

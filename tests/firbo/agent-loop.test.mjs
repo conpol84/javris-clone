@@ -53,3 +53,10 @@ test('when it must answer but still asks for a tool, it is asked once more for t
   const out = await runAgentLoop({ call: async () => replies.shift(), system: 'S', user: 'U', tools: { web_search: async () => 'r' }, maxSteps: 1 });
   assert.equal(out.text, final); assert.equal(out.calls, 3);
 });
+test('native tool syntax from some free models is understood', () => {
+  const t = "<|tool_call_start|>[web_search(input='latest sports trends 2026'), web_search(input='x')]<|tool_call_end|>";
+  assert.deepEqual(parseToolRequest(t, ['web_search']), { action: 'web_search', input: 'latest sports trends 2026' });
+  assert.deepEqual(parseToolRequest('read_page("https://a.example/x")', ['read_page']), { action: 'read_page', input: 'https://a.example/x' });
+  assert.equal(parseToolRequest('I will use web_search later.', ['web_search']), null);
+  assert.equal(parseToolRequest(final, ['web_search']), null);
+});

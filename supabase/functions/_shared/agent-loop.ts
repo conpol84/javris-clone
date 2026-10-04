@@ -27,13 +27,23 @@ export function loopInstructions(tools: ToolName[], maxSteps: number): string {
   ].join('\n');
 }
 
+// Some models answer in their own native tool syntax, e.g. <|tool_call_start|>[web_search(input='...')]<|tool_call_end|>.
+const NATIVE_CALL = /\b(web_search|read_page|memory_search|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
+
 export function parseToolRequest(text: string, allowed: ToolName[]): { action: ToolName; input: string } | null {
   const o = extractModelJson(text);
-  if (!o || typeof o.action !== 'string' || typeof o.input !== 'string') return null;
-  if (typeof o.report === 'string' || typeof o.summary === 'string') return null;
-  const action = o.action.trim().toLowerCase() as ToolName;
-  const input = o.input.trim().slice(0, 500);
-  return allowed.includes(action) && input ? { action, input } : null;
+  if (o && (typeof o.report === 'string' || typeof o.summary === 'string')) return null;
+  let action: ToolName | null = null;
+  let input = '';
+  if (o && typeof o.action === 'string' && typeof o.input === 'string') {
+    action = o.action.trim().toLowerCase() as ToolName;
+    input = o.input;
+  } else {
+    const m = NATIVE_CALL.exec(text);
+    if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }
+  }
+  input = input.trim().slice(0, 500);
+  return action && allowed.includes(action) && input ? { action, input } : null;
 }
 
 /**
