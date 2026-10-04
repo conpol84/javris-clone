@@ -37,7 +37,7 @@ jobs:
           trap 'kill "$PID" 2>/dev/null || true' EXIT
           for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5000/info >/dev/null && break; sleep 1; done
           /tmp/piper/bin/python - <<'PY'
-          import json,time,urllib.request,wave,pathlib,hashlib
+          import json,time,urllib.request,urllib.error,wave,pathlib,hashlib
           cases={
             'en':('en_US-joe-medium','Hello, I am Firbo.'),
             'el':('el_GR-rapunzelina-low','Γεια σου. Είμαι ο Firbo.'),
@@ -53,8 +53,13 @@ jobs:
             payload=json.dumps({'text':text,'voice':voice,'length_scale':1.04},ensure_ascii=False).encode()
             req=urllib.request.Request('http://127.0.0.1:5000/synthesize',data=payload,headers={'content-type':'application/json'})
             start=time.monotonic()
-            with urllib.request.urlopen(req,timeout=60) as r:
-              raw=r.read(6_000_001);ctype=r.headers.get('content-type')
+            try:
+              with urllib.request.urlopen(req,timeout=60) as r:
+                raw=r.read(6_000_001);ctype=r.headers.get('content-type')
+            except urllib.error.HTTPError as e:
+              body=e.read(4096).decode('utf-8','replace')
+              print(json.dumps({'failed_lang':lang,'voice':voice,'http':e.code,'body':body},ensure_ascii=False))
+              raise
             p=out/'wav'/f'{lang}.wav';p.write_bytes(raw)
             with wave.open(str(p),'rb') as w:
               meta={'rate':w.getframerate(),'channels':w.getnchannels(),'width':w.getsampwidth(),'frames':w.getnframes()}
@@ -62,6 +67,9 @@ jobs:
             assert raw[:4]==b'RIFF' and raw[8:12]==b'WAVE' and meta['channels']==1 and meta['width']==2
           (out/'results.json').write_text(json.dumps({'contract':'firbo-piper-proof/v1','rows':rows,'all_passed':True,'paid_api_calls':0},ensure_ascii=False,indent=2))
           PY
+      - name: Show Piper log on prior failure
+        if: failure()
+        run: cat /tmp/firbo-piper-evidence/piper.log || true
       - name: Test Firbo DSP and full current Python contracts
         run: |
           /tmp/piper/bin/pip install -r tests/firbo/requirements.txt
