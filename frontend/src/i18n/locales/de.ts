@@ -1378,7 +1378,7 @@ const de: Dictionary = {
   'run.queued_one': 'Fertig — {count} Aktion wartet im Posteingang auf Ihre Freigabe.',
   'run.queued_other': 'Fertig — {count} Aktionen warten im Posteingang auf Ihre Freigabe.',
   'run.completed': 'Fertig.',
-  'run.err.not_configured': 'Es ist noch kein KI-Modell verbunden. Hinterlegen Sie die Verbindung (LLM_BASE_URL und LLM_API_KEY) in den Secrets Ihrer Supabase Edge Functions.',
+  'run.err.not_configured': 'Der KI-Dienst ist für dieses Unternehmen noch nicht bereit. Bitte versuche es gleich noch einmal; das Team wurde informiert.',
   'run.err.budget_exceeded': 'Dieser Agent hat sein Monatsbudget erreicht. Erhöhen Sie es unter KI-Team, um fortzufahren.',
   'run.err.rate_limited': 'Zu viele Ausführungen dieses Agenten in der letzten Stunde. Versuchen Sie es später erneut.',
   'run.err.agent_disabled': 'Dieser Agent ist deaktiviert. Aktivieren Sie ihn zuerst unter KI-Team.',

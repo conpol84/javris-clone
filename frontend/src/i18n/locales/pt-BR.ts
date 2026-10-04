@@ -1378,7 +1378,7 @@ const ptBR: Dictionary = {
   'run.queued_one': 'Pronto — {count} ação aguarda sua aprovação na Caixa de entrada.',
   'run.queued_other': 'Pronto — {count} ações aguardam sua aprovação na Caixa de entrada.',
   'run.completed': 'Pronto.',
-  'run.err.not_configured': 'Ainda não há um modelo de IA conectado. Adicione a conexão (LLM_BASE_URL e LLM_API_KEY) nos secrets das Edge Functions do Supabase.',
+  'run.err.not_configured': 'O serviço de IA ainda não está pronto para esta empresa. Tente novamente em instantes; a equipe foi avisada.',
   'run.err.budget_exceeded': 'Este agente atingiu o orçamento mensal. Aumente-o em Equipe de IA para continuar.',
   'run.err.rate_limited': 'Execuções demais na última hora para este agente. Tente mais tarde.',
   'run.err.agent_disabled': 'Este agente está desativado. Ative-o primeiro em Equipe de IA.',

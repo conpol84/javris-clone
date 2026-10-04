@@ -8,7 +8,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createConversation, deleteConversation, listAgents, listConversations, listMessages, type ConversationRow } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
-import { RunError, sendChat, type ChatMessage } from '../lib/company/runner';
+import { RunError, runErrorText, sendChat, type ChatMessage } from '../lib/company/runner';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
@@ -149,7 +149,7 @@ export function AgentChatPage() {
       if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setText(msg);
-      toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+      toast.error(runErrorText(t, err));
     } finally {
       if (voiceScopeRef.current === scopeAtSend) setSending(false);
     }

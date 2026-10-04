@@ -10,7 +10,7 @@ import type { TKey } from '../../i18n/locales/en';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { createTask } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
-import { RunError, runTask } from '../../lib/company/runner';
+import { RunError, runErrorText, runTask } from '../../lib/company/runner';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../../lib/company/status';
 import { MANAGER_ROLES, WRITER_ROLES, type TaskPriority } from '../../lib/company/types';
 import { useCeoSession } from '../../lib/company/useCeoSession';
@@ -119,7 +119,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
         const out = await runTask(id, lang);
         if (out.queued > 0) toast.message(t('run.queued', { count: out.queued }));
       } catch (err) {
-        toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+        toast.error(runErrorText(t, err));
       }
       void org.reload();
     } catch (err) {

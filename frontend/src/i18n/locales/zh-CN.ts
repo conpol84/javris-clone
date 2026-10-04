@@ -1379,7 +1379,7 @@ const zhCN: Dictionary = {
   'run.queued_one': '完成——收件箱中有 {count} 项操作等待你审批。',
   'run.queued_other': '完成——收件箱中有 {count} 项操作等待你审批。',
   'run.completed': '完成。',
-  'run.err.not_configured': '尚未连接 AI 模型。请在 Supabase Edge Function 的 secrets 中添加连接信息（LLM_BASE_URL 和 LLM_API_KEY）。',
+  'run.err.not_configured': '该公司的 AI 服务尚未就绪。请稍后重试，团队已收到通知。',
   'run.err.budget_exceeded': '该智能体已用完本月预算。请在“AI 团队”中调高预算后再继续。',
   'run.err.rate_limited': '该智能体在过去一小时内运行次数过多，请稍后再试。',
   'run.err.agent_disabled': '该智能体已停用。请先在“AI 团队”中启用。',

@@ -7,7 +7,7 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask, listAgents } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
-import { RunError, runTask } from '../lib/company/runner';
+import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { createShift, deleteShift, listShifts, setShiftEnabled, type Cadence, type ShiftRow } from '../lib/company/shifts';
 import { agentColor } from '../lib/company/status';
@@ -125,7 +125,7 @@ export function ShiftsPage() {
       const out = await runTask(id, lang);
       toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
     } catch (err) {
-      toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+      toast.error(runErrorText(t, err));
     } finally {
       setBusy(null);
     }

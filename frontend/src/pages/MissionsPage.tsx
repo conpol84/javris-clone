@@ -9,7 +9,7 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { listAgents } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
 import { createMission, getMission, listMissions, listSteps, runMission, type MissionProgress, type MissionRow, type StepRow } from '../lib/company/missions';
-import { RunError } from '../lib/company/runner';
+import { RunError, runErrorText } from '../lib/company/runner';
 import { resolvePersona } from '../lib/company/persona';
 import { agentColor } from '../lib/company/status';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
@@ -103,7 +103,7 @@ export function MissionsPage() {
         setSteps(p.steps);
       }, () => stop.current);
     } catch (err) {
-      toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+      toast.error(runErrorText(t, err));
     } finally {
       setPhase(null);
       await reloadMissions().catch(() => {});

@@ -1398,7 +1398,7 @@ export const en = {
   'run.queued_one': 'Done — {count} action is waiting for your approval in the Inbox.',
   'run.queued_other': 'Done — {count} actions are waiting for your approval in the Inbox.',
   'run.completed': 'Done.',
-  'run.err.not_configured': 'No AI model is connected yet. Add the model connection (LLM_BASE_URL and LLM_API_KEY) in your Supabase Edge Function secrets.',
+  'run.err.not_configured': 'The AI service is not ready for this company yet. Please try again shortly; the team has been notified.',
   'run.err.budget_exceeded': 'This agent has reached its monthly budget. Raise it in AI Team to continue.',
   'run.err.rate_limited': 'Too many runs in the last hour for this agent. Try again later.',
   'run.err.agent_disabled': 'This agent is disabled. Enable it in AI Team first.',

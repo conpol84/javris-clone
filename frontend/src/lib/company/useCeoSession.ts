@@ -3,7 +3,7 @@ import { toast } from 'sonner';
 import type { HoloState } from '../../components/scenes/HologramScene';
 import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
-import { RunError, sendChat } from './runner';
+import { RunError, runErrorText, sendChat } from './runner';
 import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
@@ -134,7 +134,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       busy.current=false;handsFreeRef.current=false;setHandsFreeValue(false);setState('idle');
       if(active.signal.aborted){note(voiceMessages(lang).stopped);return;}
       active.finish(true);note(voiceMessages(lang).server);
-      toast.error(t(`run.err.${error instanceof RunError?error.code:'unknown'}` as TKey));
+      toast.error(runErrorText(t, error));
     }
   };
   const listen=()=>{

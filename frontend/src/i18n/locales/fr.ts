@@ -1378,7 +1378,7 @@ const fr: Dictionary = {
   'run.queued_one': 'Terminé — {count} action attend votre validation dans la boîte de réception.',
   'run.queued_other': 'Terminé — {count} actions attendent votre validation dans la boîte de réception.',
   'run.completed': 'Terminé.',
-  'run.err.not_configured': 'Aucun modèle d’IA n’est encore connecté. Ajoutez la connexion (LLM_BASE_URL et LLM_API_KEY) dans les secrets des Edge Functions Supabase.',
+  'run.err.not_configured': 'Le service d’IA n’est pas encore prêt pour cette entreprise. Réessayez dans un instant ; l’équipe a été prévenue.',
   'run.err.budget_exceeded': 'Cet agent a atteint son budget mensuel. Augmentez-le dans Équipe IA pour continuer.',
   'run.err.rate_limited': 'Trop d’exécutions de cet agent durant la dernière heure. Réessayez plus tard.',
   'run.err.agent_disabled': 'Cet agent est désactivé. Activez-le d’abord dans Équipe IA.',

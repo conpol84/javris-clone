@@ -6,7 +6,7 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/locales/en';
 import { loadAgentUsage, type AgentUsage } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
-import { RunError, runTask } from '../../lib/company/runner';
+import { RunError, runErrorText, runTask } from '../../lib/company/runner';
 import { agentColor } from '../../lib/company/status';
 import { OPEN_TASK_STATUSES, safeAutonomy, type AgentRow, type TaskRow } from '../../lib/company/types';
 
@@ -68,7 +68,7 @@ export function AgentDetail({
       toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
       setOpenId(id);
     } catch (err) {
-      toast.error(t(`run.err.${err instanceof RunError ? err.code : 'unknown'}` as TKey));
+      toast.error(runErrorText(t, err));
     } finally {
       setRunningId(null);
       onChanged();

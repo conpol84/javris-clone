@@ -5,7 +5,7 @@ import { StatusDot } from '../components/command/Panel';
 import { Avatar, EmptyState, PageHeader, Pill, Segmented, Stat } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
-import { RunError, runTask } from '../lib/company/runner';
+import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -101,8 +101,7 @@ export function TasksPage() {
       toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
       setOpenId(id);
     } catch (err) {
-      const code = err instanceof RunError ? err.code : 'unknown';
-      toast.error(t(`run.err.${code}` as TKey));
+      toast.error(runErrorText(t, err));
     } finally {
       setRunningId(null);
       await data.reload();
