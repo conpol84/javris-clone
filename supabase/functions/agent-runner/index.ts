@@ -288,8 +288,10 @@ Deno.serve(async (req) => {
   };
   if (usable('memory_search') || usable('knowledge_search')) loopTools.memory_search = async (q) => {
     const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 4);
-    const { data } = await admin.from('memories').select('content').eq('organization_id', task.organization_id)
-      .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(words.length ? words.map(w => `content.ilike.%${w.replace(/[%,()]/g, '')}%`).join(',') : 'content.neq.').limit(6);
+    let query = admin.from('memories').select('content').eq('organization_id', task.organization_id).or(`agent_id.is.null,agent_id.eq.${agent.id}`);
+    const terms = words.map(w => w.replace(/[^\p{L}\p{N}-]/gu, '')).filter(Boolean);
+    if (terms.length) query = query.or(terms.map(w => `content.ilike.%${w}%`).join(','));
+    const { data } = await query.order('importance', { ascending: false }).limit(6);
     return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
   };
   let text = '';
