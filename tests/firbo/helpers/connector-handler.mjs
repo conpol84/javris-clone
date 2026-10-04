@@ -56,7 +56,7 @@ export async function makeHandler() {
  const source=await fs.readFile(new URL('../../../supabase/functions/connector/index.ts',import.meta.url),'utf8');
  const original="import { createClient } from 'npm:@supabase/supabase-js@2';";
  if(!source.includes(original))throw new Error('test adapter must be reviewed after SDK import changes');
- const code=stripTypeScriptTypes(source.replace(original,''));let handler;
+ const code=stripTypeScriptTypes(source.replace(original,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
  const deno={env:{get:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
  new Function('Deno','createClient','crypto',code)(deno,()=>sdk,webcrypto);
  const invoke=body=>handler(new Request('https://synthetic.invalid/connector',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
