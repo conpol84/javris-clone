@@ -70,9 +70,13 @@ export async function runAgentLoop(o: {
   finalTimeoutMs?: number;
   /** Instructions for the clean-up request that turns a draft (thoughts, notes) into the final object. */
   repairSystem?: string;
+  /** Absolute time (same clock as `now`) by which every request must be over: the host's wall-clock limit. */
+  deadline?: number;
   now?: () => number;
 }): Promise<{ text: string; steps: LoopStep[]; calls: number }> {
   const now = o.now ?? Date.now;
+  // No request may run past the deadline; a request with less than a second left is not worth sending.
+  const fit = (ms: number) => o.deadline === undefined ? ms : Math.min(ms, o.deadline - now() - 1_500);
   const started = now();
   const maxSteps = o.maxSteps ?? 5;
   const budget = o.budgetMs ?? 60_000;
@@ -87,11 +91,24 @@ export async function runAgentLoop(o: {
   let insisted = false;
   let nudges = 0;
   let repaired = false;
+  let stepFailed = false;
   while (true) {
     const left = budget - (now() - started);
-    const last = steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
+    const last = stepFailed || steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
     if (last && steps.length > 0) messages.push({ role: 'user', content: 'No more tools. Reply now with the final JSON object only.' });
-    const raw = await o.call(messages, last ? (o.finalTimeoutMs ?? 50_000) : Math.max(8_000, Math.min(45_000, left)));
+    // Free models often need 20-30 s per reply: never give a step less than 20 s.
+    const timeout = fit(last ? (o.finalTimeoutMs ?? 50_000) : Math.max(20_000, Math.min(45_000, left)));
+    if (timeout < 1_000) throw new Error('out_of_time');
+    let raw: string;
+    try {
+      raw = await o.call(messages, timeout);
+    } catch (error) {
+      // A step that fails (slow or busy provider) must not throw away the research done so far:
+      // go straight to the final answer once, with what was found.
+      if (last || stepFailed) throw error;
+      stepFailed = true;
+      continue;
+    }
     calls++;
     // Reasoning models may wrap their thoughts in <think>; only what follows is the answer.
     const text = raw.replace(/<think>[\s\S]*?<\/think>/gi, '').trim() || raw;
@@ -102,7 +119,7 @@ export async function runAgentLoop(o: {
         insisted = true;
         messages.push({ role: 'assistant', content: text.slice(0, 2000) });
         messages.push({ role: 'user', content: 'You cannot use more tools. Answer now with the final JSON object (summary, report, actions) using what you have.' });
-        const again = await o.call(messages, o.finalTimeoutMs ?? 50_000);
+        const again = await o.call(messages, fit(o.finalTimeoutMs ?? 50_000));
         calls++;
         return { text: again, steps, calls };
       }
@@ -121,7 +138,7 @@ export async function runAgentLoop(o: {
           { role: 'system', content: o.repairSystem ?? REPAIR_SYSTEM },
           { role: 'user', content: `DRAFT:\n${text.slice(0, 8000)}` },
         ];
-        const fixed = await o.call(repair, Math.min(o.finalTimeoutMs ?? 50_000, 30_000)).catch(() => '');
+        const fixed = fit(30_000) < 5_000 ? '' : await o.call(repair, fit(Math.min(o.finalTimeoutMs ?? 50_000, 30_000))).catch(() => '');
         calls++;
         const clean = fixed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
         return { text: isFinalAnswer(clean) ? clean : text, steps, calls };
@@ -163,11 +180,13 @@ export async function finishCutOff(
   const now = o.now ?? Date.now;
   let report = cut.report;
   let calls = 0;
-  while (calls < (o.maxCalls ?? 2) && (o.deadline === undefined || now() < o.deadline)) {
+  while (calls < (o.maxCalls ?? 2)) {
+    const timeout = Math.min(o.timeoutMs ?? 30_000, o.deadline === undefined ? Infinity : o.deadline - now() - 1_500);
+    if (timeout < 8_000) break;
     const more = await call([
       { role: 'system', content: [CONTINUE_SYSTEM, o.instructions ?? ''].filter(Boolean).join(' ') },
       { role: 'user', content: `REPORT SO FAR:\n${report.slice(-3000)}` },
-    ], o.timeoutMs ?? 30_000).catch(() => '');
+    ], timeout).catch(() => '');
     calls++;
     let piece = more.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^```(?:markdown|md)?\s*|\s*```$/g, '');
     const done = !piece.trim() || /(^|\n)\s*END\s*$/.test(piece);

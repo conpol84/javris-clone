@@ -119,7 +119,11 @@ function parseModelJson(text: string): { summary: string; report: string; action
   return { summary: summary.slice(0, 400), report: report || text, actions };
 }
 
+// Edge functions are stopped after 150 s of wall-clock time; every model request must be over before that.
+const WALL_CLOCK_MS = 140_000;
+
 Deno.serve(async (req) => {
+  const requestStarted = Date.now();
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
   const url = Deno.env.get('SUPABASE_URL')!;
@@ -323,12 +327,12 @@ Deno.serve(async (req) => {
   try {
     const out = await runAgentLoop({
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
-      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000,
+      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS,
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
     });
     text = out.text; steps = out.steps; calls = out.calls;
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
-    const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: t0 + 110_000 });
+    const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
   } catch { /* lastError says why */ }
   if (!text || !used) {

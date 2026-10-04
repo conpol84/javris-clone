@@ -103,3 +103,18 @@ test('a report cut off by the provider is completed with continuation requests a
   assert.deepEqual(await finishCutOff(async () => { throw new Error('no call'); }, whole), { text: whole, calls: 0 });
   assert.equal(trimDanglingLink('done [see](https://x.y/a'), 'done');
 });
+test('a failed tool step does not lose the research: the loop goes straight to the final answer', async () => {
+  const replies = [async () => '{"action":"web_search","input":"q"}', async () => { throw new Error('gateway_timeout_or_cancelled'); }, async () => final];
+  const seen = [];
+  const out = await runAgentLoop({ call: async (m, t) => { seen.push({ last: m.at(-1).content, t }); return replies.shift()(); }, system: 'S', user: 'U', tools: { web_search: async () => 'r' } });
+  assert.equal(out.text, final); assert.equal(out.steps.length, 1); assert.equal(out.calls, 2);
+  assert.match(seen.at(-1).last, /No more tools/);
+  assert.ok(seen[1].t >= 20_000, 'a step gets at least 20 s');
+});
+test('requests never run past the deadline', async () => {
+  let clock = 0;
+  const timeouts = [];
+  await assert.rejects(runAgentLoop({ call: async (m, t) => { timeouts.push(t); clock += 30_000; return '{"action":"web_search","input":"q"}'; }, system: 'S', user: 'U',
+    tools: { web_search: async () => 'r' }, deadline: 50_000, now: () => clock }), /out_of_time/);
+  assert.ok(timeouts.every(t => t <= 48_500), JSON.stringify(timeouts));
+});
