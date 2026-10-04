@@ -242,6 +242,13 @@ test('agent-runner: the agent searches, reads a page, then reports; usage and st
   assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
 });
+test('agent-runner: a gateway reply that is only the model thinking aloud is asked again', async () => {
+  const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:'Report',actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools:[],chatReplies});
+  assert.equal(response.status,200);
+  assert.equal(state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).length,2);
+  assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.summary,'Market up 5%');
+});
 test('agent-runner: a blocked tool is never offered to the model', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'block'}];
   const {state}=await invoke('agent-runner',{tools});

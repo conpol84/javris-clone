@@ -248,7 +248,18 @@ Deno.serve(async (req) => {
   let outTok = 0;
   let routedCost = 0;
   // One model request on the company's route (free pilot, gateway, or direct/own key). Throws with lastError set.
+  // Some models in a gateway combo answer with their reasoning only (cut off, no answer): ask again, which the
+  // combo usually sends to another model, while there is time.
   const callOnce = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
+    const until = Date.now() + timeoutMs;
+    let reply = await callModel(messages, timeoutMs);
+    for (let retry = 0; retry < 2 && gateway && looksLikeThinking(reply) && until - Date.now() > 10_000; retry++) {
+      console.warn(JSON.stringify({ event: 'firbo_gateway_thinking_reply', task_id: task.id, model: routing?.reported_model ?? null }));
+      reply = await callModel(messages, until - Date.now());
+    }
+    return reply;
+  };
+  const callModel = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     let completion: any = null;
     if (free) {
       try {
