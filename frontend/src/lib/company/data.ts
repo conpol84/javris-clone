@@ -92,6 +92,19 @@ export async function createTask(input: {
   return (fail(error, data) as { id: string }).id;
 }
 
+/** Adds a dated note to the task description, so the next run of the agent sees the extra information. */
+export async function appendTaskNote(taskId: string, note: string): Promise<void> {
+  const text = note.trim();
+  if (!text) return;
+  const client = requireClient();
+  const { data, error } = await client.from('tasks').select('description').eq('id', taskId).maybeSingle();
+  fail(error, null);
+  const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
+  const next = `${(data?.description ?? '').trim()}\n\n[Extra information ${stamp}]\n${text}`.trim().slice(0, 6000);
+  const { error: updateError } = await client.from('tasks').update({ description: next }).eq('id', taskId);
+  fail(updateError, null);
+}
+
 export async function setTaskStatus(taskId: string, status: TaskStatus): Promise<void> {
   const patch: Record<string, unknown> = { status };
   if (status === 'running') patch.started_at = new Date().toISOString();

@@ -1009,6 +1009,9 @@ export const en = {
   'landing.how.s2.d': 'Talk to your CEO or write a task. The team plans, researches and prepares real deliverables.',
   'landing.how.s3.t': 'Approve what matters',
   'landing.how.s3.d': 'Anything that leaves the company waits for your yes. You stay in control, they do the work.',
+  'run.moreInfo': 'Give more information',
+  'run.moreInfoPh': 'Add details, corrections or constraints. The agent reads them on the next run.',
+  'run.moreInfoRun': 'Add and run again',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

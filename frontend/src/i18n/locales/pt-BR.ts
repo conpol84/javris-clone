@@ -1001,6 +1001,9 @@ const ptBR: Dictionary = {
   'landing.how.s2.d': 'Fale com seu CEO ou escreva uma tarefa. A equipe planeja, pesquisa e prepara entregas reais.',
   'landing.how.s3.t': 'Aprove o que importa',
   'landing.how.s3.d': 'Tudo que sai da empresa espera seu sim. Você controla, eles trabalham.',
+  'run.moreInfo': 'Dar mais informações',
+  'run.moreInfoPh': 'Adicione detalhes, correções ou limites. O agente lê na próxima execução.',
+  'run.moreInfoRun': 'Adicionar e executar de novo',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

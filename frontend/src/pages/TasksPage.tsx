@@ -4,7 +4,7 @@ import { LayoutGrid, List, ListChecks } from 'lucide-react';
 import { StatusDot } from '../components/command/Panel';
 import { Avatar, EmptyState, PageHeader, Pill, Segmented, Stat } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { createTask, setTaskStatus } from '../lib/company/data';
+import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
 import { RunError, runTask } from '../lib/company/runner';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
@@ -41,6 +41,7 @@ export function TasksPage() {
   const [busy, setBusy] = useState(false);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [notes, setNotes] = useState<Record<string, string>>({});
   const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
   const receiptLabel: Record<string,string> = { en:'Execution receipts',el:'Αποδείξεις εκτέλεσης',es:'Recibos de ejecución','pt-BR':'Comprovantes de execução',fr:'Reçus d’exécution',de:'Ausführungsbelege',ar:'إيصالات التنفيذ','zh-CN':'执行回执' };
   const receiptWord: Record<string,string> = { en:'Verified',el:'Επαληθευμένο',es:'Verificado','pt-BR':'Verificado',fr:'Vérifié',de:'Verifiziert',ar:'تم التحقق','zh-CN':'已验证' };
@@ -106,6 +107,20 @@ export function TasksPage() {
       setRunningId(null);
       await data.reload();
     }
+  };
+
+  const rerunWithInfo = async (id: string) => {
+    const note = (notes[id] ?? '').trim();
+    if (!note) return;
+    try {
+      await appendTaskNote(id, note);
+      setNotes((prev) => ({ ...prev, [id]: '' }));
+    } catch (err) {
+      console.error(err);
+      toast.error(t('tasks.updateError'));
+      return;
+    }
+    await run(id);
   };
 
   const changeStatus = async (id: string, status: TaskStatus) => {
@@ -313,6 +328,23 @@ export function TasksPage() {
                               </li>
                             ))}
                           </ul>
+                        </div>
+                      )}
+                      {canWrite && task.assigned_agent_id && (
+                        <div className="mt-3 flex flex-col gap-2">
+                          <label className="fb-eyebrow" htmlFor={`more-${task.id}`}>{t('run.moreInfo')}</label>
+                          <textarea
+                            id={`more-${task.id}`}
+                            className="fb-input"
+                            rows={2}
+                            maxLength={2000}
+                            value={notes[task.id] ?? ''}
+                            placeholder={t('run.moreInfoPh')}
+                            onChange={(e) => setNotes((prev) => ({ ...prev, [task.id]: e.target.value }))}
+                          />
+                          <button className="fb-btn fb-btn--primary self-start" disabled={runningId === task.id || !(notes[task.id] ?? '').trim()} onClick={() => void rerunWithInfo(task.id)}>
+                            {t('run.moreInfoRun')}
+                          </button>
                         </div>
                       )}
                     </div>

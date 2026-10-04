@@ -1001,6 +1001,9 @@ const es: Dictionary = {
   'landing.how.s2.d': 'Habla con tu CEO o escribe una tarea. El equipo planifica, investiga y prepara entregables reales.',
   'landing.how.s3.t': 'Aprueba lo importante',
   'landing.how.s3.d': 'Todo lo que sale de la empresa espera tu visto bueno. Tú controlas, ellos trabajan.',
+  'run.moreInfo': 'Dar más información',
+  'run.moreInfoPh': 'Añade detalles, correcciones o límites. El agente los leerá en la siguiente ejecución.',
+  'run.moreInfoRun': 'Añadir y ejecutar de nuevo',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

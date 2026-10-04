@@ -83,8 +83,10 @@ function AuthedApp() {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove('dark', 'light');
-    if (settings.theme === 'dark') root.classList.add('dark');
-    else if (settings.theme === 'light') root.classList.add('light');
+    // Firbo is designed dark-first: only an explicit "light" choice leaves it.
+    const theme = settings.theme === 'system' && COMPANY_ENABLED ? 'dark' : settings.theme;
+    if (theme === 'dark') root.classList.add('dark');
+    else if (theme === 'light') root.classList.add('light');
   }, [settings.theme]);
 
   // Sync overlay conversations into the main app

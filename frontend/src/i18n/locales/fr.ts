@@ -1001,6 +1001,9 @@ const fr: Dictionary = {
   'landing.how.s2.d': 'Parlez à votre PDG ou écrivez une tâche. L\'équipe planifie, recherche et prépare de vrais livrables.',
   'landing.how.s3.t': 'Approuvez l\'essentiel',
   'landing.how.s3.d': 'Tout ce qui sort de l\'entreprise attend votre accord. Vous gardez le contrôle, ils font le travail.',
+  'run.moreInfo': 'Donner plus d’informations',
+  'run.moreInfoPh': 'Ajoutez des détails, corrections ou limites. L’agent les lira à la prochaine exécution.',
+  'run.moreInfoRun': 'Ajouter et relancer',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

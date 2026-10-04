@@ -1002,6 +1002,9 @@ const zhCN: Dictionary = {
   'landing.how.s2.d': '与 CEO 对话或写下任务。团队会规划、研究并准备真实的成果。',
   'landing.how.s3.t': '批准重要的事',
   'landing.how.s3.d': '任何对外的动作都会等待你的确认。你掌控全局，他们负责执行。',
+  'run.moreInfo': '提供更多信息',
+  'run.moreInfoPh': '补充细节、更正或限制。代理会在下次运行时读取。',
+  'run.moreInfoRun': '添加并重新运行',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

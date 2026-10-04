@@ -1001,6 +1001,9 @@ const de: Dictionary = {
   'landing.how.s2.d': 'Sprich mit deinem CEO oder schreibe eine Aufgabe. Das Team plant, recherchiert und liefert echte Ergebnisse.',
   'landing.how.s3.t': 'Freigeben, was zählt',
   'landing.how.s3.d': 'Alles, was die Firma verlässt, wartet auf dein Ja. Du behältst die Kontrolle, sie erledigen die Arbeit.',
+  'run.moreInfo': 'Mehr Informationen geben',
+  'run.moreInfoPh': 'Ergänze Details, Korrekturen oder Grenzen. Der Agent liest sie beim nächsten Lauf.',
+  'run.moreInfoRun': 'Hinzufügen und erneut ausführen',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',
