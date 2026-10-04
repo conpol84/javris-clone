@@ -57,7 +57,7 @@ const NEWS_REGION: Record<string, string> = {
   fr: 'hl=fr&gl=FR&ceid=FR:fr', 'zh-CN': 'hl=zh-CN&gl=CN&ceid=CN:zh-Hans', ar: 'hl=ar&gl=EG&ceid=EG:ar', en: 'hl=en-US&gl=US&ceid=US:en',
 };
 
-/** Web results plus recent news for a query, formatted for the model. Empty string when nothing was found. */
+/** Web results plus recent news for a query, formatted for the model. Throws (with the reason per source) when nothing was found. */
 export async function freeWebSearch(query: string, lang: string, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
   const q = encodeURIComponent(query.slice(0, 200));
   const get = async (url: string) => {
@@ -65,10 +65,19 @@ export async function freeWebSearch(query: string, lang: string, fetcher: Fetche
     if (!res.ok) throw new Error(`search_http_${res.status}`);
     return (await res.text()).slice(0, 600_000);
   };
+  const problems: string[] = [];
+  const failed = (source: string) => (error: unknown) => { problems.push(`${source}:${error instanceof Error ? error.message.slice(0, 40) : 'error'}`); return [] as SearchHit[]; };
+  const parsed = (source: string, parse: (body: string) => SearchHit[]) => (body: string) => {
+    const hits = parse(body);
+    if (!hits.length) problems.push(`${source}:empty_${body.length}`);
+    return hits;
+  };
   const [web, news] = await Promise.all([
-    get(`https://html.duckduckgo.com/html/?q=${q}`).then(h => parseDuckDuckGo(h)).catch(() => [] as SearchHit[]),
-    get(`https://news.google.com/rss/search?q=${q}&${NEWS_REGION[lang] ?? NEWS_REGION.en}`).then(x => parseRss(x)).catch(() => [] as SearchHit[]),
+    get(`https://html.duckduckgo.com/html/?q=${q}`).then(parsed('ddg', h => parseDuckDuckGo(h))).catch(failed('ddg')),
+    get(`https://news.google.com/rss/search?q=${q}&${NEWS_REGION[lang] ?? NEWS_REGION.en}`).then(parsed('news', x => parseRss(x))).catch(failed('news')),
   ]);
+  // Nothing from either source: say why (status / empty page size), so the caller can log it.
+  if (!web.length && !news.length) throw new Error(`free_search_${problems.join('|')}`.slice(0, 160));
   const lines: string[] = [];
   web.forEach((h, i) => lines.push(`${i + 1}. ${h.title} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
   if (news.length) lines.push('Recent news:', ...news.map((h, i) => `N${i + 1}. ${h.title}${h.date ? ` (${h.date})` : ''} - ${h.url}`));

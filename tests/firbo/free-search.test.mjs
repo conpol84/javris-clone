@@ -25,7 +25,7 @@ test('web and Greek news are combined; a failing source does not break the other
   const out = await freeWebSearch('αθλητικά νέα', 'el', async (url) => { seen.push(String(url)); return String(url).includes('duckduckgo') ? new Response(DDG) : new Response('down', { status: 500 }); });
   assert.match(out, /sgieurope/); assert.doesNotMatch(out, /Recent news/);
   assert.ok(seen.some(u => u.includes('hl=el&gl=GR')));
-  assert.equal(await freeWebSearch('x', 'en', async () => new Response('', { status: 500 })), '');
+  await assert.rejects(freeWebSearch('x', 'en', async () => new Response('', { status: 500 })), /free_search_ddg:search_http_500\|news:search_http_500/);
 });
 test('only public hosts can be read', () => {
   for (const h of ['localhost', '127.0.0.1', '10.0.0.5', '192.168.1.1', '172.20.0.1', '169.254.169.254', '100.64.0.1', 'metadata', 'db.internal', '[::1]']) assert.equal(isPublicHost(h), false, h);

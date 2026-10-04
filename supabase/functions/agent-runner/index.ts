@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
     return res.json();
   };
   const toolFailed = (tool: string, error: unknown) =>
-    console.warn(JSON.stringify({ event: 'firbo_agent_tool_failed', task_id: task.id, tool, reason: error instanceof Error ? error.message.slice(0, 80) : 'error' }));
+    console.warn(JSON.stringify({ event: 'firbo_agent_tool_failed', task_id: task.id, tool, reason: error instanceof Error ? error.message.slice(0, 160) : 'error' }));
   const flat = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const loopTools: LoopTools = {};
   if (!free && usable('web_search')) loopTools.web_search = async (q) => {
