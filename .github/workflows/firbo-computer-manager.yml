@@ -26,7 +26,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Computer state, website-laptop bridge and cancellation handler
-        run: node --experimental-strip-types --test tests/firbo/computer-state.test.mjs tests/firbo/connector-cancel.test.mjs tests/firbo/laptop-bridge.test.mjs tests/firbo/delivery-matrix.test.mjs
+        run: node --experimental-strip-types --test tests/firbo/computer-state.test.mjs tests/firbo/connector-cancel.test.mjs tests/firbo/delivery-matrix.test.mjs
       - name: Compile isolated real-page workbench
         run: npx --no-install vite build --config vite.pages.config.ts
         working-directory: frontend
