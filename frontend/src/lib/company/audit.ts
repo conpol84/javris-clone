@@ -1,7 +1,7 @@
 import { defaultI18n } from '../../i18n/I18nProvider';
 import type { I18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/locales/en';
-import type { AuditRow } from './types';
+import { safeAutonomy, type AuditRow } from './types';
 
 export type AuditGroup = 'approvals' | 'agents' | 'tasks' | 'people' | 'company';
 export type AuditTone = 'info' | 'ok' | 'warn' | 'err';
@@ -51,7 +51,7 @@ export function describeAudit(
           c === 'enabled'
             ? t(m.enabled ? 'audit.change.enabled' : 'audit.change.disabled')
             : c === 'autonomy'
-              ? t('audit.change.autonomy', { value: t(`autonomy.${str(m.autonomy)}.short` as TKey) })
+              ? t('audit.change.autonomy', { value: t(`autonomy.${safeAutonomy(str(m.autonomy))}.short` as TKey) })
               : c === 'budget'
                 ? t('audit.change.budget', { value: m.budget == null ? t('audit.change.noLimit') : fmt.currency(Number(m.budget)) })
                 : c === 'model' || c === 'prompt'

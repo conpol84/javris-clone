@@ -14,6 +14,10 @@ export interface Membership {
 }
 
 export type Autonomy = 'suggest' | 'approval' | 'notify' | 'auto';
+
+/** Unknown or missing values fall back to the safe default so a raw translation key is never shown. */
+export const safeAutonomy = (value: unknown): Autonomy =>
+  value === 'suggest' || value === 'approval' || value === 'notify' || value === 'auto' ? value : 'approval';
 export type ToolPolicy = 'allow' | 'approval' | 'block';
 
 export interface AgentToolRow {

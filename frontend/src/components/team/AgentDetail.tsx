@@ -8,7 +8,7 @@ import { loadAgentUsage, type AgentUsage } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
 import { RunError, runTask } from '../../lib/company/runner';
 import { agentColor } from '../../lib/company/status';
-import { OPEN_TASK_STATUSES, type AgentRow, type TaskRow } from '../../lib/company/types';
+import { OPEN_TASK_STATUSES, safeAutonomy, type AgentRow, type TaskRow } from '../../lib/company/types';
 
 function Mini({ label, value }: { label: string; value: string }) {
   return (
@@ -96,7 +96,7 @@ export function AgentDetail({
         </div>
       )}
       <div className="fb-dim text-xs">
-        {t('office.autonomyLabel')}: <b className="text-[color:var(--fb-text)]">{t(`autonomy.${agent.autonomy}.label` as TKey)}</b>
+        {t('office.autonomyLabel')}: <b className="text-[color:var(--fb-text)]">{t(`autonomy.${safeAutonomy(agent.autonomy)}.label` as TKey)}</b>
       </div>
 
       <div className="fb-eyebrow mb-2 mt-4">{t('office.tools', { count: tools.length })}</div>

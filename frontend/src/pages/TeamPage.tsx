@@ -12,7 +12,7 @@ import { agentLabel } from '../lib/company/labels';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
-import { MANAGER_ROLES } from '../lib/company/types';
+import { MANAGER_ROLES, safeAutonomy } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import '../styles/firbo.css';
 
@@ -120,7 +120,7 @@ export function TeamPage() {
                       <Wave color={color} active={st === 'active'} />
                     </div>
                     <div className="mt-3 flex flex-wrap gap-1.5">
-                      <span className="fb-chip">{t(`autonomy.${a.autonomy}.short` as TKey)}</span>
+                      <span className="fb-chip">{t(`autonomy.${safeAutonomy(a.autonomy)}.short` as TKey)}</span>
                       <span className="fb-chip">{t('chip.tools', { count: a.agent_tools.filter((x) => x.enabled).length })}</span>
                       {ask > 0 && <span className="fb-chip" style={{ color: 'var(--fb-warn)' }}>{t('chip.ask', { count: ask })}</span>}
                       {blocked > 0 && <span className="fb-chip" style={{ color: 'var(--fb-err)' }}>{t('chip.blocked', { count: blocked })}</span>}
