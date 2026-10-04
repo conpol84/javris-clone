@@ -2,7 +2,7 @@ name: Firbo multilingual Piper proof
 on:
   push:
     branches: [codex/firbo-unified-gateway]
-    paths: ['.github/workflows/firbo-piper-proof.yml']
+    paths: ['.github/workflows/firbo-piper-proof.yml','src/openjarvis/server/firbo_piper_server.py','deploy/hostinger/local_voice_rollout.py']
 permissions:
   contents: read
 jobs:
@@ -32,10 +32,10 @@ jobs:
         run: |
           set -euo pipefail
           cd /tmp/firbo-piper-evidence/voices
-          /tmp/piper/bin/python -m piper.http_server --host 127.0.0.1 --port 5000             --data-dir . -m en_US-joe-medium >/tmp/firbo-piper-evidence/piper.log 2>&1 &
+          FIRBO_PIPER_HOST=127.0.0.1 FIRBO_PIPER_PORT=5000 FIRBO_PIPER_DATA=/tmp/firbo-piper-evidence/voices /tmp/piper/bin/python "$GITHUB_WORKSPACE/src/openjarvis/server/firbo_piper_server.py" >/tmp/firbo-piper-evidence/piper.log 2>&1 &
           PID=$!
           trap 'kill "$PID" 2>/dev/null || true' EXIT
-          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5000/info >/dev/null && break; sleep 1; done
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5000/health >/dev/null && break; sleep 1; done
           /tmp/piper/bin/python - <<'PY'
           import json,time,urllib.request,urllib.error,wave,pathlib,hashlib
           cases={
@@ -64,7 +64,7 @@ jobs:
             with wave.open(str(p),'rb') as w:
               meta={'rate':w.getframerate(),'channels':w.getnchannels(),'width':w.getsampwidth(),'frames':w.getnframes()}
             rows.append({'lang':lang,'voice':voice,'seconds':round(time.monotonic()-start,3),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'content_type':ctype,**meta})
-            assert raw[:4]==b'RIFF' and raw[8:12]==b'WAVE' and meta['channels']==1 and meta['width']==2
+            assert ctype.split(';')[0]=='audio/wav' and raw[:4]==b'RIFF' and raw[8:12]==b'WAVE' and meta['channels']==1 and meta['width']==2
           (out/'results.json').write_text(json.dumps({'contract':'firbo-piper-proof/v1','rows':rows,'all_passed':True,'paid_api_calls':0},ensure_ascii=False,indent=2))
           PY
       - name: Show Piper log on prior failure
@@ -82,6 +82,8 @@ jobs:
           d=importlib.metadata.distribution('piper-tts')
           (out/'package.json').write_text(json.dumps({'version':d.version,'license':d.metadata.get('License'),'python':platform.python_version()},indent=2))
           PY
+      - name: Record exact local voice installer digest
+        run: sha256sum deploy/hostinger/local_voice_rollout.py | tee /tmp/firbo-piper-evidence/installer-sha256.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
