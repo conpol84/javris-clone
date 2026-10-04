@@ -7,7 +7,7 @@ export const TOKEN = 'a'.repeat(64), ORG = '22222222-2222-4222-8222-222222222222
 export async function makeHandler() {
  const state = { rows: {
   connector_secrets: [{device_id:DEVICE,token_hash:createHash('sha256').update(TOKEN).digest('hex')}],
-  connector_devices: [{id:DEVICE,organization_id:ORG,paired:true,revoked_at:null}],
+  connector_devices: [{id:DEVICE,organization_id:ORG,name:'Synthetic laptop',platform:'test',paired:true,capabilities:{},revoked_at:null}],
   connector_jobs: [], organization_members: [], audit_log: [],
  }, writes:[], reads:[], failures:[], user:null };
  function builder(table) {
@@ -31,7 +31,28 @@ export async function makeHandler() {
   }
   return b;
  }
- const sdk={from:builder,auth:{getUser:async()=>({data:{user:state.user},error:null})}};
+ const sdk={from:builder,auth:{getUser:async()=>({data:{user:state.user},error:null})},
+  rpc:async(name,args)=>{
+    if(name==='connector_finish_execution'){
+      const row=state.rows.connector_jobs.find(r=>r.id===args.p_job&&r.device_id===args.p_device&&r.organization_id===args.p_org);
+      if(!row)return{data:null,error:{message:'job_not_found'}};
+      if(row.status==='running'){
+        const fail=state.failures.findIndex(f=>f.table==='connector_jobs'&&f.type==='update');
+        if(fail>=0){state.failures.splice(fail,1);return{data:null,error:{message:'synthetic database error'}};}
+        row.status=args.p_ok?'done':'error';row.result=args.p_result;row.error=args.p_error;row.report_sha256=args.p_digest;
+        row.finished_at=new Date().toISOString();row.receipt={digest:args.p_digest};
+        state.writes.push({table:'connector_jobs',matched:1,keys:['status','result','error','report_sha256','finished_at','receipt']});
+        return{data:{duplicate:false,receipt:row.receipt},error:null};
+      }
+      const readFail=state.failures.findIndex(f=>f.table==='connector_jobs'&&f.type==='read');
+      if(readFail>=0){state.failures.splice(readFail,1);return{data:null,error:{message:'synthetic database error'}};}
+      if(row.status===(args.p_ok?'done':'error')&&row.report_sha256===args.p_digest)return{data:{duplicate:true,receipt:row.receipt},error:null};
+      return{data:null,error:{message:'state_conflict'}};
+    }
+    if(name==='connector_decide_execution')return{data:null,error:{message:'state_conflict'}};
+    return{data:null,error:{message:'unexpected_rpc'}};
+  }};
+
  const source=await fs.readFile(new URL('../../../supabase/functions/connector/index.ts',import.meta.url),'utf8');
  const original="import { createClient } from 'npm:@supabase/supabase-js@2';";
  if(!source.includes(original))throw new Error('test adapter must be reviewed after SDK import changes');
