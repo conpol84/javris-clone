@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router';
 import { COMPANY_ENABLED } from '../lib/company/client';
 import { ApprovalBell } from './ApprovalBell';
@@ -86,7 +86,9 @@ export function Layout() {
         )}
         <main data-firbo-route={pathname} className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
           <div className={`flex-1 flex flex-col min-w-0 min-h-0 relative z-[2] ${COMPANY_ENABLED ? 'fb-main-pad' : ''}`}>
-            <Outlet />
+            <Suspense fallback={<div className="fb-root grid flex-1 place-items-center"><span className="fb-dim text-sm">{t('common.loading')}</span></div>}>
+              <Outlet />
+            </Suspense>
           </div>
         </main>
       </div>
