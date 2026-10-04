@@ -1005,6 +1005,7 @@ const zhCN: Dictionary = {
   'run.moreInfo': '提供更多信息',
   'run.moreInfoPh': '补充细节、更正或限制。代理会在下次运行时读取。',
   'run.moreInfoRun': '添加并重新运行',
+  "bill.feat.byo_keys": '使用自己的 API 密钥',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

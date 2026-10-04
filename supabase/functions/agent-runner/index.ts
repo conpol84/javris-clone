@@ -2,7 +2,7 @@
 // The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { gatewayForAgent, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
+import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -151,9 +151,10 @@ Deno.serve(async (req) => {
     .eq('id', task.assigned_agent_id).eq('organization_id', task.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
+  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', task.organization_id).maybeSingle();
   let free = false;
   let gateway: GatewayPlan | null;
-  try { free = freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForAgent(agent, name => Deno.env.get(name)); }
+  try { free = freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });

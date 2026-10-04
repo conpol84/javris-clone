@@ -1012,6 +1012,7 @@ export const en = {
   'run.moreInfo': 'Give more information',
   'run.moreInfoPh': 'Add details, corrections or constraints. The agent reads them on the next run.',
   'run.moreInfoRun': 'Add and run again',
+  "bill.feat.byo_keys": 'Bring your own API key',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents

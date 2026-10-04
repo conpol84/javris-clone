@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gatewayForAgent, completeViaGateway, boundedGatewayJson, GatewayError } from '../../supabase/functions/_shared/gateway-routing.ts';
+import { gatewayForAgent, gatewayForOrgPlan, completeViaGateway, boundedGatewayJson, GatewayError } from '../../supabase/functions/_shared/gateway-routing.ts';
 const id = '11111111-1111-4111-8111-111111111111';
 const other = '22222222-2222-4222-8222-222222222222';
 const defaults = { FIRBO_TEXT_ROUTING_MODE: 'gateway', OMNIROUTE_BASE_URL: 'https://gateway.firboai.app/v1', OMNIROUTE_API_KEY: 'inference-test-secret', OMNIROUTE_PRICE_IN_PER_M: '1', OMNIROUTE_PRICE_OUT_PER_M: '2' };
@@ -79,3 +79,32 @@ test('oversized prompt and invalid parameters fail before network', async()=>{
   await assert.rejects(completeViaGateway(plan(),messages,NaN,{fetcher}),/invalid_gateway_parameters/);
   assert.equal(count,0);
 });
+
+// Plan rule: Free-plan companies use the admin-managed free combo; it is opt-in and everything else is untouched.
+const freeOn = { FIRBO_FREE_PLAN_ROUTING: 'gateway' };
+const forPlan = (orgPlan, values = {}, model = 'auto') => gatewayForOrgPlan({ id, model }, orgPlan, env(values));
+test('plan rule is off by default: a free company keeps its normal routing', () => {
+  assert.equal(forPlan('free', { FIRBO_TEXT_ROUTING_MODE: 'legacy' }), null);
+  assert.equal(forPlan('free').model, 'firbo-economy');
+});
+test('free plan with the rule on uses the free combo even when routing is legacy', () => {
+  const p = forPlan('free', { ...freeOn, FIRBO_TEXT_ROUTING_MODE: 'legacy' });
+  assert.equal(p.model, 'firbo-free');
+  assert.equal(p.mode, 'gateway');
+});
+test('free plan cannot pick a different model through the agent setting', () => {
+  assert.equal(forPlan('free', freeOn, 'omniroute:firbo-quality').model, 'firbo-free');
+  assert.equal(forPlan('free', freeOn, 'openai:some-model').model, 'firbo-free');
+});
+test('the free combo name is configurable by the admin only', () => assert.equal(forPlan('free', { ...freeOn, FIRBO_FREE_PLAN_MODEL: 'my-free-combo' }).model, 'my-free-combo'));
+test('paid plans are never moved to the free combo', () => {
+  assert.equal(forPlan('pro', freeOn, 'omniroute:firbo-quality').model, 'firbo-quality');
+  assert.equal(forPlan('business', { ...freeOn, FIRBO_TEXT_ROUTING_MODE: 'legacy' }), null);
+});
+for (const bad of ['http://evil/x', 'a b', '']) {
+  test(`free combo name is validated: ${JSON.stringify(bad)}`, () => {
+    if (bad === '') assert.equal(forPlan('free', { ...freeOn, FIRBO_FREE_PLAN_MODEL: bad }).model, 'firbo-free');
+    else assert.throws(() => forPlan('free', { ...freeOn, FIRBO_FREE_PLAN_MODEL: bad }), GatewayError);
+  });
+}
+test('free plan still fails closed without gateway credentials', () => assert.throws(() => forPlan('free', { ...freeOn, OMNIROUTE_API_KEY: undefined }), GatewayError));

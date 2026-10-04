@@ -1004,6 +1004,7 @@ const de: Dictionary = {
   'run.moreInfo': 'Mehr Informationen geben',
   'run.moreInfoPh': 'Ergänze Details, Korrekturen oder Grenzen. Der Agent liest sie beim nächsten Lauf.',
   'run.moreInfoRun': 'Hinzufügen und erneut ausführen',
+  "bill.feat.byo_keys": 'Eigenen API-Schlüssel verwenden',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

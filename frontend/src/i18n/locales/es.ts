@@ -1004,6 +1004,7 @@ const es: Dictionary = {
   'run.moreInfo': 'Dar más información',
   'run.moreInfoPh': 'Añade detalles, correcciones o límites. El agente los leerá en la siguiente ejecución.',
   'run.moreInfoRun': 'Añadir y ejecutar de nuevo',
+  "bill.feat.byo_keys": 'Usa tu propia clave de API',
   'unassigned': 'Sin asignar',
 
   'agent.ceo.name': 'Agente CEO',

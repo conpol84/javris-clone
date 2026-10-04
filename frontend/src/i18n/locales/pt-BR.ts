@@ -1004,6 +1004,7 @@ const ptBR: Dictionary = {
   'run.moreInfo': 'Dar mais informações',
   'run.moreInfoPh': 'Adicione detalhes, correções ou limites. O agente lê na próxima execução.',
   'run.moreInfoRun': 'Adicionar e executar de novo',
+  "bill.feat.byo_keys": 'Use sua própria chave de API',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

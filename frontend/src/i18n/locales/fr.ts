@@ -1004,6 +1004,7 @@ const fr: Dictionary = {
   'run.moreInfo': 'Donner plus d’informations',
   'run.moreInfoPh': 'Ajoutez des détails, corrections ou limites. L’agent les lira à la prochaine exécution.',
   'run.moreInfoRun': 'Ajouter et relancer',
+  "bill.feat.byo_keys": 'Votre propre clé API',
   'unassigned': 'Non assignée',
 
   'agent.ceo.name': 'Agent PDG',

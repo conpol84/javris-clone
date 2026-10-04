@@ -58,6 +58,12 @@ Deno.serve(async (req) => {
   const { count: orgDay } = await admin.from('usage_events').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
   if ((orgDay ?? 0) >= Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? 100) * 3) return json(429, { error: 'rate_limited' });
 
+  // Voice is available on every plan; the daily cap per plan keeps the free plan's cost bounded.
+  // plan_limit returns 0 when a plan has no value yet, so 0 means "use the default".
+  const { count: voiceToday } = await admin.from('usage_events').select('id', { count: 'exact', head: true }).eq('organization_id', orgId).like('model', 'stt:%').gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
+  const { data: voiceCap } = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'daily_voice' });
+  if ((voiceToday ?? 0) >= (Number(voiceCap) > 0 ? Number(voiceCap) : 30)) return json(429, { error: 'plan_limit' });
+
   const list = backends();
   if (list.length === 0) return json(503, { error: 'not_configured' });
 

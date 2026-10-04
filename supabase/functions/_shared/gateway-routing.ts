@@ -46,8 +46,8 @@ const MODEL = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/;
 const list = (value: string | undefined) => (value ?? '').split(',').map(s => s.trim()).filter(Boolean);
 
 /** Pass ONLY an agent already loaded with a verified organization/role check. */
-export function gatewayForAgent(agent: { id: string; model?: string | null }, env: EnvReader): GatewayPlan | null {
-  const mode = env('FIRBO_TEXT_ROUTING_MODE') ?? 'legacy';
+export function gatewayForAgent(agent: { id: string; model?: string | null }, env: EnvReader, options: { force?: boolean } = {}): GatewayPlan | null {
+  const mode = options.force ? 'gateway' : env('FIRBO_TEXT_ROUTING_MODE') ?? 'legacy';
   if (mode === 'legacy') return null;
   if (mode !== 'canary' && mode !== 'gateway') throw new GatewayError('invalid_routing_mode');
   if (!UUID.test(agent.id)) throw new GatewayError('invalid_agent_id');
@@ -64,7 +64,8 @@ export function gatewayForAgent(agent: { id: string; model?: string | null }, en
   // Never reinterpret a direct-provider preference as some other model silently.
   const model = selected === 'auto' ? env('FIRBO_GATEWAY_DEFAULT_MODEL') ?? 'firbo-economy'
     : selected.startsWith('omniroute:') ? selected.slice('omniroute:'.length) : '';
-  if (!model || !allowed.includes(model)) throw new GatewayError('gateway_model_not_allowed');
+  // A forced (plan-based) route may use its own admin-chosen combo; every other route must be on the allowlist.
+  if (!model || !(allowed.includes(model) || (options.force && MODEL.test(model) && !model.includes('://')))) throw new GatewayError('gateway_model_not_allowed');
   let endpoint: URL;
   try {
     endpoint = new URL(env('OMNIROUTE_BASE_URL') ?? '');
@@ -90,6 +91,17 @@ export function gatewayForAgent(agent: { id: string; model?: string | null }, en
   Object.defineProperty(plan, 'key', { value: key, enumerable: false });
   Object.defineProperty(plan, 'toJSON', { value: () => ({ mode, model, key: '[redacted]' }), enumerable: false });
   return Object.freeze(plan);
+}
+
+/**
+ * Plan rule, opt-in (FIRBO_FREE_PLAN_ROUTING=gateway): companies on the Free plan always use the admin-managed
+ * free combo (FIRBO_FREE_PLAN_MODEL, default "firbo-free"), whatever their agents' model setting says.
+ * Every other plan keeps the normal routing. With the switch off nothing changes.
+ */
+export function gatewayForOrgPlan(agent: { id: string; model?: string | null }, orgPlan: string | null | undefined, env: EnvReader): GatewayPlan | null {
+  if (orgPlan !== 'free' || (env('FIRBO_FREE_PLAN_ROUTING') ?? 'off') !== 'gateway') return gatewayForAgent(agent, env);
+  const model = env('FIRBO_FREE_PLAN_MODEL')?.trim() || 'firbo-free';
+  return gatewayForAgent({ ...agent, model: 'omniroute:' + model }, env, { force: true });
 }
 
 function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

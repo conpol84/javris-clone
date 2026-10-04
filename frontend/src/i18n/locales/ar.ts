@@ -1009,6 +1009,7 @@ const ar: Dictionary = {
   'run.moreInfo': 'أضف معلومات أخرى',
   'run.moreInfoPh': 'أضف تفاصيل أو تصحيحات أو قيودًا. سيقرؤها الوكيل في التشغيل التالي.',
   'run.moreInfoRun': 'أضف وأعد التشغيل',
+  "bill.feat.byo_keys": 'استخدم مفتاح API الخاص بك',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

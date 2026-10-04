@@ -1004,6 +1004,7 @@ const el: Dictionary = {
   'run.moreInfo': 'Δώσε περισσότερες πληροφορίες',
   'run.moreInfoPh': 'Πρόσθεσε λεπτομέρειες, διορθώσεις ή περιορισμούς. Ο agent τα διαβάζει στην επόμενη εκτέλεση.',
   'run.moreInfoRun': 'Πρόσθεσε και τρέξε ξανά',
+  "bill.feat.byo_keys": 'Δικό σας κλειδί API',
   'unassigned': 'Χωρίς ανάθεση',
 
   'agent.ceo.name': 'Agent CEO',

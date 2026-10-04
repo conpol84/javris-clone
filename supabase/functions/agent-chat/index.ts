@@ -2,7 +2,7 @@
 // The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { gatewayForAgent, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
+import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -100,9 +100,10 @@ Deno.serve(async (req) => {
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
 
+  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', convo.organization_id).maybeSingle();
   let free = false;
   let gateway: GatewayPlan | null;
-  try { free = freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForAgent(agent, name => Deno.env.get(name)); }
+  try { free = freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
