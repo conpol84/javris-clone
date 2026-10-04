@@ -17,6 +17,7 @@ import { MANAGER_ROLES, OPEN_TASK_STATUSES } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import { useGateway } from '../lib/gateway';
 import '../styles/firbo.css';
+import {ConnectedWorldEntry} from '../components/devices/DeviceFabric';
 
 const CoreOrb = lazy(() => import('../components/scenes/CoreOrb'));
 
@@ -120,6 +121,7 @@ export function CommandCenterPage() {
           </p>
         )}
 
+        <ConnectedWorldEntry />
         <div className="fb-cc">
           <Panel title={t('cc.overview')} area="overview" className="fb-focus-hide">
             <ul className="flex flex-col gap-2">

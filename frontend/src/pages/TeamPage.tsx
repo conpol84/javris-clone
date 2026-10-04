@@ -92,11 +92,11 @@ export function TeamPage() {
           <p className="fb-dim pointer-events-none absolute bottom-2 start-3 text-[11px]">{t('team.stage.hint')}</p>
         </div>
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_420px]">
+        <div className={`fb-team-layout grid gap-4 ${selected ? 'xl:grid-cols-[minmax(0,1fr)_420px]' : ''}`}>
           <ul className="grid content-start gap-3 sm:grid-cols-2">
             {data.agents.map((a) => {
               const st = states[a.id] ?? 'idle';
-              const color = agentColor(a.type, a.slug);
+              const color = a ? agentColor(a.type, a.slug) : '#7f9fc4';
               const ask = a.agent_tools.filter((x) => x.policy === 'approval').length;
               const blocked = a.agent_tools.filter((x) => x.policy === 'block').length;
               return (
@@ -134,7 +134,7 @@ export function TeamPage() {
           </ul>
 
           {selected && (
-            <aside className="fb-col gap-4 lg:sticky lg:top-4 lg:self-start">
+            <aside className="fb-col gap-4 xl:sticky xl:top-4 xl:self-start">
               <CharacterEditor key={`c-${selected.id}-${selected.name}`} agent={selected} canManage={canManage} onDraft={setDraft} onSaved={() => (setDraft(null), changed())} />
               <AgentDrawer
                 key={selected.id}

@@ -1,3 +1,4 @@
+import { VoiceProfileControl } from '../voice/VoiceProfileControl';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router';
 import { Mic, Send, Square, Volume2, VolumeX, X } from 'lucide-react';
@@ -13,6 +14,7 @@ import { RunError, runTask } from '../../lib/company/runner';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../../lib/company/status';
 import { MANAGER_ROLES, WRITER_ROLES, type TaskPriority } from '../../lib/company/types';
 import { useCeoSession } from '../../lib/company/useCeoSession';
+import '../../styles/voice-experience.css';
 import { useOrgData } from '../../lib/company/useOrgData';
 
 const CeoStage = lazy(() => import('../scenes/CeoStage').then((m) => ({ default: m.CeoStage })));
@@ -46,7 +48,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
   const org = useOrgData(orgId, MANAGER_ROLES.includes(role), 10_000);
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite);
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const briefed = useRef(false);
   const [tab, setTab] = useState<'talk' | 'command'>('talk');
@@ -138,7 +140,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-y-auto" style={{ background: 'rgba(2,6,14,0.94)', backdropFilter: 'blur(10px)' }} onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div role="dialog" aria-modal="true" aria-label={t('talk.title')} className="fb-root mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-3 p-3 md:p-5" style={{ background: 'transparent', minHeight: 0 }}>
+      <div data-firbo-voice="talk" role="dialog" aria-modal="true" aria-label={t('talk.title')} className="fb-root mx-auto flex w-full max-w-[1400px] flex-1 flex-col gap-3 p-3 md:p-5" style={{ background: 'transparent', minHeight: 0 }}>
         <header className="flex flex-wrap items-center gap-3">
           <div className="min-w-0">
             <div className="fb-eyebrow">{current?.organization.name}</div>
@@ -155,6 +157,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
             <X size={16} />
           </button>
         </header>
+        <VoiceProfileControl />
 
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <section className="fb-glass relative min-h-[360px] overflow-hidden">
@@ -188,7 +191,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
             )}
 
             <div className="absolute inset-x-0 bottom-4 flex items-center justify-center gap-4 px-4">
-              {canTalk ? (
+              {canTalk || state !== 'idle' ? (
                 <>
                   <label className="fb-muted flex cursor-pointer items-center gap-1.5 text-xs">
                     <input type="checkbox" checked={handsFree} onChange={(e) => (setHandsFree(e.target.checked), e.target.checked && state === 'idle' && listen())} />
@@ -197,12 +200,12 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
                   <button
                     className="relative grid h-[72px] w-[72px] cursor-pointer place-items-center rounded-full disabled:cursor-not-allowed disabled:opacity-50"
                     style={{ background: 'radial-gradient(circle, rgba(0,212,255,0.35), rgba(0,212,255,0.08))', border: '2px solid var(--fb-accent)', boxShadow: listening ? '0 0 0 8px rgba(0,212,255,0.15), 0 0 40px rgba(0,212,255,0.6)' : '0 0 24px rgba(0,212,255,0.35)', color: 'var(--fb-accent)' }}
-                    disabled={!canWrite || busyState}
-                    aria-label={t(listening ? 'voice.sendNow' : state === 'speaking' ? 'ceo.stop' : 'talk.tapToSpeak')} title={t(listening ? 'voice.sendNow' : state === 'speaking' ? 'ceo.stop' : 'talk.tapToSpeak')}
+                    disabled={!canWrite}
+                    aria-label={t(listening ? 'voice.sendNow' : state !== 'idle' ? 'ceo.stop' : 'talk.tapToSpeak')} title={t(listening ? 'voice.sendNow' : state !== 'idle' ? 'ceo.stop' : 'talk.tapToSpeak')}
                     aria-pressed={listening}
-                    onClick={listening ? sendNow : state === 'speaking' ? stop : listen}
+                    onClick={listening ? sendNow : state !== 'idle' ? stop : listen}
                   >
-                    {listening ? <Send size={26} /> : state === 'speaking' ? <Square size={24} /> : <Mic size={28} />}
+                    {listening ? <Send size={26} /> : state !== 'idle' ? <Square size={24} /> : <Mic size={28} />}
                   </button>
                   {(listening || handsFree) && (
                     <button className="fb-btn fb-btn--ghost" onClick={stop}>

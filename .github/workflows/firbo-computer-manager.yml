@@ -1,0 +1,53 @@
+name: Firbo Computer Manager and operational pages
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['frontend/**','supabase/functions/connector/**','tests/firbo/**','docs/FIRBO-DELIVERY-MATRIX.json','.github/workflows/firbo-computer-manager.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['frontend/**','supabase/functions/connector/**','tests/firbo/**','docs/FIRBO-DELIVERY-MATRIX.json','.github/workflows/firbo-computer-manager.yml']
+permissions:
+  contents: read
+concurrency:
+  group: firbo-computers-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Computer state and actual cancellation handler (mocked services)
+        run: node --experimental-strip-types --test tests/firbo/computer-state.test.mjs tests/firbo/connector-cancel.test.mjs tests/firbo/delivery-matrix.test.mjs
+      - name: Compile isolated real-page workbench
+        run: npx --no-install vite build --config vite.pages.config.ts
+        working-directory: frontend
+      - name: Browser test dependencies
+        run: |
+          python3 -m venv /tmp/firbo-computers-venv
+          /tmp/firbo-computers-venv/bin/pip install playwright==1.57.0
+          /tmp/firbo-computers-venv/bin/python -m playwright install --with-deps chromium
+      - name: Operational page reflow and Computer Manager lifecycle
+        run: |
+          set -euo pipefail
+          (cd frontend && npx --no-install vite preview --config vite.pages.config.ts --host 127.0.0.1 --port 5211) >/tmp/firbo-computers-vite.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5211/ >/dev/null && break; sleep 1; done
+          /tmp/firbo-computers-venv/bin/python tests/firbo/pages/verify_operations.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-m2b-computer-evidence
+          path: |
+            /tmp/firbo-m2-evidence/operations/
+            /tmp/firbo-computers-vite.log
+          retention-days: 7

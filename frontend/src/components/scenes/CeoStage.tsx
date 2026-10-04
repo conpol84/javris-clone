@@ -4,6 +4,7 @@ import { Focus, Minus, Plus } from 'lucide-react';
 import { Line, OrbitControls } from '@react-three/drei';
 import * as THREE from 'three';
 import { Glow, Stars } from './fx';
+import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
 import { Label3D } from './OfficeScene';
 import type { HoloState, Satellite } from './HologramScene';
@@ -21,7 +22,7 @@ function AiHead({ state, motion }: { state: HoloState; motion: number }) {
 }
 
 /** The big floating screen the AI lives on: a glowing frame with corner brackets and a faint grid. */
-function Screen() {
+function Screen({ motion }: { motion:number }) {
   const W = 9.4;
   const H = 6.2;
   const corner = (sx: number, sy: number): [number, number, number][] => [
@@ -37,7 +38,7 @@ function Screen() {
   }, []);
   const ref = useRef<THREE.Group>(null);
   useFrame((s) => {
-    if (ref.current) ref.current.position.y = 0.6 + Math.sin(s.clock.elapsedTime * 0.6) * 0.05;
+    if (ref.current) ref.current.position.y = 0.6 + Math.sin(s.clock.elapsedTime * 0.6 * motion) * 0.05;
   });
   return (
     <group ref={ref} position={[0, 0.6, -4.6]}>
@@ -60,12 +61,12 @@ function Screen() {
 }
 
 /** You, seen from behind: a dark silhouette with a cyan rim, facing the screen. */
-function Viewer({ state }: { state: HoloState }) {
+function Viewer({ state, motion }: { state:HoloState; motion:number }) {
   const g = useRef<THREE.Group>(null);
   const head = useRef<THREE.Mesh>(null);
   const edge = useMemo(() => new THREE.EdgesGeometry(new THREE.CapsuleGeometry(0.62, 0.9, 6, 20), 20), []);
   useFrame((s) => {
-    const t = s.clock.elapsedTime;
+    const t = s.clock.elapsedTime * motion;
     if (g.current) g.current.position.y = -2.75 + Math.sin(t * 1.5) * 0.01;
     if (head.current) head.current.rotation.y = state === 'listening' ? Math.sin(t * 2) * 0.06 : Math.sin(t * 0.4) * 0.1;
   });
@@ -116,9 +117,9 @@ function Card({ it, pos, state, motion, seed }: { it: Satellite; pos: [number, n
   const hub = new THREE.Vector3(0, 0.3, -4);
   const from = new THREE.Vector3(...pos);
   useFrame((s) => {
-    const t = s.clock.elapsedTime;
+    const t = s.clock.elapsedTime * motion;
     if (g.current) g.current.position.y = pos[1] + Math.sin(t * 0.8 + seed) * 0.06 * motion;
-    if (pulse.current) pulse.current.position.lerpVectors(from, hub, (t * (it.active ? 0.5 : 0.15) * Math.max(0.3, motion) + seed * 0.21) % 1);
+    if (pulse.current) pulse.current.position.lerpVectors(from, hub, (t * (it.active ? 0.5 : 0.15) * motion + seed * 0.21) % 1);
   });
   return (
     <group>
@@ -167,24 +168,30 @@ function ZoomDriver({ level }: { level: number }) {
 
 export function CeoStage({ state, satellites, labels }: { state: HoloState; satellites: Satellite[]; labels: { noWebgl: string } }) {
   const reduced = usePrefersReducedMotion();
-  if (!supportsWebGL()) return <div className="fb-muted grid h-full place-items-center text-sm">{labels.noWebgl}</div>;
-  const motion = reduced ? 0.3 : 1;
   const [zoom, setZoom] = useState(0.35);
+  const [failed, setFailed] = useState(false);
+  const motion = reduced ? 0 : 1;
+  const fallback = <div className="fb-muted grid h-full place-items-center p-6 text-center text-sm" data-holo-state={state}>{labels.noWebgl}</div>;
+  if (failed || !supportsWebGL()) return fallback;
   return (
-    <div className="relative h-full w-full" style={{ height: "100%", width: "100%" }}>
+    <div data-holo-state={state} className="relative h-full w-full" style={{ height: "100%", width: "100%" }}>
+    <SceneFallbackBoundary fallback={fallback}>
     <Canvas camera={{ position: [0, 0.4, 6.2], fov: 52 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
       <Stars count={800} radius={16} spread={24} speed={reduced ? 0 : 0.01} size={0.08} />
-      <Screen />
+      <Screen motion={motion} />
+      <SceneFallbackBoundary fallback={null} onFailure={() => setFailed(true)}>
       <Suspense fallback={null}>
         <AiHead state={state} motion={motion} />
       </Suspense>
+      </SceneFallbackBoundary>
       <Cards items={satellites} state={state} motion={motion} />
       <Floor />
-      <Viewer state={state} />
+      <Viewer state={state} motion={motion} />
       <Glow strength={1.15} threshold={0.18} vignette />
       <ZoomDriver level={zoom} />
       <OrbitControls target={zoom > 0.6 ? [0, 0.9, -3.6] : [0, 0, -2]} enablePan={false} enableZoom minDistance={3.2} maxDistance={12} minPolarAngle={Math.PI / 2.6} maxPolarAngle={Math.PI / 1.85} minAzimuthAngle={-0.55} maxAzimuthAngle={0.55} enableDamping />
     </Canvas>
+    </SceneFallbackBoundary>
     <div className="absolute end-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5" role="group">
       {[
         { icon: <Plus size={15} />, to: Math.min(1, zoom + 0.2), label: '+' },

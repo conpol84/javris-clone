@@ -101,7 +101,7 @@ export function HoloHead({ state, motion }: { state: HoloState; motion: number }
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uLevel: { value: 0 }, uScan: { value: 0 }, uPx: { value: 6 }, uColor: { value: new THREE.Color(COLORS.idle) } }), []);
 
   useFrame((s, dt) => {
-    const t = s.clock.elapsedTime * Math.max(0.3, motion);
+    const t = s.clock.elapsedTime * motion;
     const lvl = state === 'speaking' ? voiceLevel.value : state === 'listening' ? 0.12 + voiceLevel.value * 0.3 : state === 'thinking' ? 0.18 + Math.sin(t * 9) * 0.08 : 0.03;
     smooth.current += (lvl - smooth.current) * Math.min(1, dt * 12);
     col.lerp(target.set(COLORS[state]), Math.min(1, dt * 4));

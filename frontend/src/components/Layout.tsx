@@ -10,6 +10,9 @@ import { checkHealth } from '../lib/api';
 import { BottomNav } from './command/BottomNav';
 import { WindowControls } from './command/WindowControls';
 import { CommandProvider } from './command/CommandHost';
+import '../styles/mobile-foundation.css';
+import '../styles/mobile-pages.css';
+import '../styles/mobile-operations.css';
 
 export function Layout() {
   const { t } = useI18n();
@@ -41,7 +44,7 @@ export function Layout() {
   const ownsStatus = COMPANY_ENABLED && ['/', '/office', '/tasks', '/gateway', '/team', '/inbox', '/activity', '/people'].includes(pathname);
 
   const shell = (
-    <div className="flex flex-col h-full w-full overflow-hidden relative" style={{ paddingTop: '3px' }}>
+    <div className="flex flex-col h-full w-full min-w-0 overflow-hidden relative" style={{ paddingTop: '3px' }}>
       <div className="hud-backdrop" aria-hidden="true" />
       {COMPANY_ENABLED && <WindowControls />}
       {COMPANY_ENABLED && <BottomNav />}
@@ -73,7 +76,7 @@ export function Layout() {
         </div>
       )}
 
-      <div className="flex flex-1 min-h-0 relative z-10">
+      <div className="flex flex-1 min-h-0 min-w-0 relative z-10">
         <Sidebar />
         {sidebarOpen && (
           <div
@@ -81,7 +84,7 @@ export function Layout() {
             onClick={() => useAppStore.getState().setSidebarOpen(false)}
           />
         )}
-        <main className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
+        <main data-firbo-route={pathname} className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden" style={{ background: 'transparent' }}>
           <div className={`flex-1 flex flex-col min-w-0 min-h-0 relative z-[2] ${COMPANY_ENABLED ? 'fb-main-pad' : ''}`}>
             <Outlet />
           </div>

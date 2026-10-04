@@ -1,3 +1,4 @@
+import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import type { Satellite } from '../components/scenes/HologramScene';
@@ -11,6 +12,7 @@ import { agentLabel } from '../lib/company/labels';
 import { useCeoSession } from '../lib/company/useCeoSession';
 import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/voice-experience.css';
 
 const QUICK = ['urgent', 'team', 'spend', 'next', 'results'] as const;
 
@@ -35,7 +37,7 @@ export function CeoPage() {
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'));
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite);
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
   const [text, setText] = useState('');
   const org = useOrgData(orgId, false, 12_000);
@@ -59,18 +61,19 @@ export function CeoPage() {
   const name = ceo ? agentLabel(ceo, i18n).name : t('ceo.title');
 
   return (
-    <div className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
+    <div data-firbo-voice="ceo" className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
       <header>
         <div className="fb-eyebrow">{t('ceo.eyebrow')}</div>
         <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
+      <VoiceProfileControl />
 
       {!ceo ? (
         <div className="fb-glass p-6 text-sm">{t('ceo.none')}</div>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <section className="fb-glass relative overflow-hidden" style={{ minHeight: 560 }}>
+          <section className="fb-glass fb-voice-stage relative overflow-hidden">
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
               <CeoStage state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
@@ -108,7 +111,7 @@ export function CeoPage() {
 
           <section className="fb-glass fb-col gap-3 p-4">
             <div className="flex flex-wrap gap-2">
-              {canTalk &&
+              {(canTalk || state !== 'idle') &&
                 (state === 'listening' ? (
                   <>
                     <button className="fb-btn fb-btn--primary" onClick={sendNow}>
@@ -118,12 +121,12 @@ export function CeoPage() {
                       <Square size={15} /> {t('ceo.stop')}
                     </button>
                   </>
-                ) : state === 'speaking' ? (
+                ) : state === 'speaking' || state === 'thinking' ? (
                   <button className="fb-btn fb-btn--primary" onClick={stop}>
                     <Square size={15} /> {t('ceo.stop')}
                   </button>
                 ) : (
-                  <button className="fb-btn fb-btn--primary" disabled={!canWrite || state === 'thinking'} onClick={listen}>
+                  <button className="fb-btn fb-btn--primary" disabled={!canWrite} onClick={listen}>
                     <Mic size={15} /> {t('ceo.talk')}
                   </button>
                 ))}

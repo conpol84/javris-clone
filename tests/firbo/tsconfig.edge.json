@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "files": [
+    "edge-typecheck.d.ts",
+    "../../supabase/functions/_shared/gateway-routing.ts",
+    "../../supabase/functions/agent-chat/index.ts",
+    "../../supabase/functions/agent-runner/index.ts"
+  ]
+}

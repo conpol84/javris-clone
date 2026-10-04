@@ -42,6 +42,8 @@ export function TasksPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
+  const receiptLabel: Record<string,string> = { en:'Execution receipts',el:'Αποδείξεις εκτέλεσης',es:'Recibos de ejecución','pt-BR':'Comprovantes de execução',fr:'Reçus d’exécution',de:'Ausführungsbelege',ar:'إيصالات التنفيذ','zh-CN':'执行回执' };
+  const receiptWord: Record<string,string> = { en:'Verified',el:'Επαληθευμένο',es:'Verificado','pt-BR':'Verificado',fr:'Vérifié',de:'Verifiziert',ar:'تم التحقق','zh-CN':'已验证' };
 
   const now = Date.now();
   const shown = useMemo(
@@ -294,6 +296,24 @@ export function TasksPage() {
                       )}
                       {task.result.dropped && task.result.dropped.length > 0 && (
                         <p className="fb-dim mt-2 text-xs">{t('run.dropped', { list: task.result.dropped.join(', ') })}</p>
+                      )}
+                      {task.result.execution_receipts && task.result.execution_receipts.length > 0 && (
+                        <div className="mt-3">
+                          <div className="fb-eyebrow mb-2">{receiptLabel[lang]??receiptLabel.en}</div>
+                          <ul className="flex flex-col gap-2">
+                            {task.result.execution_receipts.map((receipt) => (
+                              <li key={receipt.job_id} className="rounded-lg p-2 text-xs" style={{border:'1px solid var(--fb-border)',background:'rgba(255,255,255,.025)'}}>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <StatusDot tone={receipt.ok?'ok':'err'} />
+                                  <b>{receipt.kind}</b>
+                                  <span className="fb-dim">{receiptWord[lang]??receiptWord.en}</span>
+                                  <code className="fb-dim ms-auto">{receipt.report_sha256.slice(0,12)}…</code>
+                                </div>
+                                <div className="fb-dim mt-1">{fmt.dateTime(receipt.finished_at)} · {receipt.job_id.slice(0,8)}</div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                       )}
                     </div>
                   )}

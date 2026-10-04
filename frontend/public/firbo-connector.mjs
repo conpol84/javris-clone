@@ -7,16 +7,21 @@
 //   node firbo-connector.mjs status | forget
 //
 // Safety rules enforced HERE, on your computer, whatever the server asks:
-//   - only folders you pass with --allow are ever touched (symlinks and ../ tricks are resolved first)
+//   - file operations check --allow roots; this is NOT an OS sandbox or a complete filesystem race defense
+//   - --allow-exec is a general shell as your local user; its cwd does NOT confine what it can access
 //   - writing files needs --allow-write, running commands needs --allow-exec; without them those jobs are refused
 //   - unless you pass --auto, every write and command waits for your y/n in this window
 //   - nothing is installed, nothing listens on your network: this program only calls Firbo and asks for jobs
-// Needs Node.js 18 or newer. No other packages.
+// Needs Node.js 22.13+ for durable execution (built-in SQLite). No npm packages.
+// Pending results can contain private file content: the local journal is NOT encrypted.
+// This CLI is a reviewed candidate, not a signed Desktop installer or an OS sandbox.
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import { spawn } from 'node:child_process';
+import { constants as FS } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
 const API = process.env.FIRBO_CONNECTOR_URL || 'https://bfeinnsorgjycivozcau.supabase.co/functions/v1/connector';
@@ -25,6 +30,57 @@ const CONFIG = process.env.FIRBO_CONNECTOR_CONFIG || path.join(os.homedir(), '.f
 const MAX_READ = 200_000;
 const MAX_LIST = 200;
 const MAX_OUT = 20_000;
+const MAX_CONTENT = 100_000;
+const MAX_RESPONSE = 512 * 1024;
+const MAX_REQUEST = 1024 * 1024;
+const LOCAL_ERRORS = new Set([
+  'bad_job', 'bad_job_params', 'no_folder_allowed', 'outside_allowed_folders',
+  'not_a_file', 'file_too_large', 'binary_file', 'writing_disabled', 'file_exists',
+  'declined_on_this_computer', 'commands_disabled', 'unknown_job',
+  'operation_stopped', 'unsafe_file_type', 'write_verification_failed', 'process_spawn_failed', 'reserved_local_path',
+]);
+const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'ENOTDIR', 'EISDIR', 'ELOOP']);
+
+/** Validate independently of the server. A job cannot grant its own local powers. */
+export function validateJob(job) {
+  if (!job || typeof job !== 'object' || Array.isArray(job)) throw new Error('bad_job');
+  if (!['list', 'read', 'write', 'exec'].includes(job.kind)) throw new Error('unknown_job');
+  const p = job.params ?? {};
+  if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('bad_job_params');
+  const validPath = value => value === undefined || (typeof value === 'string' && value.length <= 500 && !value.includes('\0'));
+  if (!validPath(p.path) || !validPath(p.cwd)) throw new Error('bad_job_params');
+  if (['read', 'write'].includes(job.kind) && (typeof p.path !== 'string' || !p.path.trim())) throw new Error('bad_job_params');
+  if (job.kind === 'write' && (typeof p.content !== 'string' || p.content.length > MAX_CONTENT || (p.overwrite !== undefined && typeof p.overwrite !== 'boolean'))) throw new Error('bad_job_params');
+  if (job.kind === 'exec' && (typeof p.command !== 'string' || !p.command.trim() || p.command.length > 500 || p.command.includes('\0'))) throw new Error('bad_job_params');
+  return p;
+}
+
+function safeLocalError(error) {
+  if (LOCAL_ERRORS.has(error?.message)) return error.message;
+  if (FILE_ERRORS.has(error?.code)) return `file_${error.code.toLowerCase()}`;
+  return 'local_operation_failed';
+}
+
+/** Success means a completed operation, not merely a resolved Promise.
+ * A zero process exit is NOT proof of the user's higher-level business goal.
+ */
+export async function executeJobForReport(job, cfg, options = {}) {
+  try {
+    const result = await runJob(job, cfg, options);
+    if (job.kind === 'exec') {
+      if (result.interrupted) return { ok: false, error: result.interrupted === 'timeout' ? 'command_timed_out' : result.interrupted === 'unconfirmed' ? 'stop_unconfirmed_needs_review' : 'operation_stopped' };
+      if (result.signal) return { ok: false, error: 'command_interrupted' };
+      if (!Number.isInteger(result.code) || result.code !== 0) {
+        const exit = Number.isInteger(result.code) && result.code >= 0 && result.code <= 255 ? `_exit_${result.code}` : '';
+        return { ok: false, error: `command_failed${exit}` };
+      }
+    }
+    return { ok: true, result };
+  } catch (error) {
+    // Do not reflect raw OS paths, command output or arbitrary exception text.
+    return { ok: false, error: safeLocalError(error) };
+  }
+}
 
 const expand = (p) => (p === '~' ? os.homedir() : p.startsWith('~/') || p.startsWith('~\\') ? path.join(os.homedir(), p.slice(2)) : p);
 const fold = (p) => (process.platform === 'win32' || process.platform === 'darwin' ? p.toLowerCase() : p);
@@ -62,81 +118,508 @@ export async function resolveAllowed(target, roots) {
   return finalPath;
 }
 
-async function confirmLocally(cfg, question) {
-  if (cfg.auto) return true;
+async function confirmLocally(cfg, question, signal) {
+  stopCheck(signal);
+  if (cfg.auto === true) return true;
   if (!process.stdin.isTTY) return false;
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-  const answer = await new Promise((resolve) => {
-    const timer = setTimeout(() => resolve('n'), 60_000);
-    rl.question(`${question} [y/N] `, (a) => {
+  const answer = await new Promise(resolve => {
+    let settled = false;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
-      resolve(a);
-    });
+      signal?.removeEventListener('abort', abort);
+      resolve(value);
+    };
+    const abort = () => finish('n');
+    const timer = setTimeout(() => finish('n'), 60_000);
+    signal?.addEventListener('abort', abort, { once: true });
+    rl.once('close', () => finish('n'));
+    rl.question(`${question} [y/N] `, finish);
   });
   rl.close();
-  return /^y(es)?$/i.test(answer.trim());
+  return /^y(es)?$/i.test(String(answer).trim());
 }
 
-export async function runJob(job, cfg) {
-  const roots = cfg.roots ?? [];
-  const p = job.params ?? {};
+export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000 } = {}) {
+  stopCheck(signal);
+  const p = validateJob(job);
+  if (!cfg || !Array.isArray(cfg.roots) || cfg.roots.some(root => typeof root !== 'string' || !root)) throw new Error('no_folder_allowed');
+  const roots = cfg.roots;
   if (job.kind === 'list') {
-    const dir = await resolveAllowed(p.path || roots[0], roots);
-    const entries = await fs.readdir(dir, { withFileTypes: true });
+    const dir = await jobPath(p.path || roots[0], roots, cfg);
     const out = [];
-    for (const e of entries.slice(0, MAX_LIST)) {
+    let truncated = false;
+    // opendir bounds the retained entries instead of materializing an entire directory.
+    for await (const e of await fs.opendir(dir)) {
+      stopCheck(signal);
+      if (out.length === MAX_LIST) { truncated = true; break; }
       let size = null;
       if (e.isFile()) size = (await fs.stat(path.join(dir, e.name)).catch(() => null))?.size ?? null;
       out.push({ name: e.name, type: e.isDirectory() ? 'dir' : e.isFile() ? 'file' : 'other', size });
     }
-    return { path: dir, entries: out, truncated: entries.length > MAX_LIST };
+    return { path: dir, entries: out, truncated };
   }
   if (job.kind === 'read') {
-    const file = await resolveAllowed(p.path, roots);
-    const st = await fs.stat(file);
-    if (!st.isFile()) throw new Error('not_a_file');
-    if (st.size > MAX_READ) throw new Error('file_too_large');
-    const buf = await fs.readFile(file);
-    if (buf.includes(0)) throw new Error('binary_file');
-    return { path: file, content: buf.toString('utf8').slice(0, 100_000), bytes: st.size };
+    const file = await jobPath(p.path, roots, cfg);
+    const handle = await openRegular(file, false, false);
+    try {
+      const st = await handle.stat();
+      if (!st.isFile()) throw new Error('not_a_file');
+      if (st.size > MAX_READ) throw new Error('file_too_large');
+      // Enforce the byte cap during reading, including a file that grows after stat.
+      const buf = Buffer.alloc(MAX_READ + 1);
+      let count = 0;
+      while (count < buf.length) {
+        stopCheck(signal);
+        const read = await handle.read(buf, count, buf.length - count, count);
+        if (!read.bytesRead) break;
+        count += read.bytesRead;
+      }
+      if (count > MAX_READ) throw new Error('file_too_large');
+      const bytes = buf.subarray(0, count);
+      if (bytes.includes(0)) throw new Error('binary_file');
+      const text = bytes.toString('utf8');
+      return { path: file, content: text.slice(0, MAX_CONTENT), bytes: count, sha256: hashBytes(bytes), truncated: text.length > MAX_CONTENT };
+    } finally { await handle.close(); }
   }
   if (job.kind === 'write') {
-    if (!cfg.allowWrite) throw new Error('writing_disabled');
-    const file = await resolveAllowed(p.path, roots);
+    if (cfg.allowWrite !== true) throw new Error('writing_disabled');
+    const file = await jobPath(p.path, roots, cfg);
     const exists = await fs.stat(file).then(() => true, () => false);
     if (exists && !p.overwrite) throw new Error('file_exists');
-    if (!(await confirmLocally(cfg, `Firbo wants to ${exists ? 'OVERWRITE' : 'create'} ${file} (${String(p.content ?? '').length} characters). Allow?`))) throw new Error('declined_on_this_computer');
+    if (!(await confirmLocally(cfg, `Firbo wants to ${exists ? 'OVERWRITE' : 'create'} ${file} (${p.content.length} characters). Allow?`, signal))) {
+      stopCheck(signal); throw new Error('declined_on_this_computer');
+    }
+    stopCheck(signal);
+    // Revalidate after interactive consent. Still not a full parent-directory race sandbox.
+    if (await resolveAllowed(file, roots) !== file) throw new Error('outside_allowed_folders');
     await fs.mkdir(path.dirname(file), { recursive: true });
-    await fs.writeFile(file, String(p.content ?? ''), 'utf8');
-    return { path: file, written: String(p.content ?? '').length };
+    const handle = await openRegular(file, true, p.overwrite === true);
+    const expected = Buffer.from(p.content, 'utf8');
+    try {
+      stopCheck(signal);
+      if (p.overwrite === true) await handle.truncate(0);
+      await handle.writeFile(expected);
+      await handle.sync();
+    } finally { await handle.close(); }
+    stopCheck(signal);
+    const reader = await openRegular(file, false, false);
+    try {
+      const actual = Buffer.alloc(expected.length + 1);
+      let count = 0;
+      while (count < actual.length) {
+        stopCheck(signal);
+        const part = await reader.read(actual, count, actual.length - count, count);
+        if (!part.bytesRead) break;
+        count += part.bytesRead;
+      }
+      if (count !== expected.length || hashBytes(actual.subarray(0, count)) !== hashBytes(expected)) throw new Error('write_verification_failed');
+    } finally { await reader.close(); }
+    return { path: file, written: p.content.length, bytes: expected.length,
+      verification: { method: 'sha256-readback', sha256: hashBytes(expected), bytes: expected.length } };
   }
   if (job.kind === 'exec') {
-    if (!cfg.allowExec) throw new Error('commands_disabled');
-    const cwd = await resolveAllowed(p.cwd || roots[0], roots);
+    if (cfg.allowExec !== true) throw new Error('commands_disabled');
+    const cwd = await jobPath(p.cwd || roots[0], roots, cfg);
     const command = String(p.command ?? '');
-    if (!(await confirmLocally(cfg, `Firbo wants to run in ${cwd}:\n    ${command}\n  Allow?`))) throw new Error('declined_on_this_computer');
-    return await new Promise((resolve) => {
-      const child = spawn(command, { shell: true, cwd, timeout: 60_000 });
-      let stdout = '';
-      let stderr = '';
-      child.stdout.on('data', (d) => (stdout = (stdout + d).slice(-MAX_OUT)));
-      child.stderr.on('data', (d) => (stderr = (stderr + d).slice(-MAX_OUT)));
-      child.on('error', (e) => resolve({ code: -1, stdout, stderr: `${stderr}${e.message}` }));
-      child.on('close', (code) => resolve({ code, stdout, stderr }));
-    });
+    if (!(await confirmLocally(cfg, `Firbo wants to run in ${cwd}:\n    ${command}\n  Allow?`, signal))) {
+      stopCheck(signal); throw new Error('declined_on_this_computer');
+    }
+    stopCheck(signal);
+    return runCommand(command, cwd, { signal, timeoutMs: commandTimeoutMs });
   }
   throw new Error('unknown_job');
 }
 
-async function call(action, body) {
-  const res = await fetch(API, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', apikey: ANON },
-    body: JSON.stringify({ action, ...body }),
+/** One bounded request; failed report delivery is NOT retried by rerunning work.
+ * fetchImpl/timeoutMs are local test seams, never accepted from a remote job.
+ */
+export async function connectorCall(action, body, { fetchImpl = fetch, timeoutMs, signal } = {}) {
+  validateConnectorURL(API);
+  if (signal?.aborted) throw new Error('connector_stopped');
+  const limit = action === 'poll' ? 35_000 : 15_000;
+  const timeout = timeoutMs ?? limit;
+  if (!Number.isInteger(timeout) || timeout < 1 || timeout > limit) throw new Error('invalid_timeout');
+  const payload = JSON.stringify({ ...body, action });
+  if (Buffer.byteLength(payload) > MAX_REQUEST) throw new Error('connector_request_too_large');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  const abort = () => controller.abort();
+  signal?.addEventListener('abort', abort, { once: true });
+  let reader;
+  const cancel = () => { if (reader) void reader.cancel().catch(() => {}); };
+  controller.signal.addEventListener('abort', cancel, { once: true });
+  try {
+    const res = await fetchImpl(API, {
+      method: 'POST', redirect: 'error', signal: controller.signal,
+      headers: { 'content-type': 'application/json', apikey: ANON }, body: payload,
+    });
+    if (!res.ok) {
+      void res.body?.cancel().catch(() => {});
+      throw Object.assign(new Error(`connector_http_${res.status}`), { status: res.status });
+    }
+    if (!res.headers.get('content-type')?.toLowerCase().includes('application/json') || !res.body) {
+      void res.body?.cancel().catch(() => {});
+      throw new Error('connector_invalid_response');
+    }
+    reader = res.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+      const next = await reader.read();
+      if (controller.signal.aborted) throw new Error(signal?.aborted ? 'connector_stopped' : 'connector_timeout');
+      if (next.done) break;
+      size += next.value.byteLength;
+      if (size > MAX_RESPONSE) throw new Error('connector_response_too_large');
+      chunks.push(Buffer.from(next.value));
+    }
+    let data;
+    try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
+    catch { throw new Error('connector_invalid_response'); }
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('connector_invalid_response');
+    return data;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(signal?.aborted ? 'connector_stopped' : 'connector_timeout');
+    if (['connector_invalid_response', 'connector_response_too_large'].includes(error?.message) || Number.isInteger(error?.status)) throw error;
+    throw new Error('connector_unreachable');
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', abort);
+    controller.signal.removeEventListener('abort', cancel);
+    if (reader) { void reader.cancel().catch(() => {}); reader.releaseLock(); }
+  }
+}
+const call = connectorCall;
+
+// ---- E1: verified local effects and durable result delivery. No public listener. ----
+export function validateConnectorURL(value) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error('invalid_connector_url'); }
+  if (url.protocol !== 'https:' || !url.hostname || url.username || url.password || url.hash || url.search) throw new Error('invalid_connector_url');
+  return url.href;
+}
+function requireDurableNode() {
+  const [major, minor] = process.versions.node.split('.').map(Number);
+  if (major < 22 || (major === 22 && minor < 13)) throw new Error('node_22_13_required');
+}
+const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_REPORT_BYTES = 140_000;
+function stopCheck(signal) { if (signal?.aborted) throw new Error('operation_stopped'); }
+
+async function jobPath(target, roots, cfg) {
+  const resolved = await resolveAllowed(target, roots);
+  const protectedPaths = [CONFIG, CONFIG + '.state', ...(cfg.internalProtectedPaths ?? [])];
+  for (const candidate of protectedPaths) {
+    if (typeof candidate !== 'string' || !candidate) continue;
+    const absolute = await fs.realpath(path.resolve(candidate)).catch(() => path.resolve(candidate));
+    if (fold(resolved) === fold(absolute) || fold(resolved).startsWith(fold(absolute + path.sep))) throw new Error('reserved_local_path');
+  }
+  return resolved;
+}
+
+/** Reject static special files/links and check the opened inode before truncating.
+ * Parent-directory swaps by a hostile local process still need OS isolation.
+ */
+async function openRegular(file, write, overwrite) {
+  const before = await fs.lstat(file).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+  if (before && (!before.isFile() || before.isSymbolicLink() || before.nlink !== 1)) throw new Error('unsafe_file_type');
+  if (write && before && !overwrite) throw new Error('file_exists');
+  const flags = (write ? FS.O_RDWR : FS.O_RDONLY) | (FS.O_NOFOLLOW || 0) | (FS.O_NONBLOCK || 0)
+    | (write && !before ? FS.O_CREAT | FS.O_EXCL : 0);
+  const handle = await fs.open(file, flags, 0o600);
+  try {
+    const after = await handle.stat();
+    if (!after.isFile() || after.nlink !== 1 || (before && (before.dev !== after.dev || before.ino !== after.ino))) throw new Error('unsafe_file_type');
+    return handle;
+  } catch (error) { await handle.close(); throw error; }
+}
+
+/** Best-effort ordinary process-tree interruption, NOT protection from hostile
+ * programs that detach/reparent/escape the process group. Such work needs a sandbox.
+ */
+export function runCommand(command, cwd, { signal, timeoutMs = 60_000 } = {}) {
+  stopCheck(signal);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000) throw new Error('bad_job_params');
+  return new Promise((resolve, reject) => {
+    let child;
+    try { child = spawn(command, { shell: true, cwd, detached: process.platform !== 'win32', windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }); }
+    catch { reject(new Error('process_spawn_failed')); return; }
+    let stdout = '', stderr = '', interrupted = null, settled = false, escalation, stopDeadline, killer;
+    let stopCompleted = false, observedExit = null;
+    const finish = (code, terminatedSignal, spawnError = false) => {
+      if (settled) return;
+      // Closing the shell's pipes must not cancel termination of its remaining children.
+      if (interrupted && !stopCompleted) { observedExit = [code, terminatedSignal, spawnError]; return; }
+      settled = true;
+      clearTimeout(timer); clearTimeout(escalation); clearTimeout(stopDeadline);
+      signal?.removeEventListener('abort', onAbort);
+      if (spawnError && !interrupted) return reject(new Error('process_spawn_failed'));
+      resolve({ code, signal: terminatedSignal, stdout, stderr, interrupted });
+    };
+    const groupKill = sig => {
+      if (!Number.isInteger(child.pid) || child.pid <= 1) return;
+      try { process.kill(-child.pid, sig); }
+      catch (error) { if (error.code !== 'ESRCH') { try { child.kill(sig); } catch {} } }
+    };
+    const stop = reason => {
+      if (settled || interrupted) return;
+      interrupted = reason;
+      if (process.platform === 'win32' && Number.isInteger(child.pid) && child.pid > 1) {
+        const executable = path.join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'taskkill.exe');
+        killer = spawn(executable, ['/PID', String(child.pid), '/T', '/F'], { shell: false, windowsHide: true, stdio: 'ignore' });
+        killer.on('error', () => { interrupted = 'unconfirmed'; try { child.kill(); } catch {} });
+        killer.on('close', code => {
+          if (code !== 0) interrupted = 'unconfirmed';
+          stopCompleted = true;
+          if (observedExit) finish(...observedExit);
+        });
+      } else {
+        groupKill('SIGTERM');
+        escalation = setTimeout(() => {
+          groupKill('SIGKILL'); stopCompleted = true;
+          if (observedExit) finish(...observedExit);
+        }, 350);
+      }
+      // Never claim a stopped process just because a signal was sent.
+      stopDeadline = setTimeout(() => {
+        if (settled) return;
+        child.stdout?.destroy(); child.stderr?.destroy(); child.unref();
+        if (killer) { try { killer.kill(); } catch {} }
+        interrupted = 'unconfirmed'; stopCompleted = true;
+        finish(null, null);
+      }, 3500);
+    };
+    const onAbort = () => stop('local_stop');
+    const timer = setTimeout(() => stop('timeout'), timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
+    child.stdout?.on('data', chunk => { stdout = (stdout + chunk.toString()).slice(-MAX_OUT); });
+    child.stderr?.on('data', chunk => { stderr = (stderr + chunk.toString()).slice(-MAX_OUT); });
+    child.on('error', () => finish(-1, null, true));
+    child.on('close', (code, terminatedSignal) => finish(code, terminatedSignal));
+    if (signal?.aborted) stop('local_stop');
   });
-  const json = await res.json().catch(() => ({}));
-  if (!res.ok) throw Object.assign(new Error(json.error || `http_${res.status}`), { status: res.status });
-  return json;
+}
+
+export function canonicalJSON(value, depth = 0) {
+  if (depth > 32) throw new Error('invalid_report');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(item => canonicalJSON(item, depth + 1)).join(',') + ']';
+  if (value && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype) {
+    return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + canonicalJSON(value[key], depth + 1)).join(',') + '}';
+  }
+  throw new Error('invalid_report');
+}
+export function reportEnvelope(jobId, report) {
+  if (!UUID.test(jobId) || !report || typeof report.ok !== 'boolean') throw new Error('invalid_report');
+  const result = report.ok ? (report.result ?? null) : null;
+  const error = report.ok ? null : report.error;
+  if (error !== null && (typeof error !== 'string' || !error || error.length > 500)) throw new Error('invalid_report');
+  if (result !== null && (!result || typeof result !== 'object' || Array.isArray(result))) throw new Error('invalid_report');
+  const value = { job_id: jobId, ok: report.ok, result, error };
+  const text = canonicalJSON(value);
+  if (Buffer.byteLength(text) > MAX_REPORT_BYTES) throw new Error('result_too_large_for_delivery');
+  return { ...value, report_sha256: hashBytes(text) };
+}
+function prepareReport(jobId, report) {
+  try { return reportEnvelope(jobId, report); }
+  catch { return reportEnvelope(jobId, { ok: false, error: 'result_unavailable_needs_review' }); }
+}
+
+function processExists(pid) {
+  if (!Number.isInteger(pid) || pid < 1) return true;
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error.code !== 'ESRCH'; }
+}
+
+/** Device-token/endpoint-bound private SQLite outbox. An interrupted STARTED
+ * record is NEVER replayed automatically. It is reported as needing review.
+ * Contents are UNENCRYPTED, may contain file data, and must not be uploaded/shared.
+ */
+export class LocalJobJournal {
+  #db; #nonce = randomUUID(); #locked = false;
+  static async open(directory, scope) {
+    if (typeof directory !== 'string' || !directory || !/^[a-f0-9]{64}$/.test(scope)) throw new Error('invalid_journal_scope');
+    requireDurableNode();
+    const dir = path.resolve(directory, scope);
+    await fs.mkdir(dir, { recursive: true, mode: 0o700 });
+    const ds = await fs.lstat(dir);
+    if (!ds.isDirectory() || ds.isSymbolicLink() || (process.platform !== 'win32' && (ds.uid !== process.getuid() || (ds.mode & 0o077)))) throw new Error('unsafe_journal_directory');
+    const file = path.join(dir, 'outbox.sqlite3');
+    try { const h = await fs.open(file, 'wx', 0o600); await h.close(); }
+    catch (error) { if (error.code !== 'EEXIST') throw error; }
+    const st = await fs.lstat(file);
+    if (!st.isFile() || st.isSymbolicLink() || st.nlink !== 1 || st.size > 64 * 1024 * 1024
+      || (process.platform !== 'win32' && (st.uid !== process.getuid() || (st.mode & 0o077)))) throw new Error('unsafe_journal_file');
+    const { DatabaseSync } = await import('node:sqlite');
+    const db = new DatabaseSync(file);
+    try {
+      db.exec('PRAGMA busy_timeout=5000; PRAGMA journal_mode=DELETE; PRAGMA synchronous=FULL; PRAGMA secure_delete=ON;');
+      if (db.prepare('PRAGMA quick_check').get().quick_check !== 'ok') throw new Error('journal_corrupt');
+      const version = db.prepare('PRAGMA user_version').get().user_version;
+      if (version !== 0 && version !== 1) throw new Error('journal_version_unsupported');
+      db.exec(`CREATE TABLE IF NOT EXISTS meta (scope TEXT PRIMARY KEY);
+        CREATE TABLE IF NOT EXISTS owner_lock (id INTEGER PRIMARY KEY CHECK(id=1), pid INTEGER NOT NULL, nonce TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS jobs (
+          id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL,
+          phase TEXT NOT NULL CHECK(phase IN ('started','ready','acked','conflict')),
+          report_json TEXT, report_sha256 TEXT, updated_at TEXT NOT NULL);
+        PRAGMA user_version=1;`);
+      db.prepare('INSERT INTO meta(scope) SELECT ? WHERE NOT EXISTS(SELECT 1 FROM meta)').run(scope);
+      const scopes = db.prepare('SELECT scope FROM meta').all();
+      if (scopes.length !== 1 || scopes[0].scope !== scope) throw new Error('journal_scope_mismatch');
+      return new LocalJobJournal(db);
+    } catch (error) { db.close(); throw error; }
+  }
+  constructor(db) { this.#db = db; }
+  #tx(fn) {
+    this.#db.exec('BEGIN IMMEDIATE');
+    try { const result = fn(); this.#db.exec('COMMIT'); return result; }
+    catch (error) { this.#db.exec('ROLLBACK'); throw error; }
+  }
+  #owned() {
+    if (!this.#locked || this.#db.prepare('SELECT nonce FROM owner_lock WHERE id=1').get()?.nonce !== this.#nonce) throw new Error('journal_not_owned');
+  }
+  acquire() {
+    this.#tx(() => {
+      const owner = this.#db.prepare('SELECT pid FROM owner_lock WHERE id=1').get();
+      // Dead owner recovery is transactional. PID reuse fails closed rather than stealing a live lock.
+      if (owner && processExists(owner.pid)) throw new Error('connector_already_running');
+      this.#db.prepare('INSERT OR REPLACE INTO owner_lock(id,pid,nonce) VALUES(1,?,?)').run(process.pid, this.#nonce);
+    });
+    this.#locked = true;
+  }
+  begin(job) {
+    this.#owned(); validateJob(job);
+    if (!UUID.test(job.id)) throw new Error('bad_job');
+    const fingerprint = hashBytes(canonicalJSON({ kind: job.kind, params: job.params ?? {} }));
+    return this.#tx(() => {
+      const existing = this.#db.prepare('SELECT * FROM jobs WHERE id=?').get(job.id);
+      if (existing) {
+        if (existing.fingerprint !== fingerprint) throw new Error('job_identity_changed');
+        if (existing.phase === 'started') throw new Error('job_already_started');
+        if (existing.phase === 'conflict') throw new Error('delivery_conflict_needs_review');
+        return existing;
+      }
+      if (this.#db.prepare('SELECT count(*) AS n FROM jobs').get().n >= 10_000) throw new Error('journal_retention_review_required');
+      this.#db.prepare("INSERT INTO jobs(id,fingerprint,phase,updated_at) VALUES(?,?,'started',?)").run(job.id, fingerprint, new Date().toISOString());
+      return { id: job.id, phase: 'new' };
+    });
+  }
+  finish(id, report) {
+    this.#owned();
+    const envelope = prepareReport(id, report);
+    const saved = this.#db.prepare("UPDATE jobs SET phase='ready', report_json=?, report_sha256=?, updated_at=? WHERE id=? AND phase='started'")
+      .run(canonicalJSON(envelope), envelope.report_sha256, new Date().toISOString(), id);
+    if (saved.changes !== 1) throw new Error('journal_state_conflict');
+    return envelope;
+  }
+  recoverInterrupted() {
+    this.#owned();
+    const rows = this.#db.prepare("SELECT id FROM jobs WHERE phase='started'").all();
+    for (const row of rows) this.finish(row.id, { ok: false, error: 'execution_interrupted_needs_review' });
+    return rows.length;
+  }
+  pending() {
+    this.#owned();
+    if (this.#db.prepare("SELECT id FROM jobs WHERE phase='conflict' LIMIT 1").get()) throw new Error('delivery_conflict_needs_review');
+    return this.#db.prepare("SELECT report_json FROM jobs WHERE phase='ready' ORDER BY updated_at,id LIMIT 100").all().map(row => {
+      const data = JSON.parse(row.report_json);
+      if (reportEnvelope(data.job_id, data).report_sha256 !== data.report_sha256) throw new Error('journal_corrupt');
+      return data;
+    });
+  }
+  acknowledge(envelope) {
+    this.#owned();
+    const done = this.#db.prepare("UPDATE jobs SET phase='acked',report_json=NULL,updated_at=? WHERE id=? AND phase='ready' AND report_sha256=?")
+      .run(new Date().toISOString(), envelope.job_id, envelope.report_sha256);
+    if (done.changes !== 1) throw new Error('journal_state_conflict');
+  }
+  conflict(id) {
+    this.#owned();
+    this.#db.prepare("UPDATE jobs SET phase='conflict',updated_at=? WHERE id=? AND phase='ready'").run(new Date().toISOString(), id);
+  }
+  counts() { return this.#db.prepare('SELECT phase,count(*) AS count FROM jobs GROUP BY phase ORDER BY phase').all(); }
+  close() {
+    if (!this.#db) return;
+    if (this.#locked) this.#db.prepare('DELETE FROM owner_lock WHERE id=1 AND nonce=?').run(this.#nonce);
+    this.#db.close(); this.#db = null; this.#locked = false;
+  }
+}
+
+export async function executeJournaled(job, cfg, journal, { signal, executor = executeJobForReport } = {}) {
+  stopCheck(signal);
+  const prior = journal.begin(job); // Commit intent BEFORE any local side effect.
+  if (prior.phase !== 'new') return { executed: false, phase: prior.phase };
+  let report;
+  try { report = await executor(job, cfg, { signal }); }
+  catch { report = { ok: false, error: 'execution_interrupted_needs_review' }; }
+  journal.finish(job.id, report); // Failure here leaves a STARTED record; never rerun blindly.
+  return { executed: true, phase: 'ready', ok: report.ok };
+}
+
+export async function flushPendingReports(cfg, journal, callFn = connectorCall, signal) {
+  for (const envelope of journal.pending()) {
+    if (signal?.aborted) return;
+    let ack;
+    try { ack = await callFn('report', { token: cfg.token, ...envelope }, { signal }); }
+    catch (error) {
+      if ([400, 404, 409, 413, 422].includes(error?.status)) {
+        journal.conflict(envelope.job_id); throw new Error('delivery_conflict_needs_review');
+      }
+      throw error;
+    }
+    if (ack?.ok !== true || ack?.job_id !== envelope.job_id || ack?.report_sha256 !== envelope.report_sha256) throw new Error('report_ack_mismatch');
+    journal.acknowledge(envelope); // Drop private payload only after the exact receipt is verified.
+  }
+}
+
+function delay(ms, signal) {
+  return new Promise(resolve => {
+    if (signal?.aborted) return resolve();
+    const finish = () => { clearTimeout(timer); signal?.removeEventListener('abort', finish); resolve(); };
+    const timer = setTimeout(finish, ms);
+    signal?.addEventListener('abort', finish, { once: true });
+  });
+}
+export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
+  if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || !cfg.roots.length) throw new Error('invalid_local_config');
+  cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
+  const scope = hashBytes(API + '\n' + cfg.token);
+  const journal = await LocalJobJournal.open(directory, scope);
+  let completed = 0, backoff = 1000;
+  const emit = event => { try { onEvent(event); } catch {} };
+  try {
+    journal.acquire();
+    const protocol = await callFn('capabilities', { token: cfg.token }, { signal });
+    if (protocol?.protocol !== 'firbo-connector/v2' || protocol.report_ack !== 'sha256-v1') throw new Error('matching_connector_backend_required');
+    const recovered = journal.recoverInterrupted();
+    if (recovered) emit('interrupted_work_preserved_for_review');
+    while (!signal?.aborted) {
+      try {
+        await flushPendingReports(cfg, journal, callFn, signal);
+        if (signal?.aborted || completed >= maxJobs) break;
+        const out = await callFn('poll', { token: cfg.token }, { signal });
+        if (signal?.aborted) break;
+        if (!out || !Object.hasOwn(out, 'job')) throw new Error('connector_invalid_response');
+        if (!out.job) { await delay(150, signal); continue; }
+        const result = await executeJournaled(out.job, cfg, journal, { signal });
+        if (!result.executed && result.phase === 'acked') throw new Error('server_reissued_acknowledged_job');
+        completed++; backoff = 1000;
+        emit('result_saved_locally');
+      } catch (error) {
+        if (signal?.aborted) break;
+        const retry = error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
+        if (!retry) throw error;
+        emit('connection_retry_without_reexecution');
+        await delay(backoff, signal); backoff = Math.min(backoff * 2, 30_000);
+      }
+    }
+    return { processed: completed, local_states: journal.counts() };
+  } finally { journal.close(); }
 }
 
 async function loadConfig() {
@@ -151,7 +634,11 @@ export function parseArgs(argv) {
   const out = { _: [], allow: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === '--allow') out.allow.push(argv[++i]);
+    if (a === '--allow') {
+      const root = argv[++i];
+      if (!root || root.startsWith('--')) throw new Error('missing_allowed_folder');
+      out.allow.push(root);
+    }
     else if (a === '--allow-write') out.allowWrite = true;
     else if (a === '--allow-exec') out.allowExec = true;
     else if (a === '--auto') out.auto = true;
@@ -163,11 +650,15 @@ export function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const [cmd, arg] = args._;
+  if (cmd === 'run' || cmd === 'pair') requireDurableNode();
   if (cmd === 'pair') {
     if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> --allow <folder> [--allow-write] [--allow-exec]');
-    const res = await call('pair', { code: arg, platform: `${os.platform()} ${os.arch()}` });
     const roots = [];
     for (const r of args.allow) roots.push(await fs.realpath(path.resolve(expand(r))));
+    if (!roots.length) throw new Error('no_folder_allowed');
+    // Validate local folders before consuming a one-use pairing code.
+    const res = await call('pair', { code: arg, platform: `${os.platform()} ${os.arch()}` });
+    if (typeof res.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
     const cfg = { token: res.token, roots, allowWrite: !!args.allowWrite, allowExec: !!args.allowExec, auto: !!args.auto };
     await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
     console.log(`Paired as "${res.device_name}".`);
@@ -180,6 +671,7 @@ async function main() {
   if (cmd === 'forget') {
     await fs.rm(CONFIG, { force: true });
     console.log('Forgotten. Also remove the computer in Firbo → Computers.');
+    console.log('Private local journals are retained; they may contain undelivered file data. Review before deleting.');
     return;
   }
   if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then: node firbo-connector.mjs pair <CODE> --allow <folder>');
@@ -188,32 +680,20 @@ async function main() {
     return;
   }
   if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | forget');
-  console.log(`Firbo Connector running. Folders: ${cfg.roots.join(', ') || '(none)'}. Press Ctrl+C to stop.`);
-  let wait = 2000;
-  for (;;) {
-    try {
-      const { job } = await call('poll', { token: cfg.token });
-      wait = 2000;
-      if (!job) continue;
-      console.log(`[${new Date().toLocaleTimeString()}] job ${job.kind} ${job.params?.path || job.params?.command || ''}`);
-      let report;
-      try {
-        report = { ok: true, result: await runJob(job, cfg) };
-      } catch (e) {
-        report = { ok: false, error: e instanceof Error ? e.message : 'failed' };
-      }
-      console.log(`   ${report.ok ? 'done' : `refused/failed: ${report.error}`}`);
-      await call('report', { token: cfg.token, job_id: job.id, ...report });
-    } catch (e) {
-      if (e && e.status === 401) {
-        console.error('This computer was removed in Firbo. Stopping.');
-        process.exit(1);
-      }
-      console.error(`connection problem (${e.message}); retrying in ${Math.round(wait / 1000)}s`);
-      await new Promise((r) => setTimeout(r, wait));
-      wait = Math.min(wait * 2, 60_000);
-    }
-  }
+  console.log('Firbo Connector: local consent and folder rules remain active. Ctrl+C requests Stop.');
+  console.log('Pending results are stored privately on this computer, UNENCRYPTED, until acknowledged.');
+  const controller = new AbortController();
+  const stop = () => {
+    if (!controller.signal.aborted) console.log('Stop requested. Finishing interruption and preserving any pending result.');
+    controller.abort();
+  };
+  process.on('SIGINT', stop); process.on('SIGTERM', stop);
+  try {
+    await runDurableConnector(cfg, { signal: controller.signal,
+      directory: process.env.FIRBO_CONNECTOR_STATE_DIR || CONFIG + '.state',
+      onEvent: event => console.log(`Firbo: ${event}`) });
+  } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
+
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

@@ -7,6 +7,7 @@ export type IntegrationKind =
   | 'hubspot' | 'pipedrive' | 'asana' | 'trello' | 'clickup' | 'jira' | 'zendesk' | 'zoom' | 'wordpress' | 'bluesky' | 'facebook' | 'x'
   | 'threads' | 'instagram' | 'devto' | 'matrix' | 'zulip' | 'rocketchat' | 'todoist' | 'monday' | 'homeassistant' | 'ifttt' | 'brevo' | 'mailchimp'
   | 'stripe' | 'shopify' | 'woocommerce' | 'lemonsqueezy' | 'gumroad' | 'calendly' | 'calcom' | 'intercom'
+  | 'youtube' | 'tiktok' | 'salesforce' | 'quickbooks' | 'homeassistant_devices' | 'traccar'
   | 'mcp' | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox';
 
 export type IntegrationCategory = 'messaging' | 'email' | 'work' | 'crm' | 'productivity' | 'social' | 'automation' | 'commerce';
@@ -31,7 +32,7 @@ export interface FieldDef {
   optional?: boolean;
 }
 
-export type OAuthGroup = 'GOOGLE' | 'MICROSOFT' | 'LINKEDIN' | 'DROPBOX';
+export type OAuthGroup = 'GOOGLE' | 'MICROSOFT' | 'LINKEDIN' | 'DROPBOX' | 'TIKTOK' | 'SALESFORCE' | 'QUICKBOOKS';
 
 export interface LiveApp {
   kind: IntegrationKind;
@@ -52,6 +53,13 @@ const f = (key: string, placeholder: string, secret = false, label?: string, opt
 
 /** Apps that can be connected today with a link or key (no developer account needed beyond the app itself). */
 export const LIVE_APPS: LiveApp[] = [
+  {kind:'youtube',name:'YouTube',color:'#ff4b60',cat:'social',oauth:'GOOGLE',fields:[],readOnly:true,about:'Your channel and its reported statistics.',help:'Authorize the YouTube read-only scope. This version does not upload, publish or delete videos.'},
+  {kind:'tiktok',name:'TikTok',color:'#45e8da',cat:'social',oauth:'TIKTOK',fields:[],readOnly:true,about:'Your creator profile and recent public videos.',help:'Authorize Login Kit and Display API access. Content publishing is a separate integration and is not enabled here.'},
+  {kind:'salesforce',name:'Salesforce',color:'#43b9ff',cat:'crm',oauth:'SALESFORCE',fields:[],readOnly:true,about:'Read a limited sample of account records.',help:'Authorize a Salesforce external client app. Use a restricted Salesforce account; the API scope itself is broader than this read-only adapter.'},
+  {kind:'quickbooks',name:'QuickBooks',color:'#5ed5a2',cat:'commerce',oauth:'QUICKBOOKS',fields:[],readOnly:true,about:'Verify your QuickBooks company identity.',help:'Authorize an Intuit app. Firbo only reads CompanyInfo in this release; the accounting OAuth scope is broader. No invoices, payments or accounting entries are changed.'},
+  {kind:'homeassistant_devices',name:'Home Assistant · Devices',color:'#56cfff',cat:'automation',fields:[f('base_url','https://home.example.com',false,'Approved HTTPS origin'),f('token','',true,'Access token'),f('resource_ids','sensor.living_room_temperature,light.office',false,'Allowed entity IDs')],readOnly:true,about:'Selected sensors and device states, not home controls.',help:'The platform must approve the exact HTTPS origin. Give only specific sensor, binary_sensor, light, switch or climate IDs. No cameras, locks or security-panel actions.'},
+  {kind:'traccar',name:'Traccar · Vehicles',color:'#d5ba7e',cat:'automation',fields:[f('base_url','https://tracking.example.com',false,'Approved HTTPS origin'),f('token','',true,'Access token'),f('resource_ids','12,15',false,'Allowed tracker IDs')],readOnly:true,about:'Selected tracker connection status, without vehicle commands.',help:'Connect a compatible Traccar server and explicitly selected tracker IDs. The server origin needs approval. GPS history, engine commands and remote unlocking are not enabled.'},
+
   { kind: 'slack', name: 'Slack', color: '#e01e5a', cat: 'messaging', fields: [f('webhook_url', 'https://hooks.slack.com/services/…', true)] },
   { kind: 'discord', name: 'Discord', color: '#5865f2', cat: 'messaging', fields: [f('webhook_url', 'https://discord.com/api/webhooks/…', true)] },
   { kind: 'teams', name: 'Microsoft Teams', color: '#6264a7', cat: 'messaging', fields: [f('webhook_url', 'https://…webhook.office.com/…', true)] },
@@ -120,13 +128,8 @@ export const LIVE_APPS: LiveApp[] = [
 
 export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'productivity', 'work', 'crm', 'social', 'commerce', 'automation'];
 
-/** Still planned, and honest about why: each needs either a platform review or a different kind of connection. */
-export const PLANNED_APPS: { id: string; name: string; color: string; reason: string }[] = [
-  ['tiktok', 'TikTok', '#25f4ee', 'Posting needs TikTok’s content API audit and a video for every post.'],
-  ['youtube', 'YouTube', '#ff0000', 'Publishing needs a video file and Google’s API audit.'],
-  ['salesforce', 'Salesforce', '#00a1e0', 'Needs a Salesforce connected app per customer org.'],
-  ['quickbooks', 'QuickBooks', '#2ca01c', 'Needs an Intuit app review; it will be a read-only data app first.'],
-].map(([id, name, color, reason]) => ({ id, name, color, reason }));
+/** Compatibility export: new providers now have explicit setup/read-only flows. */
+export const PLANNED_APPS: {id:string;name:string;color:string;reason:string}[] = [];
 
 export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'unknown';
 
@@ -191,6 +194,9 @@ export const startOAuth = (organization_id: string, kind: IntegrationKind, name:
   call<{ url: string }>({ action: 'oauth_start', organization_id, kind, name, fields });
 
 export const OAUTH_CONSOLE: Record<OAuthGroup, { label: string; url: string; secrets: string }> = {
+  TIKTOK: {label:'TikTok Developers',url:'https://developers.tiktok.com/',secrets:'TIKTOK_CLIENT_ID, TIKTOK_CLIENT_SECRET'},
+  SALESFORCE: {label:'Salesforce Setup',url:'https://login.salesforce.com/',secrets:'SALESFORCE_CLIENT_ID, SALESFORCE_CLIENT_SECRET, SALESFORCE_ENVIRONMENT'},
+  QUICKBOOKS: {label:'Intuit Developer',url:'https://developer.intuit.com/',secrets:'QUICKBOOKS_CLIENT_ID, QUICKBOOKS_CLIENT_SECRET, QUICKBOOKS_ENVIRONMENT'},
   GOOGLE: { label: 'Google Cloud Console', url: 'https://console.cloud.google.com/apis/credentials', secrets: 'GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET' },
   MICROSOFT: { label: 'Microsoft Entra', url: 'https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade', secrets: 'MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET' },
   LINKEDIN: { label: 'LinkedIn Developers', url: 'https://www.linkedin.com/developers/apps', secrets: 'LINKEDIN_CLIENT_ID, LINKEDIN_CLIENT_SECRET' },

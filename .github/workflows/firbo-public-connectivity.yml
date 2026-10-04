@@ -1,0 +1,63 @@
+name: Firbo public connectivity evidence
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-public-connectivity.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  public-http:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect only fixed public endpoints; no credentials or model calls
+        run: |
+          python3 - <<'PY'
+          import json, re, urllib.request, urllib.error, datetime
+          ORIGIN='https://firboai.app'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          opener=urllib.request.build_opener(NoRedirect())
+          def probe(url, method='GET', preflight=False):
+              headers={'Origin':ORIGIN,'User-Agent':'Firbo-Public-Connectivity/1'}
+              if preflight:
+                  headers.update({'Access-Control-Request-Method':'GET','Access-Control-Request-Headers':'authorization'})
+              result={'url':url,'method':method}
+              try:
+                  try: r=opener.open(urllib.request.Request(url,method=method,headers=headers),timeout=12)
+                  except urllib.error.HTTPError as e: r=e
+                  with r:
+                      result['status']=r.code
+                      for key in ['access-control-allow-origin','access-control-allow-methods','access-control-allow-headers','x-frame-options','content-security-policy','content-type']:
+                          value=r.headers.get(key)
+                          if value: result[key]=value[:2500]
+                      body=r.read(2000001)
+                      result['response_bounded']=len(body)<=2000000
+                      if url.endswith('/health'):
+                          try:
+                              data=json.loads(body)
+                              result['native_control_contract']=isinstance(data,dict) and data.get('contract')=='firbo-control/v1'
+                          except (ValueError,TypeError): pass
+                      if url==ORIGIN+'/':
+                          text=body.decode('utf-8','replace')
+                          scripts=re.findall(r'<script[^>]+src="(/assets/[^"?]+\.js)"',text)
+                          for script in scripts[:1]:
+                              # Fixed origin and exact assets prefix; never follow arbitrary page links.
+                              if not re.fullmatch(r'/assets/[A-Za-z0-9_.-]+\.js',script): continue
+                              with opener.open(ORIGIN+script,timeout=12) as asset:
+                                  code=asset.read(3000001).decode('utf-8','replace')
+                              result['bundle_api_url_present']='https://api.firboai.app' in code
+                              result['bundle_gateway_url_present']='https://gateway.firboai.app' in code
+                              result['bundle_has_local_settings_override']='openjarvis-settings' in code
+              except (OSError,ValueError,urllib.error.URLError):
+                  result['error']='public_request_unavailable'
+              print('FIRBO_PUBLIC_HTTP '+json.dumps(result,sort_keys=True))
+          print('FIRBO_CHECK_AT '+datetime.datetime.now(datetime.timezone.utc).isoformat())
+          probe(ORIGIN+'/')
+          probe('https://api.firboai.app/health')
+          probe('https://api.firboai.app/v1/gateway/overview','OPTIONS',True)
+          probe('https://api.firboai.app/v1/gateway/overview')
+          probe('https://gateway.firboai.app/')
+          probe('https://gateway.firboai.app/api/health')
+          PY

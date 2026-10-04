@@ -1,5 +1,6 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { requireClient } from './client';
+import { devicePresence } from './computer-state';
 
 export interface DeviceRow {
   id: string;
@@ -21,9 +22,13 @@ export interface JobRow {
   error: string | null;
   created_at: string;
   finished_at: string | null;
+  task_id?: string | null;
+  approval_id?: string | null;
+  report_sha256?: string | null;
+  receipt?: Record<string, unknown> | null;
 }
 
-export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'unknown';
+export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'device_required' | 'device_not_ready' | 'action_not_executable' | 'unknown';
 export class ComputerError extends Error {
   constructor(public code: ComputerErrorCode) {
     super(code);
@@ -37,13 +42,20 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
     if (error instanceof FunctionsHttpError) {
       try {
         const b = await error.context.json();
-        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found'].includes(b?.error)) code = b.error;
+        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed', 'device_required', 'device_not_ready', 'action_not_executable'].includes(b?.error)) code = b.error;
       } catch {
         /* keep unknown */
       }
     }
     throw new ComputerError(code);
   }
+  const action = body.action;
+  const valid = data && typeof data === 'object' && (
+    action === 'create_device' ? typeof data.device_id === 'string' && /^[A-Z2-9]{8}$/.test(data.code) :
+    action === 'new_code' ? /^[A-Z2-9]{8}$/.test(data.code) :
+    action === 'create_job' ? typeof data.job_id === 'string' && data.job_id.length > 0 :
+    action === 'decide_execution' ? ['approved','rejected'].includes(data.decision) : data.ok === true);
+  if (!valid) throw new ComputerError('unknown');
   return data as T;
 }
 
@@ -61,7 +73,7 @@ export async function listDevices(orgId: string): Promise<DeviceRow[]> {
 export async function listJobs(orgId: string, deviceId: string): Promise<JobRow[]> {
   const { data, error } = await requireClient()
     .from('connector_jobs')
-    .select('id, device_id, kind, params, status, result, error, created_at, finished_at')
+    .select('id, device_id, kind, params, status, result, error, created_at, finished_at, task_id, approval_id, report_sha256, receipt')
     .eq('organization_id', orgId)
     .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
@@ -77,7 +89,16 @@ export const giveJob = (device_id: string, kind: JobRow['kind'], params: Record<
   call<{ job_id: string }>({ action: 'create_job', device_id, kind, params, confirm });
 export const cancelJob = (job_id: string) => call<{ ok: true }>({ action: 'cancel_job', job_id });
 
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec']);
+export const isComputerApprovalAction = (action: string) => COMPUTER_APPROVAL_ACTIONS.has(action.trim().toLowerCase());
+export const decideComputerApproval = (input: {
+  approval_id: string; decision: 'approved'|'rejected'; device_id?: string; note?: string; payload?: Record<string, unknown>;
+}) => call<{ decision:'approved'|'rejected'; job_id:string|null; duplicate:boolean }>({
+  action:'decide_execution', approval_id:input.approval_id, decision:input.decision,
+  ...(input.device_id?{device_id:input.device_id}:{}), ...(input.note?{note:input.note}:{}), ...(input.payload?{payload:input.payload}:{}),
+});
+
 /** A computer counts as online while its Connector has asked for work in the last minute. */
 export function isOnline(d: DeviceRow, now = Date.now()): boolean {
-  return !!d.last_seen_at && now - Date.parse(d.last_seen_at) < 60_000;
+  return devicePresence(d, now) === 'online';
 }

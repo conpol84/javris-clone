@@ -13,7 +13,7 @@ const cors = {
   'access-control-allow-methods': 'POST, OPTIONS',
 };
 const json = (status: number, body: unknown) =>
-  new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
+  new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' } });
 
 const OWNERS = ['owner', 'admin'];
 const MAX_DEVICES = 5;
@@ -36,6 +36,65 @@ function randomToken(): string {
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'; params: Record<string, unknown> } | null {
+  const name=action.trim().toLowerCase();
+  const path=str(payload.path,500);
+  if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
+  if (name==='file_read'||name==='computer_read') return path?{kind:'read',params:{path}}:null;
+  if (name==='file_write'||name==='computer_write') return path?{kind:'write',params:{path,content:str(payload.content,100_000),overwrite:payload.overwrite===true}}:null;
+  if (name==='shell_exec'||name==='computer_exec') {
+    const command=str(payload.command,500); return command?{kind:'exec',params:{command,cwd:str(payload.cwd,500)}}:null;
+  }
+  return null;
+}
+
+
+
+/** Stable canonical JSON shared with the device's receipt calculation. */
+function canonicalReportValue(value: unknown, depth = 0): string {
+  if (depth > 32) throw new Error('bad_report');
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
+  if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(item => canonicalReportValue(item, depth + 1)).join(',') + ']';
+  if (value && typeof value === 'object') {
+    const object = value as Record<string, unknown>;
+    return '{' + Object.keys(object).sort().map(key => JSON.stringify(key) + ':' + canonicalReportValue(object[key], depth + 1)).join(',') + '}';
+  }
+  throw new Error('bad_report');
+}
+
+/** Bound the actual body stream, not just an untrusted Content-Length. */
+async function boundedBody(req: Request): Promise<Record<string, any>> {
+  if (!req.body) throw new Error('bad_request');
+  const reader = req.body.getReader();
+  let stopped = false, size = 0;
+  const parts: Uint8Array[] = [];
+  const stop = () => { stopped = true; void reader.cancel().catch(() => {}); };
+  const timer = setTimeout(stop, 10_000);
+  req.signal.addEventListener('abort', stop, { once: true });
+  try {
+    if (req.signal.aborted) throw new Error('bad_request');
+    for (;;) {
+      const part = await reader.read();
+      if (stopped) throw new Error('bad_request');
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 256_000) throw new Error('too_large');
+      parts.push(part.value);
+    }
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const part of parts) { bytes.set(part, offset); offset += part.byteLength; }
+    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('bad_request');
+    return data;
+  } finally {
+    clearTimeout(timer); req.signal.removeEventListener('abort', stop);
+    void reader.cancel().catch(() => {}); reader.releaseLock();
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -45,9 +104,9 @@ Deno.serve(async (req) => {
   const admin = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
   let body: Record<string, any> = {};
   try {
-    body = await req.json();
-  } catch {
-    return json(400, { error: 'bad_request' });
+    body = await boundedBody(req);
+  } catch (error) {
+    return json(error instanceof Error && error.message === 'too_large' ? 413 : 400, { error: 'bad_request' });
   }
   const action = String(body.action ?? '');
 
@@ -70,28 +129,46 @@ Deno.serve(async (req) => {
     return json(200, { token, device_name: dev.name });
   }
 
-  if (action === 'poll' || action === 'report') {
+  if (action === 'poll' || action === 'report' || action === 'capabilities') {
     const token = str(body.token, 100);
-    if (token.length < 40) return json(401, { error: 'unauthorized' });
-    const { data: sec } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
+    if (!/^[a-f0-9]{64}$/.test(token)) return json(401, { error: 'unauthorized' });
+    const { data: sec, error: secretError } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
+    if (secretError) return json(503, { error: 'device_auth_unavailable' });
     if (!sec) return json(401, { error: 'unauthorized' });
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, revoked_at').eq('id', sec.device_id).maybeSingle();
-    if (!dev || dev.revoked_at) return json(401, { error: 'revoked' });
+    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at').eq('id', sec.device_id).maybeSingle();
+    if (deviceError) return json(503, { error: 'device_auth_unavailable' });
+    if (!dev || dev.revoked_at || dev.paired !== true) return json(401, { error: 'revoked' });
+
+    if (action === 'capabilities') return json(200, {
+      protocol: 'firbo-connector/v2', report_ack: 'sha256-v1',
+      result_max_bytes: 140_000, queued_cancel_only: true,
+      remote_stop: false, automatic_interrupted_reexecution: false,
+    });
 
     if (action === 'report') {
       const jobId = str(body.job_id, 60);
-      const ok = body.ok === true;
-      const result = body.result && typeof body.result === 'object' ? body.result : null;
-      if (result && JSON.stringify(result).length > 150_000) return json(413, { error: 'too_large' });
-      const { data: done } = await admin
-        .from('connector_jobs')
-        .update({ status: ok ? 'done' : 'error', result: ok ? result : null, error: ok ? null : str(body.error, 500) || 'failed', finished_at: new Date().toISOString() })
-        .eq('id', jobId)
-        .eq('device_id', dev.id)
-        .eq('status', 'running')
-        .select('id')
-        .maybeSingle();
-      return done ? json(200, { ok: true }) : json(409, { error: 'not_running' });
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId) || typeof body.ok !== 'boolean') return json(400, { error: 'bad_report' });
+      const ok = body.ok;
+      const result = ok ? (body.result ?? null) : null;
+      if (result !== null && (typeof result !== 'object' || Array.isArray(result))) return json(400, { error: 'bad_report' });
+      const reportError = ok ? null : str(body.error, 500) || 'failed';
+      let canonical: string;
+      try { canonical = canonicalReportValue({ job_id: jobId, ok, result, error: reportError }); }
+      catch { return json(400, { error: 'bad_report' }); }
+      if (new TextEncoder().encode(canonical).byteLength > 150_000) return json(413, { error: 'too_large' });
+      const digest = await sha256(canonical);
+      if (body.report_sha256 !== undefined && body.report_sha256 !== digest) return json(400, { error: 'report_hash_mismatch' });
+      const { data: finished, error: finishError } = await admin.rpc('connector_finish_execution', {
+        p_job: jobId, p_device: dev.id, p_org: dev.organization_id, p_ok: ok,
+        p_result: result, p_error: reportError, p_digest: digest,
+      });
+      if (finishError) {
+        const message=String(finishError.message??'');
+        if (/job_not_found/.test(message)) return json(404,{error:'not_found'});
+        if (/state_conflict|report_conflict/.test(message)) return json(409,{error:'state_conflict'});
+        return json(503,{error:'save_failed'});
+      }
+      return json(200,{ok:true,job_id:jobId,report_sha256:digest,duplicate:finished?.duplicate===true,receipt:finished?.receipt??null});
     }
 
     // poll: hold the request open for a while so jobs start almost instantly without hammering the service
@@ -134,7 +211,42 @@ Deno.serve(async (req) => {
   const audit = (orgId: string, act: string, entityId: string | null, meta: Record<string, unknown>) =>
     admin.from('audit_log').insert({ organization_id: orgId, actor_id: user.id, action: act, entity: 'connector', entity_id: entityId, metadata: meta });
 
-  if (action === 'create_device') {
+  if (action === 'decide_execution') {
+    const approvalId=str(body.approval_id,60);
+    const decision=String(body.decision??'');
+    if (!/^[0-9a-f-]{36}$/i.test(approvalId) || !['approved','rejected'].includes(decision)) return json(400,{error:'bad_request'});
+    const { data: approval, error: approvalError } = await admin.from('approvals')
+      .select('id,organization_id,task_id,action,payload,status').eq('id',approvalId).maybeSingle();
+    if (approvalError) return json(503,{error:'save_failed'});
+    if (!approval) return json(404,{error:'not_found'});
+    if (!OWNERS.includes((await roleIn(approval.organization_id)) ?? '')) return json(403,{error:'forbidden'});
+    const edited = body.payload && typeof body.payload==='object' && !Array.isArray(body.payload) ? body.payload as Record<string,unknown> : approval.payload as Record<string,unknown>;
+    let deviceId: string | null=null, kind: string | null=null, params: Record<string,unknown>|null=null;
+    if (decision==='approved') {
+      const execution=executionForApproval(String(approval.action??''),edited??{});
+      if (!execution) return json(422,{error:'action_not_executable'});
+      deviceId=str(body.device_id,60);
+      if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400,{error:'device_required'});
+      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at').eq('id',deviceId).maybeSingle();
+      if (!dev || dev.organization_id!==approval.organization_id || !dev.paired || dev.revoked_at) return json(404,{error:'device_not_ready'});
+      kind=execution.kind;params=execution.params;
+    }
+    const { data: decided, error: decideError } = await admin.rpc('connector_decide_execution', {
+      p_approval: approval.id, p_actor: user.id, p_device: deviceId, p_decision: decision,
+      p_note: str(body.note,500)||null, p_payload: edited??{}, p_kind: kind, p_params: params,
+    });
+    if (decideError) {
+      const message=String(decideError.message??'');
+      if (/forbidden/.test(message)) return json(403,{error:'forbidden'});
+      if (/not_found|device_not_ready/.test(message)) return json(404,{error:'not_found'});
+      if (/too_many/.test(message)) return json(429,{error:'too_many'});
+      if (/state_conflict/.test(message)) return json(409,{error:'state_conflict'});
+      return json(503,{error:'save_failed'});
+    }
+    return json(200,{decision:decided?.decision,job_id:decided?.job_id??null,duplicate:decided?.duplicate===true});
+  }
+
+    if (action === 'create_device') {
     const orgId = str(body.organization_id, 60);
     const name = str(body.name, 60).trim();
     if (!orgId || !name) return json(400, { error: 'bad_request' });
@@ -204,7 +316,13 @@ Deno.serve(async (req) => {
     const { data: job } = await admin.from('connector_jobs').select('id, organization_id, status').eq('id', str(body.job_id, 60)).maybeSingle();
     if (!job) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(job.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
-    await admin.from('connector_jobs').update({ status: 'cancelled', finished_at: new Date().toISOString() }).eq('id', job.id).eq('status', 'queued');
+    // A queued job may be claimed between the read and the update. No matched row
+    // means no cancellation; never return success for a running or changed job.
+    const { data: cancelled, error: cancelError } = await admin.from('connector_jobs')
+      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+      .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
+    if (cancelError) return json(503, { error: 'save_failed' });
+    if (!cancelled) return json(409, { error: 'state_conflict' });
     return json(200, { ok: true });
   }
 
