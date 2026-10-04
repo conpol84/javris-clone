@@ -181,7 +181,7 @@ Deno.serve(async (req) => {
     ...(memoryBlock ? [memoryBlock] : []),
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     'You cannot send, publish, pay or change anything yourself. If the teammate wants work delivered or an outward step taken, suggest creating a task for you so it goes through approval.',
-    `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language.`,
+    `Reply in ${LANG_NAME[lang]} unless the teammate writes in another language. Today is ${new Date().toISOString().slice(0, 10)}.`,
     snapshot,
     body.voice === true
       ? 'When the founder asks what a task found or asks you to read a result, read it from FINISHED TASKS / FULL RESULT: the main findings in plain words, up to six short sentences (under 600 characters), then say the full report is in Tasks.'

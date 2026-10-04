@@ -27,13 +27,14 @@ test('a direct final answer is one call', async () => {
 test('stops at the step limit and asks for the final answer', async () => {
   let n = 0; let lastMessages;
   const out = await runAgentLoop({ call: async (m) => { n++; lastMessages = m; return '{"action":"web_search","input":"again"}'; }, system: 'S', user: 'U', tools: { web_search: async () => 'r' }, maxSteps: 2 });
-  assert.equal(n, 3); assert.equal(out.steps.length, 2);
-  assert.match(lastMessages.at(-1).content, /No more tools/);
+  assert.equal(n, 4); assert.equal(out.steps.length, 2);
+  assert.ok(lastMessages.some(m => /No more tools/.test(m.content)));
+  assert.match(lastMessages.at(-1).content, /cannot use more tools/);
 });
 test('stops asking for tools when the time budget is used up', async () => {
   let t = 0;
   const out = await runAgentLoop({ call: async () => { t += 30_000; return '{"action":"web_search","input":"x"}'; }, system: 'S', user: 'U', tools: { web_search: async () => 'r' }, budgetMs: 60_000, now: () => t });
-  assert.ok(out.calls <= 3, String(out.calls));
+  assert.ok(out.calls <= 4, String(out.calls));
 });
 test('a tool that is not allowed is not run, and a failing tool does not stop the work', async () => {
   assert.equal(parseToolRequest('{"action":"shell","input":"rm -rf /"}', ['web_search']), null);
@@ -43,3 +44,12 @@ test('a tool that is not allowed is not run, and a failing tool does not stop th
   assert.equal(out.steps[0].ok, false); assert.equal(out.text, final);
 });
 test('no tools means no tool instructions', () => assert.equal(loopInstructions([], 5), ''));
+test('a tool request with a stray closing brace is still understood', () => {
+  assert.deepEqual(parseToolRequest('{"action": "web_search", "input": "sports news"} }', ['web_search']), { action: 'web_search', input: 'sports news' });
+  assert.deepEqual(parseToolRequest('Sure! {"action":"read_page","input":"https://a.example/{x}"} thanks', ['read_page']), { action: 'read_page', input: 'https://a.example/{x}' });
+});
+test('when it must answer but still asks for a tool, it is asked once more for the final answer', async () => {
+  const replies = ['{"action":"web_search","input":"a"}', '{"action":"web_search","input":"b"}', final];
+  const out = await runAgentLoop({ call: async () => replies.shift(), system: 'S', user: 'U', tools: { web_search: async () => 'r' }, maxSteps: 1 });
+  assert.equal(out.text, final); assert.equal(out.calls, 3);
+});

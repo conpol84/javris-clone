@@ -8,8 +8,30 @@ function decodeJsonString(raw: string): string {
   }
 }
 
+/** The first complete {...} object, respecting strings; ignores anything after it (models often add a stray brace). */
+function firstObject(text: string): string | null {
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (c === '\\') escaped = true;
+      else if (c === '"') inString = false;
+    } else if (c === '"') inString = true;
+    else if (c === '{') depth++;
+    else if (c === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return null;
+}
+
 export function extractModelJson(text: string): Record<string, unknown> | null {
   const tries: string[] = [];
+  const balanced = firstObject(text);
+  if (balanced) tries.push(balanced);
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
   // The widest {...} first: a fence inside the report must not cut the object short.

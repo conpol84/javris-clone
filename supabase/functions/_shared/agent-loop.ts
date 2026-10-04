@@ -61,7 +61,9 @@ export async function runAgentLoop(o: {
     { role: 'user', content: o.user },
   ];
   const steps: LoopStep[] = [];
+  const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'think'];
   let calls = 0;
+  let insisted = false;
   while (true) {
     const left = budget - (now() - started);
     const last = steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
@@ -69,7 +71,18 @@ export async function runAgentLoop(o: {
     const text = await o.call(messages, last ? (o.finalTimeoutMs ?? 50_000) : Math.max(8_000, Math.min(45_000, left)));
     calls++;
     const want = last ? null : parseToolRequest(text, allowed);
-    if (!want) return { text, steps, calls };
+    if (!want) {
+      // Still asking for a tool when it must answer (or for one it does not have): insist once on the final answer.
+      if (!insisted && parseToolRequest(text, everyTool)) {
+        insisted = true;
+        messages.push({ role: 'assistant', content: text.slice(0, 2000) });
+        messages.push({ role: 'user', content: 'You cannot use more tools. Answer now with the final JSON object (summary, report, actions) using what you have.' });
+        const again = await o.call(messages, o.finalTimeoutMs ?? 50_000);
+        calls++;
+        return { text: again, steps, calls };
+      }
+      return { text, steps, calls };
+    }
     let result = 'Noted.';
     let ok = true;
     if (want.action !== 'think') {
