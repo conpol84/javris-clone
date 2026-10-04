@@ -44,10 +44,10 @@ export const CATALOG: CatalogItem[] = [
     'Obsidian vault', 'Apple Calendar', 'Apple Contacts', 'Apple Notes', 'Apple Health', 'Apple Music', 'Oura', 'Strava', 'Spotify', 'Weather', 'Granola', 'iMessage', 'WhatsApp history', 'Any IMAP mailbox',
   ]),
   // ---- tools: what an AI employee can do
-  ...many('tools', 'firbo', 'live', ['Reasoning', 'Company memory', 'Approval queue (human in the loop)', 'Task delegation (missions)']),
+  ...many('tools', 'firbo', 'live', ['Reasoning', 'Company memory', 'Approval queue (human in the loop)', 'Task delegation (missions)', 'Speech (text to speech, audio)']),
   ...many('tools', 'openjarvis', 'engine', [
     'Web search', 'Browser (navigate, read pages)', 'HTTP requests', 'Read files', 'Write files', 'Shell commands', 'Sandboxed Docker shell', 'Code interpreter', 'Git (status, diff, log, commit)', 'Apply code patches',
-    'Database queries', 'Knowledge search (documents)', 'PDF reading', 'Image tools', 'Speech (text to speech, audio)', 'Calculator', 'Weather', 'MCP tools (any MCP server)', 'Skills library', 'Proactive monitoring',
+    'Database queries', 'Knowledge search (documents)', 'PDF reading', 'Image tools', 'Calculator', 'Weather', 'MCP tools (any MCP server)', 'Skills library', 'Proactive monitoring',
   ]),
   // ---- the AI engine: OmniRoute + OpenJarvis
   ...many('ai', 'omniroute', 'live', ['One AI endpoint for any model', 'Usage and cost analytics', 'Provider quota tracking', 'API keys and spend per key', 'Free-model finder', 'Live request log'], '/gateway'),
