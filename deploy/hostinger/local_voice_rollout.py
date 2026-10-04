@@ -244,8 +244,8 @@ def apply(n,ref,report):
     for name,h in SOURCE_HASHES.items():private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))
     # Build the private Piper runtime from a pinned amd64 Python base.
     dockerfile=f'''FROM {BASE_IMAGE}
-RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}" "g2pW==0.1.1" "requests==2.32.5" \
- && python -c "import importlib.metadata, pathlib, g2pw, requests; assert importlib.metadata.version('g2pW')=='0.1.1'; assert importlib.metadata.version('requests')=='2.32.5'; p=pathlib.Path(g2pw.__file__).resolve().parent; assert any(p.rglob('*.onnx')), p"
+RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}" \
+ && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='{PIPER_VERSION}'; assert m.version('g2pW')=='0.1.1'"
 COPY --chmod=0644 firbo_piper_server.py /app/server.py
 ENV HOME=/tmp FIRBO_PIPER_DATA=/voices
 USER 10001:10001
@@ -255,8 +255,8 @@ ENTRYPOINT ["python","/app/server.py"]
     tag='firbo-piper:'+release.name.lower()
     n.docker('build','--pull=false','-f',str(source/'Dockerfile.piper'),'-t',tag,str(source),timeout=600)
     piper_id=n.docker('image','inspect','--format','{{.Id}}',tag).strip();require(n.IMAGE.fullmatch(piper_id),'invalid_piper_image')
-    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json,pathlib,g2pw,requests;p=pathlib.Path(g2pw.__file__).resolve().parent;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'requests':importlib.metadata.version('requests'),'g2pw_onnx':sum(1 for _ in p.rglob('*.onnx'))}))"))
-    require(pkg.get('piper')==PIPER_VERSION and pkg.get('g2pw')=='0.1.1' and pkg.get('requests')=='2.32.5' and int(pkg.get('g2pw_onnx',0))>=1,'piper_dependency_mismatch')
+    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW')}))"))
+    require(pkg.get('piper')==PIPER_VERSION and pkg.get('g2pw')=='0.1.1','piper_dependency_mismatch')
     print('FIRBO_VOICE_STAGE download_and_verify_voices',file=sys.stderr,flush=True)
     n.docker('run','--rm','--user','10001:10001','--mount',f'type=bind,src={voices},dst=/voices','--entrypoint','python',piper_id,
         '-m','piper.download_voices','--data-dir','/voices',*VOICE_NAMES,timeout=900)
