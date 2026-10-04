@@ -7,7 +7,7 @@ def sha(path):return hashlib.sha256(path.read_bytes()).hexdigest()
 def test_runtime_hashes_match_exact_source():
     for name,want in v.SOURCE_HASHES.items(): assert sha(ROOT/'src/openjarvis/server'/name)==want
 def test_voice_manifest_is_complete_and_no_arabic_server_voice():
-    assert len(v.VOICE_NAMES)==7 and len(v.VOICE_HASHES)==19
+    assert len(v.VOICE_NAMES)==7 and len(v.VOICE_HASHES)==14
     assert not any(x.startswith('ar_') for x in v.VOICE_NAMES)
     assert 'zh_CN-chaowen-medium' in v.VOICE_NAMES and 'g2pW/g2pw.onnx' in v.VOICE_HASHES
 def test_runtime_is_pinned_and_private_by_construction():
@@ -42,3 +42,10 @@ def test_source_staging_uses_file_paths_not_directory_and_name_args():
     text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
     assert "private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))" in text
     assert "private_write(source,name,download" not in text
+
+def test_chinese_support_is_verified_in_image_not_voice_directory():
+    text=(ROOT/'deploy/hostinger/local_voice_rollout.py').read_text()
+    assert not any(path.startswith('g2pW/') for path in v.VOICE_HASHES)
+    assert '"g2pW==0.1.1"' in text
+    assert "p.rglob('*.onnx')" in text
+    assert "pkg.get('g2pw')=='0.1.1'" in text
