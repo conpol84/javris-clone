@@ -30,9 +30,13 @@ jobs:
           cat > /tmp/firbo-piper-image/Dockerfile <<'EOF'
           FROM python:3.12.14-slim-bookworm@sha256:1aaa65a85fda306ffb8b910824d4e93bdce61e212c7e87168123ea3073b41a1a
           RUN pip install --no-cache-dir "piper-tts[zh]==1.8.0" \
-           && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='1.8.0'; assert m.version('g2pW')=='0.1.1'"
+           && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='1.8.0'; assert m.version('g2pW')=='0.1.1'" \
+           && mkdir -p /opt/firbo-resources/g2pW \
+           && python -c "from piper.phonemize_chinese import download_model; download_model('/opt/firbo-resources/g2pW')" \
+           && test -s /opt/firbo-resources/g2pW/g2pw.onnx \
+           && chmod -R a=rX /opt/firbo-resources
           COPY --chmod=0644 firbo_piper_server.py /app/server.py
-          ENV HOME=/tmp FIRBO_PIPER_DATA=/voices
+          ENV HOME=/tmp FIRBO_PIPER_DATA=/voices FIRBO_PIPER_RESOURCES=/opt/firbo-resources
           USER 10001:10001
           ENTRYPOINT ["python","/app/server.py"]
           EOF
@@ -116,8 +120,10 @@ jobs:
           d=importlib.metadata.distribution('piper-tts')
           (out/'package.json').write_text(json.dumps({'version':d.version,'license':d.metadata.get('License'),'python':platform.python_version()},indent=2))
           PY
-      - name: Record exact local voice installer digest
-        run: sha256sum deploy/hostinger/local_voice_rollout.py | tee /tmp/firbo-piper-evidence/installer-sha256.txt
+      - name: Record exact source digests
+        run: |
+          sha256sum deploy/hostinger/local_voice_rollout.py | tee /tmp/firbo-piper-evidence/installer-sha256.txt
+          sha256sum src/openjarvis/server/firbo_piper_server.py | tee /tmp/firbo-piper-evidence/server-sha256.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
