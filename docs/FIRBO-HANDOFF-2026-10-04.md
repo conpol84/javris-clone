@@ -426,3 +426,21 @@ It cannot physically open the owner's laptop browser **yet** because the live da
 The newest frontend with the pairing/browser UI is currently a READY preview, not production, because the Vercel promotion API is rejecting it with 422.
 
 Those two items — **production frontend publication** and **real laptop pairing/acceptance** — are the immediate blockers before claiming “mobile website voice opens my laptop browser” is complete in the real world.
+
+## FINAL AUDIT ADDENDUM — 4 October 2026 12:00 UTC
+
+A final live re-check after the handoff confirmed:
+- Supabase connector Edge Function is ACTIVE **v7**, artifact SHA **523976edf5e85533452dc4cd981f3e71f6fda7385adb577c34244b4b87628d41**, contains both `browser_open` and durable `connector_finish_execution` handling.
+- Live database constraint accepts exactly `list/read/write/exec/browser_open`; `connector_devices.capabilities` migration is live.
+- Live device inventory is still **1 total / 0 paired / 0 online**. Physical Website→Laptop acceptance therefore remains impossible until the owner/dev runs the Connector on a real laptop.
+- `firboai.app` still resolves to deployment **dpl_AXUPy9TUxZxrEsSZaWs4fFtDPHN6**, source **184c7acb43d49031e440e5a309719eec7379a5cf**. The Website↔Laptop frontend is still newer preview source **9aca210dbb5219ccb8bb85c017e151f87adf4da9**; no production publication was confirmed.
+
+CI truth at source `9aca210...`:
+- Frontend CI, Computer Manager, M2 mobile, control-plane, no-paid text, real local-operation checks, connectivity, M1, voice/hologram, native rollout, connected devices and SAST were successful.
+- **Two separate workflows are red and must not be hidden:**
+  1. `Firbo local voice and model compatibility` failed before its application tests because `npm install --global npm@11.19.0` hit runner filesystem **EACCES** at `/usr/local/share/man/man5`. This is a CI setup failure, not evidence that voice/model runtime failed.
+  2. `Firbo actual local-model install and useful draft` passed its isolated Python contracts and actual Qwen smoke (FIRBO_OK / έτοιμο / 50) but its disposable Docker API canary ended `local_api_boot_or_auth_check_failed`. The production VPS local model was already installed earlier and is not rolled back by this CI failure. The disposable canary regression still needs diagnosis before calling the entire PR green.
+
+Current Supabase Security Advisor still reports leaked-password protection disabled and six authenticated-callable SECURITY DEFINER functions requiring review. RLS-with-no-policy findings on secret/service-only tables must **not** be “fixed” by exposing client policies.
+
+The branch contains later documentation-only commits after the tested implementation. Treat **9aca210...** as the last explicitly cited tested Website↔Laptop implementation source until a newer code SHA is fully re-run. Read branch history before editing; never reset to the old source snapshots referenced earlier in the conversation.
