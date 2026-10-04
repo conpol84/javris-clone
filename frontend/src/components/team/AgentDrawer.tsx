@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { Trash2 } from 'lucide-react';
 import { Panel, StatusDot } from '../command/Panel';
-import { updateAgent, updateTool } from '../../lib/company/data';
+import { deleteAgent, updateAgent, updateTool } from '../../lib/company/data';
 import { AUTONOMY_LEVELS } from '../../lib/company/templates';
 import { agentLabel } from '../../lib/company/labels';
 import { agentColor, STATE_KEY, type AgentState } from '../../lib/company/status';
@@ -46,6 +47,7 @@ export function AgentDrawer({
   const color = agentColor(agent.type, agent.slug);
   const [budget, setBudget] = useState(agent.monthly_budget_usd?.toString() ?? '');
   const [model, setModel] = useState(agent.model ?? 'auto');
+  const [confirmRemove, setConfirmRemove] = useState(false);
   const suggestion = autonomySuggestion(stats, agent.autonomy);
 
   const run = async (fn: () => Promise<void>, ok?: string) => {
@@ -234,6 +236,29 @@ export function AgentDrawer({
         ))}
         {agent.agent_tools.length === 0 && <li className="fb-dim text-sm">{t('drawer.noTools')}</li>}
       </ul>
+      {canManage && agent.type !== 'ceo' && (
+        <div className="mt-5 pt-4" style={{ borderTop: '1px solid var(--fb-border)' }}>
+          {confirmRemove ? (
+            <div className="fb-col gap-2">
+              <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('drawer.removeAsk', { name: label.name })}</p>
+              <div className="flex gap-2">
+                <button className="fb-btn fb-btn--ghost flex-1" onClick={() => setConfirmRemove(false)}>{t('drawer.removeNo')}</button>
+                <button
+                  className="fb-btn flex-1"
+                  style={{ color: 'var(--fb-warn)' }}
+                  onClick={() => void run(async () => { await deleteAgent(agent.id); onClose(); }, t('drawer.removed'))}
+                >
+                  <Trash2 size={14} /> {t('drawer.removeYes')}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="inline-flex cursor-pointer items-center gap-1.5 text-xs" style={{ color: 'var(--fb-dim)' }} onClick={() => setConfirmRemove(true)}>
+              <Trash2 size={12} /> {t('drawer.remove')}
+            </button>
+          )}
+        </div>
+      )}
       {!canManage && <p className="fb-dim mt-3 text-xs">{t('drawer.readonly')}</p>}
     </Panel>
   );

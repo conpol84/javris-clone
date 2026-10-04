@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { memoriesReadBy } from './memory';
+import { memoriesReadBy, splitIntoNotes } from './memory';
 
 const m = (id: string, agent: string | null, importance: number) => ({ id, agent_id: agent, importance });
 
@@ -18,5 +18,32 @@ describe('memoriesReadBy', () => {
     const items = [m('a', null, 0.1), m('b', null, 0.9)];
     memoriesReadBy('x', [...items]);
     expect(items.map((i) => i.id)).toEqual(['a', 'b']);
+  });
+});
+
+describe('splitIntoNotes (files uploaded to memory)', () => {
+  it('returns nothing for empty text', () => {
+    expect(splitIntoNotes('   \n\n  ')).toEqual([]);
+  });
+  it('keeps short paragraphs together up to the limit', () => {
+    const notes = splitIntoNotes('First idea.\n\nSecond idea.\n\nThird idea.', 900);
+    expect(notes).toEqual(['First idea. Second idea. Third idea.']);
+  });
+  it('starts a new note when the limit would be exceeded', () => {
+    const a = 'a'.repeat(600);
+    const b = 'b'.repeat(600);
+    expect(splitIntoNotes(`${a}\n\n${b}`, 900)).toEqual([a, b]);
+  });
+  it('splits an overlong paragraph and never exceeds the limit', () => {
+    const notes = splitIntoNotes('x'.repeat(2500), 900);
+    expect(notes.length).toBe(3);
+    expect(notes.every((n) => n.length <= 900)).toBe(true);
+  });
+  it('caps the number of notes', () => {
+    const text = Array.from({ length: 60 }, (_, i) => `${'n'.repeat(800)} ${i}`).join('\n\n');
+    expect(splitIntoNotes(text, 900, 20)).toHaveLength(20);
+  });
+  it('normalises Windows line endings', () => {
+    expect(splitIntoNotes('one\r\n\r\ntwo')).toEqual(['one two']);
   });
 });

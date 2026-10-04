@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nProvider';
 
@@ -20,9 +21,10 @@ export function Modal({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
-  return (
+  // Rendered on <body>: inside the page it would sit below the sidebar and the bottom bar.
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 md:p-10"
+      className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto p-4 md:p-10"
       style={{ background: 'rgba(3,7,14,0.72)', backdropFilter: 'blur(6px)' }}
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
@@ -41,6 +43,7 @@ export function Modal({
         </header>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

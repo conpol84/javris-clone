@@ -6,6 +6,7 @@ import { Avatar, EmptyState, PageHeader, Pill, Segmented, Stat } from '../compon
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
 import { RunError, runErrorText, runTask } from '../lib/company/runner';
+import { notifyPlanLimit } from '../lib/company/limits';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -88,7 +89,8 @@ export function TasksPage() {
       await data.reload();
     } catch (err) {
       console.error(err);
-      toast.error(t('tasks.createError'));
+      const code = (err as { code?: string } | null)?.code;
+      if (!notifyPlanLimit(err, t as never)) toast.error(code ? `${t('tasks.createError')} [${code}]` : t('tasks.createError'));
     } finally {
       setBusy(false);
     }

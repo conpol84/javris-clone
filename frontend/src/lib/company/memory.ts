@@ -33,11 +33,35 @@ export async function listMemories(orgId: string): Promise<MemoryRow[]> {
   return (data ?? []) as MemoryRow[];
 }
 
-export async function addMemory(orgId: string, userId: string, input: { content: string; type: MemoryType; importance: number }): Promise<void> {
+export async function addMemory(orgId: string, userId: string, input: { content: string; type: MemoryType; importance: number; agentId?: string | null }): Promise<void> {
   const { error } = await requireClient()
     .from('memories')
-    .insert({ organization_id: orgId, user_id: userId, content: input.content.trim().slice(0, 1000), memory_type: input.type, importance: input.importance });
+    .insert({ organization_id: orgId, user_id: userId, content: input.content.trim().slice(0, 1000), memory_type: input.type, importance: input.importance, agent_id: input.agentId ?? null });
   if (error) throw new Error(error.message);
+}
+
+export const MEMORY_FILE_MAX_BYTES = 100_000;
+export const MEMORY_FILE_MAX_NOTES = 20;
+
+/** Splits plain text into memory-sized notes (paragraph by paragraph, at most `maxLen` characters each). */
+export function splitIntoNotes(text: string, maxLen = 900, maxNotes = MEMORY_FILE_MAX_NOTES): string[] {
+  const clean = text.replace(/\r\n?/g, '\n').replace(/[ \t]+/g, ' ').trim();
+  if (!clean) return [];
+  const notes: string[] = [];
+  let cur = '';
+  const flush = () => {
+    if (cur) notes.push(cur);
+    cur = '';
+  };
+  for (const paragraph of clean.split(/\n{2,}/).map((x) => x.replace(/\n/g, ' ').trim()).filter(Boolean)) {
+    for (let i = 0; i < paragraph.length; i += maxLen) {
+      const piece = paragraph.slice(i, i + maxLen);
+      if (cur && cur.length + 1 + piece.length > maxLen) flush();
+      cur = cur ? `${cur} ${piece}` : piece;
+    }
+  }
+  flush();
+  return notes.slice(0, maxNotes);
 }
 
 export async function deleteMemory(id: string): Promise<void> {

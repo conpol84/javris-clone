@@ -9,7 +9,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import { notifyPlanLimit } from '../lib/company/limits';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_TYPES, memoriesReadBy, type MemoryRow, type MemoryType } from '../lib/company/memory';
+import { addMemory, deleteMemory, listMemories, MEMORY_COLORS, MEMORY_FILE_MAX_BYTES, MEMORY_TYPES, memoriesReadBy, splitIntoNotes, type MemoryRow, type MemoryType } from '../lib/company/memory';
 import { MANAGER_ROLES, WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import { PageHeader } from '../components/ui/kit';
 import '../styles/firbo.css';
@@ -31,6 +31,8 @@ export function MemoryPage() {
   const [loaded, setLoaded] = useState(false);
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
+  const [fileAgent, setFileAgent] = useState('');
+  const [fileBusy, setFileBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -73,6 +75,29 @@ export function MemoryPage() {
       if (!notifyPlanLimit(err, t as never)) toast.error(t('mem.error'));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const uploadFile = async (file: File) => {
+    if (!user || !orgId) return;
+    if (file.size > MEMORY_FILE_MAX_BYTES || !/\.(txt|md|markdown|csv|json)$/i.test(file.name)) return void toast.error(t('mem.uploadBad'));
+    const notes = splitIntoNotes(await file.text());
+    if (notes.length === 0) return void toast.error(t('mem.uploadEmpty'));
+    setFileBusy(true);
+    let done = 0;
+    try {
+      for (const note of notes) {
+        await addMemory(orgId, user.id, { content: note, type: 'fact', importance, agentId: fileAgent || null });
+        done++;
+      }
+      toast.success(t('mem.uploadDone', { count: done }));
+    } catch (err) {
+      console.error(err);
+      if (!notifyPlanLimit(err, t as never)) toast.error(t('mem.error'));
+      if (done > 0) toast.message(t('mem.uploadPartial', { done, total: notes.length }));
+    } finally {
+      setFileBusy(false);
+      await load();
     }
   };
 
@@ -153,6 +178,32 @@ export function MemoryPage() {
                 </button>
               </div>
               <p className="fb-dim text-xs">{t('mem.note')}</p>
+              <div className="fb-col gap-2 pt-3" style={{ borderTop: '1px solid var(--fb-border)' }}>
+                <div className="fb-eyebrow">{t('mem.upload')}</div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select className="fb-input" value={fileAgent} onChange={(e) => setFileAgent(e.target.value)} aria-label={t('mem.uploadFor')}>
+                    <option value="">{t('mem.uploadEveryone')}</option>
+                    {agents.filter((a) => a.enabled).map((a) => (
+                      <option key={a.id} value={a.id}>{agentLabel(a, i18n).name}</option>
+                    ))}
+                  </select>
+                  <label className={`fb-btn ${fileBusy ? 'opacity-60' : 'cursor-pointer'}`}>
+                    {fileBusy ? t('common.loading') : t('mem.upload')}
+                    <input
+                      type="file"
+                      accept=".txt,.md,.markdown,.csv,.json,text/plain,text/markdown,text/csv,application/json"
+                      className="sr-only"
+                      disabled={fileBusy}
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        e.target.value = '';
+                        if (f) void uploadFile(f);
+                      }}
+                    />
+                  </label>
+                </div>
+                <p className="fb-dim text-xs">{t('mem.uploadHint')}</p>
+              </div>
             </form>
           )}
         </section>

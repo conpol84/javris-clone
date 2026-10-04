@@ -284,6 +284,12 @@ export async function updateAgent(
   fail(error, null);
 }
 
+/** Removes an AI employee. Its history (tasks, chats, usage) stays; its tools and shifts go with it. */
+export async function deleteAgent(agentId: string): Promise<void> {
+  const { error } = await requireClient().from('agents').delete().eq('id', agentId);
+  fail(error, null);
+}
+
 export async function updateTool(
   toolId: string,
   patch: Partial<{ enabled: boolean; policy: ToolPolicy }>,
