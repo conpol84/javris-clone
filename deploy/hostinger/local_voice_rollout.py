@@ -26,7 +26,7 @@ SOURCE_HASHES={
  'free_inference.py':'450a4d7ae83e7e665b293fac245125221bbcbb225e904ccde23cfa091efa14a6',
  'firbo_free_app.py':'c9e4a914d95b5408b41f671f87da8ed00f98855f4797a91ed3a595650fbb6396',
  'local_tts.py':'8ef57ce61873be951f99f1b9d8128726091caee3fa021d015e50c74d84ab3885',
- 'firbo_piper_server.py':'1439d5fabf7300fd2a2861c60512eecb9cb6d919ea8b011c856512f2f8114d9b',
+ 'firbo_piper_server.py':'62e8e4045209bd591f4185b4747e8df03d7e711a3c4dfd09b5cdaae66e5b53e2',
 }
 VOICE_NAMES=['en_US-joe-medium','el_GR-rapunzelina-low','es_ES-davefx-medium','pt_BR-cadu-medium','fr_FR-gilles-low','de_DE-thorsten-medium','zh_CN-chaowen-medium']
 VOICE_HASHES={
@@ -245,9 +245,13 @@ def apply(n,ref,report):
     # Build the private Piper runtime from a pinned amd64 Python base.
     dockerfile=f'''FROM {BASE_IMAGE}
 RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}" \
- && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='{PIPER_VERSION}'; assert m.version('g2pW')=='0.1.1'"
+ && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='{PIPER_VERSION}'; assert m.version('g2pW')=='0.1.1'" \
+ && mkdir -p /opt/firbo-resources/g2pW \
+ && python -c "from piper.phonemize_chinese import download_model; download_model('/opt/firbo-resources/g2pW')" \
+ && test -s /opt/firbo-resources/g2pW/g2pw.onnx \
+ && chmod -R a=rX /opt/firbo-resources
 COPY --chmod=0644 firbo_piper_server.py /app/server.py
-ENV HOME=/tmp FIRBO_PIPER_DATA=/voices
+ENV HOME=/tmp FIRBO_PIPER_DATA=/voices FIRBO_PIPER_RESOURCES=/opt/firbo-resources
 USER 10001:10001
 ENTRYPOINT ["python","/app/server.py"]
 '''
@@ -255,8 +259,8 @@ ENTRYPOINT ["python","/app/server.py"]
     tag='firbo-piper:'+release.name.lower()
     n.docker('build','--pull=false','-f',str(source/'Dockerfile.piper'),'-t',tag,str(source),timeout=600)
     piper_id=n.docker('image','inspect','--format','{{.Id}}',tag).strip();require(n.IMAGE.fullmatch(piper_id),'invalid_piper_image')
-    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW')}))"))
-    require(pkg.get('piper')==PIPER_VERSION and pkg.get('g2pw')=='0.1.1','piper_dependency_mismatch')
+    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json,os;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'g2pw_model':os.path.getsize('/opt/firbo-resources/g2pW/g2pw.onnx')}))"))
+    require(pkg.get('piper')==PIPER_VERSION and pkg.get('g2pw')=='0.1.1' and int(pkg.get('g2pw_model',0))>100000,'piper_dependency_mismatch')
     print('FIRBO_VOICE_STAGE download_and_verify_voices',file=sys.stderr,flush=True)
     n.docker('run','--rm','--user','10001:10001','--mount',f'type=bind,src={voices},dst=/voices','--entrypoint','python',piper_id,
         '-m','piper.download_voices','--data-dir','/voices',*VOICE_NAMES,timeout=900)
