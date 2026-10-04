@@ -26,8 +26,9 @@ describe('website to laptop browser bridge',()=>{
   expect(out.status).toBe('done');expect(out.reply).toContain('Work laptop');
  });
  it('never calls an unconfirmed launch a success',async()=>{
+  let clock=now;
   const out=await dispatchLaptopBrowserCommand('org','άνοιξε το browser','el',undefined,{
-   storage:memory(),now:()=>now,loadDevices:async()=>[device('d1')],queue:async()=>({job_id:'j1'}),loadJobs:async()=>[],sleep:async()=>{},
+   storage:memory(),now:()=>clock,loadDevices:async()=>[device('d1')],queue:async()=>({job_id:'j1'}),loadJobs:async()=>[],sleep:async()=>{clock+=20_000},
   });
   expect(out.status).not.toBe('done');expect(out.reply).not.toContain('Άνοιξα');
  });
