@@ -35,9 +35,25 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open']);
+function browserUrl(value: unknown): string | null {
+  const raw = str(value, 2048).trim();
+  if (!raw || /[\r\n\0]/.test(raw)) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'https:' || url.username || url.password || !url.hostname || url.hostname === 'localhost') return null;
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(url.hostname) || url.hostname.includes(':')) return null;
+    return url.href;
+  } catch { return null; }
+}
+function cleanClientCapabilities(value: unknown): { job_kinds: string[] } {
+  const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  const kinds = Array.isArray(record.job_kinds) ? record.job_kinds.filter((x): x is string => typeof x === 'string' && DEVICE_JOB_KINDS.has(x)) : [];
+  return { job_kinds: [...new Set(kinds)].slice(0, 8) };
+}
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec']);
-export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'; params: Record<string, unknown> } | null {
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'; params: Record<string, unknown> } | null {
   const name=action.trim().toLowerCase();
   const path=str(payload.path,500);
   if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
@@ -45,6 +61,9 @@ export function executionForApproval(action: string, payload: Record<string, unk
   if (name==='file_write'||name==='computer_write') return path?{kind:'write',params:{path,content:str(payload.content,100_000),overwrite:payload.overwrite===true}}:null;
   if (name==='shell_exec'||name==='computer_exec') {
     const command=str(payload.command,500); return command?{kind:'exec',params:{command,cwd:str(payload.cwd,500)}}:null;
+  }
+  if (name==='browser_open'||name==='computer_browser_open') {
+    const url=browserUrl(payload.url); return url?{kind:'browser_open',params:{url}}:null;
   }
   return null;
 }
@@ -139,11 +158,17 @@ Deno.serve(async (req) => {
     if (deviceError) return json(503, { error: 'device_auth_unavailable' });
     if (!dev || dev.revoked_at || dev.paired !== true) return json(401, { error: 'revoked' });
 
-    if (action === 'capabilities') return json(200, {
-      protocol: 'firbo-connector/v2', report_ack: 'sha256-v1',
-      result_max_bytes: 140_000, queued_cancel_only: true,
-      remote_stop: false, automatic_interrupted_reexecution: false,
-    });
+    if (action === 'capabilities') {
+      const capabilities = cleanClientCapabilities(body.client_capabilities);
+      const { error: capabilityError } = await admin.from('connector_devices').update({ capabilities }).eq('id', dev.id);
+      if (capabilityError) return json(503, { error: 'capability_save_failed' });
+      return json(200, {
+        protocol: 'firbo-connector/v2', report_ack: 'sha256-v1',
+        result_max_bytes: 140_000, queued_cancel_only: true,
+        remote_stop: false, automatic_interrupted_reexecution: false,
+        accepted_job_kinds: [...DEVICE_JOB_KINDS],
+      });
+    }
 
     if (action === 'report') {
       const jobId = str(body.job_id, 60);
@@ -301,6 +326,10 @@ Deno.serve(async (req) => {
       if (body.confirm !== true) return json(400, { error: 'confirm_required' });
       params = { command: str(p.command, 500), cwd: str(p.cwd, 500) };
       if (!params.command) return json(400, { error: 'bad_request' });
+    } else if (kind === 'browser_open') {
+      const url = browserUrl(p.url);
+      if (!url) return json(400, { error: 'bad_request' });
+      params = { url };
     } else {
       return json(400, { error: 'bad_request' });
     }
@@ -308,7 +337,7 @@ Deno.serve(async (req) => {
     if ((count ?? 0) >= MAX_QUEUED) return json(429, { error: 'too_many' });
     const { data: job, error } = await admin.from('connector_jobs').insert({ organization_id: dev.organization_id, device_id: dev.id, created_by: user.id, kind, params }).select('id').single();
     if (error || !job) return json(500, { error: 'save_failed' });
-    await audit(dev.organization_id, 'connector.job', job.id, { device: dev.name, kind, path: params.path ?? null, command: params.command ?? null });
+    await audit(dev.organization_id, 'connector.job', job.id, { device: dev.name, kind, path: params.path ?? null, command: params.command ?? null, browser_host: params.url ? new URL(String(params.url)).hostname : null });
     return json(200, { job_id: job.id });
   }
 
