@@ -19,7 +19,7 @@ jobs:
         run: |
           python -m venv /tmp/piper
           /tmp/piper/bin/pip install --upgrade pip
-          /tmp/piper/bin/pip install 'piper-tts[http]==1.8.0'
+          /tmp/piper/bin/pip install 'piper-tts[http,zh]==1.8.0'
           mkdir -p /tmp/firbo-piper-evidence/voices /tmp/firbo-piper-evidence/wav
           /tmp/piper/bin/pip freeze > /tmp/firbo-piper-evidence/pip-freeze.txt
       - name: Download all reviewed server voices
