@@ -156,6 +156,8 @@ Deno.serve(async (req) => {
   let gateway: GatewayPlan | null;
   try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+  // Free-plan routing uses zero-cost models, so a failed run can safely be retried (nothing to reconcile).
+  const planFree = orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway';
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
@@ -236,8 +238,8 @@ Deno.serve(async (req) => {
     } catch { lastError = 'model_error'; }
   }
   if (!completion || !used) {
-    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!(free || gateway) } }).eq('id', task.id);
-    return json(502, { error: 'model_error', routing, ...((free || gateway) ? { retry_safe: false } : {}) });
+    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) } }).eq('id', task.id);
+    return json(502, { error: 'model_error', routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
   }
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;

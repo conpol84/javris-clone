@@ -173,3 +173,9 @@ test('local-model chat stays off unless explicitly switched on, even when a comp
     assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on' && freeForOrganization\(/,name);
   }
 });
+
+test('a failed free-plan run stays retryable; other gateway failures still require reconciliation',async()=>{
+  const source=await readFile(new URL('../../supabase/functions/agent-runner/index.ts',import.meta.url),'utf8');
+  assert.match(source,/const planFree = orgPlan\?\.plan === 'free' && Deno\.env\.get\('FIRBO_FREE_PLAN_ROUTING'\) === 'gateway'/);
+  assert.match(source,/reconcile_required: !!free \|\| \(!!gateway && !planFree\)/);
+});
