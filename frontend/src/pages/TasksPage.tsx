@@ -7,6 +7,7 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
 import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { notifyPlanLimit } from '../lib/company/limits';
+import { Modal } from '../components/team/Modal';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -44,6 +45,7 @@ export function TasksPage() {
   const [runningId, setRunningId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [modalId, setModalId] = useState<string | null>(null);
   const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
   const receiptLabel: Record<string,string> = { en:'Execution receipts',el:'Αποδείξεις εκτέλεσης',es:'Recibos de ejecución','pt-BR':'Comprovantes de execução',fr:'Reçus d’exécution',de:'Ausführungsbelege',ar:'إيصالات التنفيذ','zh-CN':'执行回执' };
   const receiptWord: Record<string,string> = { en:'Verified',el:'Επαληθευμένο',es:'Verificado','pt-BR':'Verificado',fr:'Vérifié',de:'Verifiziert',ar:'تم التحقق','zh-CN':'已验证' };
@@ -246,6 +248,11 @@ export function TasksPage() {
                                 {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
                               </button>
                             )}
+                            {task.result && (task.result.report || task.result.error) && (
+                              <button className="fb-btn fb-btn--ghost mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} onClick={() => setModalId(task.id)}>
+                                {t('run.show')}
+                              </button>
+                            )}
                           </li>
                         );
                       })}
@@ -366,6 +373,40 @@ export function TasksPage() {
             })}
           </ul>
         )}
+      {(() => {
+        const mt = modalId ? data.tasks.find((x) => x.id === modalId) : null;
+        const r = mt?.result;
+        if (!mt || !r) return null;
+        return (
+          <Modal title={mt.title} wide onClose={() => setModalId(null)}>
+            <div className="fb-col gap-3 text-sm">
+              {r.ai_generated && <span className="fb-chip self-start">{t('run.ai')}</span>}
+              {r.summary && <p className="font-medium">{r.summary}</p>}
+              {r.report && <div className="fb-muted whitespace-pre-wrap break-words text-[13px] leading-relaxed">{r.report}</div>}
+              {r.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${r.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
+              {r.actions && r.actions.length > 0 && (
+                <div>
+                  <div className="fb-eyebrow mb-1">{t(r.queued ? 'run.actions' : 'run.suggested')}</div>
+                  <ul className="flex flex-wrap gap-1.5">
+                    {r.actions.map((x, i) => (
+                      <li key={i} className="fb-chip">{x.action}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {canWrite && mt.assigned_agent_id && (
+                <div className="fb-col gap-2 pt-2" style={{ borderTop: '1px solid var(--fb-border)' }}>
+                  <label className="fb-eyebrow" htmlFor={`modal-more-${mt.id}`}>{t('run.moreInfo')}</label>
+                  <textarea id={`modal-more-${mt.id}`} className="fb-input" rows={2} maxLength={2000} value={notes[mt.id] ?? ''} placeholder={t('run.moreInfoPh')} onChange={(e) => setNotes((prev) => ({ ...prev, [mt.id]: e.target.value }))} />
+                  <button className="fb-btn fb-btn--primary self-start" disabled={runningId === mt.id || !(notes[mt.id] ?? '').trim()} onClick={() => void rerunWithInfo(mt.id).then(() => setModalId(null))}>
+                    {t('run.moreInfoRun')}
+                  </button>
+                </div>
+              )}
+            </div>
+          </Modal>
+        );
+      })()}
       </div>
     </div>
   );
