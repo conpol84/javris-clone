@@ -44,11 +44,6 @@ VOICE_HASHES={
  'pt_BR-cadu-medium.onnx.json':'5fe03aa3d4901880554905b12075713cd552598c8a350455a1ec73f8b4e6be19',
  'zh_CN-chaowen-medium.onnx':'820d64ac16048fbcf38dd0823d37fab5f5e0c2bd71b01ca5a50f553fac19e746',
  'zh_CN-chaowen-medium.onnx.json':'a6bb2caafa0645642f13cbf7e2f6fbbb16fded66e51109fc26d622f6472fa16f',
- 'g2pW/MONOPHONIC_CHARS.txt':'e46c9190330e95757573159eef921a577849426728e72c0e6a427f9e4c00b31e',
- 'g2pW/POLYPHONIC_CHARS.txt':'b63cd02d842dbaea32ca55b3fbbdef986a617854967cc2fb9ec1f2126715b747',
- 'g2pW/config.py':'b6154e494355d14a8d2c8a38d07720f77b34479e26aab21a5f63495ae904da76',
- 'g2pW/g2pw.onnx':'367b87bfb59826590d1d85bd19a21d46aad3332fb364eca0c61d93cabe1d0323',
- 'g2pW/version':'517036ffbc4858eba27a01b85badcfd5e5c2a59a3d35d1898ab34567f818e799',
 }
 GiB=1024**3
 class Blocked(Exception):pass
@@ -249,7 +244,8 @@ def apply(n,ref,report):
     for name,h in SOURCE_HASHES.items():private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))
     # Build the private Piper runtime from a pinned amd64 Python base.
     dockerfile=f'''FROM {BASE_IMAGE}
-RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}"
+RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}" "g2pW==0.1.1" \
+ && python -c "import importlib.metadata, pathlib, g2pw; assert importlib.metadata.version('g2pW')=='0.1.1'; p=pathlib.Path(g2pw.__file__).resolve().parent; assert any(p.rglob('*.onnx')), p"
 COPY --chmod=0644 firbo_piper_server.py /app/server.py
 ENV HOME=/tmp FIRBO_PIPER_DATA=/voices
 USER 10001:10001
@@ -259,8 +255,8 @@ ENTRYPOINT ["python","/app/server.py"]
     tag='firbo-piper:'+release.name.lower()
     n.docker('build','--pull=false','-f',str(source/'Dockerfile.piper'),'-t',tag,str(source),timeout=600)
     piper_id=n.docker('image','inspect','--format','{{.Id}}',tag).strip();require(n.IMAGE.fullmatch(piper_id),'invalid_piper_image')
-    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts')}))"))
-    require(pkg.get('piper')==PIPER_VERSION,'piper_version_mismatch')
+    pkg=json.loads(n.docker('run','--rm','--entrypoint','python',piper_id,'-c',"import importlib.metadata,json,pathlib,g2pw;p=pathlib.Path(g2pw.__file__).resolve().parent;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW'),'g2pw_onnx':sum(1 for _ in p.rglob('*.onnx'))}))"))
+    require(pkg.get('piper')==PIPER_VERSION and pkg.get('g2pw')=='0.1.1' and int(pkg.get('g2pw_onnx',0))>=1,'piper_or_g2pw_version_mismatch')
     print('FIRBO_VOICE_STAGE download_and_verify_voices',file=sys.stderr,flush=True)
     n.docker('run','--rm','--user','10001:10001','--mount',f'type=bind,src={voices},dst=/voices','--entrypoint','python',piper_id,
         '-m','piper.download_voices','--data-dir','/voices',*VOICE_NAMES,timeout=900)
