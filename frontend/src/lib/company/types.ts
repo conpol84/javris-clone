@@ -57,6 +57,21 @@ export interface TaskResult {
   queued?: number;
   dropped?: string[];
   error?: string;
+  execution_status?: string;
+  execution_job_id?: string;
+  last_execution?: ExecutionReceipt;
+  execution_receipts?: ExecutionReceipt[];
+}
+export interface ExecutionReceipt {
+  contract: 'firbo-execution-receipt/v1';
+  job_id: string;
+  task_id: string | null;
+  approval_id: string | null;
+  device_id: string;
+  kind: string;
+  ok: boolean;
+  report_sha256: string;
+  finished_at: string;
 }
 
 export interface TaskRow {

@@ -4,6 +4,7 @@ import { CheckCircle2, Inbox as InboxIcon } from 'lucide-react';
 import { Avatar, EmptyState, humanize, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { decideApproval, listApprovalHistory } from '../lib/company/data';
+import { decideComputerApproval, isComputerApprovalAction, listDevices, type DeviceRow } from '../lib/company/computers';
 import { listIntegrations, sendIntegration, type IntegrationRow } from '../lib/company/integrations';
 import { timeAgo } from '../lib/company/feed';
 import { agentLabel } from '../lib/company/labels';
@@ -86,6 +87,7 @@ export function InboxPage() {
   const orgId = current?.organization.id ?? '';
   const role = current?.role ?? 'viewer';
   const canDecide = MANAGER_ROLES.includes(role);
+  const canRunComputer = role === 'owner' || role === 'admin';
   const data = useOrgData(orgId, false);
   const [tab, setTab] = useState<'pending' | 'history'>('pending');
   const [history, setHistory] = useState<ApprovalRow[]>([]);
@@ -95,11 +97,25 @@ export function InboxPage() {
   const [apps, setApps] = useState<IntegrationRow[]>([]);
   const [target, setTarget] = useState<Record<string, string>>({});
   const [sent, setSent] = useState<Record<string, string>>({});
+  const [devices, setDevices] = useState<DeviceRow[]>([]);
+  const [deviceTarget, setDeviceTarget] = useState<Record<string,string>>({});
+  const computerCopy: Record<string,[string,string]> = {
+    en:['Select computer','Pair a computer first in My computers.'], el:['Επίλεξε υπολογιστή','Σύνδεσε πρώτα υπολογιστή στο My computers.'],
+    es:['Seleccionar ordenador','Conecta primero un ordenador en My computers.'], 'pt-BR':['Selecionar computador','Conecte primeiro um computador em My computers.'],
+    fr:['Sélectionner un ordinateur','Connectez d’abord un ordinateur dans My computers.'], de:['Computer auswählen','Verbinde zuerst einen Computer unter My computers.'],
+    ar:['اختر الكمبيوتر','اربط جهاز كمبيوتر أولاً في My computers.'], 'zh-CN':['选择电脑','请先在 My computers 中连接一台电脑。'],
+  };
+  const cc=computerCopy[i18n.lang]??computerCopy.en;
 
   useEffect(() => {
     if (!orgId || !canDecide) return;
     listIntegrations(orgId).then(setApps).catch(() => undefined);
   }, [orgId, canDecide]);
+
+  useEffect(() => {
+    if (!orgId || !canRunComputer) { setDevices([]); return; }
+    listDevices(orgId).then(rows=>setDevices(rows.filter(d=>d.paired && !d.revoked_at))).catch(()=>setDevices([]));
+  }, [orgId, canRunComputer]);
 
   const deliver = async (a: ApprovalRow) => {
     const id = target[a.id] ?? apps[0]?.id;
@@ -147,7 +163,14 @@ export function InboxPage() {
     }
     setBusy(a.id);
     try {
-      await decideApproval(a.id, user.id, status, notes[a.id], payload);
+      if (isComputerApprovalAction(a.action)) {
+        if (!canRunComputer) throw new Error('computer_owner_required');
+        const deviceId=deviceTarget[a.id]??devices[0]?.id;
+        if (status==='approved' && !deviceId) { toast.error(cc[1]); return; }
+        await decideComputerApproval({approval_id:a.id,decision:status,device_id:status==='approved'?deviceId:undefined,note:notes[a.id],payload});
+      } else {
+        await decideApproval(a.id, user.id, status, notes[a.id], payload);
+      }
       toast.success(status === 'approved' ? t('inbox.approved') : t('inbox.rejected'));
       await data.reload();
     } catch (err) {
@@ -237,8 +260,15 @@ export function InboxPage() {
                           onChange={(e) => setNotes({ ...notes, [a.id]: e.target.value })}
                           aria-label={t('inbox.noteAria')}
                         />
+                        {isComputerApprovalAction(a.action) && (
+                          <select className="fb-input" style={{width:'auto',minWidth:160}} disabled={!canRunComputer||busy===a.id||devices.length===0}
+                            aria-label={cc[0]} value={deviceTarget[a.id]??devices[0]?.id??''}
+                            onChange={e=>setDeviceTarget({...deviceTarget,[a.id]:e.target.value})}>
+                            {devices.length===0?<option value="">{cc[1]}</option>:devices.map(d=><option key={d.id} value={d.id}>{d.name+(d.platform?' · '+d.platform:'')}</option>)}
+                          </select>
+                        )}
                         <div className="flex gap-2">
-                          <button className="fb-btn fb-btn--primary" disabled={busy === a.id} onClick={() => void decide(a, 'approved')}>
+                          <button className="fb-btn fb-btn--primary" disabled={busy === a.id || (isComputerApprovalAction(a.action)&&(!canRunComputer||devices.length===0))} onClick={() => void decide(a, 'approved')}>
                             {t('inbox.approve')}
                           </button>
                           <button className="fb-btn fb-btn--ghost" style={{ color: 'var(--fb-err)' }} disabled={busy === a.id} onClick={() => void decide(a, 'rejected')}>

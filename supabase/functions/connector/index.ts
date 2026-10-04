@@ -36,6 +36,20 @@ function randomToken(): string {
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'; params: Record<string, unknown> } | null {
+  const name=action.trim().toLowerCase();
+  const path=str(payload.path,500);
+  if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
+  if (name==='file_read'||name==='computer_read') return path?{kind:'read',params:{path}}:null;
+  if (name==='file_write'||name==='computer_write') return path?{kind:'write',params:{path,content:str(payload.content,100_000),overwrite:payload.overwrite===true}}:null;
+  if (name==='shell_exec'||name==='computer_exec') {
+    const command=str(payload.command,500); return command?{kind:'exec',params:{command,cwd:str(payload.cwd,500)}}:null;
+  }
+  return null;
+}
+
+
 
 /** Stable canonical JSON shared with the device's receipt calculation. */
 function canonicalReportValue(value: unknown, depth = 0): string {
@@ -144,31 +158,17 @@ Deno.serve(async (req) => {
       if (new TextEncoder().encode(canonical).byteLength > 150_000) return json(413, { error: 'too_large' });
       const digest = await sha256(canonical);
       if (body.report_sha256 !== undefined && body.report_sha256 !== digest) return json(400, { error: 'report_hash_mismatch' });
-      const ack = (duplicate: boolean) => json(200, { ok: true, job_id: jobId, report_sha256: digest, duplicate });
-      const { data: done, error: saveError } = await admin
-        .from('connector_jobs')
-        .update({ status: ok ? 'done' : 'error', result, error: reportError, finished_at: new Date().toISOString() })
-        .eq('id', jobId)
-        .eq('device_id', dev.id)
-        .eq('organization_id', dev.organization_id)
-        .eq('status', 'running')
-        .select('id')
-        .maybeSingle();
-      if (saveError) return json(503, { error: 'save_failed' });
-      if (done) return ack(false);
-      // The first receipt may have been lost AFTER the conditional write committed.
-      // Re-acknowledge ONLY the same terminal result, never replace it or rerun work.
-      const { data: prior, error: readError } = await admin.from('connector_jobs')
-        .select('id,status,result,error').eq('id', jobId).eq('device_id', dev.id)
-        .eq('organization_id', dev.organization_id).maybeSingle();
-      if (readError) return json(503, { error: 'receipt_unavailable' });
-      if (!prior) return json(404, { error: 'not_found' });
-      if (prior.status !== (ok ? 'done' : 'error')) return json(409, { error: 'state_conflict' });
-      try {
-        const savedDigest = await sha256(canonicalReportValue({ job_id: jobId, ok, result: prior.result ?? null, error: prior.error ?? null }));
-        if (savedDigest !== digest) return json(409, { error: 'report_conflict' });
-      } catch { return json(409, { error: 'report_conflict' }); }
-      return ack(true);
+      const { data: finished, error: finishError } = await admin.rpc('connector_finish_execution', {
+        p_job: jobId, p_device: dev.id, p_org: dev.organization_id, p_ok: ok,
+        p_result: result, p_error: reportError, p_digest: digest,
+      });
+      if (finishError) {
+        const message=String(finishError.message??'');
+        if (/job_not_found/.test(message)) return json(404,{error:'not_found'});
+        if (/state_conflict|report_conflict/.test(message)) return json(409,{error:'state_conflict'});
+        return json(503,{error:'save_failed'});
+      }
+      return json(200,{ok:true,job_id:jobId,report_sha256:digest,duplicate:finished?.duplicate===true,receipt:finished?.receipt??null});
     }
 
     // poll: hold the request open for a while so jobs start almost instantly without hammering the service
@@ -211,7 +211,42 @@ Deno.serve(async (req) => {
   const audit = (orgId: string, act: string, entityId: string | null, meta: Record<string, unknown>) =>
     admin.from('audit_log').insert({ organization_id: orgId, actor_id: user.id, action: act, entity: 'connector', entity_id: entityId, metadata: meta });
 
-  if (action === 'create_device') {
+  if (action === 'decide_execution') {
+    const approvalId=str(body.approval_id,60);
+    const decision=String(body.decision??'');
+    if (!/^[0-9a-f-]{36}$/i.test(approvalId) || !['approved','rejected'].includes(decision)) return json(400,{error:'bad_request'});
+    const { data: approval, error: approvalError } = await admin.from('approvals')
+      .select('id,organization_id,task_id,action,payload,status').eq('id',approvalId).maybeSingle();
+    if (approvalError) return json(503,{error:'save_failed'});
+    if (!approval) return json(404,{error:'not_found'});
+    if (!OWNERS.includes((await roleIn(approval.organization_id)) ?? '')) return json(403,{error:'forbidden'});
+    const edited = body.payload && typeof body.payload==='object' && !Array.isArray(body.payload) ? body.payload as Record<string,unknown> : approval.payload as Record<string,unknown>;
+    let deviceId: string | null=null, kind: string | null=null, params: Record<string,unknown>|null=null;
+    if (decision==='approved') {
+      const execution=executionForApproval(String(approval.action??''),edited??{});
+      if (!execution) return json(422,{error:'action_not_executable'});
+      deviceId=str(body.device_id,60);
+      if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400,{error:'device_required'});
+      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at').eq('id',deviceId).maybeSingle();
+      if (!dev || dev.organization_id!==approval.organization_id || !dev.paired || dev.revoked_at) return json(404,{error:'device_not_ready'});
+      kind=execution.kind;params=execution.params;
+    }
+    const { data: decided, error: decideError } = await admin.rpc('connector_decide_execution', {
+      p_approval: approval.id, p_actor: user.id, p_device: deviceId, p_decision: decision,
+      p_note: str(body.note,500)||null, p_payload: edited??{}, p_kind: kind, p_params: params,
+    });
+    if (decideError) {
+      const message=String(decideError.message??'');
+      if (/forbidden/.test(message)) return json(403,{error:'forbidden'});
+      if (/not_found|device_not_ready/.test(message)) return json(404,{error:'not_found'});
+      if (/too_many/.test(message)) return json(429,{error:'too_many'});
+      if (/state_conflict/.test(message)) return json(409,{error:'state_conflict'});
+      return json(503,{error:'save_failed'});
+    }
+    return json(200,{decision:decided?.decision,job_id:decided?.job_id??null,duplicate:decided?.duplicate===true});
+  }
+
+    if (action === 'create_device') {
     const orgId = str(body.organization_id, 60);
     const name = str(body.name, 60).trim();
     if (!orgId || !name) return json(400, { error: 'bad_request' });
