@@ -75,6 +75,100 @@ def native():
     with tempfile.TemporaryDirectory() as d:
         p=Path(d)/'n.py';p.write_bytes(raw);spec=importlib.util.spec_from_file_location('firbo_native',p);m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
     return m
+
+
+LOCAL_ROOT=Path('/root/firbo-local-releases')
+LOCAL_MODEL_IMAGE='ollama/ollama@sha256:292ee7945dfc3d5840a181f3ab86fedb1e66703e02c8af98b50f4da56b7e278c'
+LOCAL_API_HASHES={
+ 'free_inference.py':'450a4d7ae83e7e665b293fac245125221bbcbb225e904ccde23cfa091efa14a6',
+ 'firbo_free_app.py':'792b06de39528842e1ef119692a809aa2bde70dd03ecc9af7024494e0f0f1518',
+}
+LOCAL_ENV={
+ 'FIRBO_FREE_ENABLED':'true',
+ 'FIRBO_FREE_ADMIN_PILOT':'true',
+ 'FIRBO_FREE_ORGANIZATIONS':'',
+ 'FIRBO_FREE_CLOUD_ORGANIZATIONS':'',
+ 'FIRBO_FREE_OPENROUTER_MODELS':'',
+ 'FIRBO_FREE_CLOUD_FIRST':'false',
+ 'FIRBO_FREE_LOCAL_MODELS':'qwen3:1.7b',
+ 'FIRBO_FREE_MODEL_DIGEST':'8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7',
+ 'FIRBO_FREE_LEDGER':'/var/lib/firbo-free/admission.sqlite3',
+ 'FIRBO_CONTROL_WRITES_ENABLED':'false',
+}
+
+def local_model_state(n):
+    """Validate only the exact successful local-model release that is active now."""
+    active=n.real_file(LOCAL_ROOT/'active.json')
+    meta=json.loads(active.read_text())
+    release=Path(meta.get('release',''))
+    require(release.is_absolute() and release.parent==LOCAL_ROOT and release.resolve()==release,'invalid_local_model_release')
+    journal=json.loads(n.real_file(release/'release.json').read_text())
+    require(journal.get('contract')=='firbo-local-release/v1','invalid_local_model_journal')
+    require(journal.get('network') and re.fullmatch(r'firbo-local-[a-z0-9_-]{8,100}',journal['network']),'invalid_local_model_network')
+    dotenv=n.real_file(journal['dotenv']); overlay=n.real_file(journal['overlay'])
+    require(digest(dotenv.read_bytes())==journal['new_env_sha'],'active_local_env_drift')
+    require(digest(overlay.read_bytes())==journal['overlay_sha'],'active_local_overlay_drift')
+
+    states={name:n.inspect(name) for name in ('firbo-api','firbo-omniroute','firbo-caddy','firbo-redis')}
+    require(all(v.get('State',{}).get('Running') is True for v in states.values()),'existing_stack_not_running')
+    api=states['firbo-api'];cfg=api['Config'];host=api['HostConfig'];labels=cfg.get('Labels') or {}
+    require(api.get('Image')==journal.get('new_image'),'active_local_api_image_drift')
+    require(labels.get('com.docker.compose.service')=='firbo-api','wrong_compose_service')
+    require(cfg.get('Entrypoint')==['python','-m','uvicorn'],'unexpected_api_entrypoint')
+    require(cfg.get('Cmd')==['openjarvis.server.firbo_free_app:app','--host','0.0.0.0','--port','8000'],'unexpected_local_api_command')
+    require(cfg.get('User') not in ('', 'root','0','0:0',None),'api_must_remain_unprivileged')
+    require(not host.get('Privileged') and not host.get('PortBindings') and host.get('NetworkMode')!='host','unexpected_api_privilege_or_ports')
+
+    project=labels.get('com.docker.compose.project','')
+    require(project==journal.get('project') and re.fullmatch('[a-zA-Z0-9_-]{1,100}',project),'local_project_drift')
+    workdir=Path(labels.get('com.docker.compose.project.working_dir',''))
+    require(str(workdir)==journal.get('workdir') and workdir.is_absolute() and workdir.resolve()==workdir and workdir.is_dir(),'local_workdir_drift')
+    file_names=[x for x in labels.get('com.docker.compose.project.config_files','').split(',') if x]
+    require(2<=len(file_names)<=5,'unexpected_local_compose_files')
+    files=[n.real_file(x) for x in file_names]
+    require(all(p.parent==workdir for p in files),'unexpected_compose_layout')
+    require(str(overlay) in [str(p) for p in files],'local_overlay_not_active')
+
+    env=n.env_map(cfg.get('Env'))
+    require(env.get('SUPABASE_URL','').rstrip('/')==n.EXPECTED_DB,'wrong_supabase_project')
+    require(env.get('OMNIROUTE_HOST')=='http://omniroute:20128','wrong_gateway_target')
+    require(n.PUBLIC_FRONTEND in [x.strip() for x in env.get('OPENJARVIS_CORS_ORIGINS','').split(',')],'frontend_origin_missing')
+    require(all(env.get(k) for k in ('SUPABASE_PUBLISHABLE_KEY','OMNIROUTE_MANAGEMENT_KEY','OMNIROUTE_API_KEY')),'missing_existing_credentials')
+    require(all(env.get(k)==v for k,v in LOCAL_ENV.items()),'local_runtime_env_drift')
+
+    networks=set(api['NetworkSettings']['Networks'])
+    require(journal['network'] in networks and len(networks)==2,'unexpected_local_api_networks')
+    net_info=json.loads(n.docker('network','inspect',journal['network']))[0]
+    require(net_info.get('Internal') is True,'local_network_not_internal')
+
+    mounts=api.get('Mounts',[])
+    targets={m.get('Destination'):m for m in mounts}
+    require('/var/lib/firbo-free' in targets and targets['/var/lib/firbo-free'].get('RW') is True,'local_ledger_mount_missing')
+    require(set(targets).issubset({'/home/openjarvis','/var/lib/firbo-free'}),'unexpected_local_api_mount')
+
+    source=json.loads(n.docker('exec','firbo-api','python','-c',
+      "import importlib.util,json;print(json.dumps(importlib.util.find_spec('openjarvis.server.firbo_free_app').origin))").strip())
+    module=Path(source)
+    require(re.fullmatch(r'/(usr/local/lib/python3\.\d+/site-packages|app/src)/openjarvis/server/firbo_free_app\.py',str(module)),'unexpected_local_module_location')
+    hashes=api_hash_probe(n,'firbo-api')
+    require(all(hashes.get(k)==v for k,v in LOCAL_API_HASHES.items()),'active_local_source_drift')
+
+    oll=n.inspect('firbo-ollama');oh=oll['HostConfig']
+    require(oll.get('State',{}).get('Running') is True,'local_model_not_running')
+    require(set(oll['NetworkSettings']['Networks'])=={journal['network']},'local_model_network_drift')
+    require(not oh.get('PortBindings') and oh.get('ReadonlyRootfs') and not oh.get('Privileged'),'local_model_isolation_drift')
+    require(oh.get('Memory')==3*GiB and oh.get('MemorySwap')==3*GiB and oh.get('NanoCpus')==1250000000,'local_model_resource_drift')
+    require(oll['Config'].get('User')=='10001:10001','local_model_user_drift')
+    require(oll['Config'].get('Labels',{}).get('app.firbo.local.release')==str(release),'local_model_release_label_drift')
+    expected_image=n.docker('image','inspect','--format','{{.Id}}',LOCAL_MODEL_IMAGE).strip()
+    require(oll.get('Image')==expected_image,'local_model_image_drift')
+
+    effective=n.compose_config(project,files,workdir)
+    service=effective['services']['firbo-api']
+    require(service.get('image')==api['Image'] and service.get('entrypoint')==cfg['Entrypoint'] and service.get('command')==cfg['Cmd'],'local_compose_api_drift')
+    require(not service.get('ports') and not service.get('privileged'),'compose_unsafe_runtime')
+    return dict(states=states,api=api,env=env,project=project,workdir=workdir,files=files,dotenv=dotenv,
+                effective=effective,module=module.parent,network=journal['network'],local_release=release,local_journal=journal)
 def check_host():
     require(platform.node()=='srv2027143','wrong_host');require(platform.machine()=='x86_64' and (os.cpu_count() or 0)>=2,'unsupported_cpu')
     vals={}
@@ -135,7 +229,7 @@ def restore(n,release,report):
     require(n.inspect('firbo-api')['Image']==j['old_api_image'],'rollback_api_mismatch')
     stop_piper(n,release);overlay.unlink();report.update(status='local_voice_removed_previous_api_restored',rollback_verified=True)
 def apply(n,ref,report):
-    report['resources']=check_host();s=n.parse_state();require(n.public_probe(native=True),'native_api_not_ready')
+    report['resources']=check_host();s=local_model_state(n);require(n.public_probe(native=True),'native_api_not_ready')
     require(n.docker('ps','-q','--filter','name=^/firbo-ollama$').strip(),'local_model_not_running');network=common_network(n)
     require(not n.docker('ps','-aq','--filter','name=^/firbo-piper$').strip(),'existing_piper_requires_review')
     release=Path(tempfile.mkdtemp(prefix=dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%SZ-'),dir=ROOT));release.chmod(0o700)
