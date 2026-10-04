@@ -19,7 +19,10 @@ class VoiceStore:
         if not model.is_file() or not config.is_file(): raise RuntimeError("voice_missing")
         with self.lock:
             if self.name!=name:
-                self.voice=PiperVoice.load(str(model),config_path=str(config),use_cuda=False)
+                self.voice=PiperVoice.load(
+                    str(model),config_path=str(config),use_cuda=False,
+                    download_dir=os.environ.get("FIRBO_PIPER_RESOURCES","/opt/firbo-resources"),
+                )
                 self.name=name
             target=io.BytesIO()
             with wave.open(target,"wb") as wav:
