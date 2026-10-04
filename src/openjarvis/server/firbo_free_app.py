@@ -10,16 +10,23 @@ import sqlite3
 import re
 import httpx
 from uuid import UUID
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 from openjarvis.server.firbo_app import create_app
 from openjarvis.server.firbo_control import Principal, require_user, _supabase, _platform_admin, require_platform_admin
 from openjarvis.server.free_inference import FreeEngine, FreeError, Ledger, Limits, Route, LOCAL_URL, read_json
+from openjarvis.server.local_tts import SUPPORTED as VOICE_LANGS, local_speech
 
 class Message(BaseModel):
     model_config = ConfigDict(extra='forbid')
     role: str = Field(max_length=10)
     content: str = Field(max_length=2800)
+class VoiceRequest(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    organization_id: UUID
+    text: str = Field(min_length=1,max_length=700)
+    lang: str = Field(min_length=2,max_length=8)
+
 class FreeRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     organization_id: UUID
@@ -31,6 +38,21 @@ def organizations(name: str) -> set[str]:
     if len(raw)>10_000: raise FreeError('free_company_configuration_invalid')
     try: return {str(UUID(s.strip())) for s in raw.split(',') if s.strip()}
     except ValueError: raise FreeError('free_company_configuration_invalid') from None
+
+async def require_member(org: str, principal: Principal) -> None:
+    rows=await _supabase(principal,'/rest/v1/organization_members?select=organization_id,user_id,role'
+        f'&organization_id=eq.{org}&user_id=eq.{principal.user_id}&limit=2')
+    if not isinstance(rows,list) or len(rows)!=1 or not isinstance(rows[0],dict):
+        raise FreeError('free_membership_required',403)
+    row=rows[0]
+    if row.get('organization_id')!=org or row.get('user_id')!=principal.user_id or row.get('role') not in {'owner','admin','manager','member'}:
+        raise FreeError('free_membership_required',403)
+
+async def require_pilot(org: str, principal: Principal) -> None:
+    if org not in organizations('FIRBO_FREE_ORGANIZATIONS'):
+        if os.environ.get('FIRBO_FREE_ADMIN_PILOT')!='true' or not await _platform_admin(principal):
+            raise FreeError('free_company_not_enabled',403)
+    await require_member(org,principal)
 
 @lru_cache(maxsize=1)
 def engine() -> FreeEngine:
@@ -74,22 +96,24 @@ def create_free_app():
         try:
             if os.environ.get('FIRBO_FREE_ENABLED')!='true': raise FreeError('free_runtime_disabled')
             org=str(body.organization_id)
-            if org not in organizations('FIRBO_FREE_ORGANIZATIONS'):
-                # Installer enables ONLY the existing platform administrator pilot.
-                # This flag is server-owned, not JWT user_metadata or a browser field.
-                if os.environ.get('FIRBO_FREE_ADMIN_PILOT')!='true' or not await _platform_admin(principal):
-                    raise FreeError('free_company_not_enabled',403)
-            rows=await _supabase(principal,'/rest/v1/organization_members?select=organization_id,user_id,role'
-                f'&organization_id=eq.{org}&user_id=eq.{principal.user_id}&limit=2')
-            if not isinstance(rows,list) or len(rows)!=1 or not isinstance(rows[0],dict):
-                raise FreeError('free_membership_required',403)
-            row=rows[0]
-            if row.get('organization_id')!=org or row.get('user_id')!=principal.user_id or row.get('role') not in {'owner','admin','manager','member'}:
-                raise FreeError('free_membership_required',403)
+            await require_pilot(org,principal)
             return await engine().infer(org,principal.user_id,str(body.request_id),[m.model_dump() for m in body.messages],
                     cloud_allowed=org in organizations('FIRBO_FREE_CLOUD_ORGANIZATIONS'))
         except FreeError as exc: raise HTTPException(exc.status,exc.code) from None
         except (sqlite3.Error,OSError): raise HTTPException(503,'free_state_unavailable') from None
+    @app.post('/v1/firbo/free/speech')
+    async def speech(body: VoiceRequest, principal: Principal=Depends(require_user)):
+        try:
+            if os.environ.get('FIRBO_FREE_ENABLED')!='true': raise FreeError('free_runtime_disabled')
+            org=str(body.organization_id)
+            await require_pilot(org,principal)
+            if body.lang not in VOICE_LANGS: raise FreeError('local_voice_bad_request',400)
+            audio, voice = await local_speech(body.text, body.lang)
+            return Response(audio,media_type='audio/wav',headers={
+                'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff',
+                'X-Firbo-Voice-Contract':'firbo-local-voice/v1','X-Firbo-Voice':voice,
+                'X-Firbo-Voice-Policy':'no-paid-fallback'})
+        except FreeError as exc: raise HTTPException(exc.status,exc.code) from None
     return app
 
 app=create_free_app()

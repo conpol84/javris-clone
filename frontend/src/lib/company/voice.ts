@@ -4,6 +4,7 @@ import { beginVoiceTurn, stopVoiceActivity, voiceDeadline, type VoiceTurn } from
 import { voiceMessages } from './voiceMessages';
 import { getVoiceProfile, type VoiceProfile } from './voiceProfile';
 import { speechAudioBlob } from './speechAudio';
+import { getBase } from '../gateway-api';
 export { voiceLevel } from './voiceActivity';
 
 const SR_LANG: Record<string, string> = { en:'en-US', el:'el-GR', es:'es-ES', 'pt-BR':'pt-BR', de:'de-DE', fr:'fr-FR', 'zh-CN':'zh-CN', ar:'ar-SA' };
@@ -133,6 +134,7 @@ export async function speak(orgId: string, text: string, lang: string, options: 
   const turn = options.turn ?? beginVoiceTurn();
   const profile = options.voiceProfile ?? getVoiceProfile();
   const dark = profile === 'firbo-dark-v1';
+  const local = profile === 'firbo-local-dark-v1';
   const full = text.replace(/[*_`#>]/g, '').trim(); const clean = full.slice(0, 700);
   const truncated = full.length > clean.length;
   let source: SpeechResult['source'] = 'none';
@@ -141,6 +143,26 @@ export async function speak(orgId: string, text: string, lang: string, options: 
   turn.phase('preparing', 'server');
   try {
     try {
+      if (local) {
+        try {
+          const session=(await requireClient().auth.getSession()).data.session;
+          if(!session) throw new Error('sign_in_required');
+          const res=await voiceDeadline(signal=>fetch(getBase()+'/v1/firbo/free/speech',{method:'POST',redirect:'error',signal,headers:{Authorization:`Bearer ${session.access_token}`,'content-type':'application/json'},body:JSON.stringify({organization_id:orgId,text:clean,lang})}),turn.signal,35_000);
+          if(!res.ok) throw Object.assign(new Error('local_voice_unavailable'),{localStatus:res.status});
+          const bytes=new Uint8Array(await res.arrayBuffer());
+          if(bytes.length<44||bytes.length>6_000_000||new TextDecoder().decode(bytes.slice(0,4))!=='RIFF'||new TextDecoder().decode(bytes.slice(8,12))!=='WAVE') throw new Error('invalid_local_audio');
+          source='server'; await playAudio(new Blob([bytes],{type:'audio/wav'}),turn);
+          if (!turn.current()) return { status:'cancelled', source, truncated };
+          turn.finish(); return { status:'completed', source, truncated };
+        } catch(error) {
+          if(!turn.current()) return {status:'cancelled',source,truncated};
+          // Zero-API-cost device speech is the only fallback for Local profile.
+          // Arabic uses this deliberately until a commercial-safe server model is approved.
+          source='browser';turn.phase('preparing','browser');await browserSpeech(clean,lang,turn);
+          if(!turn.current()) return {status:'cancelled',source,truncated};
+          turn.finish();return {status:'completed',source,truncated};
+        }
+      }
       const out = await voiceDeadline(signal => requireClient().functions.invoke('agent-speak', { body:{organization_id:orgId,text:clean,voice_profile:profile,...(dark?{audio_format:'wav'}:{})}, signal }), turn.signal, 35_000);
       if (!turn.current()) return { status:'cancelled', source, truncated };
       if (out.error) throw out.error;
