@@ -61,7 +61,7 @@ export function CeoPage() {
   const name = ceo ? agentLabel(ceo, i18n).name : t('ceo.title');
 
   return (
-    <div data-firbo-voice="ceo" className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
+    <div data-firbo-voice="ceo" className="fb-root fb-col gap-4 p-4 pt-14 lg:p-6" style={{ minHeight: "100%" }}>
       <header>
         <div className="fb-eyebrow">{t('ceo.eyebrow')}</div>
         <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
