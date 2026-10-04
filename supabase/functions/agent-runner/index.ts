@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', task.organization_id).maybeSingle();
   let free = false;
   let gateway: GatewayPlan | null;
-  try { free = freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
+  try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });

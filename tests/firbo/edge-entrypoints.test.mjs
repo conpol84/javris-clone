@@ -138,7 +138,7 @@ test('wrong cron secret cannot substitute for user authentication',async()=>{con
 
 for(const handler of ['agent-chat','agent-runner']){
  test(handler+' free pilot uses authenticated native lane, not configured paid fallbacks',async()=>{
-  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG,FIRBO_TEXT_ROUTING_MODE:'legacy'},monthlyBudget:0});
+  const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG,FIRBO_TEXT_ROUTING_MODE:'legacy'},monthlyBudget:0});
   assert.equal(response.status,200);assert.equal(state.calls.length,1);assert.ok(state.calls[0].url.includes('api.firboai.app/v1/firbo/free/'));
   assert.equal(state.calls[0].init.headers.authorization,'Bearer user-test');
   assert.equal(JSON.parse(state.calls[0].init.body).organization_id,ORG);
@@ -146,15 +146,15 @@ for(const handler of ['agent-chat','agent-runner']){
   assert.equal(state.writes.filter(x=>x.table==='approvals').length,0);
  });
  test(handler+' free outage cannot fall back to paid gateway or legacy',async()=>{
-  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG},freeFailure:true});
+  const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG},freeFailure:true});
   assert.equal(response.status,502);assert.equal(state.calls.length,1);
  });
  test(handler+' nonzero free report is refused',async()=>{
-  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:ORG},badFreeCost:true});
+  const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG},badFreeCost:true});
   assert.equal(response.status,502);assert.equal(state.calls.length,1);assert.equal(state.writes.filter(x=>x.table==='usage_events').length,0);
  });
  test(handler+' malformed free entitlement fails closed',async()=>{
-  const {state,response}=await invoke(handler,{env:{FIRBO_FREE_ORGANIZATIONS:'not-a-company'}});
+  const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:'not-a-company'}});
   assert.equal(response.status,503);assert.equal(state.calls.length,0);
  });
  test(handler+' client cannot choose its own free entitlement',async()=>{
@@ -163,6 +163,13 @@ for(const handler of ['agent-chat','agent-runner']){
  });
 }
 test('free runner refuses cron pseudo-identity before task claim',async()=>{
- const {state,response}=await invoke('agent-runner',{unsigned:true,cron:'cron-test',env:{FIRBO_FREE_ORGANIZATIONS:ORG}},{system_user_id:USER});
+ const {state,response}=await invoke('agent-runner',{unsigned:true,cron:'cron-test',env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG}},{system_user_id:USER});
  assert.equal(response.status,503);assert.equal(state.calls.length,0);assert.equal(state.writes.filter(x=>x.table==='tasks').length,0);
+});
+
+test('local-model chat stays off unless explicitly switched on, even when a company is listed',async()=>{
+  for (const name of ['agent-chat','agent-runner']) {
+    const source=await readFile(new URL(`../../supabase/functions/${name}/index.ts`,import.meta.url),'utf8');
+    assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on' && freeForOrganization\(/,name);
+  }
 });

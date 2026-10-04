@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', convo.organization_id).maybeSingle();
   let free = false;
   let gateway: GatewayPlan | null;
-  try { free = freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
+  try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
   catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
