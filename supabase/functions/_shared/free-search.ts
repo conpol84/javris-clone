@@ -91,6 +91,23 @@ const BING_MARKET: Record<string, string> = {
  * Throws (with the reason per source) when nothing was found.
  */
 export async function freeWebSearch(query: string, lang: string, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
+  try {
+    return await searchOnce(query, lang, fetcher, signal);
+  } catch (error) {
+    // Long, sentence-like queries (typical of models) often find nothing in news feeds: retry with the key words.
+    const short = shortQuery(query);
+    if (!short || short === query.trim()) throw error;
+    return await searchOnce(short, lang, fetcher, signal);
+  }
+}
+
+/** The first few meaningful words of a query (no years or numbers), or '' when it is already short. */
+export function shortQuery(query: string): string {
+  const words = query.split(/\s+/).filter(w => w.length > 2 && !/^\d+$/.test(w));
+  return words.length > 4 ? words.slice(0, 4).join(' ') : '';
+}
+
+async function searchOnce(query: string, lang: string, fetcher: Fetcher, signal?: AbortSignal): Promise<string> {
   const q = encodeURIComponent(query.slice(0, 200));
   const wiki = (lang.split('-')[0] || 'en').toLowerCase();
   const get = async (url: string) => {

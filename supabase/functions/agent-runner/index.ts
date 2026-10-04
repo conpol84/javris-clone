@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
   const callOnce = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     const until = Date.now() + timeoutMs;
     let reply = await callModel(messages, timeoutMs);
-    for (let retry = 0; retry < 2 && gateway && looksLikeThinking(reply) && until - Date.now() > 10_000; retry++) {
+    for (let retry = 0; retry < 1 && gateway && looksLikeThinking(reply) && until - Date.now() > 25_000; retry++) {
       console.warn(JSON.stringify({ event: 'firbo_gateway_thinking_reply', task_id: task.id, model: routing?.reported_model ?? null }));
       reply = await callModel(messages, until - Date.now());
     }
@@ -348,8 +348,16 @@ Deno.serve(async (req) => {
   let text = '';
   let steps: LoopStep[] = [];
   let calls = 0;
+  const evidence: string[] = [];
+  // Never present a model's thinking-aloud (or nothing at all) as the employee's work: list the sources found instead.
+  const sourcesReport = () => {
+    const sources = sourcesIn(evidence);
+    const report = `${NO_REPORT[lang]}${sources.length ? `\n\n${sources.map(x => `- [${x.title.replace(/[\[\]]/g, '')}](${x.url})`).join('\n')}` : ''}`;
+    console.warn(JSON.stringify({ event: 'firbo_agent_no_report', task_id: task.id, sources: sources.length }));
+    return { text: JSON.stringify({ summary: NO_REPORT[lang], report, actions: [] }), sources: sources.length };
+  };
   try {
-    const out = await runAgentLoop({
+    const out = await runAgentLoop({ evidence,
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
       maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: web.block,
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
@@ -358,14 +366,11 @@ Deno.serve(async (req) => {
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
     const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
-    // Never present a model's thinking-aloud as the employee's work.
-    if (text && looksLikeThinking(text)) {
-      const sources = sourcesIn(out.evidence);
-      const report = `${NO_REPORT[lang]}${sources.length ? `\n\n${sources.map(x => `- [${x.title.replace(/[\[\]]/g, '')}](${x.url})`).join('\n')}` : ''}`;
-      text = JSON.stringify({ summary: NO_REPORT[lang], report, actions: [] });
-      console.warn(JSON.stringify({ event: 'firbo_agent_no_report', task_id: task.id, sources: sources.length }));
-    }
-  } catch { /* lastError says why */ }
+    if (text && looksLikeThinking(text)) text = sourcesReport().text;
+  } catch {
+    // The model failed or timed out at the end, but the research is not lost: hand over the sources that were found.
+    if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }
+  }
   if (!text || !used) {
     // Earlier successful steps were real model calls: keep their usage so budgets stay honest.
     if (inTok + outTok > 0 && used) await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model: `${(used as any).provider}:${(used as any).model}`, input_tokens: inTok, output_tokens: outTok, cost_usd: routedCost, latency_ms: Date.now() - t0, ...(own && used === own ? { own_key: true } : {}) });

@@ -74,6 +74,8 @@ export async function runAgentLoop(o: {
   deadline?: number;
   /** Material the agent was given up front (e.g. web results), handed to the clean-up request. */
   material?: string;
+  /** Filled with the material and tool results as they come in, so a caller keeps them even if the loop throws. */
+  evidence?: string[];
   now?: () => number;
 }): Promise<{ text: string; steps: LoopStep[]; calls: number; evidence: string[] }> {
   const now = o.now ?? Date.now;
@@ -88,7 +90,8 @@ export async function runAgentLoop(o: {
     { role: 'user', content: o.user },
   ];
   const steps: LoopStep[] = [];
-  const evidence: string[] = o.material ? [o.material] : [];
+  const evidence: string[] = o.evidence ?? [];
+  if (o.material) evidence.push(o.material);
   const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'think'];
   let calls = 0;
   let insisted = false;

@@ -59,3 +59,15 @@ test('percent-encoded letters in links are shown as letters, other escapes stay'
   const { readableUrl } = await import('../../supabase/functions/_shared/free-search.ts');
   assert.equal(readableUrl('https://www.sbctv.gr/2026/10/%cf%84%ce%b5%cf%87%ce%bd%ce%b7%cf%84%ce%ae-ai/?q=a%20b&x=%2F'), 'https://www.sbctv.gr/2026/10/τεχνητή-ai/?q=a%20b&x=%2F');
 });
+test('a long query that finds nothing is retried with its key words', async () => {
+  const { freeWebSearch, shortQuery } = await import('../../supabase/functions/_shared/free-search.ts');
+  assert.equal(shortQuery('free CRM Greek small business 2026 price features'), 'free CRM Greek small');
+  assert.equal(shortQuery('CRM Greece'), '');
+  const BING = `<rss><channel><item><title>CRM news</title><link>https://a.gr/crm</link></item></channel></rss>`;
+  const seen = [];
+  const out = await freeWebSearch('free CRM Greek small business 2026 price features', 'el', async (url) => {
+    const u = String(url); seen.push(u);
+    return u.includes('bing.com/news') && u.includes('q=free%20CRM%20Greek%20small&') ? new Response(BING) : new Response('', { status: 500 });
+  });
+  assert.match(out, /CRM news - https:\/\/a\.gr\/crm/);
+});

@@ -146,3 +146,9 @@ test('a continuation that is the model thinking aloud is not appended to the rep
   assert.equal(JSON.parse(out.text).report, '## CRM\n1. **Zoho** - https://zoho.com');
   assert.equal(out.calls, 1);
 });
+test('the research found so far is kept for the caller even when the final call fails', async () => {
+  const evidence = [];
+  const replies = [async () => '{"action":"web_search","input":"q"}', async () => { throw new Error('timeout'); }, async () => { throw new Error('timeout'); }];
+  await assert.rejects(runAgentLoop({ call: async () => replies.shift()(), system: 'S', user: 'U', tools: { web_search: async () => '1. A - https://a.gr/1' }, evidence, material: 'WEB' }), /timeout/);
+  assert.deepEqual(evidence, ['WEB', 'web_search (q):\n1. A - https://a.gr/1']);
+});
