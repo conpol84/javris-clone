@@ -40,7 +40,7 @@ test('when DuckDuckGo and Google News refuse the server, Bing News and Wikipedia
     return new Response(WIKI);
   });
   assert.match(out, /Recent news:\nN1\. Η τεχνητή νοημοσύνη «αλλάζει» τις τράπεζες \(Sun, 04 Oct 2026 08:00:00 GMT\) - https:\/\/www\.naftemporiki\.gr\/ai\/123/);
-  assert.match(out, /Encyclopedia:\nW1\. Τεχνητή νοημοσύνη - https:\/\/el\.wikipedia\.org\/wiki\/%CE/);
+  assert.match(out, /Encyclopedia:\nW1\. Τεχνητή νοημοσύνη - https:\/\/el\.wikipedia\.org\/wiki\/Τεχνητή_νοημοσύνη\n/);
   assert.equal(parseWikipedia('not json', 'el').length, 0);
 });
 test('only public hosts can be read', () => {
@@ -54,4 +54,8 @@ test('a redirect to a private address is refused; page text is cleaned', async (
   const out = await readPageDirect('https://a.example/x', async () => new Response(html, { headers: { 'content-type': 'text/html' } }));
   assert.match(out, /^Sales up\n/); assert.match(out, /Sales rose 5%/); assert.doesNotMatch(out, /evil|menu/);
   await assert.rejects(readPageDirect('https://a.example/f.pdf', async () => new Response('x', { headers: { 'content-type': 'application/pdf' } })), /page_not_text/);
+});
+test('percent-encoded letters in links are shown as letters, other escapes stay', async () => {
+  const { readableUrl } = await import('../../supabase/functions/_shared/free-search.ts');
+  assert.equal(readableUrl('https://www.sbctv.gr/2026/10/%cf%84%ce%b5%cf%87%ce%bd%ce%b7%cf%84%ce%ae-ai/?q=a%20b&x=%2F'), 'https://www.sbctv.gr/2026/10/τεχνητή-ai/?q=a%20b&x=%2F');
 });

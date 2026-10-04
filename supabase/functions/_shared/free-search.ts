@@ -19,6 +19,13 @@ export function decodeEntities(s: string): string {
 }
 const text = (html: string) => decodeEntities(html.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 
+/** Shows percent-encoded letters (Greek, Arabic, Chinese...) as letters: same link, far fewer tokens for the model to copy. */
+export function readableUrl(url: string): string {
+  return url.replace(/(?:%[89a-f][0-9a-f]|%[c-f][0-9a-f](?:%[89ab][0-9a-f])+)+/gi, run => {
+    try { return decodeURIComponent(run); } catch { return run; }
+  });
+}
+
 /** Results from https://html.duckduckgo.com/html/ (links come wrapped in a /l/?uddg= redirect). */
 export function parseDuckDuckGo(html: string, max = 6): SearchHit[] {
   const out: SearchHit[] = [];
@@ -104,9 +111,9 @@ export async function freeWebSearch(query: string, lang: string, fetcher: Fetche
   const news = gnews.length ? gnews : bnews;
   if (!web.length && !news.length && !encyclopedia.length) throw new Error(`free_search_${problems.join('|')}`.slice(0, 160));
   const lines: string[] = [];
-  web.forEach((h, i) => lines.push(`${i + 1}. ${h.title} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
-  if (news.length) lines.push('Recent news:', ...news.map((h, i) => `N${i + 1}. ${h.title}${h.date ? ` (${h.date})` : ''} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
-  if (encyclopedia.length) lines.push('Encyclopedia:', ...encyclopedia.map((h, i) => `W${i + 1}. ${h.title} - ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`));
+  web.forEach((h, i) => lines.push(`${i + 1}. ${h.title} - ${readableUrl(h.url)}${h.snippet ? `\n   ${h.snippet}` : ''}`));
+  if (news.length) lines.push('Recent news:', ...news.map((h, i) => `N${i + 1}. ${h.title}${h.date ? ` (${h.date})` : ''} - ${readableUrl(h.url)}${h.snippet ? `\n   ${h.snippet}` : ''}`));
+  if (encyclopedia.length) lines.push('Encyclopedia:', ...encyclopedia.map((h, i) => `W${i + 1}. ${h.title} - ${readableUrl(h.url)}${h.snippet ? `\n   ${h.snippet}` : ''}`));
   return lines.join('\n');
 }
 

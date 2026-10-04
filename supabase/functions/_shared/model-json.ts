@@ -28,7 +28,8 @@ function objectAt(text: string, start: number): string | null {
 
 const hasAnswer = (o: Record<string, unknown>) => typeof o.report === 'string' || typeof o.summary === 'string';
 
-export function extractModelJson(text: string): Record<string, unknown> | null {
+/** The answer object only when it parses as complete JSON (null for a reply that was cut off). */
+export function strictModelJson(text: string): Record<string, unknown> | null {
   // Every complete top-level object; a model that thinks aloud first may mention other JSON before its answer.
   const objects: Record<string, unknown>[] = [];
   for (let start = text.indexOf('{'), seen = 0; start >= 0 && seen < 20; seen++) {
@@ -60,7 +61,12 @@ export function extractModelJson(text: string): Record<string, unknown> | null {
       if (o && typeof o === 'object' && !Array.isArray(o) && hasAnswer(o)) return o as Record<string, unknown>;
     } catch { /* try the next candidate */ }
   }
-  if (objects.length) return objects[0];
+  return objects.length ? objects[0] : null;
+}
+
+export function extractModelJson(text: string): Record<string, unknown> | null {
+  const whole = strictModelJson(text);
+  if (whole) return whole;
   // Truncated or slightly broken JSON: recover the text fields one by one.
   const field = (name: string) => {
     const m = new RegExp(`"${name}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`).exec(text);

@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect } from '../_shared/free-search.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
@@ -327,6 +327,9 @@ Deno.serve(async (req) => {
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
     });
     text = out.text; steps = out.steps; calls = out.calls;
+    // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
+    const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: t0 + 110_000 });
+    text = finished.text; calls += finished.calls;
   } catch { /* lastError says why */ }
   if (!text || !used) {
     // Earlier successful steps were real model calls: keep their usage so budgets stay honest.

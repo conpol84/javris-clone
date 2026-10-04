@@ -87,3 +87,19 @@ test('a final answer written after the model thought aloud (and mentioned a tool
   assert.equal(isFinalAnswer(text), true);
   assert.equal(parseToolRequest(text, ['web_search']), null);
 });
+test('a report cut off by the provider is completed with continuation requests and a half link is removed', async () => {
+  const { finishCutOff, trimDanglingLink } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  const cut = '{"summary":"Τρία νέα","report":"### Νέα\\n1. **Α**: κείμενο [Πηγή](https://a.gr/x)\\n2. **Β**: μισό κείμ';
+  const parts = ['ενο [Πηγή](https://b.gr/y)\n3. **Γ**: τέλος [Πηγή](https://c.gr/', '\nEND'];
+  const seen = [];
+  const out = await finishCutOff(async (m) => { seen.push(m); return parts.shift(); }, cut, { instructions: 'Write in Greek.' });
+  const o = JSON.parse(out.text);
+  assert.equal(out.calls, 2);
+  assert.equal(o.summary, 'Τρία νέα');
+  assert.match(o.report, /2\. \*\*Β\*\*: μισό κείμενο \[Πηγή\]\(https:\/\/b\.gr\/y\)/);
+  assert.match(o.report, /3\. \*\*Γ\*\*: τέλος$/);
+  assert.match(seen[0][0].content, /Continue it exactly.*Write in Greek\./);
+  const whole = JSON.stringify({ summary: 's', report: 'r', actions: [] });
+  assert.deepEqual(await finishCutOff(async () => { throw new Error('no call'); }, whole), { text: whole, calls: 0 });
+  assert.equal(trimDanglingLink('done [see](https://x.y/a'), 'done');
+});
