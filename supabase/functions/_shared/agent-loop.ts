@@ -198,6 +198,8 @@ export async function finishCutOff(
     ], timeout).catch(() => '');
     calls++;
     let piece = more.replace(/<think>[\s\S]*?<\/think>/gi, '').replace(/^```(?:markdown|md)?\s*|\s*```$/g, '');
+    // A model that answers with its reasoning ("The user wants me to continue...") adds nothing to the report.
+    if (looksLikeThinking(piece.trim())) break;
     const done = !piece.trim() || /(^|\n)\s*END\s*$/.test(piece);
     piece = piece.replace(/(^|\n)\s*END\s*$/, '');
     if (piece.trim()) report += piece;

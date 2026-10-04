@@ -139,3 +139,10 @@ test('thinking aloud is recognised and the sources found are listed for the fall
     { title: 'CRM', url: 'https://el.wikipedia.org/wiki/CRM' },
   ]);
 });
+test('a continuation that is the model thinking aloud is not appended to the report', async () => {
+  const { finishCutOff } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  const cut = '{"summary":"S","report":"## CRM\\n1. **Zoho** - https://zoho.com';
+  const out = await finishCutOff(async () => 'The user wants me to continue a report that was cut off. Let me analyze', cut);
+  assert.equal(JSON.parse(out.text).report, '## CRM\n1. **Zoho** - https://zoho.com');
+  assert.equal(out.calls, 1);
+});
