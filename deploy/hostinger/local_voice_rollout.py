@@ -96,6 +96,16 @@ LOCAL_ENV={
  'FIRBO_CONTROL_WRITES_ENABLED':'false',
 }
 
+
+def local_base_hash_probe(n):
+    code=r'''import hashlib,importlib.util,json
+names=['free_inference.py','firbo_free_app.py']
+print(json.dumps({x:hashlib.sha256(open(importlib.util.find_spec('openjarvis.server.'+x[:-3]).origin,'rb').read()).hexdigest() for x in names}))'''
+    try:
+        return json.loads(n.docker('exec','firbo-api','python','-c',code,timeout=10))
+    except Exception:
+        raise Blocked('active_local_source_probe_failed') from None
+
 def local_model_state(n):
     """Validate only the exact successful local-model release that is active now."""
     active=n.real_file(LOCAL_ROOT/'active.json')
@@ -150,7 +160,7 @@ def local_model_state(n):
       "import importlib.util,json;print(json.dumps(importlib.util.find_spec('openjarvis.server.firbo_free_app').origin))").strip())
     module=Path(source)
     require(re.fullmatch(r'/(usr/local/lib/python3\.\d+/site-packages|app/src)/openjarvis/server/firbo_free_app\.py',str(module)),'unexpected_local_module_location')
-    hashes=api_hash_probe(n,'firbo-api')
+    hashes=local_base_hash_probe(n)
     require(all(hashes.get(k)==v for k,v in LOCAL_API_HASHES.items()),'active_local_source_drift')
 
     oll=n.inspect('firbo-ollama');oh=oll['HostConfig']
