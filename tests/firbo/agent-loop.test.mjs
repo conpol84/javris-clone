@@ -68,7 +68,7 @@ test('thoughts instead of an answer are asked again; <think> blocks are ignored'
 test('a plain-text answer is accepted after two nudges', async () => {
   let n = 0;
   const out = await runAgentLoop({ call: async () => { n++; return 'just text'; }, system: 'S', user: 'U', tools: { web_search: async () => 'r' } });
-  assert.equal(n, 4); assert.equal(out.text, 'just text');
+  assert.equal(n, 5); assert.equal(out.text, 'just text');
 });
 test('out of time with thoughts instead of the answer: one repair request returns the final object', async () => {
   let clock = 0;
@@ -79,7 +79,7 @@ test('out of time with thoughts instead of the answer: one repair request return
     system: 'S', user: 'U', tools: { web_search: async () => 'r' }, budgetMs: 70_000, now: () => clock,
   });
   assert.equal(out.text, final); assert.equal(out.calls, 3);
-  assert.match(seen.at(-1), /^DRAFT:\nI should now write the report/);
+  assert.match(seen.at(-1), /^TASK:\nU\n\nMATERIAL FOUND:\nweb_search \(q\):\nr\n\nDRAFT:\nI should now write the report/);
   assert.match(loopInstructions(['web_search'], 5), /instead of inventing/);
 });
 test('a final answer written after the model thought aloud (and mentioned a tool call) is still found', () => {
@@ -117,4 +117,25 @@ test('requests never run past the deadline', async () => {
   await assert.rejects(runAgentLoop({ call: async (m, t) => { timeouts.push(t); clock += 30_000; return '{"action":"web_search","input":"q"}'; }, system: 'S', user: 'U',
     tools: { web_search: async () => 'r' }, deadline: 50_000, now: () => clock }), /out_of_time/);
   assert.ok(timeouts.every(t => t <= 48_500), JSON.stringify(timeouts));
+});
+test('the clean-up is tried twice (the gateway may pick another model) and gets the material found up front', async () => {
+  let clock = 0;
+  const replies = ['Thinking aloud about the task', 'Still thinking', 'More thoughts', 'Again thoughts', final];
+  const seen = [];
+  const out = await runAgentLoop({ call: async (m) => { seen.push(m); clock += 30_000; return replies.shift(); }, system: 'S', user: 'U',
+    tools: { web_search: async () => 'r' }, budgetMs: 70_000, now: () => clock, material: 'WEB MATERIAL: news N1 - https://a.gr/1' });
+  assert.equal(out.text, final);
+  assert.match(seen.at(-1)[1].content, /MATERIAL FOUND:\nWEB MATERIAL: news N1/);
+});
+test('thinking aloud is recognised and the sources found are listed for the fallback report', async () => {
+  const { looksLikeThinking, sourcesIn } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  assert.equal(looksLikeThinking('The user wants me to compare 3 free CRM systems. I need to:'), true);
+  assert.equal(looksLikeThinking('## CRM comparison\n1. HubSpot - free'), false);
+  assert.equal(looksLikeThinking(final), false);
+  const ev = ['web_search (crm):\n1. HubSpot CRM - https://hubspot.com/crm\n   free\nRecent news:\nN1. Zoho update (Sun, 04 Oct 2026) - https://zoho.com/n\nEncyclopedia:\nW1. CRM - https://el.wikipedia.org/wiki/CRM', 'WEB MATERIAL:\n1. HubSpot CRM - https://hubspot.com/crm'];
+  assert.deepEqual(sourcesIn(ev), [
+    { title: 'HubSpot CRM', url: 'https://hubspot.com/crm' },
+    { title: 'Zoho update', url: 'https://zoho.com/n' },
+    { title: 'CRM', url: 'https://el.wikipedia.org/wiki/CRM' },
+  ]);
 });

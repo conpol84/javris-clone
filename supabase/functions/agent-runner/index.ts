@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, finishCutOff, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, looksLikeThinking, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect } from '../_shared/free-search.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
@@ -74,7 +74,8 @@ async function gatherWeb(tools: { tool_name: string; enabled: boolean; policy: s
   const clean = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const parts: string[] = [];
   if (usable('web_search')) {
-    const query = clean(taskTitle, 200);
+    // Tags such as "[Urgent]" or "[Test 3]" in a title are not what the owner wants searched.
+    const query = clean(taskTitle.replace(/\[[^\]]*\]/g, ' '), 200);
     for (const provider of [undefined, 'duckduckgo-free']) {
       try {
         const out = await call('/search', { query, max_results: 5, ...(provider ? { provider } : {}) });
@@ -118,6 +119,18 @@ function parseModelJson(text: string): { summary: string; report: string; action
   const summary = String(o.summary ?? '').trim() || report.replace(/\s+/g, ' ').trim().slice(0, 200);
   return { summary: summary.slice(0, 400), report: report || text, actions };
 }
+
+// Shown instead of a model's raw reasoning when it never wrote the report: honest, with the sources it found.
+const NO_REPORT: Record<string, string> = {
+  en: 'The AI model could not write the final report this time. These are the sources it found; run the task again for a full report.',
+  el: 'Το μοντέλο AI δεν κατάφερε να γράψει την τελική αναφορά αυτή τη φορά. Αυτές είναι οι πηγές που βρήκε· τρέξτε ξανά την εργασία για πλήρη αναφορά.',
+  es: 'El modelo de IA no pudo redactar el informe final esta vez. Estas son las fuentes que encontró; vuelve a ejecutar la tarea para obtener el informe completo.',
+  'pt-BR': 'O modelo de IA não conseguiu escrever o relatório final desta vez. Estas são as fontes que encontrou; execute a tarefa novamente para um relatório completo.',
+  de: 'Das KI-Modell konnte den Abschlussbericht diesmal nicht schreiben. Das sind die gefundenen Quellen; führe die Aufgabe erneut aus für einen vollständigen Bericht.',
+  fr: 'Le modèle d’IA n’a pas pu rédiger le rapport final cette fois. Voici les sources trouvées ; relancez la tâche pour un rapport complet.',
+  'zh-CN': 'AI 模型这次未能写出最终报告。以下是它找到的来源；请重新运行任务以获得完整报告。',
+  ar: 'لم يتمكن نموذج الذكاء الاصطناعي من كتابة التقرير النهائي هذه المرة. هذه هي المصادر التي وجدها؛ أعد تشغيل المهمة للحصول على تقرير كامل.',
+};
 
 // Edge functions are stopped after 150 s of wall-clock time; every model request must be over before that.
 const WALL_CLOCK_MS = 140_000;
@@ -327,13 +340,20 @@ Deno.serve(async (req) => {
   try {
     const out = await runAgentLoop({
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
-      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS,
+      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: web.block,
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
     });
     text = out.text; steps = out.steps; calls = out.calls;
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
     const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
+    // Never present a model's thinking-aloud as the employee's work.
+    if (text && looksLikeThinking(text)) {
+      const sources = sourcesIn(out.evidence);
+      const report = `${NO_REPORT[lang]}${sources.length ? `\n\n${sources.map(x => `- [${x.title.replace(/[\[\]]/g, '')}](${x.url})`).join('\n')}` : ''}`;
+      text = JSON.stringify({ summary: NO_REPORT[lang], report, actions: [] });
+      console.warn(JSON.stringify({ event: 'firbo_agent_no_report', task_id: task.id, sources: sources.length }));
+    }
   } catch { /* lastError says why */ }
   if (!text || !used) {
     // Earlier successful steps were real model calls: keep their usage so budgets stay honest.
