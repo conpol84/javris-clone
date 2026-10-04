@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { connectorCall, executeJobForReport, parseArgs, runJob, validateJob } from '../../frontend/public/firbo-connector.mjs';
+import { connectorCall, executeJobForReport, localCapabilities, parseArgs, runJob, validateJob } from '../../frontend/public/firbo-connector.mjs';
 
 let root, outside;
 before(async () => {
@@ -60,6 +60,21 @@ test('remote job cannot turn on command permission', async () => {
 test('remote job cannot turn on write permission', async () => {
   assert.deepEqual(await executeJobForReport({...job('write',{path:'forbidden.txt',content:'x'}),allowWrite:true},cfg()),{ok:false,error:'writing_disabled'});
 });
+test('browser job requires explicit local browser permission', async () => {
+  assert.deepEqual(await executeJobForReport(job('browser_open',{url:'https://example.com/'}),cfg()),{ok:false,error:'browser_disabled'});
+});
+test('browser-only pairing can open HTTPS without file or shell access', async () => {
+  let opened='';
+  const result=await runJob(job('browser_open',{url:'https://example.com/path'}),cfg({roots:[],allowBrowser:true}),{browserLauncher:async url=>(opened=url,{url,launched:true,launcher:'synthetic'})});
+  assert.equal(opened,'https://example.com/path');assert.equal(result.launched,true);
+  assert.deepEqual(localCapabilities({roots:[],allowBrowser:true}),{job_kinds:['browser_open']});
+});
+test('browser opening refuses non-HTTPS credentials localhost and IP literals', async () => {
+  for (const url of ['http://example.com','https://user:secret@example.com','https://localhost/','https://127.0.0.1/']) {
+    const report=await executeJobForReport(job('browser_open',{url}),cfg({roots:[],allowBrowser:true}),{browserLauncher:async()=>({launched:true})});
+    assert.equal(report.ok,false);
+  }
+});
 test('truthy permission text does not enable commands', async () => {
   assert.deepEqual(await executeJobForReport(job('exec',{command:'echo test'}),cfg({allowExec:'true'})),{ok:false,error:'commands_disabled'});
 });
@@ -107,14 +122,14 @@ test('missing file reports a code rather than an absolute path', async () => {
   assert.deepEqual(report,{ok:false,error:'file_enoent'});assert.ok(!JSON.stringify(report).includes(root));
 });
 test('invalid job inputs fail before local execution', () => {
-  for(const invalid of [null,[],{},job('browser',{}),job('read',[]),job('read',{}),job('read',{path:32}),job('exec',{command:''}),job('exec',{command:'x'.repeat(501)}),job('write',{path:'x',content:42}),job('write',{path:'x',content:'a'.repeat(100001)}),job('write',{path:'x',content:'ok',overwrite:'true'}),job('list',{path:'bad\0path'})]) assert.throws(()=>validateJob(invalid));
+  for(const invalid of [null,[],{},job('browser',{}),job('browser_open',{}),job('read',[]),job('read',{}),job('read',{path:32}),job('exec',{command:''}),job('exec',{command:'x'.repeat(501)}),job('write',{path:'x',content:42}),job('write',{path:'x',content:'a'.repeat(100001)}),job('write',{path:'x',content:'ok',overwrite:'true'}),job('list',{path:'bad\0path'})]) assert.throws(()=>validateJob(invalid));
 });
 test('empty allowed-folder option fails explicitly', () => {
   assert.throws(()=>parseArgs(['pair','CODE','--allow']),/missing_allowed_folder/);
   assert.throws(()=>parseArgs(['--allow','--allow-exec']),/missing_allowed_folder/);
 });
 test('legacy argument and job shape remains supported', () => {
-  assert.deepEqual(parseArgs(['pair','CODE','--allow','/folder','--allow-write']),{_:['pair','CODE'],allow:['/folder'],allowWrite:true});
+  assert.deepEqual(parseArgs(['pair','CODE','--allow','/folder','--allow-write','--allow-browser']),{_:['pair','CODE'],allow:['/folder'],allowWrite:true,allowBrowser:true});
   assert.deepEqual(validateJob(job('list',{})),{});
 });
 test('successful mocked HTTP JSON is consumed normally', async () => {

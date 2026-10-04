@@ -8,13 +8,14 @@ import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
+import { dispatchLaptopBrowserCommand } from './laptop-bridge';
 
 export interface CeoLine { who:'me'|'ceo'; text:string }
 /** Voice and typed turns share one conversation. Stop fences late UI/media results;
  * it does not claim that already-started server inference/work was interrupted.
  */
-export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true) {
-  const scope=JSON.stringify([orgId,userId,lang,canWrite]);
+export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true,canComputer=false) {
+  const scope=JSON.stringify([orgId,userId,lang,canWrite,canComputer]);
   const scopeRef=useRef(scope); scopeRef.current=scope;
   const [loadedScope,setLoadedScope]=useState(scope);
   const [ceo,setCeo]=useState<AgentRow|null>(null);
@@ -92,6 +93,24 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     const active=newTurn(id);active.phase('thinking');
     setInterim('');setLines(lines=>[...lines,{who:'me',text:message}]);
     try{
+      if(canComputer){
+        const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
+        if(!valid(id)||!active.current())return;
+        if(remote.handled){
+          const content=remote.reply??voiceMessages(lang).server;
+          setLines(lines=>[...lines,{who:'ceo',text:content}]);
+          if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
+          const spoken=await speak(orgId,content,lang,{turn:active});
+          if(!valid(id))return;
+          busy.current=false;
+          if(spoken.status==='completed'){setState('idle');resume(id,300);}
+          else{
+            handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');
+            if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}
+          }
+          return;
+        }
+      }
       if(!convo.current){
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
         if(!valid(id)||!active.current())return;convo.current=created.id;
