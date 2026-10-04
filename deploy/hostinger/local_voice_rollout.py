@@ -246,7 +246,7 @@ def apply(n,ref,report):
     source=release/'source';source.mkdir(mode=0o700);voices=release/'voices';voices.mkdir(mode=0o700);os.chown(voices,10001,10001)
     report.update(release_directory=str(release),private_backups_contain_secrets=True,old_api_image=s['api']['Image'])
     originals={p:p.read_bytes() for p in [*s['files'],s['dotenv']]};private_write(release/'original.env',originals[s['dotenv']])
-    for name,h in SOURCE_HASHES.items():private_write(source,name,download(ref,'src/openjarvis/server/'+name,h))
+    for name,h in SOURCE_HASHES.items():private_write(source/name,download(ref,'src/openjarvis/server/'+name,h))
     # Build the private Piper runtime from a pinned amd64 Python base.
     dockerfile=f'''FROM {BASE_IMAGE}
 RUN pip install --no-cache-dir "piper-tts[zh]=={PIPER_VERSION}"
