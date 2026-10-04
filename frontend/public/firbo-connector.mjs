@@ -342,7 +342,9 @@ export function validateConnectorURL(value) {
 }
 function requireDurableNode() {
   const [major, minor] = process.versions.node.split('.').map(Number);
-  if (major < 22 || (major === 22 && minor < 13)) throw new Error('node_22_13_required');
+  if (major < 22 || (major === 22 && minor < 13)) {
+    throw new Error(`node_22_13_required: this program needs Node.js 22.13 or newer (you have ${process.versions.node}). Install the LTS version from https://nodejs.org, close and reopen the terminal, check with "node --version", then try again.`);
+  }
 }
 const hashBytes = bytes => createHash('sha256').update(bytes).digest('hex');
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

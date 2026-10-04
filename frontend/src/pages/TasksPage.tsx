@@ -1,4 +1,4 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState, type FormEvent, useRef } from 'react';
 import { toast } from 'sonner';
 import { LayoutGrid, List, ListChecks } from 'lucide-react';
 import { StatusDot } from '../components/command/Panel';
@@ -35,6 +35,7 @@ export function TasksPage() {
   const canWrite = WRITER_ROLES.includes(role);
   const data = useOrgData(orgId, MANAGER_ROLES.includes(role));
   const [title, setTitle] = useState('');
+  const titleRef = useRef<HTMLInputElement>(null);
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [agentId, setAgentId] = useState('');
   const [due, setDue] = useState('');
@@ -79,17 +80,27 @@ export function TasksPage() {
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
-    if (!user || !title.trim()) return;
+    if (busy) return;
+    if (!title.trim()) {
+      toast.error(t('tasks.needTitle'));
+      titleRef.current?.focus();
+      return;
+    }
+    if (!user) return void toast.error(t('tasks.needSession'));
     setBusy(true);
     try {
-      await createTask({ orgId, userId: user.id, title, priority, agentId: agentId || null, dueAt: due ? new Date(due).toISOString() : null });
+      // Never leave the button stuck on "Adding…": give up after 20 s and say so.
+      await Promise.race([
+        createTask({ orgId, userId: user.id, title, priority, agentId: agentId || null, dueAt: due ? new Date(due).toISOString() : null }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20_000)),
+      ]);
       setTitle('');
       setDue('');
       toast.success(t('tasks.created'));
       await data.reload();
     } catch (err) {
       console.error(err);
-      const code = (err as { code?: string } | null)?.code;
+      const code = (err as { code?: string } | null)?.code ?? ((err as Error | null)?.message === 'timeout' ? 'timeout' : undefined);
       if (!notifyPlanLimit(err, t as never)) toast.error(code ? `${t('tasks.createError')} [${code}]` : t('tasks.createError'));
     } finally {
       setBusy(false);
@@ -152,7 +163,7 @@ export function TasksPage() {
 
         {canWrite && (
           <form onSubmit={create} className="fb-glass mb-4 p-4">
-            <input className="fb-input" placeholder={t('tasks.titlePlaceholder')} maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t('tasks.titleAria')} />
+            <input ref={titleRef} className="fb-input" placeholder={t('tasks.titlePlaceholder')} maxLength={200} value={title} onChange={(e) => setTitle(e.target.value)} aria-label={t('tasks.titleAria')} />
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <select className="fb-input fb-w-role" style={{ width: 'auto', minWidth: 150 }} value={agentId} onChange={(e) => setAgentId(e.target.value)} aria-label={t('tasks.assignAria')}>
                 <option value="">{t('tasks.anyAgent')}</option>
@@ -170,7 +181,7 @@ export function TasksPage() {
                 ))}
               </select>
               <input className="fb-input" style={{ width: 'auto' }} type="datetime-local" value={due} onChange={(e) => setDue(e.target.value)} aria-label={t('tasks.dueAria')} />
-              <button className="fb-btn fb-btn--primary ms-auto" disabled={busy || !title.trim()}>
+              <button className="fb-btn fb-btn--primary ms-auto" disabled={busy}>
                 {busy ? t('tasks.adding') : t('tasks.add')}
               </button>
             </div>

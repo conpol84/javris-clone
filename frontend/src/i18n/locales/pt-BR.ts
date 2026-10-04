@@ -1018,6 +1018,11 @@ const ptBR: Dictionary = {
   'mem.uploadPartial': '{done} de {total} notas adicionadas antes do limite.',
   'mem.uploadBad': 'Escolha um arquivo de texto (.txt, .md, .csv ou .json) de até 100 KB.',
   'mem.uploadEmpty': 'O arquivo não tem texto legível.',
+  'comp.needNodeTitle': 'Passo 1 — Node.js 22 ou superior',
+  'comp.needNodeBody': 'O Connector roda sobre o Node.js. Instale a versão LTS em',
+  'comp.needNodeResult': 'Feche e reabra o terminal e execute a linha acima: deve mostrar v22.13 ou superior. Se disser que o comando não foi encontrado, o Node.js ainda não está instalado.',
+  'tasks.needTitle': 'Escreva primeiro o que a equipe deve fazer.',
+  'tasks.needSession': 'Sua sessão ainda não está pronta. Recarregue a página e tente de novo.',
   'unassigned': 'Sem responsável',
 
   'agent.ceo.name': 'Agente CEO',

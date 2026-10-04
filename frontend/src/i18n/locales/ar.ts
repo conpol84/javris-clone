@@ -1023,6 +1023,11 @@ const ar: Dictionary = {
   'mem.uploadPartial': 'أُضيفت {done} من {total} ملاحظة قبل بلوغ الحد.',
   'mem.uploadBad': 'اختر ملفًا نصيًا (.txt أو .md أو .csv أو .json) حتى 100 كيلوبايت.',
   'mem.uploadEmpty': 'لا يحتوي الملف على نص قابل للقراءة.',
+  'comp.needNodeTitle': 'الخطوة 1 — Node.js الإصدار 22 أو أحدث',
+  'comp.needNodeBody': 'يعمل Connector فوق Node.js. ثبّت إصدار LTS من',
+  'comp.needNodeResult': 'أغلق الطرفية وأعد فتحها ثم نفّذ السطر أعلاه: يجب أن يعرض v22.13 أو أحدث. إذا ظهر أن الأمر غير موجود فهذا يعني أن Node.js غير مثبت بعد.',
+  'tasks.needTitle': 'اكتب أولًا ما يجب أن يفعله الفريق.',
+  'tasks.needSession': 'جلستك ليست جاهزة بعد. أعد تحميل الصفحة وحاول مرة أخرى.',
   'unassigned': 'غير مسندة',
 
   'agent.ceo.name': 'وكيل الرئيس التنفيذي',

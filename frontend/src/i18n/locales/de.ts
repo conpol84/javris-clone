@@ -1018,6 +1018,11 @@ const de: Dictionary = {
   'mem.uploadPartial': '{done} von {total} Notizen vor dem Limit hinzugefügt.',
   'mem.uploadBad': 'Wähle eine Textdatei (.txt, .md, .csv oder .json) bis 100 KB.',
   'mem.uploadEmpty': 'Die Datei enthält keinen lesbaren Text.',
+  'comp.needNodeTitle': 'Schritt 1 — Node.js 22 oder neuer',
+  'comp.needNodeBody': 'Der Connector läuft auf Node.js. Installiere die LTS-Version von',
+  'comp.needNodeResult': 'Schließe das Terminal und öffne es neu, dann führe die obige Zeile aus: sie muss v22.13 oder höher anzeigen. Wenn der Befehl nicht gefunden wird, ist Node.js noch nicht installiert.',
+  'tasks.needTitle': 'Schreibe zuerst, was das Team tun soll.',
+  'tasks.needSession': 'Deine Sitzung ist noch nicht bereit. Lade die Seite neu und versuche es erneut.',
   'unassigned': 'Nicht zugewiesen',
 
   'agent.ceo.name': 'CEO-Agent',

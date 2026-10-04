@@ -1019,6 +1019,11 @@ const zhCN: Dictionary = {
   'mem.uploadPartial': '在达到上限前已添加 {done}/{total} 条笔记。',
   'mem.uploadBad': '请选择不超过 100 KB 的文本文件（.txt、.md、.csv 或 .json）。',
   'mem.uploadEmpty': '文件中没有可读取的文本。',
+  'comp.needNodeTitle': '第 1 步 — Node.js 22 或更高版本',
+  'comp.needNodeBody': 'Connector 运行在 Node.js 上。请从以下地址安装 LTS 版本：',
+  'comp.needNodeResult': '关闭并重新打开终端，然后运行上面的命令：必须显示 v22.13 或更高。如果提示找不到命令，说明尚未安装 Node.js。',
+  'tasks.needTitle': '请先写下团队要做什么。',
+  'tasks.needSession': '你的会话尚未就绪。请刷新页面后重试。',
   'unassigned': '未分配',
 
   'agent.ceo.name': 'CEO 智能体',

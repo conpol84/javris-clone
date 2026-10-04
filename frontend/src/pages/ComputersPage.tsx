@@ -185,6 +185,10 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                   <div className="text-sm">{t('comp.codeIs')}</div>
                   <div data-testid="pair-code" dir="ltr" className="break-all text-2xl font-bold tracking-[0.15em]" style={{ color: 'var(--fb-accent)' }}>{visiblePair.code}</div>
                   <p className="fb-dim text-xs">{t('comp.codeExpires')}</p>
+                  <div className="fb-eyebrow">{t('comp.needNodeTitle')}</div>
+                  <p className="text-sm">{t('comp.needNodeBody')} <a className="underline" href="https://nodejs.org" target="_blank" rel="noreferrer">nodejs.org</a></p>
+                  <CopyLine text="node --version" />
+                  <p className="fb-dim text-xs">{t('comp.needNodeResult')}</p>
                   <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> {t('comp.download')}</a>
                   <div className="fb-eyebrow">{web.pair}</div>
                   <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow-browser`} />

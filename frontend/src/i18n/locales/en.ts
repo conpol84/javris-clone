@@ -1026,6 +1026,11 @@ export const en = {
   'mem.uploadPartial': 'Added {done} of {total} notes before the limit.',
   'mem.uploadBad': 'Choose a text file (.txt, .md, .csv or .json) up to 100 KB.',
   'mem.uploadEmpty': 'The file has no readable text.',
+  'comp.needNodeTitle': 'Step 1 — Node.js 22 or newer',
+  'comp.needNodeBody': 'The Connector runs on Node.js. Install the LTS version from',
+  'comp.needNodeResult': 'Close and reopen the terminal, then run the line above: it must print v22.13 or higher. If it says the command is not found, Node.js is not installed yet.',
+  'tasks.needTitle': 'Write what the team should do first.',
+  'tasks.needSession': 'Your session is not ready yet. Reload the page and try again.',
   'unassigned': 'Unassigned',
 
   // ---- built-in agents
