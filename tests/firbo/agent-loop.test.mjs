@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runAgentLoop, parseToolRequest, loopInstructions } from '../../supabase/functions/_shared/agent-loop.ts';
+import { runAgentLoop, parseToolRequest, loopInstructions, isFinalAnswer } from '../../supabase/functions/_shared/agent-loop.ts';
 
 const final = JSON.stringify({ summary: 'Done', report: 'Found it at https://a.example', actions: [] });
 
@@ -79,6 +79,11 @@ test('out of time with thoughts instead of the answer: one repair request return
     system: 'S', user: 'U', tools: { web_search: async () => 'r' }, budgetMs: 70_000, now: () => clock,
   });
   assert.equal(out.text, final); assert.equal(out.calls, 3);
-  assert.match(seen.at(-1), /ONLY the final JSON object/);
+  assert.match(seen.at(-1), /^DRAFT:\nI should now write the report/);
   assert.match(loopInstructions(['web_search'], 5), /instead of inventing/);
+});
+test('a final answer written after the model thought aloud (and mentioned a tool call) is still found', () => {
+  const text = 'Let me think. Earlier I sent {"action":"web_search","input":"q"} and got news.\nNow the answer:\n' + final;
+  assert.equal(isFinalAnswer(text), true);
+  assert.equal(parseToolRequest(text, ['web_search']), null);
 });

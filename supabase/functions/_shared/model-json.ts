@@ -8,10 +8,8 @@ function decodeJsonString(raw: string): string {
   }
 }
 
-/** The first complete {...} object, respecting strings; ignores anything after it (models often add a stray brace). */
-function firstObject(text: string): string | null {
-  const start = text.indexOf('{');
-  if (start < 0) return null;
+/** The complete {...} object that starts at `start`, respecting strings; ignores anything after it (models often add a stray brace). */
+function objectAt(text: string, start: number): string | null {
   let depth = 0;
   let inString = false;
   let escaped = false;
@@ -28,10 +26,23 @@ function firstObject(text: string): string | null {
   return null;
 }
 
+const hasAnswer = (o: Record<string, unknown>) => typeof o.report === 'string' || typeof o.summary === 'string';
+
 export function extractModelJson(text: string): Record<string, unknown> | null {
+  // Every complete top-level object; a model that thinks aloud first may mention other JSON before its answer.
+  const objects: Record<string, unknown>[] = [];
+  for (let start = text.indexOf('{'), seen = 0; start >= 0 && seen < 20; seen++) {
+    const candidate = objectAt(text, start);
+    if (!candidate) break;
+    try {
+      const o = JSON.parse(candidate);
+      if (o && typeof o === 'object' && !Array.isArray(o)) objects.push(o as Record<string, unknown>);
+    } catch { /* not JSON, keep looking */ }
+    start = text.indexOf('{', start + candidate.length);
+  }
+  const answer = objects.find(hasAnswer);
+  if (answer) return answer;
   const tries: string[] = [];
-  const balanced = firstObject(text);
-  if (balanced) tries.push(balanced);
   const first = text.indexOf('{');
   const last = text.lastIndexOf('}');
   // The widest {...} first: a fence inside the report must not cut the object short.
@@ -46,9 +57,10 @@ export function extractModelJson(text: string): Record<string, unknown> | null {
   for (const candidate of tries) {
     try {
       const o = JSON.parse(candidate);
-      if (o && typeof o === 'object' && !Array.isArray(o)) return o as Record<string, unknown>;
+      if (o && typeof o === 'object' && !Array.isArray(o) && hasAnswer(o)) return o as Record<string, unknown>;
     } catch { /* try the next candidate */ }
   }
+  if (objects.length) return objects[0];
   // Truncated or slightly broken JSON: recover the text fields one by one.
   const field = (name: string) => {
     const m = new RegExp(`"${name}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)`).exec(text);

@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect } from '../_shared/free-search.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
       } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
     } else if (gateway) {
       try {
-        routed = await completeViaGateway(gateway, messages, Number(agent.temperature ?? 0.4), { signal: req.signal, timeoutMs: Math.min(90_000, timeoutMs) });
+        routed = await completeViaGateway(gateway, messages, Number(agent.temperature ?? 0.4), { signal: req.signal, timeoutMs: Math.min(90_000, timeoutMs), maxTokens: 4000 });
         completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
       } catch (error) { lastError = error instanceof GatewayError ? error.code : 'gateway_error'; routing = error instanceof GatewayError ? error.trace : undefined; }
       console.info(JSON.stringify({ event: 'firbo_gateway_inference', source: 'agent-runner', organization_id: task.organization_id, agent_id: agent.id, task_id: task.id, routing }));
@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
         const openai = target.provider === 'openai';
         const res = await fetch(`${target.base}/chat/completions`, { method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
-          body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.4) }),
+          body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 4000, temperature: Number(agent.temperature ?? 0.4) }),
             messages }), signal: AbortSignal.timeout(Math.min(90_000, timeoutMs)) });
         if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
         completion = await res.json();
@@ -324,6 +324,7 @@ Deno.serve(async (req) => {
     const out = await runAgentLoop({
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
       maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000,
+      repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
     });
     text = out.text; steps = out.steps; calls = out.calls;
   } catch { /* lastError says why */ }

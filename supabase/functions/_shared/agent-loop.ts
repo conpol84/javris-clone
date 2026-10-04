@@ -28,6 +28,8 @@ export function loopInstructions(tools: ToolName[], maxSteps: number): string {
   ].join('\n');
 }
 
+export const REPAIR_SYSTEM = 'Turn the DRAFT below into the final answer. Reply with ONLY one JSON object: {"summary": string (max 300 chars), "report": string (markdown, the finished work product with its source links), "actions": []}. Keep the facts and links that are in the draft and drop the reasoning; never add facts that are not in it. If the draft found nothing useful, say so in the report.';
+
 // Some models answer in their own native tool syntax, e.g. <|tool_call_start|>[web_search(input='...')]<|tool_call_end|>.
 const NATIVE_CALL = /\b(web_search|read_page|memory_search|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
 
@@ -66,6 +68,8 @@ export async function runAgentLoop(o: {
   maxSteps?: number;
   budgetMs?: number;
   finalTimeoutMs?: number;
+  /** Instructions for the clean-up request that turns a draft (thoughts, notes) into the final object. */
+  repairSystem?: string;
   now?: () => number;
 }): Promise<{ text: string; steps: LoopStep[]; calls: number }> {
   const now = o.now ?? Date.now;
@@ -109,12 +113,15 @@ export async function runAgentLoop(o: {
         messages.push({ role: 'user', content: 'That reply was not valid. Reply with ONLY one JSON object and nothing else: either {"action": ..., "input": ...} to use a tool, or the final {"summary", "report", "actions"} answer.' });
         continue;
       }
-      // Out of time but still not the final object (e.g. the model wrote its thoughts): one short request to put it in shape.
+      // Out of time but still not the final object (e.g. the model wrote its thoughts): one short, fresh request
+      // that only turns this draft into the final object. A short context works far better than the long conversation.
       if (!isFinalAnswer(text) && !repaired) {
         repaired = true;
-        messages.push({ role: 'assistant', content: text.slice(0, 1500) });
-        messages.push({ role: 'user', content: 'Reply now with ONLY the final JSON object {"summary", "report", "actions"} and nothing else. Use what you already found; if nothing was found, say so in the report.' });
-        const fixed = await o.call(messages, Math.min(o.finalTimeoutMs ?? 50_000, 30_000)).catch(() => '');
+        const repair: Msg[] = [
+          { role: 'system', content: o.repairSystem ?? REPAIR_SYSTEM },
+          { role: 'user', content: `DRAFT:\n${text.slice(0, 8000)}` },
+        ];
+        const fixed = await o.call(repair, Math.min(o.finalTimeoutMs ?? 50_000, 30_000)).catch(() => '');
         calls++;
         const clean = fixed.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
         return { text: isFinalAnswer(clean) ? clean : text, steps, calls };
