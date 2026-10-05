@@ -22,12 +22,13 @@ PY=$(systemctl cat openjarvis | sed -n 's/^ExecStart=\([^ ]*\)jarvis .*/\1python
 echo "1/6 Docker SDK in the OpenJarvis environment"
 # The OpenJarvis environment belongs to the jarvis user and may have been made by uv (no pip inside): try pip,
 # then pip bootstrapped with ensurepip, then uv wherever it is installed. Always as jarvis, so file owners stay right.
-J() { runuser -u jarvis -- "$@"; }
+# Run from /tmp: tools read config files from the current folder, and jarvis may not read /root.
+J() { (cd /tmp && runuser -u jarvis -- env UV_NO_CONFIG=1 "$@"); }
 if ! J "$PY" -c 'import docker' 2>/dev/null; then
   J "$PY" -m pip install -q 'docker>=7' 2>/dev/null \
   || { J "$PY" -m ensurepip -q >/dev/null 2>&1 && J "$PY" -m pip install -q 'docker>=7'; } \
   || { UV=$(command -v uv || ls /home/jarvis/.local/bin/uv /home/jarvis/.cargo/bin/uv /root/.local/bin/uv /root/.cargo/bin/uv 2>/dev/null | head -1)
-       [ -n "$UV" ] && J "$UV" pip install -q --python "$PY" 'docker>=7'; } \
+       [ -n "$UV" ] && J "$UV" pip install -q --no-config --python "$PY" 'docker>=7'; } \
   || { echo "Could not install the Docker SDK into $PY. Send this line to support."; exit 1; }
 fi
 J "$PY" -c 'import docker' || { echo "Docker SDK still missing in $PY"; exit 1; }
