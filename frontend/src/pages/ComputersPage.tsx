@@ -11,6 +11,8 @@ import '../styles/firbo.css';
 import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
 import { formatComputerResult } from '../lib/company/computer-state';
+import { AgentAccessPanel } from '../components/company/AgentAccessPanel';
+import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
 import { connectorCommands, suggestedComputerPlatform, type ComputerAccess, type ComputerPlatform } from '../lib/company/computer-setup';
 import { computerSetupLabels } from '../lib/company/computer-setup-labels';
@@ -53,6 +55,7 @@ export function ComputersPage() {
 function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boolean }) {
   const { t, fmt, lang } = useI18n();
   const l = computerManagerLabels[lang];
+  const wc = useWorkspaceCopy();
   const setup = computerSetupLabels[lang];
   const [platform, setPlatform] = useState<ComputerPlatform>(() => suggestedComputerPlatform(navigator.platform));
   const [access, setAccess] = useState<ComputerAccess>('browser');
@@ -164,7 +167,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const chosen = devices.find((d) => d.id === sel && d.paired && !d.revoked_at) ?? null;
   const unpaired = (d: DeviceRow) => !d.paired;
   const voiceChosen = devices.find((d) => d.id === voiceLaptop && canOpenBrowser(d) && isOnline(d, now)) ?? null;
-  const kindLabel = (k: Kind) => k === 'browser_task' ? browserTaskLabels(lang).title : k === 'browser_open' ? web.browser : t(`comp.kind.${k}` as TKey);
+  const kindLabel = (k: Kind) => k === 'browser_task' ? browserTaskLabels(lang).title : k === 'browser_open' ? web.browser : k === 'open_app' ? wc('xKindApp') : k === 'shortcut' ? wc('xKindShortcut') : t(`comp.kind.${k}` as TKey);
   const giveBrowser = async (plan: {steps:Record<string, unknown>[];timeout_ms:number}) => {
     if(!chosen||!canManage||mutation.current||deviceQuery.phase!=='ready'||!isOnline(chosen,now)||!chosen.capabilities?.job_kinds?.includes('browser_task'))return;
     mutation.current=true;setBusy(true);
@@ -299,6 +302,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
             {chosen && (
               <section key={chosen.id} data-testid="computer-workspace" className="fb-glass fb-col gap-3 p-5">
                 <h2 className="text-base font-semibold">{t('comp.workOn', { name: chosen.name })}</h2>
+                <AgentAccessPanel key={`policy-${chosen.id}`} device={chosen} platform={platform} onSaved={() => void load()} />
                 {!isOnline(chosen, now) && <div className="fb-col gap-2" style={{ color: 'var(--fb-warn)' }}>
                   <p className="text-sm">{setup.offline}</p>
                   <CopyLine text={localCommands.run} />
@@ -327,7 +331,8 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                     <li key={j.id} className="fb-row fb-col gap-1 p-3">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
                         <span className="fb-chip">{kindLabel(j.kind)}</span>
-                        <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? j.params.url ?? '')}</span>
+                        {j.origin === 'agent' && <span className="fb-chip" style={{ color: 'var(--fb-accent)' }}>{wc('xByAi')}</span>}
+                        <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? j.params.url ?? j.params.app ?? j.params.name ?? '')}</span>
                         <span style={{ color: j.status === 'done' ? 'var(--fb-ok)' : j.status === 'error' ? 'var(--fb-err)' : 'var(--fb-warn)' }}>{t(`comp.status.${j.status}` as TKey)}</span>
                         {j.status === 'queued' && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.cancelQueued}</button>}
                       </div>

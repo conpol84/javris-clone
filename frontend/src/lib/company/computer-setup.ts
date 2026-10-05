@@ -20,5 +20,9 @@ export function connectorCommands(platform: ComputerPlatform, access: ComputerAc
     run: `${prefix} run`,
     status: `${prefix} status`,
     allowBrowser: `${prefix} allow-browser`,
+    allowApps: `${prefix} allow-apps`,
+    allowWrite: `${prefix} allow-write`,
+    allowExec: `${prefix} allow-exec`,
+    auto: `${prefix} auto`,
   };
 }

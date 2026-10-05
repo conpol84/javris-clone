@@ -10,6 +10,7 @@ import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-sea
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
+import { cleanPolicy, decideComputer, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -145,7 +146,7 @@ const NO_REPORT: Record<string, string> = {
 };
 
 // The power each loop tool counts as in the report.
-const POWER_OF: Record<string, string> = { read_page: 'browser_extract', server_task: 'server_agent', generate_image: 'image_generate', analyze_image: 'image_analyze' };
+const POWER_OF: Record<string, string> = { read_page: 'browser_extract', server_task: 'server_agent', generate_image: 'image_generate', analyze_image: 'image_analyze', computer: 'computer_use' };
 
 // Edge functions are stopped after 150 s of wall-clock time; every model request must be over before that.
 const WALL_CLOCK_MS = 140_000;
@@ -486,7 +487,7 @@ Deno.serve(async (req) => {
   // Docker sandbox, no shared memory or files, so one company can never see another's work. Only for agents allowed (not just
   // approval) to use a matching power.
   const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
-  let toolHelp: Partial<Record<'server_task', string>> | undefined;
+  let toolHelp: Partial<Record<'server_task' | 'computer', string>> | undefined;
   if (!free && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
     const { data: admins } = await admin.from('platform_admins').select('user_id');
     const ids = (admins ?? []).map((a: any) => a.user_id);
@@ -508,6 +509,57 @@ Deno.serve(async (req) => {
         if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
         const out = await res.json();
         return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';
+      };
+    }
+  }
+  // The company's own computers (power "computer_use"), under the owner's rules for each one (_shared/computer-policy.ts):
+  // reading, opening pages and allowed apps run at once and the employee gets the result; riskier steps wait for the owner;
+  // forbidden ones never happen. The Connector on the computer still applies its own local limits on top.
+  const computerApprovals: { action: string; payload: Record<string, unknown>; risk: 'low' | 'medium' | 'high' }[] = [];
+  if (!free && usable('computer_use')) {
+    type Machine = { id: string; name: string; last_seen_at: string | null; capabilities: any; policy: ComputerPolicy };
+    const { data: devRows } = await admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy')
+      .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null);
+    const machines: Machine[] = (devRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy) })).filter((d: Machine) => d.policy.enabled);
+    if (machines.length) {
+      const askFirst = (agent.agent_tools ?? []).some((t: any) => t.tool_name === 'computer_use' && t.policy === 'approve');
+      const online = (d: Machine) => !!d.last_seen_at && Date.now() - Date.parse(d.last_seen_at) < 90_000;
+      const kindsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.job_kinds) ? d.capabilities.job_kinds : []);
+      const rootsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.roots) ? d.capabilities.roots : []);
+      const about = machines.map(d => `"${flat(d.name, 40)}" (${online(d) ? 'online' : 'offline'}; can: ${kindsOf(d).join(', ') || 'nothing yet'}; folders: ${rootsOf(d).map(r => flat(r, 80)).join(', ') || 'none'}; apps it opens without asking: ${d.policy.apps.slice(0, 12).join(', ')})`).join('; ');
+      toolHelp = { ...(toolHelp ?? {}), computer: `{"action": "computer", "input": "open_app Safari" or "open_url https://..." or "list <folder>" or "read <file>" or "write <new file> :: <text>" or "run <command>" or "shortcut <name>" or "browse [{\"action\":\"open\",\"url\":\"https://...\"},{\"action\":\"read\"}]" (steps: open, read, click, fill, scroll; the owner approves the plan on the computer)} works on the company's computer: ${about}. Opening pages and allowed apps, listing and reading files run at once and you get the result; other steps go to the owner for approval. Use paths inside the listed folders. Never try passwords, banking, payments or system settings.` };
+      loopTools.computer = async (input) => {
+        const asked = parseComputerRequest(input);
+        if ('error' in asked) return `Could not understand that (${asked.error}). Write one step, e.g. "open_app Safari", "list Documents" or "read notes.txt".`;
+        const machine = machines.find(d => online(d) && kindsOf(d).includes(asked.kind)) ?? machines.find(d => kindsOf(d).includes(asked.kind));
+        if (!machine) return `No company computer can "${asked.kind}" right now: the owner has to allow it in the Connector on that computer. Do not try again.`;
+        let { verdict, reason } = decideComputer(asked.kind, asked.params, machine.policy);
+        if (verdict === 'auto' && askFirst) { verdict = 'approve'; reason = 'employee_must_ask'; }
+        if (verdict === 'deny') return `Not allowed on "${machine.name}" (${reason}). Do not try again; say in the report what you could not do.`;
+        if (verdict === 'approve') {
+          if (agent.autonomy === 'suggest') return `This needs the owner's approval (${reason}) and you may only suggest: describe the step in your report.`;
+          if (computerApprovals.length >= 3) return 'Enough computer steps are already waiting for approval: finish your report now.';
+          computerApprovals.push({ action: `computer_${asked.kind}`, risk: ['exec', 'shortcut', 'write'].includes(asked.kind) ? 'high' : 'medium',
+            payload: { ...asked.params, device_id: machine.id, device_name: machine.name, reason, ai_generated: true, disclosure: DISCLOSURE[lang] } });
+          return `Sent to the owner for approval (${reason}) on "${machine.name}". It runs once approved; you will not see its result in this task, so finish your report and say what is waiting for approval.`;
+        }
+        if (!online(machine)) return `"${machine.name}" is offline right now (asleep or the Connector is not running). Say so in your report.`;
+        const { data: job, error } = await admin.from('connector_jobs').insert({ organization_id: task.organization_id, device_id: machine.id, created_by: user.id,
+          kind: asked.kind, params: asked.params, agent_task_id: task.id, agent_id: agent.id, origin: 'agent' }).select('id').single();
+        if (error || !job) throw new Error('computer_job_not_saved');
+        // Wait for the result, leaving time for the final answer.
+        const until = Math.min(Date.now() + 45_000, requestStarted + WALL_CLOCK_MS - 60_000);
+        while (Date.now() < until) {
+          await new Promise(r => setTimeout(r, 1500));
+          const { data: row } = await admin.from('connector_jobs').select('status, result, error').eq('id', job.id).maybeSingle();
+          if (row?.status === 'done') return describeComputerResult(asked.kind, row.result);
+          if (row?.status === 'error') return `The computer did not do it: ${flat(row.error, 120)}.`;
+          if (row?.status === 'cancelled') return 'The job was cancelled on the computer side.';
+        }
+        // A job nobody picked up is withdrawn, so it can never run later without anyone watching.
+        const { data: withdrawn } = await admin.from('connector_jobs').update({ status: 'cancelled', finished_at: new Date().toISOString() })
+          .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
+        return withdrawn ? `"${machine.name}" did not pick up the job in time; it was withdrawn.` : `Still running on "${machine.name}"; its result will appear in Computers.`;
       };
     }
   }
@@ -564,11 +616,13 @@ Deno.serve(async (req) => {
   const queue = free || agent.autonomy === 'suggest' ? [] : marked;
   const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
   let reconcile = !!usageError;
-  let finalStatus = reconcile ? 'blocked' : queue.length ? 'awaiting_approval' : 'completed';
+  // Computer steps that need the owner come first; the database accepts at most five approvals per run.
+  const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
+  let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-    queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
+    queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
     ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
-  let saved = await publish(finalStatus, result, reconcile ? [] : queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk })));
+  let saved = await publish(finalStatus, result, reconcile ? [] : approvalsOut);
   if (!saved && !reconcile) {
     // A rejected transaction still owns its claim and can save a blocked report.
     // If the first call committed but its response was lost, its cleared claim
@@ -590,5 +644,5 @@ Deno.serve(async (req) => {
     console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner', organization_id: task.organization_id, task_id: task.id, request_id: routing?.request_id, usage_saved: !usageError, result_saved: !resultError }));
     return json(503, { error: 'result_save_failed', retry_safe: false, routing });
   }
-  return json(200, { status: finalStatus, queued: queue.length, dropped: dropped.length, routing });
+  return json(200, { status: finalStatus, queued: approvalsOut.length, dropped: dropped.length, routing });
 });

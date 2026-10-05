@@ -5,7 +5,7 @@
 import { extractModelJson, strictModelJson } from './model-json.ts';
 
 /** Every tool the loop knows, in one place: the parser, the help text and the checks all derive from it. */
-export const TOOL_LIST = ['web_search', 'read_page', 'memory_search', 'knowledge_search', 'skill_read', 'server_task', 'calculator', 'weather', 'exchange_rate', 'analyze_image', 'generate_image', 'think'] as const;
+export const TOOL_LIST = ['web_search', 'read_page', 'memory_search', 'knowledge_search', 'skill_read', 'server_task', 'calculator', 'weather', 'exchange_rate', 'analyze_image', 'generate_image', 'computer', 'think'] as const;
 export type ToolName = typeof TOOL_LIST[number];
 /** One tool step; `out` is a short preview of what the tool returned, so the owner can see the work. */
 export interface LoopStep { action: ToolName; input: string; ok: boolean; out?: string }
@@ -24,6 +24,7 @@ const TOOL_HELP: Record<ToolName, string> = {
   exchange_rate: '{"action": "exchange_rate", "input": "100 EUR to USD"} converts money with today\'s exchange rate.',
   analyze_image: '{"action": "analyze_image", "input": "https://... image link, then your question"} looks at an image and describes it or answers the question.',
   generate_image: '{"action": "generate_image", "input": "a detailed description of the image"} creates an image and returns its link to put in the report.',
+  computer: '{"action": "computer", "input": "open_app Safari"} does one step on the company\'s computer (open an app or page, list or read files, write a new file, run a command or a Shortcut).',
   think: '{"action": "think", "input": "your notes"} lets you plan before the next step.',
 };
 const NAMES = TOOL_LIST.join('|');
@@ -89,7 +90,7 @@ export function parseToolRequest(text: string, allowed: ToolName[]): { action: T
     if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }
   }
   // A server job may carry code: give it room; search words and links stay short.
-  input = input.trim().slice(0, action === 'server_task' ? 3000 : action === 'generate_image' ? 800 : 500);
+  input = input.trim().slice(0, action === 'server_task' || action === 'computer' ? 3000 : action === 'generate_image' ? 800 : 500);
   return action && allowed.includes(action) && input ? { action, input } : null;
 }
 

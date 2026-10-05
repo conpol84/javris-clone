@@ -905,6 +905,7 @@ export const en = {
   "studio.power.image_generate": "Creates images from a description and adds them to the report.",
   "studio.power.image_analyze": "Looks at an image and describes it or answers questions about it.",
   "studio.power.code_interpreter": "Runs Python safely on the server for data analysis and exact results.",
+  "studio.power.computer_use": "Works on the company's paired computer: opens apps and pages, reads and writes files, runs safe commands; riskier steps wait for your approval.",
   "studio.power.other": "A tool permission for this agent.",
   "ceo.live": "{agents} employees linked · {active} working now",
   "team.stage.hint": "Click a person to bring them forward and edit them. Drag to look around.",

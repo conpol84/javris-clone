@@ -897,6 +897,7 @@ const ptBR: Dictionary = {
   "studio.power.image_generate": "Cria imagens a partir de uma descrição e as coloca no relatório.",
   "studio.power.image_analyze": "Olha uma imagem e a descreve ou responde perguntas sobre ela.",
   "studio.power.code_interpreter": "Executa Python com segurança no servidor para análise de dados e resultados exatos.",
+  "studio.power.computer_use": "Trabalha no computador pareado da empresa: abre apps e páginas, lê e grava arquivos, roda comandos seguros; passos arriscados esperam sua aprovação.",
   "studio.power.other": "Uma permissão de ferramenta para este agente.",
   "ceo.live": "{agents} funcionários conectados · {active} trabalhando agora",
   "team.stage.hint": "Clique em uma pessoa para trazê-la à frente e editá-la. Arraste para olhar ao redor.",

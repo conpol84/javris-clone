@@ -897,6 +897,7 @@ const de: Dictionary = {
   "studio.power.image_generate": "Erstellt Bilder aus einer Beschreibung und fügt sie dem Bericht hinzu.",
   "studio.power.image_analyze": "Sieht sich ein Bild an und beschreibt es oder beantwortet Fragen dazu.",
   "studio.power.code_interpreter": "Führt Python sicher auf dem Server aus, für Datenanalyse und exakte Ergebnisse.",
+  "studio.power.computer_use": "Arbeitet auf dem verbundenen Firmencomputer: öffnet Apps und Seiten, liest und schreibt Dateien, führt sichere Befehle aus; riskante Schritte warten auf deine Freigabe.",
   "studio.power.other": "Eine Werkzeug-Berechtigung für diesen Agenten.",
   "ceo.live": "{agents} Mitarbeiter verbunden · {active} arbeiten gerade",
   "team.stage.hint": "Klicke auf eine Person, um sie nach vorn zu holen und zu bearbeiten. Ziehen zum Umsehen.",

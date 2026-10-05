@@ -216,10 +216,13 @@ with sync_playwright() as pw:
                 page.get_by_test_id("select-device-d1").click()
                 workspace = page.get_by_test_id("computer-workspace")
                 expect(workspace).to_be_visible()
-                workspace.locator("input").first.fill("C:/Demo/draft-not-sent")
+                path_input = workspace.get_by_role(
+                    "textbox", name="Path inside an allowed folder", exact=True
+                )
+                path_input.fill("C:/Demo/draft-not-sent")
                 if kind == "computer-race":
                     page.get_by_test_id("select-device-d2").click()
-                    expect(workspace.locator("input").first).to_have_value("")
+                    expect(path_input).to_have_value("")
                     expect(page.get_by_test_id("computer-jobs")).to_contain_text(
                         "d2-result-"
                     )
