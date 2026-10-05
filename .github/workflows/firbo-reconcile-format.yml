@@ -1,0 +1,95 @@
+name: FIRBO reconciliation formatter
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'codex/firbo-reconcile-20261005'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: codex/firbo-reconcile-20261005
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          enable-cache: true
+
+      - name: Install Ruff
+        run: uv tool install ruff
+
+      - name: Format only the current Firbo/server lint surface
+        run: |
+          uv tool run ruff format \
+            src/openjarvis/server/app.py \
+            src/openjarvis/server/auth_middleware.py \
+            src/openjarvis/server/gateway_routes.py \
+            src/openjarvis/server/firbo_app.py \
+            src/openjarvis/server/firbo_control.py \
+            src/openjarvis/server/firbo_free_app.py \
+            src/openjarvis/server/firbo_piper_server.py \
+            src/openjarvis/server/free_inference.py \
+            src/openjarvis/server/local_tts.py \
+            tests/firbo \
+            tests/server/test_gateway_routes.py
+          uv tool run ruff check --fix --select I001,E401 \
+            src/openjarvis/server/app.py \
+            src/openjarvis/server/auth_middleware.py \
+            src/openjarvis/server/gateway_routes.py \
+            src/openjarvis/server/firbo_app.py \
+            src/openjarvis/server/firbo_control.py \
+            src/openjarvis/server/firbo_free_app.py \
+            src/openjarvis/server/firbo_piper_server.py \
+            src/openjarvis/server/free_inference.py \
+            src/openjarvis/server/local_tts.py \
+            tests/firbo \
+            tests/server/test_gateway_routes.py || true
+          uv tool run ruff format \
+            src/openjarvis/server/app.py \
+            src/openjarvis/server/auth_middleware.py \
+            src/openjarvis/server/gateway_routes.py \
+            src/openjarvis/server/firbo_app.py \
+            src/openjarvis/server/firbo_control.py \
+            src/openjarvis/server/firbo_free_app.py \
+            src/openjarvis/server/firbo_piper_server.py \
+            src/openjarvis/server/free_inference.py \
+            src/openjarvis/server/local_tts.py \
+            tests/firbo \
+            tests/server/test_gateway_routes.py
+          git diff --check
+
+      - name: Commit formatting only
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes."
+            exit 0
+          fi
+          git config user.name "firbo-reconcile-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            src/openjarvis/server/app.py \
+            src/openjarvis/server/auth_middleware.py \
+            src/openjarvis/server/gateway_routes.py \
+            src/openjarvis/server/firbo_app.py \
+            src/openjarvis/server/firbo_control.py \
+            src/openjarvis/server/firbo_free_app.py \
+            src/openjarvis/server/firbo_piper_server.py \
+            src/openjarvis/server/free_inference.py \
+            src/openjarvis/server/local_tts.py \
+            tests/firbo \
+            tests/server/test_gateway_routes.py
+          git commit -m "style: format FIRBO Python lint surface"
+          git push origin HEAD:codex/firbo-reconcile-20261005
