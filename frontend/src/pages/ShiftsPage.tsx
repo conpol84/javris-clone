@@ -121,7 +121,7 @@ export function ShiftsPage() {
     if (!user) return;
     setBusy(s.id);
     try {
-      const id = await createTask({ orgId, userId: user.id, title: s.title, description: s.instruction, priority: 'normal', agentId: s.agent_id });
+      const id = await createTask({ orgId, userId: user.id, title: s.title, description: s.instruction, priority: 'normal', agentId: s.agent_id, shiftId: s.id });
       const out = await runTask(id, lang);
       toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
     } catch (err) {
@@ -154,6 +154,15 @@ export function ShiftsPage() {
               <p className="fb-dim text-sm">{t('shift.noAgents')}</p>
             ) : (
               <form onSubmit={create} className="grid gap-3 md:grid-cols-2">
+                <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+                  <span className="fb-dim text-xs">{t('shift.presets')}</span>
+                  {([['digest', 8], ['proactive', 17]] as const).map(([key, at]) => (
+                    <button key={key} type="button" className="fb-btn text-xs"
+                      onClick={() => { setTitle(t(`shift.preset.${key}`)); setInstruction(t(`shift.preset.${key}Text`)); setCadence('daily'); setHour(at); }}>
+                      {t(`shift.preset.${key}`)}
+                    </button>
+                  ))}
+                </div>
                 <label className="block text-xs">
                   <span className="fb-dim">{t('shift.agent')}</span>
                   <select className="fb-input mt-1" value={agentId} onChange={(e) => setAgentId(e.target.value)}>

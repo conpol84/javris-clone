@@ -81,6 +81,8 @@ export async function createTask(input: {
   priority: TaskPriority;
   agentId: string | null;
   dueAt?: string | null;
+  /** Work started from a shift gets the company pulse (digests, proactive checks). */
+  shiftId?: string | null;
 }): Promise<string> {
   const { data, error } = await requireClient().from('tasks').insert({
     organization_id: input.orgId,
@@ -90,6 +92,7 @@ export async function createTask(input: {
     priority: input.priority,
     assigned_agent_id: input.agentId,
     due_at: input.dueAt || null,
+    ...(input.shiftId ? { shift_id: input.shiftId } : {}),
   }).select('id').single();
   return (fail(error, data) as { id: string }).id;
 }
