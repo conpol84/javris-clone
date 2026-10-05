@@ -1,5 +1,4 @@
 import io
-import os
 import sys
 import wave
 from array import array
