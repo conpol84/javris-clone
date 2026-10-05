@@ -1404,6 +1404,10 @@ const zhCN: Dictionary = {
 
   'ppl.title': '成员',
   'ppl.sub': '谁可以查看和控制你的 AI 团队。',
+  'ppl.permissions': '所有者和管理员可以管理成员并连接电脑。只有所有者可以授予所有者角色。',
+  'ppl.roleRestricted': '你当前的角色是 {role}。请联系公司所有者更改你的角色；你不能自行提升权限。',
+  'ppl.lastOwner': '必须保留至少一名所有者。在更改或移除最后一名所有者之前，请先指定另一名所有者。',
+  'ppl.err.member_changed': '此成员未被更改。请刷新页面并检查你的权限。',
   'ppl.add': '添加同事',
   'ppl.emailPlaceholder': 'colleague@company.com',
   'ppl.emailAria': '同事的邮箱',

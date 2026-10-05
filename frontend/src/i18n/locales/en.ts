@@ -1421,6 +1421,10 @@ export const en = {
   // ---- people
   'ppl.title': 'People',
   'ppl.sub': 'Who can see and control your AI team.',
+  'ppl.permissions': 'Owners and Admins can manage people and connect computers. Only an Owner can grant the Owner role.',
+  'ppl.roleRestricted': 'Your current role is {role}. Ask a company Owner to change your role; you cannot promote yourself.',
+  'ppl.lastOwner': 'Keep at least one Owner. Assign another Owner before changing or removing the last Owner.',
+  'ppl.err.member_changed': 'This membership was not changed. Refresh the page and check your permissions.',
   'ppl.add': 'Add a teammate',
   'ppl.emailPlaceholder': 'teammate@company.com',
   'ppl.emailAria': 'Teammate email',

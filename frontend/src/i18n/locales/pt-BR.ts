@@ -1403,6 +1403,10 @@ const ptBR: Dictionary = {
 
   'ppl.title': 'Pessoas',
   'ppl.sub': 'Quem pode ver e controlar sua equipe de IA.',
+  'ppl.permissions': 'Proprietários e administradores podem gerenciar pessoas e conectar computadores. Somente um proprietário pode conceder o papel de proprietário.',
+  'ppl.roleRestricted': 'Seu papel atual é {role}. Peça a um proprietário da empresa para alterá-lo; você não pode promover a si mesmo.',
+  'ppl.lastOwner': 'Deve haver pelo menos um proprietário. Designe outro antes de alterar o papel ou remover o último proprietário.',
+  'ppl.err.member_changed': 'Este membro não foi alterado. Atualize a página e confira suas permissões.',
   'ppl.add': 'Adicionar um colega',
   'ppl.emailPlaceholder': 'colega@empresa.com',
   'ppl.emailAria': 'E-mail do colega',

@@ -3,15 +3,16 @@ import { slugify } from './types';
 
 const rpc = vi.fn();
 const eq = vi.fn();
+const from = vi.fn();
 
 vi.mock('./client', () => ({
   requireClient: () => ({
     rpc,
-    from: () => ({ select: () => ({ eq }) }),
+    from,
   }),
 }));
 
-import { createOrganization, loadMemberships } from './data';
+import { createOrganization, loadMemberships, removeMember, setMemberRole } from './data';
 
 describe('slugify', () => {
   it('normalises names into valid slugs', () => {
@@ -30,7 +31,10 @@ describe('slugify', () => {
 });
 
 describe('company data layer', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    from.mockImplementation(() => ({ select: () => ({ eq }) }));
+  });
 
   it('creates an organization through the RPC with a database-valid slug', async () => {
     rpc.mockResolvedValue({ data: 'org-1', error: null });
@@ -60,5 +64,53 @@ describe('company data layer', () => {
       ['owner', '1'],
       ['member', '2'],
     ]);
+  });
+
+  function membershipQuery(data: unknown, error: { message: string } | null = null) {
+    const query = {
+      update: vi.fn().mockReturnThis(),
+      delete: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      select: vi.fn().mockReturnThis(),
+      maybeSingle: vi.fn().mockResolvedValue({ data, error }),
+    };
+    from.mockReturnValue(query);
+    return query;
+  }
+
+  it('requires a returned membership to confirm a role change in the requested company', async () => {
+    const query = membershipQuery({ user_id: 'u2', role: 'admin' });
+    await expect(setMemberRole('org-1', 'u2', 'admin')).resolves.toBeUndefined();
+    expect(from).toHaveBeenCalledWith('organization_members');
+    expect(query.update).toHaveBeenCalledWith({ role: 'admin' });
+    expect(query.eq.mock.calls).toEqual([['organization_id', 'org-1'], ['user_id', 'u2']]);
+    expect(query.select).toHaveBeenCalledWith('user_id, role');
+  });
+
+  it('rejects a role change filtered out by RLS instead of reporting success', async () => {
+    membershipQuery(null);
+    await expect(setMemberRole('org-1', 'u2', 'owner')).rejects.toThrow('membership_not_changed');
+  });
+
+  it('preserves the database final-owner error', async () => {
+    membershipQuery(null, { message: 'last_owner' });
+    await expect(setMemberRole('org-1', 'u2', 'manager')).rejects.toThrow('last_owner');
+  });
+
+  it('does not accept an unconfirmed or different role', async () => {
+    membershipQuery({ user_id: 'u2', role: 'member' });
+    await expect(setMemberRole('org-1', 'u2', 'admin')).rejects.toThrow('membership_not_changed');
+  });
+
+  it('confirms removal from the returned membership and scopes the delete', async () => {
+    const query = membershipQuery({ user_id: 'u2' });
+    await expect(removeMember('org-1', 'u2')).resolves.toBeUndefined();
+    expect(query.delete).toHaveBeenCalledOnce();
+    expect(query.eq.mock.calls).toEqual([['organization_id', 'org-1'], ['user_id', 'u2']]);
+  });
+
+  it('rejects a removal filtered out by RLS instead of reporting success', async () => {
+    membershipQuery(null);
+    await expect(removeMember('org-1', 'u2')).rejects.toThrow('membership_not_changed');
   });
 });

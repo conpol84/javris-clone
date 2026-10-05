@@ -1403,6 +1403,10 @@ const es: Dictionary = {
 
   'ppl.title': 'Personas',
   'ppl.sub': 'Quién puede ver y controlar a tu equipo de IA.',
+  'ppl.permissions': 'Los propietarios y administradores pueden gestionar personas y conectar ordenadores. Solo un propietario puede otorgar el rol de propietario.',
+  'ppl.roleRestricted': 'Tu rol actual es {role}. Pide a un propietario de la empresa que lo cambie; no puedes ascenderte por tu cuenta.',
+  'ppl.lastOwner': 'Debe haber al menos un propietario. Asigna otro antes de cambiar el rol o eliminar al último propietario.',
+  'ppl.err.member_changed': 'No se modificó este miembro. Actualiza la página y comprueba tus permisos.',
   'ppl.add': 'Añadir a un compañero',
   'ppl.emailPlaceholder': 'companero@empresa.com',
   'ppl.emailAria': 'Correo del compañero',

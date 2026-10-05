@@ -1403,6 +1403,10 @@ const de: Dictionary = {
 
   'ppl.title': 'Personen',
   'ppl.sub': 'Wer Ihr KI-Team sehen und steuern darf.',
+  'ppl.permissions': 'Inhaber und Admins können Personen verwalten und Computer verbinden. Nur ein Inhaber kann die Inhaberrolle vergeben.',
+  'ppl.roleRestricted': 'Ihre aktuelle Rolle ist {role}. Bitten Sie einen Inhaber des Unternehmens, sie zu ändern; Sie können sich nicht selbst hochstufen.',
+  'ppl.lastOwner': 'Mindestens ein Inhaber muss bleiben. Ernennen Sie einen weiteren, bevor Sie die Rolle des letzten Inhabers ändern oder ihn entfernen.',
+  'ppl.err.member_changed': 'Dieses Mitglied wurde nicht geändert. Laden Sie die Seite neu und prüfen Sie Ihre Berechtigungen.',
   'ppl.add': 'Teammitglied hinzufügen',
   'ppl.emailPlaceholder': 'kollege@firma.de',
   'ppl.emailAria': 'E-Mail des Teammitglieds',

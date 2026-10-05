@@ -423,21 +423,27 @@ export async function addMemberByEmail(orgId: string, email: string, role: Role)
 }
 
 export async function setMemberRole(orgId: string, userId: string, role: Role): Promise<void> {
-  const { error } = await requireClient()
+  const { data, error } = await requireClient()
     .from('organization_members')
     .update({ role })
     .eq('organization_id', orgId)
-    .eq('user_id', userId);
-  fail(error, null);
+    .eq('user_id', userId)
+    .select('user_id, role')
+    .maybeSingle();
+  fail(error, data);
+  if (!data || data.user_id !== userId || data.role !== role) throw new Error('membership_not_changed');
 }
 
 export async function removeMember(orgId: string, userId: string): Promise<void> {
-  const { error } = await requireClient()
+  const { data, error } = await requireClient()
     .from('organization_members')
     .delete()
     .eq('organization_id', orgId)
-    .eq('user_id', userId);
-  fail(error, null);
+    .eq('user_id', userId)
+    .select('user_id')
+    .maybeSingle();
+  fail(error, data);
+  if (!data || data.user_id !== userId) throw new Error('membership_not_changed');
 }
 
 // ----------------------------------------------------------------- onboarding

@@ -1403,6 +1403,10 @@ const fr: Dictionary = {
 
   'ppl.title': 'Personnes',
   'ppl.sub': 'Qui peut voir et contrôler votre équipe IA.',
+  'ppl.permissions': 'Les propriétaires et les administrateurs peuvent gérer les membres et connecter des ordinateurs. Seul un propriétaire peut attribuer le rôle de propriétaire.',
+  'ppl.roleRestricted': 'Votre rôle actuel est {role}. Demandez à un propriétaire de l’entreprise de le modifier ; vous ne pouvez pas vous promouvoir vous-même.',
+  'ppl.lastOwner': 'Il faut conserver au moins un propriétaire. Désignez-en un autre avant de modifier le rôle ou de retirer le dernier propriétaire.',
+  'ppl.err.member_changed': 'Ce membre n’a pas été modifié. Actualisez la page et vérifiez vos autorisations.',
   'ppl.add': 'Ajouter un collègue',
   'ppl.emailPlaceholder': 'collegue@entreprise.com',
   'ppl.emailAria': 'E-mail du collègue',

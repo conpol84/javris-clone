@@ -24,7 +24,7 @@ export function PeoplePage() {
     if (!code) console.error(err);
     return code ? t(`ppl.err.${code}` as TKey) : t('ppl.err.add');
   };
-  const { current, user } = useCompanyAuth();
+  const { current, user, refresh } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const role = current?.role ?? 'viewer';
   const isOwner = role === 'owner';
@@ -34,6 +34,14 @@ export function PeoplePage() {
   const [email, setEmail] = useState('');
   const [newRole, setNewRole] = useState<Role>('member');
   const [busy, setBusy] = useState(false);
+  const ownerCount = members.filter((m) => m.role === 'owner').length;
+  const isLastOwner = (m: MemberRow) => m.role === 'owner' && ownerCount <= 1;
+  const mutationError = (err: unknown, fallback: TKey) => {
+    const message = err instanceof Error ? err.message : '';
+    if (message.includes('last_owner')) return t('ppl.lastOwner');
+    if (message.includes('membership_not_changed')) return t('ppl.err.member_changed');
+    return t(fallback);
+  };
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -66,25 +74,43 @@ export function PeoplePage() {
   };
 
   const change = async (m: MemberRow, r: Role) => {
+    if (!isAdmin || (m.role === 'owner' && !isOwner)) return;
+    if (isLastOwner(m) && r !== 'owner') {
+      toast.error(t('ppl.lastOwner'));
+      return;
+    }
+    setBusy(true);
     try {
       await setMemberRole(orgId, m.user_id, r);
+      if (m.user_id === user?.id) await refresh();
       await load();
     } catch (err) {
       console.error(err);
-      toast.error(t('ppl.err.role'));
+      toast.error(mutationError(err, 'ppl.err.role'));
+    } finally {
+      setBusy(false);
     }
   };
 
   const remove = async (m: MemberRow) => {
+    if (!isAdmin || (m.role === 'owner' && !isOwner)) return;
+    if (isLastOwner(m)) {
+      toast.error(t('ppl.lastOwner'));
+      return;
+    }
     const label = m.email ?? m.full_name ?? t('ppl.member');
     if (!window.confirm(t('ppl.removeConfirm', { who: label, company: current?.organization.name ?? '' }))) return;
+    setBusy(true);
     try {
       await removeMember(orgId, m.user_id);
+      if (m.user_id === user?.id) await refresh();
       toast.success(t('ppl.removed'));
       await load();
     } catch (err) {
       console.error(err);
-      toast.error(t('ppl.err.remove'));
+      toast.error(mutationError(err, 'ppl.err.remove'));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -92,6 +118,12 @@ export function PeoplePage() {
     <div className="fb-root h-full overflow-y-auto">
       <div className="mx-auto max-w-4xl px-4 pb-10 pt-14 md:px-8 md:pt-8">
         <PageHeader eyebrow={current?.organization.name} title={t('ppl.title')} sub={t('ppl.sub')} right={<Pill tone="accent">{members.length}</Pill>} />
+
+        <div className="fb-glass mb-4 p-4 text-sm">
+          <p>{t('ppl.permissions')}</p>
+          {!isAdmin && <p className="fb-muted mt-2">{t('ppl.roleRestricted', { role: roleName(role) })}</p>}
+          {ownerCount === 1 && <p className="fb-muted mt-2">{t('ppl.lastOwner')}</p>}
+        </div>
 
         {isAdmin && (
           <form onSubmit={add} className="fb-glass mb-4 p-4">
@@ -128,7 +160,8 @@ export function PeoplePage() {
             <ul className="grid gap-3 md:grid-cols-2">
               {members.map((m) => {
                 const self = m.user_id === user?.id;
-                const locked = !isAdmin || (m.role === 'owner' && !isOwner);
+                const lastOwner = isLastOwner(m);
+                const locked = !isAdmin || (m.role === 'owner' && !isOwner) || lastOwner;
                 return (
                   <li key={m.user_id} className="fb-glass flex flex-wrap items-center gap-3 p-4">
                     <Avatar name={m.full_name || m.email || '?'} color={ROLE_COLOR[m.role] ?? '#22d3ee'} size={40} />
@@ -142,10 +175,10 @@ export function PeoplePage() {
                       className="fb-input fb-w-role"
                       style={{ height: 34 }}
                       value={m.role}
-                      disabled={locked}
+                      disabled={locked || busy}
                       aria-label={t('ppl.roleOf', { who: m.email ?? m.full_name ?? t('ppl.member') })}
                       onChange={(e) => void change(m, e.target.value as Role)}
-                      title={roleHint(m.role)}
+                      title={lastOwner ? t('ppl.lastOwner') : roleHint(m.role)}
                     >
                       {ROLES.filter((r) => isOwner || r.id !== 'owner' || m.role === 'owner').map((r) => (
                         <option key={r.id} value={r.id}>
@@ -154,7 +187,7 @@ export function PeoplePage() {
                       ))}
                     </select>
                     {!locked && !self && (
-                      <button className="fb-link cursor-pointer text-xs underline" style={{ color: 'var(--fb-err)' }} onClick={() => void remove(m)}>
+                      <button disabled={busy} className="fb-link cursor-pointer text-xs underline" style={{ color: 'var(--fb-err)' }} onClick={() => void remove(m)}>
                         {t('ppl.remove')}
                       </button>
                     )}
