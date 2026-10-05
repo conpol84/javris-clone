@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, finishCutOff, looksLikeThinking, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, isUnusableReply, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect } from '../_shared/free-search.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
@@ -248,12 +248,12 @@ Deno.serve(async (req) => {
   let outTok = 0;
   let routedCost = 0;
   // One model request on the company's route (free pilot, gateway, or direct/own key). Throws with lastError set.
-  // Some models in a gateway combo answer with their reasoning only (cut off, no answer): ask again, which the
+  // Some models in a gateway combo answer with their reasoning only (cut off, no answer) or a made-up function call: ask again, which the
   // combo usually sends to another model, while there is time.
   const callOnce = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     const until = Date.now() + timeoutMs;
     let reply = await callModel(messages, timeoutMs);
-    for (let retry = 0; retry < 1 && gateway && looksLikeThinking(reply) && until - Date.now() > 25_000; retry++) {
+    for (let retry = 0; retry < 1 && gateway && isUnusableReply(reply) && until - Date.now() > 25_000; retry++) {
       console.warn(JSON.stringify({ event: 'firbo_gateway_thinking_reply', task_id: task.id, model: routing?.reported_model ?? null }));
       reply = await callModel(messages, until - Date.now());
     }
@@ -366,7 +366,7 @@ Deno.serve(async (req) => {
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
     const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
-    if (text && looksLikeThinking(text)) text = sourcesReport().text;
+    if (text && isUnusableReply(text)) text = sourcesReport().text;
   } catch {
     // The model failed or timed out at the end, but the research is not lost: hand over the sources that were found.
     if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }

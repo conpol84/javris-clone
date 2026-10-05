@@ -220,6 +220,21 @@ export function looksLikeThinking(text: string): boolean {
   return !extractModelJson(text) && (THINKING.test(text) || /\b(let me (search|check|look|think)|I need to|I should)\b/i.test(text.slice(0, 400)));
 }
 
+/**
+ * True when a reply is a made-up function call such as {"name": "generate_strategy", "parameters": {...}} instead of
+ * the work itself. Small models (e.g. Llama 3.1 8B) answer that way when they see tool talk; it is never a report.
+ */
+export function looksLikeToolCall(text: string): boolean {
+  const o = strictModelJson(text.replace(/```(?:json)?/gi, ''));
+  if (!o || typeof o.report === 'string' || typeof o.summary === 'string') return false;
+  return typeof o.name === 'string' && (typeof o.parameters === 'object' || typeof o.arguments === 'object' || typeof o.arguments === 'string');
+}
+
+/** A reply that holds no usable work: the model's thinking aloud or a made-up function call. */
+export function isUnusableReply(text: string): boolean {
+  return looksLikeThinking(text) || looksLikeToolCall(text);
+}
+
 /** Source links (title + URL) listed in tool results, for a fallback report. */
 export function sourcesIn(evidence: string[], max = 8): { title: string; url: string }[] {
   const seen = new Set<string>();

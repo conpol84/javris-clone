@@ -152,3 +152,13 @@ test('the research found so far is kept for the caller even when the final call 
   await assert.rejects(runAgentLoop({ call: async () => replies.shift()(), system: 'S', user: 'U', tools: { web_search: async () => '1. A - https://a.gr/1' }, evidence, material: 'WEB' }), /timeout/);
   assert.deepEqual(evidence, ['WEB', 'web_search (q):\n1. A - https://a.gr/1']);
 });
+test('a made-up function call is never taken for the work', async () => {
+  const { looksLikeToolCall, isUnusableReply } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  const fake = '{"name": "generate_marketing_strategy", "parameters": {"social_media_platform": "instagram"}}';
+  assert.equal(looksLikeToolCall(fake), true);
+  assert.equal(looksLikeToolCall('```json\n{"name":"x","arguments":"{}"}\n```'), true);
+  assert.equal(isUnusableReply(fake), true);
+  assert.equal(looksLikeToolCall(final), false);
+  assert.equal(looksLikeToolCall(JSON.stringify({ name: 'Acme', report: 'r' })), false);
+  assert.equal(isUnusableReply('## Tips\n1. Post daily'), false);
+});
