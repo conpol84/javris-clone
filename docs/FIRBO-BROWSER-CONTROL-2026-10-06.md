@@ -1,5 +1,11 @@
 # Scoped browser executor — acceptance checkpoint
 
+Release update: the combined Claude/Codex source `7f915df` is now live at
+firboai.app (deployment `dpl_8eRbAYqUgBuz61P1ZeRs9n2tBv4S`). It includes Claude
+`6f5aa78` and preserves AI employee computer access. All 20 exact-source CI runs,
+including real Chromium and page checks, passed. Both downloadable modules match
+the published source. See FIRBO-CONTINUATION-20261006.md for current evidence.
+
 ## Preserved release
 
 Claude branch `claude/gifted-dijkstra-rph5j8` through `6176549` was merged into
@@ -64,12 +70,12 @@ durable delivery. TypeScript and production build pass. Chromium installation in
 this workspace returned truncated ZIP files, so local rendered execution is NOT
 a pass. A dedicated CI workflow runs actual visible Chromium under Xvfb using
 exclusively synthetic in-memory HTTP fixtures, plus the existing page lifecycle
-CI tests the step editor at 320 and 1440 px. Await its result before release.
+CI tests the step editor at 320 and 1440 px. Both passed on the released source.
 
 ## Remaining master plan
 
-The browser stage needs exact-source CI, release read-back and actual Mac
-installation/use acceptance. Real restart/offline/phone/voice/revoke acceptance
+The browser stage now has exact-source CI and release read-back; actual Mac
+installation/use acceptance remains. Real restart/offline/phone/voice/revoke acceptance
 remains owner-device work; do not revoke a working device just to create evidence.
 Useful-work acceptance still needs a real approved deliverable and consistent
 Tasks/Computers/Activity/voice receipts. The new editor currently queues direct
