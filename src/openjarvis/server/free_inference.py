@@ -79,7 +79,7 @@ class Limits:
 
 
 class Ledger:
-    """Atomic admission, idempotency and pool leases. No prompts/answers/secrets stored."""
+    """Atomic admission, idempotency and pool leases.\n\n    Prompts, answers and secrets are never stored.\n    """
 
     def __init__(self, path: str, limits: Limits = Limits()):
         self.path, self.limits = path, limits
@@ -101,12 +101,16 @@ class Ledger:
         with self.tx() as db:
             db.executescript("""
             CREATE TABLE IF NOT EXISTS requests(
-              org TEXT NOT NULL, rid TEXT NOT NULL, uid TEXT NOT NULL, day TEXT NOT NULL,
-              started REAL NOT NULL, state TEXT NOT NULL, route TEXT, input_tokens INTEGER,
-              output_tokens INTEGER, PRIMARY KEY(org,rid));
-            CREATE INDEX IF NOT EXISTS request_daily ON requests(day,org,uid);
-            CREATE TABLE IF NOT EXISTS leases(pool TEXT PRIMARY KEY, token TEXT NOT NULL, until REAL NOT NULL);
-            CREATE TABLE IF NOT EXISTS cooldowns(pool TEXT PRIMARY KEY, until REAL NOT NULL);
+              org TEXT NOT NULL, rid TEXT NOT NULL, uid TEXT NOT NULL,
+              day TEXT NOT NULL, started REAL NOT NULL, state TEXT NOT NULL,
+              route TEXT, input_tokens INTEGER, output_tokens INTEGER,
+              PRIMARY KEY(org,rid));
+            CREATE INDEX IF NOT EXISTS request_daily
+              ON requests(day,org,uid);
+            CREATE TABLE IF NOT EXISTS leases(
+              pool TEXT PRIMARY KEY, token TEXT NOT NULL, until REAL NOT NULL);
+            CREATE TABLE IF NOT EXISTS cooldowns(
+              pool TEXT PRIMARY KEY, until REAL NOT NULL);
             """)
 
     @contextmanager
@@ -139,10 +143,13 @@ class Ledger:
                 raise FreeError("request_already_admitted", 409)
             # Stale work is recorded as uncertain, NEVER automatically replayed.
             db.execute(
-                "UPDATE requests SET state='unknown' WHERE state='running' AND started<?",
+                "UPDATE requests SET state='unknown' "
+                "WHERE state='running' AND started<?",
                 (now - 180,),
             )
-            count = lambda sql, args=(): db.execute(sql, args).fetchone()[0]
+
+            def count(sql, args=()):
+                return db.execute(sql, args).fetchone()[0]
             if (
                 count("SELECT COUNT(*) FROM requests WHERE state='running'")
                 >= self.limits.global_parallel
@@ -159,7 +166,8 @@ class Ledger:
             ):
                 raise FreeError("free_daily_limit", 429)
             db.execute(
-                "INSERT INTO requests(org,rid,uid,day,started,state) VALUES(?,?,?,?,?,?)",
+                "INSERT INTO requests(org,rid,uid,day,started,state) "
+                "VALUES(?,?,?,?,?,?)",
                 (org, rid, uid, day, now, "running"),
             )
 
@@ -184,7 +192,9 @@ class Ledger:
     def cool(self, pool: str, until: float):
         with self.tx() as db:
             db.execute(
-                "INSERT INTO cooldowns VALUES(?,?) ON CONFLICT(pool) DO UPDATE SET until=MAX(cooldowns.until,excluded.until)",
+                "INSERT INTO cooldowns VALUES(?,?) "
+                "ON CONFLICT(pool) DO UPDATE "
+                "SET until=MAX(cooldowns.until,excluded.until)",
                 (pool, until),
             )
 
@@ -198,7 +208,8 @@ class Ledger:
     ):
         with self.tx() as db:
             db.execute(
-                "UPDATE requests SET state=?,route=?,input_tokens=?,output_tokens=? WHERE org=? AND rid=?",
+                "UPDATE requests SET state=?,route=?,input_tokens=?,output_tokens=? "
+                "WHERE org=? AND rid=?",
                 (state, route, *(usage or (None, None)), org, rid),
             )
 
@@ -237,7 +248,7 @@ def all_prices_zero(pricing: Any) -> bool:
     if not isinstance(pricing, dict) or not {"prompt", "completion"} <= pricing.keys():
         return False
     try:
-        # Every price dimension supplied by the provider must be an explicit finite zero.
+        # Every provider price dimension must be an explicit finite zero.
         return all(
             not isinstance(v, bool)
             and v is not None
@@ -371,7 +382,7 @@ class FreeEngine:
                             continue
                         try:
                             if route.kind == "openrouter":
-                                # Discovery is not a paid inference. Fail closed if prices are missing/change.
+                                # Discovery is not paid inference. Fail closed if prices\n                                # are missing or change.
                                 async with client.stream(
                                     "GET", CLOUD_URL + "/models"
                                 ) as response:
