@@ -263,7 +263,8 @@ Deno.serve(async (req) => {
     `Write everything in ${LANG_NAME[lang]}. Today is ${new Date().toISOString().slice(0, 10)}; when the task asks for recent news, look for items from the last weeks.`,
     `Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown: the actual work product), "actions": [{"action": string (short name such as send_email), "risk": "low"|"medium"|"high", "payload": object}]} with at most ${MAX_ACTIONS} actions. Use an empty actions array when nothing needs to leave the company. You may add "learned": [at most 3 short facts about the company, its customers or its work that will help next time]; leave it out when there is nothing durable to remember.`,
   ].join('\n\n');
-  const userMsg = `<task>\nTitle: ${task.title}\nPriority: ${task.priority}\nDescription: ${task.description ?? ''}\n</task>`;
+  // Scheduled work gets the pulse next to the task too: smaller models follow the user message far better than a long system prompt.
+  const userMsg = `<task>\nTitle: ${task.title}\nPriority: ${task.priority}\nDescription: ${task.description ?? ''}\n</task>${pulse ? `\n\n${pulse}\n\nDo the task now with the COMPANY PULSE above as your data, in ${LANG_NAME[lang]}. Do not ask questions.` : ''}`;
   const t0 = Date.now();
   let used: { provider: string; model: string } | null = null;
   let routed: GatewayCompletion | FreeCompletion | null = null;
