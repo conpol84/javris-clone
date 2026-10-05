@@ -46,6 +46,8 @@ const NATIVE_CALL = new RegExp(`\\b(${NAMES})\\s*\\(\\s*(?:[a-z_]+\\s*=\\s*)?(["
 // Hermes / GLM style: <tool_call>server_task {"command": ...}</tool_call> or <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
 const TAG_CALL = new RegExp(`<tool_call>\\s*(?:(${NAMES})\\b)?\\s*([\\s\\S]*?)\\s*(?:</tool_call>|$)`, 'i');
 const TOOL_NAMES = new RegExp(`^(${NAMES})$`, 'i');
+// XML style: <calculator><input>480 * 0.24</input></calculator> or <weather>Athens</weather> (never <think>, which wraps reasoning).
+const XML_CALL = new RegExp(`<(${TOOL_LIST.filter(t => t !== 'think').join('|')})(?:\\s[^>]*)?>([\\s\\S]*?)(?:</\\1>|$)`, 'i');
 
 /** The tool input from a native call's arguments: a string as is, a single text field, or the whole object as JSON. */
 function argsInput(args: unknown): string {
@@ -74,6 +76,11 @@ export function parseToolRequest(text: string, allowed: ToolName[]): { action: T
     const body = tag[2].trim();
     const args = body.startsWith('{') ? extractModelJson(body) : null;
     input = args ? argsInput(args) : body;
+  } else if (XML_CALL.test(text)) {
+    const x = XML_CALL.exec(text)!;
+    action = x[1].toLowerCase() as ToolName;
+    const inner = /<([a-z_]+)>([\s\S]*?)<\/\1>/i.exec(x[2]);
+    input = inner ? inner[2] : x[2].replace(/<[^>]+>/g, ' ');
   } else {
     const m = NATIVE_CALL.exec(text);
     if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }

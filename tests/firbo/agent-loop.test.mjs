@@ -198,3 +198,11 @@ test('native tool-call syntaxes (GLM <tool_call>, function-call shape) reach our
   const code = 'x'.repeat(2000);
   assert.equal(parseToolRequest(`{"action":"server_task","input":"${code}"}`, ['server_task']).input.length, 2000);
 });
+
+test('XML tool syntax (<calculator><input>...</input></calculator>) reaches our tools, <think> never does', () => {
+  const xml = 'Βρήκα 480 ευρώ.\n\n<calculator>\n<input>480 * 0.24</input>\n</calculator>';
+  assert.deepEqual(parseToolRequest(xml, ['calculator']), { action: 'calculator', input: '480 * 0.24' });
+  assert.deepEqual(parseToolRequest('<weather>Θεσσαλονίκη</weather>', ['weather']), { action: 'weather', input: 'Θεσσαλονίκη' });
+  assert.equal(parseToolRequest('<think>plan the work</think>', ['think']), null);
+  assert.equal(isLeftoverToolRequest(xml), true);
+});

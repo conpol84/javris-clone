@@ -334,3 +334,14 @@ test('agent-runner: an economy reply that is neither a tool call nor an answer m
   const free=await invoke('agent-runner',{tools,plan:'free',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final,final,final]});
   assert.ok(!free.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
 });
+test('agent-runner: the quality route works even when the per-agent allowlist leaves it out', async () => {
+  const env={FIRBO_GATEWAY_ALLOWED_MODELS:'firbo-economy'};
+  const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
+  const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
+  const up=await invoke('agent-runner',{env,tools,plan:'pro',chatReplies:['{"action":"get_package_price","input":{}}',final]});
+  assert.equal(up.response.status,200);
+  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model),['firbo-economy','firbo-quality']);
+  const liked=await invoke('agent-runner',{env,feedback:[{rating:-1,note:null},{rating:-1,note:null}],plan:'pro'});
+  assert.equal(liked.response.status,200);
+  assert.equal(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
+});

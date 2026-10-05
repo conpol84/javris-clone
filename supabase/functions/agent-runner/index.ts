@@ -2,7 +2,7 @@
 // The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
+import { gatewayForAgent, gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
@@ -199,21 +199,27 @@ Deno.serve(async (req) => {
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
   const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
   const feedback = (feedbackRows ?? []) as { rating: number; note: string | null }[];
-  const upgraded = feedback.filter(f => f.rating < 0).length >= 2 && orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
-  const routedAgent = upgraded ? { ...agent, model: 'omniroute:firbo-quality' } : agent;
+  const wantsUpgrade = feedback.filter(f => f.rating < 0).length >= 2 && orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
+  // The quality route is a fixed server-side combo (not a model the company picked), so it does not need the per-agent allowlist.
+  const qualityPlan = () => {
+    try { return gatewayForAgent({ id: agent.id, model: `omniroute:${Deno.env.get('FIRBO_QUALITY_MODEL')?.trim() || 'firbo-quality'}` }, name => Deno.env.get(name), { force: true }); }
+    catch { return null; }
+  };
+  let upgraded = false;
   // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
   const own = await ownKeyTarget(admin, task.organization_id, agent.model);
   let free = false;
   let gateway: GatewayPlan | null = null;
   if (!own) {
-    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(routedAgent, orgPlan?.plan, name => Deno.env.get(name)); }
+    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
     catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   }
+  if (gateway && wantsUpgrade && gateway.model !== qualityPlan()?.model) { const q = qualityPlan(); if (q) { gateway = q; upgraded = true; } }
   // Free-plan routing uses zero-cost models, so a failed run can safely be retried (nothing to reconcile).
   const planFree = orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway';
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
-  const primary = routedAgent.model && routedAgent.model !== 'auto' ? routedAgent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
+  const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
@@ -308,10 +314,13 @@ Deno.serve(async (req) => {
   // Inside the loop every reply must be a tool request or the final answer. When the economy combo answers with neither
   // (some of its models invent tool names) or is too slow, the rest of this run moves up to the quality combo: paid plans only.
   let escalated = false;
+  // A short record of each loop step (time, model route, valid or not) kept with the result, for support.
+  const loopTrace: { ms: number; route: string; ok: boolean; head: string }[] = [];
   const callLoop = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
-    const canUp = !escalated && !!gateway && !planFree && orgPlan?.plan !== 'free' && gateway.model !== 'firbo-quality';
+    const canUp = !escalated && !upgraded && !!gateway && !planFree && orgPlan?.plan !== 'free' && gateway.model !== qualityPlan()?.model;
     let reply = '';
     let reason = 'invalid_reply';
+    const began = Date.now();
     // With the quality combo ready behind it, a slow economy step is cut at 30 s instead of eating the whole budget.
     try { reply = await callOnce(messages, canUp ? Math.min(timeoutMs, 30_000) : timeoutMs); }
     // Only a timeout moves up; a gateway error stays an error (no silent second route).
@@ -321,8 +330,9 @@ Deno.serve(async (req) => {
     const valid = !!reply && (isFinalAnswer(reply) || !!parseToolRequest(reply, mine));
     // What counts is the time left for the whole task, not the step's own time.
     const left = requestStarted + WALL_CLOCK_MS - Date.now() - 5_000;
+    if (loopTrace.length < 12) loopTrace.push({ ms: Date.now() - began, route: gateway?.model ?? used?.model ?? 'direct', ok: valid, head: reply.replace(/\s+/g, ' ').slice(0, 80) });
     if (valid || !canUp || left < 8_000) { if (!reply) throw new Error(lastError); return reply; }
-    const up = (() => { try { return gatewayForOrgPlan({ ...agent, model: 'omniroute:firbo-quality' }, orgPlan?.plan, name => Deno.env.get(name)); } catch { return null; } })();
+    const up = qualityPlan();
     if (!up) { if (!reply) throw new Error(lastError); return reply; }
     escalated = true;
     console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from: gateway!.model, to: up.model, reason, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
@@ -528,7 +538,7 @@ Deno.serve(async (req) => {
   const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
     result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
       queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
-      ran_at: new Date().toISOString(), routing, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
+      ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
   // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
   if (!reconcile && !resultError && parsed.learned.length) {
     const { data: known } = await admin.from('memories').select('content').eq('organization_id', task.organization_id).contains('metadata', { source: 'learned' }).order('created_at', { ascending: false }).limit(200);
