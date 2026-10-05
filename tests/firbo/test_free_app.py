@@ -1,13 +1,12 @@
 """Real ASGI app + auth dependency and actual SQLite/HTTP engine. All remote data synthetic."""
 
 # Use the established isolated module loader without initializing legacy OpenJarvis.
-import json
 from uuid import uuid4
 
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from test_control_plane import ORG, USER, AsyncClient, control, load
+from test_control_plane import ORG, USER, AsyncClient, load
 
 f = load("free_inference")
 a = load("firbo_free_app")
@@ -218,8 +217,6 @@ def test_status_requires_auth_before_any_upstream(app_env):
 
 @pytest.mark.parametrize("digest,ready", [("a" * 64, True), ("b" * 64, False)])
 def test_status_checks_exact_model_digest_without_inference(monkeypatch, digest, ready):
-    from test_control_plane import application
-
     state = []
 
     def handle(req):
@@ -255,8 +252,6 @@ def test_status_checks_exact_model_digest_without_inference(monkeypatch, digest,
 
 
 def test_two_cpu_engine_defaults_are_bounded(monkeypatch, tmp_path):
-    from functools import lru_cache
-
     monkeypatch.setenv("FIRBO_FREE_LOCAL_MODELS", "qwen3:1.7b")
     monkeypatch.setenv("FIRBO_FREE_OPENROUTER_MODELS", "")
     tmp_path.chmod(0o700)
