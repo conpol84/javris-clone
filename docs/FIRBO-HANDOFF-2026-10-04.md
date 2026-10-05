@@ -465,3 +465,17 @@ This final audit re-read the live services rather than relying only on prior not
 3. After that, evolve `browser_open` into the dedicated visible-browser executor (click/type/scroll/upload/download/readback) without using generic shell as the final architecture.
 
 Everything else in this handoff remains part of the same MASTER-PLAN-V2 backlog and must not be silently dropped.
+
+## RECONCILIATION CHECKPOINT — 5 October 2026
+
+This checkpoint continues the plan above; it does not replace or restart it.
+
+- Reconciliation branch: `codex/firbo-reconcile-20261005`, based exactly on Claude head `f180fd22593f9c2f06911871150d87da4c580fba`.
+- PR #9 and the Claude line were verified to have only one PR9-only commit, a handoff-document update. That handoff has been preserved on the reconciliation branch.
+- Live Supabase schema was compared with `20261005120000_jarvis_parity.sql`: knowledge columns/indexes, skills, workflow runs, report feedback, media bucket, schedulers, read-only integration kinds, plan limits and approval-channel trigger are already present.
+- Migration history was repaired as history-only: `20261005120000 jarvis_parity` is now recorded as applied; the schema migration was not re-executed.
+- Live acceptance inventory at this checkpoint: 3 computer records / 0 paired / 0 online / 0 browser-capable / 0 connector jobs; skills 0; workflows 0; workflow runs 0; knowledge 1 source / 2 chunks; connected integration records 0.
+- Production `firboai.app` currently aliases Vercel deployment `dpl_4eTujgjX3LpRPe2ptGn6eATMFFA4`, source `127333e6dbdf94943246aabcf516438729363881`. Claude head `f180fd2` has a READY preview, not the production alias.
+- The general Python CI regression has a concrete root cause: `tests/firbo/test_control_plane.py` replaced global `openjarvis` modules during pytest collection. The reconciliation branch now confines that synthetic module loader and restores the real module state after each isolated load.
+- No production deployment, pricing, plan or product behavior was changed by this reconciliation work.
+
