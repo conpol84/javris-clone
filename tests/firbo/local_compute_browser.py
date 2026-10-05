@@ -15,8 +15,8 @@ from verify import GEOMETRY, NAME, PAYLOADS
 OUT = Path("/tmp/firbo-local-evidence/browser")
 OUT.mkdir(parents=True, exist_ok=True)
 CASES = [
-    ("layout", w, l)
-    for w, l in [
+    ("layout", width, lang)
+    for width, lang in [
         (320, "en"),
         (320, "el"),
         (390, "el"),
