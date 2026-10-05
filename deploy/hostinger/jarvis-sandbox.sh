@@ -70,7 +70,9 @@ KEY=$(openssl rand -hex 24)
 VLLM=$(grep -h '^VLLM_API_KEY=' "$ADMIN_HOME/serve.env" 2>/dev/null | tail -1 || true)
 umask 077
 { echo "OPENJARVIS_API_KEY=$KEY"; [ -n "$VLLM" ] && echo "$VLLM"; echo "OPENJARVIS_HOME=$BOX_HOME"; } > "$BOX_HOME/serve.env"
-chown -R jarvis:jarvis "$BOX_HOME"
+# The jarvis launcher looks for its Python environment inside OPENJARVIS_HOME: share the admin one read-only (code only, no data).
+ln -sfn "$ADMIN_HOME/.venv" "$BOX_HOME/.venv"
+chown -R jarvis:jarvis "$BOX_HOME"; chown -h jarvis:jarvis "$BOX_HOME/.venv"
 
 echo "4/6 Service openjarvis-box (port 8766)"
 EXEC=$(systemctl cat openjarvis | sed -n 's/^ExecStart=//p' | head -1 | sed 's/--port[= ]*8765/--port 8766/')
@@ -132,7 +134,7 @@ fi
 
 echo "6/6 Check"
 for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8766/health >/dev/null 2>&1 && break; sleep 2; done
-curl -fsS http://127.0.0.1:8766/health && echo
+curl -fsS http://127.0.0.1:8766/health && echo || { echo "The sandbox did not start. Last log lines:"; journalctl -u openjarvis-box -n 15 --no-pager | grep -viE "key|token|secret"; exit 1; }
 curl -fsS -H "Authorization: Bearer $KEY" http://127.0.0.1:8766/v1/info && echo
 echo
 echo "================================================================"
