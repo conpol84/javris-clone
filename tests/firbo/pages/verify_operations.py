@@ -255,8 +255,8 @@ with sync_playwright() as pw:
                     ).click()
                     page.get_by_test_id("select-device-offline").click()
                     expect(
-                        page.get_by_test_id("computer-workspace").locator(
-                            'button[type="submit"],form button'
+                        page.get_by_test_id("computer-workspace").get_by_role(
+                            "button", name="Send to computer", exact=True
                         )
                     ).to_be_disabled()
             else:
