@@ -11,6 +11,14 @@ const cors = {
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'content-type': 'application/json' } });
 
+const CODING = [
+  'You are the coding agent of the company, working on its server.',
+  'Work inside the workspace folder (create it if missing); never touch system files, other users or secrets.',
+  'Use your tools to read files, run code and tests, apply patches and use git. Show the commands you ran and their real output.',
+  'Before changing files, say the plan in one or two lines. After changing, show the diff (git diff) and how you tested it.',
+  'Never push, deploy or delete a repository unless the message explicitly asks for it.',
+].join('\n');
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -32,7 +40,7 @@ Deno.serve(async (req) => {
     return res.json();
   };
 
-  let body: { action?: string; message?: string; model?: string } = {};
+  let body: { action?: string; message?: string; model?: string; mode?: string; history?: { role: string; content: string }[] } = {};
   try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
 
   if (body.action === 'chat') {
@@ -42,8 +50,12 @@ Deno.serve(async (req) => {
     // The server agent requires a model name: the chosen one, else the one it runs by default.
     const model = body.model ? String(body.model).slice(0, 120) : String((await get('/v1/info').catch(() => ({})))?.model || 'default');
     try {
+      // Coding mode (OpenJarvis's coding agent): the server agent works in its workspace with its file, git, patch and code tools.
+      const coding = body.mode === 'code' ? [{ role: 'system', content: CODING }] : [];
+      const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
+        .filter(m => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string').map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
       const res = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers, signal: AbortSignal.timeout(140_000),
-        body: JSON.stringify({ model, messages: [{ role: 'user', content: message }], stream: false }) });
+        body: JSON.stringify({ model, messages: [...coding, ...history, { role: 'user', content: message }], stream: false }) });
       if (!res.ok) return json(502, { error: `jarvis_http_${res.status}` });
       const out = await res.json();
       return json(200, { reply: String(out?.choices?.[0]?.message?.content ?? ''), model: out?.model ?? null, ms: Date.now() - started });

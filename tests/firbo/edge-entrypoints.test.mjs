@@ -61,13 +61,14 @@ function fixture(options={}) {
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
+    if(table==='knowledge_chunks')return{data:null,count:options.knowledgeCount??0,error:null};
     if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
   const client=(_url,key)=>({
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
-    rpc:async(fn,args)=>{state.rpcs=[...(state.rpcs??[]),{fn,args}];if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};return{data:100,error:options.planError?{message:'db failure'}:null};},
+    rpc:async(fn,args)=>{state.rpcs=[...(state.rpcs??[]),{fn,args}];if(fn==='match_knowledge')return{data:options.knowledgeHits??[],error:null};if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};return{data:100,error:options.planError?{message:'db failure'}:null};},
     from:table=>{
       let op='select',payload,selection;const filters=[];
       const b={
@@ -305,4 +306,20 @@ test('agent-runner: the platform admin company uses the full server agent; a pla
   const starter=await invoke('agent-runner',{tools,plan:'starter',env:serverEnv});
   assert.ok(!starter.state.calls.some(c=>/jarvis/.test(String(c.url))));
   assert.doesNotMatch(JSON.parse(starter.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content,/server_task/);
+});
+
+test('agent-chat: matching company knowledge is part of the answer context', async () => {
+  const {state,response}=await invoke('agent-chat',{knowledgeCount:3,knowledgeHits:[{title:'Price list',url:null,content:'The yearly plan costs 480 euro.',score:0.03}]});
+  assert.equal(response.status,200);
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.match(chat.messages[0].content,/COMPANY KNOWLEDGE[\s\S]*Price list[\s\S]*480 euro/);
+  assert.equal(state.rpcs.find(r=>r.fn==='match_knowledge').args.p_org,ORG);
+});
+test('agent-chat: the scheduler secret lets Telegram act only as the person it names, with their role checked', async () => {
+  const ok=await invoke('agent-chat',{unsigned:true,cron:'cron-test'},{system_user_id:USER});
+  assert.equal(ok.response.status,200);
+  const bad=await invoke('agent-chat',{unsigned:true,cron:'wrong'},{system_user_id:USER});
+  assert.equal(bad.response.status,401);
+  const outsider=await invoke('agent-chat',{unsigned:true,cron:'cron-test',noMembership:true},{system_user_id:USER});
+  assert.equal(outsider.response.status,403);
 });

@@ -174,3 +174,32 @@ select cron.schedule('firbo-knowledge-embed', '*/2 * * * *', $$
     timeout_milliseconds := 150000)
   where exists (select 1 from public.knowledge_chunks where vec is null);
 $$);
+
+-- 7. Read-only sign-in apps that feed company knowledge (Drive, Gmail, Calendar, Outlook).
+do $$ declare c text; begin
+  select conname into c from pg_constraint where conrelid='public.integrations'::regclass and contype='c' and pg_get_constraintdef(oid) like '%youtube%';
+  if c is not null then execute format('alter table public.integrations drop constraint %I', c); end if;
+end $$;
+alter table public.integrations add constraint integrations_kind_check check (kind = any (array['slack','discord','telegram','webhook','teams','googlechat','mattermost','ntfy','pushover','whatsapp','twilio','resend','sendgrid','notion','airtable','linear','github','mastodon','hubspot','pipedrive','asana','trello','clickup','jira','zendesk','zoom','wordpress','bluesky','facebook','x','zapier','make','n8n','gmail','gcal','gdrive','sheets','outlook','linkedin','dropbox','threads','instagram','devto','matrix','zulip','rocketchat','todoist','monday','homeassistant','ifttt','brevo','mailchimp','stripe','shopify','woocommerce','lemonsqueezy','gumroad','calendly','calcom','intercom','mcp','youtube','tiktok','salesforce','quickbooks','homeassistant_devices','traccar','gdrive_read','gmail_read','gcal_read','outlook_read']));
+
+-- 8. Plan limits for the new features.
+update public.plans set limits = limits || '{"knowledge_sources":3,"workflows":1,"skills":3}'::jsonb where id = 'free';
+update public.plans set limits = limits || '{"knowledge_sources":25,"workflows":10,"skills":30}'::jsonb where id = 'pro';
+update public.plans set limits = limits || '{"knowledge_sources":200,"workflows":100,"skills":200}'::jsonb where id = 'business';
+update public.plans set limits = limits || '{"knowledge_sources":2000,"workflows":1000,"skills":2000}'::jsonb where id = 'enterprise';
+
+-- 9. A new approval also reaches the owner's phone when two-way Telegram / WhatsApp / SMS is on.
+create or replace function private.notify_approval_channels() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from integrations i where i.organization_id = new.organization_id and i.kind in ('telegram', 'whatsapp', 'twilio') and i.config->>'inbound' = 'true') then
+    perform net.http_post(
+      url := 'https://bfeinnsorgjycivozcau.supabase.co/functions/v1/channel-inbound',
+      headers := jsonb_build_object('content-type', 'application/json', 'x-cron-secret', (select value from cron_secrets where name = 'shifts')),
+      body := jsonb_build_object('action', 'notify_approval', 'approval_id', new.id),
+      timeout_milliseconds := 30000);
+  end if;
+  return new;
+end $$;
+drop trigger if exists approvals_notify_channels on public.approvals;
+create trigger approvals_notify_channels after insert on public.approvals for each row when (new.status = 'pending') execute function private.notify_approval_channels();

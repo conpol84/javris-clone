@@ -137,11 +137,27 @@ const OAUTH: Record<string, OAuthCfg> = {
   gcal: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/calendar.events' },
   gdrive: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/drive.file' },
   sheets: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/spreadsheets' },
+  // Read-only sign-ins that feed the company knowledge base (nothing is ever sent or changed through them).
+  gdrive_read: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/drive.readonly' },
+  gmail_read: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/gmail.readonly' },
+  gcal_read: { ...GOOGLE, scopes: 'openid email https://www.googleapis.com/auth/calendar.readonly' },
   outlook: {
     group: 'MICROSOFT',
     auth: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
     token: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
     scopes: 'offline_access openid email User.Read Mail.Send',
+    who: async (a) => {
+      const r = await fetch('https://graph.microsoft.com/v1.0/me', { headers: bearer(a), signal: sig() });
+      await ok(r);
+      const j = await r.json();
+      return { account: String(j.mail ?? j.userPrincipalName ?? '') };
+    },
+  },
+  outlook_read: {
+    group: 'MICROSOFT',
+    auth: 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
+    token: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+    scopes: 'offline_access openid email User.Read Mail.Read Files.Read',
     who: async (a) => {
       const r = await fetch('https://graph.microsoft.com/v1.0/me', { headers: bearer(a), signal: sig() });
       await ok(r);
@@ -868,6 +884,10 @@ const PROVIDERS: Record<string, Provider> = {
     async (s, c, t) =>
       await ok(await fetch('https://graph.microsoft.com/v1.0/me/sendMail', { method: 'POST', headers: { ...J, ...bearer(s.access_token) }, body: JSON.stringify({ message: { subject: firstLine(t, 150) || 'Message from Firbo AI', body: { contentType: 'Text', content: t.slice(0, 30000) }, toRecipients: [{ emailAddress: { address: c.to } }] }, saveToSentItems: true }), signal: sig() })),
   ),
+  gdrive_read: { ...oauthProvider(async (s) => void (await googleWho(s.access_token)), async () => { throw new Error('read_only'); }), readOnly: true },
+  gmail_read: { ...oauthProvider(async (s) => void (await googleWho(s.access_token)), async () => { throw new Error('read_only'); }), readOnly: true },
+  gcal_read: { ...oauthProvider(async (s) => void (await googleWho(s.access_token)), async () => { throw new Error('read_only'); }), readOnly: true },
+  outlook_read: { ...oauthProvider(async (s) => ok(await fetch('https://graph.microsoft.com/v1.0/me', { headers: bearer(s.access_token), signal: sig() })), async () => { throw new Error('read_only'); }), readOnly: true },
   linkedin: oauthProvider(
     async (s) => ok(await fetch('https://api.linkedin.com/v2/userinfo', { headers: bearer(s.access_token), signal: sig() })),
     async (s, c, t) =>
@@ -937,6 +957,27 @@ Deno.serve(async (req) => {
   const url = Deno.env.get('SUPABASE_URL')!;
   const anon = Deno.env.get('SUPABASE_ANON_KEY')!;
   const service = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  // Server-to-server only (the company knowledge sync): a valid access token for one connected app, refreshed when needed.
+  // Never reachable from a browser: it needs the scheduler secret, which no client can read.
+  const cronHeader = req.headers.get('x-cron-secret');
+  if (cronHeader) {
+    const sys = createClient(url, service);
+    const { data: sec } = await sys.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+    if (!sec || sec.value !== cronHeader) return json(401, { error: 'unauthorized' });
+    let b: Record<string, unknown> = {};
+    try { b = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
+    if (b.action !== 'access_token' || typeof b.id !== 'string') return json(400, { error: 'bad_request' });
+    const { data: integ } = await sys.from('integrations').select('id, kind').eq('id', b.id).maybeSingle();
+    const { data: row } = await sys.from('integration_secrets').select('secret').eq('integration_id', b.id).maybeSingle();
+    if (!integ || !row) return json(404, { error: 'not_found' });
+    try {
+      const secret = await freshSecret(sys, integ.id, integ.kind, readSecret(integ.kind, row.secret));
+      return json(200, { token: secret.access_token ?? secret.token ?? '' });
+    } catch {
+      await sys.from('integrations').update({ status: 'error', last_error: 'reauth' }).eq('id', integ.id);
+      return json(409, { error: 'reauth' });
+    }
+  }
   const userClient = createClient(url, anon, { global: { headers: { Authorization: req.headers.get('Authorization') ?? '' } } });
   const { data: who } = await userClient.auth.getUser();
   const user = who?.user;
