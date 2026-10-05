@@ -11,6 +11,8 @@ export interface GatewayPlan {
   readonly model: string;
   readonly priceIn: number;
   readonly priceOut: number;
+  /** Plan-routed only: the default free combo, tried once if the configured combo does not exist (HTTP 400/404). */
+  readonly fallbackModel?: string;
 }
 export interface GatewayTrace {
   request_id: string;
@@ -102,7 +104,13 @@ export function gatewayForAgent(agent: { id: string; model?: string | null }, en
 export function gatewayForOrgPlan(agent: { id: string; model?: string | null }, orgPlan: string | null | undefined, env: EnvReader): GatewayPlan | null {
   if (orgPlan !== 'free' || (env('FIRBO_FREE_PLAN_ROUTING') ?? 'off') !== 'gateway') return gatewayForAgent(agent, env);
   const model = env('FIRBO_FREE_PLAN_MODEL')?.trim() || 'firbo-free';
-  return gatewayForAgent({ ...agent, model: 'omniroute:' + model }, env, { force: true, zeroCost: true });
+  const plan = gatewayForAgent({ ...agent, model: 'omniroute:' + model }, env, { force: true, zeroCost: true });
+  // A mistyped or not-yet-saved combo name must not take every Free company offline: fall back to the default combo.
+  return plan && model !== 'firbo-free' ? Object.freeze(Object.defineProperties({ ...plan }, {
+    key: { value: plan.key, enumerable: false },
+    toJSON: { value: () => ({ mode: plan.mode, model: plan.model, key: '[redacted]' }), enumerable: false },
+    fallbackModel: { value: 'firbo-free', enumerable: true },
+  })) as GatewayPlan : plan;
 }
 
 function withAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
@@ -145,6 +153,19 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const tokens = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000_000;
 
 export async function completeViaGateway(plan: GatewayPlan, messages: Message[], temperature: number,
+  options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number } = {}): Promise<GatewayCompletion> {
+  try {
+    return await completeOnce(plan, messages, temperature, options);
+  } catch (error) {
+    // The configured combo is unknown to the gateway (rejected before any model ran): use the default combo once.
+    if (!plan.fallbackModel || !(error instanceof GatewayError) || !['gateway_http_400', 'gateway_http_404'].includes(error.code)) throw error;
+    console.warn(JSON.stringify({ event: 'firbo_gateway_combo_fallback', requested_model: plan.model, fallback_model: plan.fallbackModel }));
+    const fallback = Object.defineProperties({ ...plan, model: plan.fallbackModel }, { key: { value: plan.key, enumerable: false } }) as GatewayPlan;
+    return await completeOnce(fallback, messages, temperature, options);
+  }
+}
+
+async function completeOnce(plan: GatewayPlan, messages: Message[], temperature: number,
   options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number } = {}): Promise<GatewayCompletion> {
   const started = Date.now();
   const trace: GatewayTrace = {

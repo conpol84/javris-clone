@@ -117,3 +117,22 @@ test('free-plan combo is always $0, even when paid estimates are set or missing'
   const paid = forPlan('pro', { FIRBO_FREE_PLAN_ROUTING: 'gateway', OMNIROUTE_PRICE_IN_PER_M: '5', OMNIROUTE_PRICE_OUT_PER_M: '20' }, 'omniroute:firbo-economy');
   assert.equal(paid.priceIn, 5); assert.equal(paid.priceOut, 20);
 });
+test('an unknown free combo name falls back to the default free combo once, without exposing the key', async () => {
+  const p = forPlan('free', { ...freeOn, FIRBO_FREE_PLAN_MODEL: 'firbo-free-2' });
+  assert.equal(p.model, 'firbo-free-2'); assert.equal(p.fallbackModel, 'firbo-free');
+  assert.doesNotMatch(JSON.stringify(p), /secret|sk-/i);
+  assert.equal(forPlan('free', freeOn).fallbackModel, undefined);
+  const asked = [];
+  const fetcher = async (_url, init) => {
+    const body = JSON.parse(init.body); asked.push(body.model);
+    assert.match(init.headers.authorization, /^Bearer \S+/);
+    if (body.model === 'firbo-free-2') return new Response('{"error":"unknown model"}', { status: 400, headers: { 'content-type': 'application/json' } });
+    return Response.json({ model: 'gpt-4.1-mini', choices: [{ message: { content: 'ok' } }], usage: { prompt_tokens: 1, completion_tokens: 1 } });
+  };
+  const out = await completeViaGateway(p, [{ role: 'user', content: 'hi' }], 0.2, { fetcher });
+  assert.deepEqual(asked, ['firbo-free-2', 'firbo-free']);
+  assert.equal(out.completion.choices[0].message.content, 'ok'); assert.equal(out.cost, 0);
+  // A paid plan never switches combos silently.
+  const paid = forPlan('pro', freeOn, 'omniroute:firbo-quality');
+  await assert.rejects(completeViaGateway(paid, [{ role: 'user', content: 'hi' }], 0.2, { fetcher: async () => new Response('{}', { status: 400, headers: { 'content-type': 'application/json' } }) }), /gateway_http_400/);
+});
