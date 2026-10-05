@@ -34,19 +34,43 @@ export const REPAIR_SYSTEM = 'Write the final answer to the TASK below, using on
 // Some models answer in their own native tool syntax, e.g. <|tool_call_start|>[web_search(input='...')]<|tool_call_end|>.
 const NATIVE_CALL = /\b(web_search|read_page|memory_search|server_task|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
 
+// Hermes / GLM style: <tool_call>server_task {"command": ...}</tool_call> or <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
+const TAG_CALL = /<tool_call>\s*(?:(web_search|read_page|memory_search|server_task|think)\b)?\s*([\s\S]*?)\s*(?:<\/tool_call>|$)/i;
+const TOOL_NAMES = /^(web_search|read_page|memory_search|server_task|think)$/i;
+
+/** The tool input from a native call's arguments: a string as is, a single text field, or the whole object as JSON. */
+function argsInput(args: unknown): string {
+  if (typeof args === 'string') return args;
+  if (!args || typeof args !== 'object') return '';
+  const a = args as Record<string, unknown>;
+  for (const k of ['input', 'query', 'url', 'job', 'task', 'q', 'text']) if (typeof a[k] === 'string') return a[k] as string;
+  return JSON.stringify(a);
+}
+
 export function parseToolRequest(text: string, allowed: ToolName[]): { action: ToolName; input: string } | null {
   const o = extractModelJson(text);
   if (o && (typeof o.report === 'string' || typeof o.summary === 'string')) return null;
   let action: ToolName | null = null;
   let input = '';
+  const tag = TAG_CALL.exec(text);
   if (o && typeof o.action === 'string' && typeof o.input === 'string') {
     action = o.action.trim().toLowerCase() as ToolName;
     input = o.input;
+  } else if (o && typeof o.name === 'string' && TOOL_NAMES.test(o.name.trim())) {
+    // {"name": "server_task", "arguments": {...}}: the provider function-call shape, for one of our tools.
+    action = o.name.trim().toLowerCase() as ToolName;
+    input = argsInput(o.arguments ?? o.parameters ?? o.input);
+  } else if (tag && tag[1]) {
+    action = tag[1].toLowerCase() as ToolName;
+    const body = tag[2].trim();
+    const args = body.startsWith('{') ? extractModelJson(body) : null;
+    input = args ? argsInput(args) : body;
   } else {
     const m = NATIVE_CALL.exec(text);
     if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }
   }
-  input = input.trim().slice(0, 500);
+  // A server job may carry code: give it room; search words and links stay short.
+  input = input.trim().slice(0, action === 'server_task' ? 3000 : 500);
   return action && allowed.includes(action) && input ? { action, input } : null;
 }
 
@@ -228,13 +252,16 @@ export function looksLikeThinking(text: string): boolean {
 export function looksLikeToolCall(text: string): boolean {
   const o = strictModelJson(text.replace(/```(?:json)?/gi, ''));
   if (!o || typeof o.report === 'string' || typeof o.summary === 'string') return false;
-  return typeof o.name === 'string' && (typeof o.parameters === 'object' || typeof o.arguments === 'object' || typeof o.arguments === 'string');
+  return typeof o.name === 'string' && !TOOL_NAMES.test(o.name.trim()) && (typeof o.parameters === 'object' || typeof o.arguments === 'object' || typeof o.arguments === 'string');
 }
 
 /** A reply that holds no usable work: the model's thinking aloud or a made-up function call. */
 export function isUnusableReply(text: string): boolean {
+  // A request for one of our tools, in any syntax, is a normal loop step and never thrown away.
+  if (parseToolRequest(text, ALL_TOOLS)) return false;
   return looksLikeThinking(text) || looksLikeToolCall(text);
 }
+const ALL_TOOLS: ToolName[] = ['web_search', 'read_page', 'memory_search', 'server_task', 'think'];
 
 /**
  * True when the FINAL text is still a tool request such as {"action": "ask", "input": "..."} (often for a tool that does
@@ -242,7 +269,8 @@ export function isUnusableReply(text: string): boolean {
  */
 export function isLeftoverToolRequest(text: string): boolean {
   const o = strictModelJson(text.replace(/```(?:json)?/gi, ''));
-  return !!o && typeof o.report !== 'string' && typeof o.summary !== 'string' && typeof o.action === 'string' && 'input' in o;
+  if (o && typeof o.report !== 'string' && typeof o.summary !== 'string' && typeof o.action === 'string' && 'input' in o) return true;
+  return !isFinalAnswer(text) && !!parseToolRequest(text, ALL_TOOLS);
 }
 
 /** Source links (title + URL) listed in tool results, for a fallback report. */

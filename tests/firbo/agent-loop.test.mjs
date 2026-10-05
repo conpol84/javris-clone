@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { runAgentLoop, parseToolRequest, loopInstructions, isFinalAnswer } from '../../supabase/functions/_shared/agent-loop.ts';
+import { runAgentLoop, parseToolRequest, loopInstructions, isFinalAnswer, isUnusableReply, isLeftoverToolRequest } from '../../supabase/functions/_shared/agent-loop.ts';
 
 const final = JSON.stringify({ summary: 'Done', report: 'Found it at https://a.example', actions: [] });
 
@@ -179,4 +179,22 @@ test('the server agent is offered only when the runner gives it, and its result 
   assert.match(seen[0][0].content, /server_task/);
   assert.match(seen[1].at(-1).content, /Total: 42/);
   assert.equal(loopInstructions(['web_search'], 3).includes('server_task'), false);
+});
+
+test('native tool-call syntaxes (GLM <tool_call>, function-call shape) reach our tools', async () => {
+  const glm = 'Εκτέλεση:\n<tool_call>server_task\n{"command": "python3", "args": ["-c", "print(1)"]}';
+  const g = parseToolRequest(glm, ['server_task']);
+  assert.equal(g.action, 'server_task');
+  assert.match(g.input, /python3/);
+  const hermes = '<tool_call>{"name": "web_search", "arguments": {"query": "greek market"}}</tool_call>';
+  assert.deepEqual(parseToolRequest(hermes, ['web_search']), { action: 'web_search', input: 'greek market' });
+  assert.deepEqual(parseToolRequest('{"name":"server_task","parameters":{"job":"count primes"}}', ['server_task']), { action: 'server_task', input: 'count primes' });
+  assert.equal(parseToolRequest(glm, ['web_search']), null);
+  assert.equal(isUnusableReply(glm), false);
+  assert.equal(isUnusableReply('{"name":"server_task","parameters":{"job":"x"}}'), false);
+  assert.equal(isUnusableReply('{"name":"generate_strategy","parameters":{}}'), true);
+  assert.equal(isLeftoverToolRequest(glm), true);
+  assert.equal(isLeftoverToolRequest(final), false);
+  const code = 'x'.repeat(2000);
+  assert.equal(parseToolRequest(`{"action":"server_task","input":"${code}"}`, ['server_task']).input.length, 2000);
 });
