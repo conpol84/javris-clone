@@ -2,7 +2,6 @@
 
 import importlib.util
 import json
-import shutil
 from pathlib import Path
 
 R = Path(__file__).resolve().parents[2]
