@@ -221,7 +221,11 @@ Deno.serve(async (req) => {
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
-  const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  let targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  // The same quality combo on the direct OmniRoute route (companies not yet on the gateway route).
+  const qualityName = Deno.env.get('FIRBO_QUALITY_MODEL')?.trim() || 'firbo-quality';
+  const directQuality = () => (!own && !gateway && targets[0]?.provider === 'omniroute' && targets[0].model !== qualityName ? resolveTarget(`omniroute:${qualityName}`) : null);
+  if (wantsUpgrade && !upgraded) { const q = directQuality(); if (q) { targets = [q]; upgraded = true; } }
   if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
   const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
   const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
@@ -317,14 +321,14 @@ Deno.serve(async (req) => {
   // A short record of each loop step (time, model route, valid or not) kept with the result, for support.
   const loopTrace: { ms: number; route: string; ok: boolean; head: string }[] = [];
   const callLoop = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
-    const canUp = !escalated && !upgraded && !!gateway && !planFree && orgPlan?.plan !== 'free' && gateway.model !== qualityPlan()?.model;
+    const canUp = !escalated && !upgraded && !planFree && orgPlan?.plan !== 'free' && (gateway ? gateway.model !== qualityPlan()?.model : !!directQuality());
     let reply = '';
     let reason = 'invalid_reply';
     const began = Date.now();
     // With the quality combo ready behind it, a slow economy step is cut at 30 s instead of eating the whole budget.
     try { reply = await callOnce(messages, canUp ? Math.min(timeoutMs, 30_000) : timeoutMs); }
     // Only a timeout moves up; a gateway error stays an error (no silent second route).
-    catch (error) { if (!canUp || lastError !== 'gateway_timeout_or_cancelled' || req.signal.aborted) throw error; reason = 'slow'; }
+    catch (error) { if (!canUp || !['gateway_timeout_or_cancelled', 'model_timeout'].includes(lastError) || req.signal.aborted) throw error; reason = 'slow'; }
     // Only a request for a tool this agent really has counts: asking for one it lacks is as unusable as a made-up name.
     const mine = [...(Object.keys(loopTools) as (typeof TOOL_LIST[number])[]), ...(usable('think') ? ['think' as const] : [])];
     const valid = !!reply && (isFinalAnswer(reply) || !!parseToolRequest(reply, mine));
@@ -332,11 +336,12 @@ Deno.serve(async (req) => {
     const left = requestStarted + WALL_CLOCK_MS - Date.now() - 5_000;
     if (loopTrace.length < 12) loopTrace.push({ ms: Date.now() - began, route: gateway?.model ?? used?.model ?? 'direct', ok: valid, head: reply.replace(/\s+/g, ' ').slice(0, 80) });
     if (valid || !canUp || left < 8_000) { if (!reply) throw new Error(lastError); return reply; }
-    const up = qualityPlan();
+    const from = gateway?.model ?? targets[0]?.model;
+    const up = gateway ? qualityPlan() : directQuality();
     if (!up) { if (!reply) throw new Error(lastError); return reply; }
     escalated = true;
-    console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from: gateway!.model, to: up.model, reason, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
-    gateway = up;
+    console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from, to: up.model, reason, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
+    if (gateway) gateway = up as GatewayPlan; else targets = [up as Target];
     return await callOnce(messages, Math.min(45_000, left));
   };
   const callModel = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
@@ -368,7 +373,7 @@ Deno.serve(async (req) => {
       } catch (error) {
         completion = null;
         // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
-        lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+        lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : error instanceof Error && error.name === 'TimeoutError' ? 'model_timeout' : 'model_error';
       }
     }
     if (!completion || !used) throw new Error(lastError);

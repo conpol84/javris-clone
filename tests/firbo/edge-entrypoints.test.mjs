@@ -345,3 +345,16 @@ test('agent-runner: the quality route works even when the per-agent allowlist le
   assert.equal(liked.response.status,200);
   assert.equal(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
 });
+test('agent-runner: the direct OmniRoute route (no gateway mode) also moves up to quality, on a bad reply and on two 👎', async () => {
+  const env={FIRBO_TEXT_ROUTING_MODE:'legacy'};
+  const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
+  const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
+  const up=await invoke('agent-runner',{env,model:'omniroute:firbo-economy',tools,plan:'pro',chatReplies:['{"action":"get_company_pricing","input":{}}',final]});
+  assert.equal(up.response.status,200);
+  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model),['firbo-economy','firbo-quality']);
+  assert.equal(up.state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'invalid_reply');
+  const liked=await invoke('agent-runner',{env,model:'omniroute:firbo-economy',feedback:[{rating:-1,note:null},{rating:-1,note:null}],plan:'pro'});
+  assert.equal(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
+  const other=await invoke('agent-runner',{env,model:'openai:gpt-5-mini',tools,plan:'pro',chatReplies:['{"action":"get_company_pricing","input":{}}',final,final,final]});
+  assert.ok(!other.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
+});
