@@ -331,7 +331,23 @@ export async function connectorCall(action, body, { fetchImpl = fetch, timeoutMs
     if (reader) { void reader.cancel().catch(() => {}); reader.releaseLock(); }
   }
 }
-const call = connectorCall;
+/** Local recovery guidance never reflects server bodies, device tokens or OS errors. */
+export function connectorDiagnostic(error, command) {
+  if (command === 'pair' && [400, 404].includes(error?.status)) return 'Pairing code is invalid, expired or already used. In Firbo → Computers choose New code, then pair within 10 minutes.';
+  if ([401, 403].includes(error?.status)) return 'This computer is no longer authorized. In Firbo → Computers remove/recreate its entry and pair with a fresh code. Pending local results remain preserved.';
+  const messages = {
+    connector_unreachable: 'Cannot reach Firbo over HTTPS. Check this computer’s internet connection, then run the same command again. Do not disable your firewall.',
+    connector_timeout: 'Firbo did not respond in time. Check this computer’s internet connection and retry; a pairing code may need to be regenerated.',
+    invalid_pairing_code: 'Copy the complete pairing code from Firbo → Computers. Codes expire after 10 minutes and can only be used once.',
+    pairing_config_unwritable: 'Cannot save the private Connector settings for this user. Run in your own Terminal account without sudo, and check that your home folder is writable. The pairing code was not used.',
+    pairing_config_save_failed: 'Firbo accepted pairing, but this computer could not save its private settings. Correct the local file permissions, then remove/recreate the computer entry in Firbo and pair with a new code.',
+    connector_already_running: 'A Connector is already running for this computer. Keep that Terminal open, or stop it with Ctrl+C before starting another.',
+    matching_connector_backend_required: 'This Connector does not match the Firbo service. Download the current firbo-connector.mjs from Firbo → Computers and run it again.',
+  };
+  if (messages[error?.message]) return messages[error.message];
+  if (FILE_ERRORS.has(error?.code)) return `Local file error (${error.code}). Check the allowed folder and permissions in your own Terminal account.`;
+  return error?.message ?? 'connector_failed';
+}
 
 // ---- E1: verified local effects and durable result delivery. No public listener. ----
 export function validateConnectorURL(value) {
@@ -635,6 +651,7 @@ export function localCapabilities(cfg) {
   if (cfg?.allowBrowser === true) kinds.push('browser_open');
   return { job_kinds: kinds };
 }
+const retryableConnection = error => error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
 export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
   if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true)) throw new Error('invalid_local_config');
   cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
@@ -644,8 +661,22 @@ export async function runDurableConnector(cfg, { directory, signal, callFn = con
   const emit = event => { try { onEvent(event); } catch {} };
   try {
     journal.acquire();
-    const protocol = await callFn('capabilities', { token: cfg.token, client_capabilities: localCapabilities(cfg) }, { signal });
+    let protocol;
+    while (!signal?.aborted) {
+      try {
+        protocol = await callFn('capabilities', { token: cfg.token, client_capabilities: localCapabilities(cfg) }, { signal });
+        break;
+      } catch (error) {
+        if (signal?.aborted) return { processed: 0, local_states: journal.counts() };
+        if (!retryableConnection(error)) throw error;
+        emit('connection_retry_without_reexecution');
+        await delay(backoff, signal); backoff = Math.min(backoff * 2, 30_000);
+      }
+    }
+    if (signal?.aborted) return { processed: 0, local_states: journal.counts() };
     if (protocol?.protocol !== 'firbo-connector/v2' || protocol.report_ack !== 'sha256-v1') throw new Error('matching_connector_backend_required');
+    backoff = 1000;
+    emit('connected_to_firbo');
     const recovered = journal.recoverInterrupted();
     if (recovered) emit('interrupted_work_preserved_for_review');
     while (!signal?.aborted) {
@@ -662,14 +693,47 @@ export async function runDurableConnector(cfg, { directory, signal, callFn = con
         emit('result_saved_locally');
       } catch (error) {
         if (signal?.aborted) break;
-        const retry = error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
-        if (!retry) throw error;
+        if (!retryableConnection(error)) throw error;
         emit('connection_retry_without_reexecution');
         await delay(backoff, signal); backoff = Math.min(backoff * 2, 30_000);
       }
     }
     return { processed: completed, local_states: journal.counts() };
   } finally { journal.close(); }
+}
+
+/** Reserve private writable storage BEFORE consuming the one-use code. */
+export async function pairConnector(code, args = {}, { configPath = CONFIG, callFn = connectorCall } = {}) {
+  requireDurableNode();
+  const normalized = typeof code === 'string' ? code.trim().toUpperCase().replace(/[\s-]/g, '') : '';
+  if (!/^[A-Z0-9]{8,20}$/.test(normalized)) throw new Error('invalid_pairing_code');
+  const roots = [];
+  for (const root of args.allow ?? []) roots.push(await fs.realpath(path.resolve(expand(root))));
+  if (!roots.length && args.allowBrowser !== true) throw new Error('no_folder_allowed');
+  const pending = `${configPath}.${randomUUID()}.pending`;
+  let handle;
+  try {
+    const existing = await fs.lstat(configPath).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
+    if (existing && (!existing.isFile() || existing.isSymbolicLink() || existing.nlink !== 1)) throw new Error('unsafe_config');
+    handle = await fs.open(pending, 'wx', 0o600);
+  } catch { throw new Error('pairing_config_unwritable'); }
+  try {
+    const res = await callFn('pair', { code: normalized, platform: `${os.platform()} ${os.arch()}` });
+    if (typeof res?.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
+    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true };
+    try {
+      await handle.writeFile(JSON.stringify(cfg, null, 2));
+      await handle.sync();
+      await handle.close(); handle = null;
+      await fs.rename(pending, configPath);
+    } catch { throw new Error('pairing_config_save_failed'); }
+    return { cfg, deviceName: res.device_name };
+  } finally {
+    if (handle) await handle.close().catch(() => {});
+    await fs.rm(pending, { force: true }).catch(() => {
+      console.warn('Could not remove the private pairing staging file. Check your home folder permissions; do not share Connector settings files.');
+    });
+  }
 }
 
 async function loadConfig() {
@@ -704,16 +768,10 @@ async function main() {
   if (cmd === 'run' || cmd === 'pair') requireDurableNode();
   if (cmd === 'pair') {
     if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser]');
-    const roots = [];
-    for (const r of args.allow) roots.push(await fs.realpath(path.resolve(expand(r))));
-    if (!roots.length && !args.allowBrowser) throw new Error('no_folder_allowed');
-    // Validate local folders before consuming a one-use pairing code.
-    const res = await call('pair', { code: arg, platform: `${os.platform()} ${os.arch()}` });
-    if (typeof res.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: !!args.allowWrite, allowExec: !!args.allowExec, allowBrowser: !!args.allowBrowser, auto: !!args.auto };
-    await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-    console.log(`Paired as "${res.device_name}".`);
-    console.log(roots.length ? `Allowed folders: ${roots.join(', ')}` : 'No folder allowed yet: add --allow <folder> (run pair again with a new code).');
+    const { cfg, deviceName } = await pairConnector(arg, args);
+    const { roots } = cfg;
+    console.log(`Paired as "${deviceName}".`);
+    console.log(roots.length ? `Allowed folders: ${roots.join(', ')}` : 'Browser-only connection: file and shell access are off.');
     console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Ask for write/exec: ${cfg.auto ? 'no' : 'yes'}`);
     console.log('Now run:  node firbo-connector.mjs run');
     return;
@@ -755,7 +813,7 @@ async function main() {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((e) => {
-    console.error(e.message);
+    console.error(connectorDiagnostic(e, process.argv[2]));
     process.exit(1);
   });
 }

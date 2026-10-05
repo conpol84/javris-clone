@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway, claude/omniroute-engine]
     paths: ['frontend/public/firbo-connector.mjs', 'supabase/functions/connector/**', 'tests/firbo/connector-*.test.mjs', 'tests/firbo/helpers/connector-handler.mjs', '.github/workflows/firbo-local-execution.yml']
   pull_request:
-    branches: [claude/omniroute-engine, main]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8, main]
     paths: ['frontend/public/firbo-connector.mjs', 'supabase/functions/connector/**', 'tests/firbo/connector-*.test.mjs', 'tests/firbo/helpers/connector-handler.mjs', '.github/workflows/firbo-local-execution.yml']
   workflow_dispatch:
 permissions:
@@ -17,7 +17,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 8
     steps:

@@ -5,7 +5,8 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { connectorCall, executeJobForReport, localCapabilities, parseArgs, runJob, validateJob } from '../../frontend/public/firbo-connector.mjs';
+import { EventEmitter } from 'node:events';
+import { connectorCall, connectorDiagnostic, executeJobForReport, localCapabilities, openBrowser, pairConnector, parseArgs, runJob, validateJob } from '../../frontend/public/firbo-connector.mjs';
 
 let root, outside;
 before(async () => {
@@ -174,4 +175,56 @@ test('a caller body cannot override the selected operation', async () => {
 });
 test('transport exceptions are not reflected verbatim', async () => {
   await assert.rejects(connectorCall('poll',{}, {fetchImpl:async()=>{throw new Error('secret token inside exception');}}),e=>e.message==='connector_unreachable');
+});
+
+test('Mac browser launcher opens HTTPS using the system launcher without shell permissions', async () => {
+  const result = await openBrowser('https://example.com/mac', { platform: 'darwin', spawnImpl: (file, args, options) => {
+    assert.equal(file, '/usr/bin/open');
+    assert.deepEqual(args, ['https://example.com/mac']);
+    assert.equal(options.shell, false);
+    const child = new EventEmitter();
+    queueMicrotask(() => child.emit('close', 0));
+    return child;
+  } });
+  assert.deepEqual(result, { url: 'https://example.com/mac', launched: true, launcher: '/usr/bin/open' });
+});
+test('failed Mac browser launcher is never reported launched', async () => {
+  await assert.rejects(openBrowser('https://example.com/', { platform: 'darwin', spawnImpl: () => {
+    const child = new EventEmitter(); queueMicrotask(() => child.emit('close', 1)); return child;
+  } }), /browser_open_failed/);
+});
+test('pairing checks writable private config before consuming the one-use code', async () => {
+  let calls = 0;
+  await assert.rejects(pairConnector('ABCD2345', { allowBrowser: true }, {
+    configPath: path.join(root, 'missing-parent', 'connector.json'),
+    callFn: async () => { calls++; return { token: 'a'.repeat(64) }; },
+  }), /pairing_config_unwritable/);
+  assert.equal(calls, 0);
+});
+test('browser-only pairing persists private settings and clears staging files', async () => {
+  const configPath = path.join(root, 'browser-pair.json');
+  const result = await pairConnector('abcd-2345', { allowBrowser: true }, { configPath, callFn: async (action, body) => {
+    assert.equal(action, 'pair'); assert.equal(body.code, 'ABCD2345');
+    assert.equal(body.platform, `${os.platform()} ${os.arch()}`);
+    return { token: 'a'.repeat(64), device_name: 'Synthetic Mac mini' };
+  } });
+  assert.equal(result.deviceName, 'Synthetic Mac mini');
+  const saved = JSON.parse(await fs.readFile(configPath, 'utf8'));
+  assert.deepEqual(saved, { token: 'a'.repeat(64), roots: [], allowWrite: false, allowExec: false, allowBrowser: true, auto: false });
+  if (process.platform !== 'win32') assert.equal((await fs.stat(configPath)).mode & 0o777, 0o600);
+  assert.equal((await fs.readdir(root)).some(name => name.startsWith('browser-pair.json.') && name.endsWith('.pending')), false);
+});
+test('failed pairing leaves an existing configuration intact and removes staging files', async () => {
+  const configPath = path.join(root, 'preserved-pair.json');
+  await fs.writeFile(configPath, 'existing private settings');
+  await assert.rejects(pairConnector('ABCD2345', { allowBrowser: true }, { configPath, callFn: async () => {
+    throw Object.assign(new Error('connector_http_404'), { status: 404 });
+  } }), /connector_http_404/);
+  assert.equal(await fs.readFile(configPath, 'utf8'), 'existing private settings');
+  assert.equal((await fs.readdir(root)).some(name => name.startsWith('preserved-pair.json.') && name.endsWith('.pending')), false);
+});
+test('pairing diagnostics distinguish invalid code from revoked token without revealing private data', () => {
+  assert.match(connectorDiagnostic({ status: 404, message: 'PRIVATE' }, 'pair'), /New code/);
+  assert.match(connectorDiagnostic({ status: 401, message: 'PRIVATE' }, 'run'), /no longer authorized/);
+  assert.doesNotMatch(connectorDiagnostic({ code: 'EACCES', message: '/private/settings/token' }, 'pair'), /private|token/);
 });

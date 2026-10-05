@@ -12,6 +12,8 @@ import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
 import { formatComputerResult } from '../lib/company/computer-state';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
+import { connectorCommands, suggestedComputerPlatform, type ComputerAccess, type ComputerPlatform } from '../lib/company/computer-setup';
+import { computerSetupLabels } from '../lib/company/computer-setup-labels';
 
 type Kind = JobRow['kind'];
 const KINDS: Kind[] = ['list', 'read', 'write', 'exec', 'browser_open'];
@@ -49,6 +51,10 @@ export function ComputersPage() {
 function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boolean }) {
   const { t, fmt, lang } = useI18n();
   const l = computerManagerLabels[lang];
+  const setup = computerSetupLabels[lang];
+  const [platform, setPlatform] = useState<ComputerPlatform>(() => suggestedComputerPlatform(navigator.platform));
+  const [access, setAccess] = useState<ComputerAccess>('browser');
+  const localCommands = connectorCommands(platform, access);
   const [now, setNow] = useState(() => Date.now());
   const live = useRef(true);
   const mutation = useRef(false);
@@ -176,6 +182,16 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
           <>
             <section id="computer-enrollment" className="fb-glass fb-col gap-3 p-5">
               <h2 className="text-base font-semibold">{t('comp.addTitle')}</h2>
+              <p className="text-sm" data-testid="computer-local-setup-note">{setup.localRequired}</p>
+              <label className="fb-col gap-1 text-sm">
+                {setup.platform}
+                <select className="fb-input" data-testid="computer-platform" value={platform} onChange={e => setPlatform(e.target.value as ComputerPlatform)}>
+                  <option value="mac">macOS — Mac mini / MacBook / iMac</option>
+                  <option value="windows">Windows — PowerShell</option>
+                  <option value="linux">Linux — Terminal</option>
+                </select>
+              </label>
+              <p className="fb-dim text-sm">{platform === 'mac' ? setup.terminalMac : platform === 'windows' ? setup.terminalWindows : setup.terminalLinux}</p>
               <form onSubmit={add} className="flex flex-wrap gap-2">
                 <input className="fb-input flex-1" style={{ minWidth: 0 }} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} placeholder={t('comp.namePh')} aria-label={t('comp.namePh')} />
                 <button className="fb-btn fb-btn--primary" disabled={busy || !name.trim()}>{t('comp.addBtn')}</button>
@@ -190,20 +206,38 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                   <CopyLine text="node --version" />
                   <p className="fb-dim text-xs">{t('comp.needNodeResult')}</p>
                   <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> {t('comp.download')}</a>
-                  <div className="fb-eyebrow">{web.pair}</div>
-                  <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow-browser`} />
-                  <p className="fb-dim text-xs">{web.pairNote}</p>
-                  <div className="fb-eyebrow">{t('comp.stepSafe')}</div>
-                  <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow ~/Documents`} />
-                  <details><summary className="cursor-pointer">{t('comp.stepMore')}</summary>
-                    <p className="my-2 text-sm">{l.execWarning}</p>
-                    <CopyLine text={`node firbo-connector.mjs pair ${visiblePair.code} --allow ~/Projects --allow-write --allow-exec`} />
-                  </details>
-                  <div className="fb-eyebrow">{t('comp.stepRun')}</div>
-                  <CopyLine text="node firbo-connector.mjs run" />
+                  <label className="fb-col gap-1 text-sm">
+                    {setup.access}
+                    <select className="fb-input" data-testid="computer-access" value={access} onChange={e => setAccess(e.target.value as ComputerAccess)}>
+                      <option value="browser">{setup.browser}</option>
+                      <option value="files">{setup.files}</option>
+                      <option value="advanced">{setup.advanced}</option>
+                    </select>
+                  </label>
+                  <p className="fb-dim text-xs">{access === 'browser' ? setup.browserNote : access === 'files' ? setup.filesNote : l.execWarning}</p>
+                  <div className="fb-eyebrow">{setup.pair}</div>
+                  <CopyLine text={connectorCommands(platform, access, visiblePair.code).pair!} />
+                  <p className="fb-dim text-xs">{setup.oneUse}</p>
+                  <div className="fb-eyebrow">{setup.run}</div>
+                  <CopyLine text={localCommands.run} />
+                  <p className="text-sm" role="status">{setup.ready}</p>
                   <p className="fb-dim text-xs">{l.cancelNotice}</p>
                 </div>
               )}
+              <details data-testid="computer-setup-troubleshooting">
+                <summary className="cursor-pointer text-sm">{setup.troubleshooting}</summary>
+                <div className="fb-col mt-3 gap-2 text-sm">
+                  <p>{setup.nodeError}</p>
+                  <CopyLine text="node --version" />
+                  <p>{setup.fileError}</p>
+                  <p>{setup.pairError}</p>
+                  <p>{setup.offline}</p>
+                  <CopyLine text={localCommands.run} />
+                  <p>{setup.status}</p>
+                  <CopyLine text={localCommands.status} />
+                  <p className="fb-dim text-xs">{setup.support}</p>
+                </div>
+              </details>
             </section>
 
             <section>
@@ -249,14 +283,17 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
               {!voiceChosen && devices.some(d => d.paired && !d.revoked_at) && <>
                 <p className="fb-dim text-xs">{web.upgrade}</p>
                 <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> {t('comp.download')}</a>
-                <CopyLine text="node firbo-connector.mjs allow-browser" />
+                <CopyLine text={localCommands.allowBrowser} />
               </>}
             </section>
 
             {chosen && (
               <section key={chosen.id} data-testid="computer-workspace" className="fb-glass fb-col gap-3 p-5">
                 <h2 className="text-base font-semibold">{t('comp.workOn', { name: chosen.name })}</h2>
-                {!isOnline(chosen, now) && <p className="text-sm" style={{ color: 'var(--fb-warn)' }}>{t('comp.startIt')}</p>}
+                {!isOnline(chosen, now) && <div className="fb-col gap-2" style={{ color: 'var(--fb-warn)' }}>
+                  <p className="text-sm">{setup.offline}</p>
+                  <CopyLine text={localCommands.run} />
+                </div>}
                 <div className="flex flex-wrap gap-2" role="tablist">
                   {KINDS.map((k) => (
                     <button key={k} role="tab" aria-selected={kind === k} className="fb-chip cursor-pointer" onClick={() => setKind(k)} style={kind === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>
@@ -297,4 +334,3 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
     </div>
   );
 }
-

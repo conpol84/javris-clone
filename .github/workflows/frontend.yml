@@ -4,7 +4,7 @@ on:
     branches: [main, claude/omniroute-engine, codex/firbo-unified-gateway]
     paths: ['frontend/**', 'tests/firbo/**', 'supabase/functions/_shared/**', 'supabase/functions/agent-chat/**', 'supabase/functions/agent-runner/**', '.github/workflows/frontend.yml']
   pull_request:
-    branches: [main, claude/omniroute-engine]
+    branches: [main, claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
     paths: ['frontend/**', 'tests/firbo/**', 'supabase/functions/_shared/**', 'supabase/functions/agent-chat/**', 'supabase/functions/agent-runner/**', '.github/workflows/frontend.yml']
   workflow_dispatch:
 permissions:

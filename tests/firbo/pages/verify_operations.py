@@ -4,6 +4,7 @@ No physical PC, remote account, command, file operation or agent is used.
 """
 
 import json
+import re
 from urllib.parse import urlparse
 
 import verify as v
@@ -27,6 +28,7 @@ except SystemExit:
     layout_failed = True
 reports = []
 CASES = [("computer-actions", w, "loaded", "owner") for w in (320, 390, 768, 1440)]
+CASES += [("computer-mac-setup", w, "loaded", "owner") for w in (320, 1440)]
 CASES += [
     ("computer-state", 320, state, "owner") for state in ("loading", "empty", "error")
 ]
@@ -123,6 +125,75 @@ with sync_playwright() as pw:
                 assert page.locator(".fb-board > *").count() >= 4, (
                     "task columns disappeared"
                 )
+            elif kind == "computer-mac-setup":
+                # Real onboarding DOM; pairing is an in-memory service only.
+                enrollment = page.locator("#computer-enrollment")
+                expect(
+                    page.get_by_test_id("computer-local-setup-note")
+                ).to_contain_text("Adding a name here does not connect the computer")
+                page.get_by_test_id("computer-platform").select_option("mac")
+                expect(enrollment).to_contain_text(
+                    "Applications → Utilities → Terminal"
+                )
+                form = enrollment.locator("form")
+                form.locator("input").fill("Synthetic Mac mini")
+                form.locator("button").click()
+                expect(page.get_by_test_id("pair-code")).to_have_text("DEMO2345")
+                access = page.get_by_test_id("computer-access")
+                expect(access).to_have_value("browser")
+                commands = (
+                    page.get_by_test_id("pair-code")
+                    .locator("..")
+                    .locator(".fb-copyline pre")
+                )
+                pair_command = commands.filter(
+                    has_text=re.compile(r"\bpair\s+DEMO2345\b")
+                )
+                expect(pair_command).to_have_count(1)
+                prefix = 'node "$HOME/Downloads/firbo-connector.mjs"'
+                expect(pair_command).to_have_text(
+                    prefix + " pair DEMO2345 --allow-browser"
+                )
+                expect(pair_command).not_to_contain_text("--allow-exec")
+                expect(pair_command).not_to_contain_text("--allow-write")
+                expect(commands.filter(has_text=re.compile(r"\brun$"))).to_have_text(
+                    prefix + " run"
+                )
+                expect(enrollment).to_contain_text("The code expires and works once")
+                expect(enrollment).to_contain_text("keep this Terminal window open")
+                access.select_option("files")
+                expect(pair_command).to_have_text(
+                    prefix + ' pair DEMO2345 --allow "$HOME/Documents" --allow-browser'
+                )
+                expect(pair_command).not_to_contain_text("--allow-write")
+                expect(pair_command).not_to_contain_text("--allow-exec")
+                access.select_option("advanced")
+                expect(pair_command).to_contain_text("--allow-write --allow-exec")
+                expect(enrollment).to_contain_text(
+                    "a shell command is NOT confined to the allowed folder"
+                )
+                access.select_option("browser")
+                troubleshooting = page.get_by_test_id("computer-setup-troubleshooting")
+                troubleshooting.locator("summary").click()
+                expect(troubleshooting).to_contain_text("Cannot find module")
+                expect(troubleshooting).to_contain_text("22.13 or newer")
+                expect(troubleshooting).to_contain_text("Expired or invalid code")
+                expect(troubleshooting).to_contain_text("Do not send")
+                expect(
+                    troubleshooting.locator("pre").filter(
+                        has_text=re.compile(r"\bstatus$")
+                    )
+                ).to_have_text(prefix + " status")
+                # Regeneration must replace the copyable code without granting readiness.
+                card = page.get_by_test_id("select-device-created").locator("..")
+                card.get_by_role("button", name="New code", exact=True).click()
+                expect(page.get_by_test_id("pair-code")).to_have_text("DEMO3456")
+                expect(
+                    commands.filter(has_text=re.compile(r"\bpair\s+DEMO3456\b"))
+                ).to_have_text(prefix + " pair DEMO3456 --allow-browser")
+                expect(pair_command).to_have_count(0)
+                expect(card).to_contain_text("Waiting for pairing")
+                expect(page.get_by_test_id("select-device-created")).to_be_disabled()
             elif kind in ("computer-actions", "computer-race"):
                 expect(page.get_by_test_id("select-device-d1")).to_be_visible()
                 page.get_by_test_id("select-device-d1").click()
@@ -191,6 +262,7 @@ with sync_playwright() as pw:
                 in (
                     "profiles.update",
                     "connector:create_device",
+                    "connector:new_code",
                     "connector:cancel_job",
                 )
                 for x in writes

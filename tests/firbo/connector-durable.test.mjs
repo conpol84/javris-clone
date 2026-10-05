@@ -183,6 +183,24 @@ test('old backend protocol cannot trigger a poll or a local effect',async t=>{
  await assert.rejects(runDurableConnector({token,roots:[root]},{directory:root,maxJobs:1,callFn:async(a)=>{calls.push(a);return {ok:true};}}),/matching_connector_backend_required/);
  assert.deepEqual(calls,['capabilities']);
 });
+test('temporary connection failure during startup retries before polling any work', async t => {
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'firbo-startup-retry-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const calls=[], events=[];
+ const result=await runDurableConnector({token,roots:[],allowBrowser:true},{directory:root,maxJobs:0,
+  callFn:async action=>{calls.push(action);if(calls.length===1)throw new Error('connector_unreachable');return {protocol:'firbo-connector/v2',report_ack:'sha256-v1'};},
+  onEvent:event=>events.push(event)});
+ assert.deepEqual(calls,['capabilities','capabilities']);
+ assert.deepEqual(events,['connection_retry_without_reexecution','connected_to_firbo']);
+ assert.equal(result.processed,0);assert.deepEqual(result.local_states,[]);
+});
+test('revoked startup authentication fails immediately without retrying or polling', async t => {
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'firbo-startup-revoked-'));t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ const calls=[];
+ await assert.rejects(runDurableConnector({token,roots:[],allowBrowser:true},{directory:root,maxJobs:0,callFn:async action=>{
+  calls.push(action);throw Object.assign(new Error('connector_http_401'),{status:401});
+ }}),error=>error.status===401);
+ assert.deepEqual(calls,['capabilities']);
+});
 test('real failed process result persists as failure through receipt delivery',async t=>{
  const {root,cfg,journal}=await setup(t);const j={id:randomUUID(),kind:'exec',params:{cwd:root,command:`"${process.execPath}" -e "process.exit(7)"`}};
  await executeJournaled(j,{...cfg,allowExec:true},journal);assert.equal(journal.pending()[0].error,'command_failed_exit_7');
