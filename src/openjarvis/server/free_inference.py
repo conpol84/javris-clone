@@ -79,7 +79,10 @@ class Limits:
 
 
 class Ledger:
-    """Atomic admission, idempotency and pool leases.\n\n    Prompts, answers and secrets are never stored.\n    """
+    """Atomic admission, idempotency and pool leases.
+
+    Prompts, answers and secrets are never stored.
+    """
 
     def __init__(self, path: str, limits: Limits = Limits()):
         self.path, self.limits = path, limits
@@ -382,7 +385,8 @@ class FreeEngine:
                             continue
                         try:
                             if route.kind == "openrouter":
-                                # Discovery is not paid inference. Fail closed if prices\n                                # are missing or change.
+                                # Discovery is not paid inference. Fail closed if prices
+                                # are missing or change.
                                 async with client.stream(
                                     "GET", CLOUD_URL + "/models"
                                 ) as response:
