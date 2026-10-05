@@ -258,7 +258,9 @@ Deno.serve(async (req) => {
   const latency = Date.now() - t0;
   // The CEO may put the owner through to the employee who did the work: the reply then carries a marker the app shows as a button.
   const raw = String(completion.choices[0].message.content);
-  const reply: string = isCeo ? handoffFrom(raw, ag.filter((x: any) => x.enabled !== false).map((x: any) => ({ id: x.id, name: x.name })), agent.id).text : raw;
+  // From Telegram/WhatsApp (server-to-server) there is no button to show, so the hand-over line is only removed.
+  const viaChannel = reader !== userClient;
+  const reply: string = isCeo ? handoffFrom(raw, viaChannel ? [] : ag.filter((x: any) => x.enabled !== false).map((x: any) => ({ id: x.id, name: x.name })), agent.id).text : raw;
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
   const ownUsed = !!own && used === own;
