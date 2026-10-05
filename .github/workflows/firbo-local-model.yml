@@ -2,10 +2,10 @@ name: Firbo actual local-model install and useful draft
 on:
   push:
     branches: [codex/firbo-unified-gateway]
-    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
+    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','src/openjarvis/server/local_tts.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
   pull_request:
     branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
-    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
+    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','src/openjarvis/server/local_tts.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
 permissions:
   contents: read
 concurrency:

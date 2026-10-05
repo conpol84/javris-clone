@@ -40,8 +40,14 @@ def test_actual_canary_accepts_current_runtime_and_denies_anonymous_requests(
     monkeypatch,
 ):
     from fastapi.testclient import TestClient
+    from test_control_plane import (
+        _install_isolated_modules,
+        _restore_openjarvis,
+        _snapshot_openjarvis,
+        load,
+    )
 
-    from openjarvis.server.firbo_free_app import app
+    app = load("firbo_free_app").app
 
     requests = []
 
@@ -78,8 +84,13 @@ def test_actual_canary_accepts_current_runtime_and_denies_anonymous_requests(
     monkeypatch.setattr(urllib.request, "urlopen", in_process_urlopen)
     monkeypatch.setattr(rollout.time, "sleep", unexpected_retry)
     probe = InProcessCanary()
-    with TestClient(app) as client:
-        assert rollout.check_api(probe, "candidate") is True
+    snapshot = _snapshot_openjarvis()
+    try:
+        _install_isolated_modules()
+        with TestClient(app) as client:
+            assert rollout.check_api(probe, "candidate") is True
+    finally:
+        _restore_openjarvis(snapshot)
     assert probe.result["hashes"] == rollout.SOURCE_HASHES
     assert requests == [
         ("GET", "/health"),
