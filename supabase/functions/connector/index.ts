@@ -6,6 +6,7 @@
 // The computer's owner stays in control locally: the program enforces its own allowed folders and refuses anything
 // it was not started with (no writing, no commands) no matter what this service sends.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { APP_NAME, cleanPolicy } from '../_shared/computer-policy.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -35,7 +36,7 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open']);
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','open_app','shortcut']);
 function browserUrl(value: unknown): string | null {
   const raw = str(value, 2048).trim();
   if (!raw || /[\r\n\0]/.test(raw)) return null;
@@ -46,14 +47,16 @@ function browserUrl(value: unknown): string | null {
     return url.href;
   } catch { return null; }
 }
-function cleanClientCapabilities(value: unknown): { job_kinds: string[] } {
+function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?: string[] } {
   const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const kinds = Array.isArray(record.job_kinds) ? record.job_kinds.filter((x): x is string => typeof x === 'string' && DEVICE_JOB_KINDS.has(x)) : [];
-  return { job_kinds: [...new Set(kinds)].slice(0, 8) };
+  // The computer's allowed folders, so AI employees ask for paths that exist. Plain path strings only.
+  const roots = Array.isArray(record.roots) ? record.roots.filter((x): x is string => typeof x === 'string' && x.length <= 300 && !/[\0\r\n]/.test(x)) : [];
+  return roots.length ? { job_kinds: [...new Set(kinds)].slice(0, 8), roots: roots.slice(0, 8) } : { job_kinds: [...new Set(kinds)].slice(0, 8) };
 }
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open']);
-export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'; params: Record<string, unknown> } | null {
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'|'open_app'|'shortcut'; params: Record<string, unknown> } | null {
   const name=action.trim().toLowerCase();
   const path=str(payload.path,500);
   if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
@@ -65,6 +68,8 @@ export function executionForApproval(action: string, payload: Record<string, unk
   if (name==='browser_open'||name==='computer_browser_open') {
     const url=browserUrl(payload.url); return url?{kind:'browser_open',params:{url}}:null;
   }
+  if (name==='computer_open_app') { const app=str(payload.app,60).trim(); return APP_NAME.test(app)?{kind:'open_app',params:{app}}:null; }
+  if (name==='computer_shortcut') { const shortcut=str(payload.name,60).trim(); return APP_NAME.test(shortcut)?{kind:'shortcut',params:{name:shortcut}}:null; }
   return null;
 }
 
@@ -330,6 +335,10 @@ Deno.serve(async (req) => {
       const url = browserUrl(p.url);
       if (!url) return json(400, { error: 'bad_request' });
       params = { url };
+    } else if (kind === 'open_app' || kind === 'shortcut') {
+      const name = str(kind === 'open_app' ? p.app : p.name, 60).trim();
+      if (!APP_NAME.test(name)) return json(400, { error: 'bad_request' });
+      params = kind === 'open_app' ? { app: name } : { name };
     } else {
       return json(400, { error: 'bad_request' });
     }
@@ -339,6 +348,18 @@ Deno.serve(async (req) => {
     if (error || !job) return json(500, { error: 'save_failed' });
     await audit(dev.organization_id, 'connector.job', job.id, { device: dev.name, kind, path: params.path ?? null, command: params.command ?? null, browser_host: params.url ? new URL(String(params.url)).hostname : null });
     return json(200, { job_id: job.id });
+  }
+
+  // What AI employees may do on this computer (owners and admins). Stored cleaned; the agent runner reads it again before every job.
+  if (action === 'set_policy') {
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, revoked_at, name').eq('id', str(body.device_id, 60)).maybeSingle();
+    if (!dev || dev.revoked_at) return json(404, { error: 'not_found' });
+    if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
+    const policy = cleanPolicy(body.policy);
+    const { error } = await admin.from('connector_devices').update({ agent_policy: policy }).eq('id', dev.id);
+    if (error) return json(503, { error: 'save_failed' });
+    await audit(dev.organization_id, 'connector.agent_policy', dev.id, { name: dev.name, enabled: policy.enabled, writes: policy.writes, commands: policy.commands, apps: policy.apps.length, hours: policy.hours });
+    return json(200, { ok: true, policy });
   }
 
   if (action === 'cancel_job') {

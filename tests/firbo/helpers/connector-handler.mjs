@@ -3,6 +3,7 @@
 import fs from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { createHash, webcrypto, randomUUID } from 'node:crypto';
+import * as computerPolicy from '../../../supabase/functions/_shared/computer-policy.ts';
 export const TOKEN = 'a'.repeat(64), ORG = '22222222-2222-4222-8222-222222222222', DEVICE = '33333333-3333-4333-8333-333333333333';
 export async function makeHandler() {
  const state = { rows: {
@@ -56,9 +57,11 @@ export async function makeHandler() {
  const source=await fs.readFile(new URL('../../../supabase/functions/connector/index.ts',import.meta.url),'utf8');
  const original="import { createClient } from 'npm:@supabase/supabase-js@2';";
  if(!source.includes(original))throw new Error('test adapter must be reviewed after SDK import changes');
- const code=stripTypeScriptTypes(source.replace(original,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
+ const policyImport="import { APP_NAME, cleanPolicy } from '../_shared/computer-policy.ts';";
+ if(!source.includes(policyImport))throw new Error('test adapter must be reviewed after policy import changes');
+ const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
  const deno={env:{get:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
- new Function('Deno','createClient','crypto',code)(deno,()=>sdk,webcrypto);
+ new Function('Deno','createClient','crypto','APP_NAME','cleanPolicy',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.cleanPolicy);
  const invoke=body=>handler(new Request('https://synthetic.invalid/connector',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
  return {state,handler,invoke};
 }

@@ -898,6 +898,7 @@ const zhCN: Dictionary = {
   "studio.power.image_generate": "根据描述生成图片并加入报告。",
   "studio.power.image_analyze": "查看图片并描述它或回答相关问题。",
   "studio.power.code_interpreter": "在服务器上安全运行 Python，用于数据分析和精确结果。",
+  "studio.power.computer_use": "在公司已配对的电脑上工作：打开应用和网页、读写文件、运行安全命令；风险较高的步骤等待你的批准。",
   "studio.power.other": "此智能体的一项工具权限。",
   "ceo.live": "已连接 {agents} 名员工 · {active} 人正在工作",
   "team.stage.hint": "点击一个人让他走到前面并编辑。拖动可环顾四周。",

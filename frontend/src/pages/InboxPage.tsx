@@ -99,6 +99,11 @@ export function InboxPage() {
   const [sent, setSent] = useState<Record<string, string>>({});
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [deviceTarget, setDeviceTarget] = useState<Record<string,string>>({});
+  // The computer an AI employee chose for this step comes first; the owner can still pick another one.
+  const deviceFor=(a:{id:string;payload?:unknown})=>{
+    const chosen=(a.payload as {device_id?:unknown}|null)?.device_id;
+    return deviceTarget[a.id]??(typeof chosen==='string'&&devices.some(d=>d.id===chosen)?chosen:devices[0]?.id);
+  };
   const computerCopy: Record<string,[string,string]> = {
     en:['Select computer','Pair a computer first in My computers.'], el:['Επίλεξε υπολογιστή','Σύνδεσε πρώτα υπολογιστή στο My computers.'],
     es:['Seleccionar ordenador','Conecta primero un ordenador en My computers.'], 'pt-BR':['Selecionar computador','Conecte primeiro um computador em My computers.'],
@@ -165,7 +170,7 @@ export function InboxPage() {
     try {
       if (isComputerApprovalAction(a.action)) {
         if (!canRunComputer) throw new Error('computer_owner_required');
-        const deviceId=deviceTarget[a.id]??devices[0]?.id;
+        const deviceId=deviceFor(a);
         if (status==='approved' && !deviceId) { toast.error(cc[1]); return; }
         await decideComputerApproval({approval_id:a.id,decision:status,device_id:status==='approved'?deviceId:undefined,note:notes[a.id],payload});
       } else {
@@ -262,7 +267,7 @@ export function InboxPage() {
                         />
                         {isComputerApprovalAction(a.action) && (
                           <select className="fb-input" style={{width:'auto',minWidth:160}} disabled={!canRunComputer||busy===a.id||devices.length===0}
-                            aria-label={cc[0]} value={deviceTarget[a.id]??devices[0]?.id??''}
+                            aria-label={cc[0]} value={deviceFor(a)??''}
                             onChange={e=>setDeviceTarget({...deviceTarget,[a.id]:e.target.value})}>
                             {devices.length===0?<option value="">{cc[1]}</option>:devices.map(d=><option key={d.id} value={d.id}>{d.name+(d.platform?' · '+d.platform:'')}</option>)}
                           </select>

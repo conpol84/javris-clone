@@ -31,6 +31,7 @@ const en = {
   cAppSecret: 'App secret (Meta app settings)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'In your Meta app, set this callback URL and verify token for WhatsApp webhooks.',
   aAsk: 'Ask {name}', aFound: 'What it found',
+  xTitle: 'AI employees on this computer', xHelp: 'Let your AI team use this computer in tasks and shifts. Reading files, opening pages and the apps below happen at once; riskier steps wait for your approval in the Inbox; passwords, banking and system settings are never allowed.', xOn: 'AI employees may use this computer', xApps: 'Apps they open without asking (comma separated)', xShortcuts: 'Shortcuts they run without asking (comma separated)', xWrites: 'New files in the allowed folders', xCommands: 'Terminal commands', xAuto: 'Without asking', xAsk: 'Ask me first', xNever: 'Never', xSafe: 'Safe read-only ones without asking, the rest ask me', xHours: 'Only during these hours', xFrom: 'from', xTo: 'to', xSave: 'Save rules', xSaved: 'Saved.', xLocal: 'On the computer, also allow it once in the Connector, then restart it:', xByAi: 'AI', xKindApp: 'Open app', xKindShortcut: 'Shortcut', xPower: 'Then give an employee the power “Use the company computer” in Agent Studio.',
 };
 type Copy = typeof en;
 
@@ -63,6 +64,7 @@ const el: Copy = {
   cAppSecret: 'App secret (ρυθμίσεις εφαρμογής Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'Στην εφαρμογή Meta, βάλτε αυτό το callback URL και verify token για τα webhooks του WhatsApp.',
   aAsk: 'Ρώτησε: {name}', aFound: 'Τι βρήκε',
+  xTitle: 'AI υπάλληλοι σε αυτόν τον υπολογιστή', xHelp: 'Η ομάδα AI μπορεί να χρησιμοποιεί αυτόν τον υπολογιστή σε εργασίες και βάρδιες. Ανάγνωση αρχείων, άνοιγμα σελίδων και οι παρακάτω εφαρμογές γίνονται αμέσως· τα πιο ριψοκίνδυνα περιμένουν την έγκρισή σου στα Εισερχόμενα· κωδικοί, τράπεζες και ρυθμίσεις συστήματος δεν επιτρέπονται ποτέ.', xOn: 'Οι AI υπάλληλοι μπορούν να χρησιμοποιούν αυτόν τον υπολογιστή', xApps: 'Εφαρμογές που ανοίγουν χωρίς να ρωτήσουν (με κόμμα)', xShortcuts: 'Shortcuts που τρέχουν χωρίς να ρωτήσουν (με κόμμα)', xWrites: 'Νέα αρχεία στους επιτρεπόμενους φακέλους', xCommands: 'Εντολές τερματικού', xAuto: 'Χωρίς ερώτηση', xAsk: 'Να με ρωτάνε', xNever: 'Ποτέ', xSafe: 'Οι ασφαλείς (μόνο ανάγνωση) χωρίς ερώτηση, οι άλλες να με ρωτάνε', xHours: 'Μόνο αυτές τις ώρες', xFrom: 'από', xTo: 'έως', xSave: 'Αποθήκευση κανόνων', xSaved: 'Αποθηκεύτηκε.', xLocal: 'Στον υπολογιστή, επίτρεψέ το και στο Connector μία φορά και μετά ξεκίνησέ το ξανά:', xByAi: 'AI', xKindApp: 'Άνοιγμα εφαρμογής', xKindShortcut: 'Shortcut', xPower: 'Μετά δώσε σε έναν υπάλληλο τη δύναμη «Χρήση του υπολογιστή της εταιρείας» στο Agent Studio.',
 };
 
 const es: Copy = {
@@ -94,6 +96,7 @@ const es: Copy = {
   cAppSecret: 'App secret (ajustes de la app de Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'En tu app de Meta, configura esta callback URL y el verify token para los webhooks de WhatsApp.',
   aAsk: 'Preguntar a {name}', aFound: 'Qué encontró',
+  xTitle: 'Empleados IA en este ordenador', xHelp: 'Tu equipo de IA puede usar este ordenador en tareas y turnos. Leer archivos, abrir páginas y las apps de abajo ocurre al momento; los pasos más arriesgados esperan tu aprobación en la Bandeja; contraseñas, bancos y ajustes del sistema nunca se permiten.', xOn: 'Los empleados IA pueden usar este ordenador', xApps: 'Apps que abren sin preguntar (separadas por comas)', xShortcuts: 'Atajos que ejecutan sin preguntar (separados por comas)', xWrites: 'Archivos nuevos en las carpetas permitidas', xCommands: 'Comandos de terminal', xAuto: 'Sin preguntar', xAsk: 'Preguntarme antes', xNever: 'Nunca', xSafe: 'Los seguros de solo lectura sin preguntar, el resto me pregunta', xHours: 'Solo en este horario', xFrom: 'de', xTo: 'a', xSave: 'Guardar reglas', xSaved: 'Guardado.', xLocal: 'En el ordenador, permítelo también una vez en el Connector y reinícialo:', xByAi: 'IA', xKindApp: 'Abrir app', xKindShortcut: 'Atajo', xPower: 'Luego da a un empleado el poder «Usar el ordenador de la empresa» en Agent Studio.',
 };
 
 const ptBR: Copy = {
@@ -125,6 +128,7 @@ const ptBR: Copy = {
   cAppSecret: 'App secret (configurações do app Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'No seu app Meta, configure esta callback URL e o verify token para os webhooks do WhatsApp.',
   aAsk: 'Perguntar a {name}', aFound: 'O que encontrou',
+  xTitle: 'Funcionários de IA neste computador', xHelp: 'Sua equipe de IA pode usar este computador em tarefas e turnos. Ler arquivos, abrir páginas e os apps abaixo acontece na hora; passos mais arriscados esperam sua aprovação na Caixa de entrada; senhas, bancos e configurações do sistema nunca são permitidos.', xOn: 'Funcionários de IA podem usar este computador', xApps: 'Apps que abrem sem perguntar (separados por vírgula)', xShortcuts: 'Atalhos que rodam sem perguntar (separados por vírgula)', xWrites: 'Arquivos novos nas pastas permitidas', xCommands: 'Comandos do terminal', xAuto: 'Sem perguntar', xAsk: 'Perguntar antes', xNever: 'Nunca', xSafe: 'Os seguros de só leitura sem perguntar, os outros perguntam', xHours: 'Só neste horário', xFrom: 'das', xTo: 'às', xSave: 'Salvar regras', xSaved: 'Salvo.', xLocal: 'No computador, permita também uma vez no Connector e reinicie-o:', xByAi: 'IA', xKindApp: 'Abrir app', xKindShortcut: 'Atalho', xPower: 'Depois dê a um funcionário o poder “Usar o computador da empresa” no Agent Studio.',
 };
 
 const de: Copy = {
@@ -156,6 +160,7 @@ const de: Copy = {
   cAppSecret: 'App-Secret (Meta-App-Einstellungen)', cCallback: 'Callback-URL', cVerify: 'Verify-Token',
   cMetaHelp: 'Trage in deiner Meta-App diese Callback-URL und das Verify-Token für WhatsApp-Webhooks ein.',
   aAsk: '{name} fragen', aFound: 'Was gefunden wurde',
+  xTitle: 'KI-Mitarbeiter auf diesem Computer', xHelp: 'Dein KI-Team darf diesen Computer in Aufgaben und Schichten nutzen. Dateien lesen, Seiten und die Apps unten öffnen geschieht sofort; riskantere Schritte warten im Posteingang auf deine Freigabe; Passwörter, Banking und Systemeinstellungen sind nie erlaubt.', xOn: 'KI-Mitarbeiter dürfen diesen Computer nutzen', xApps: 'Apps, die ohne Nachfrage geöffnet werden (mit Komma)', xShortcuts: 'Kurzbefehle ohne Nachfrage (mit Komma)', xWrites: 'Neue Dateien in den erlaubten Ordnern', xCommands: 'Terminal-Befehle', xAuto: 'Ohne Nachfrage', xAsk: 'Vorher fragen', xNever: 'Nie', xSafe: 'Sichere Lesebefehle ohne Nachfrage, der Rest fragt', xHours: 'Nur zu diesen Zeiten', xFrom: 'von', xTo: 'bis', xSave: 'Regeln speichern', xSaved: 'Gespeichert.', xLocal: 'Auf dem Computer auch einmal im Connector erlauben und ihn neu starten:', xByAi: 'KI', xKindApp: 'App öffnen', xKindShortcut: 'Kurzbefehl', xPower: 'Gib dann einem Mitarbeiter im Agent Studio die Fähigkeit „Firmencomputer nutzen“.',
 };
 
 const fr: Copy = {
@@ -187,6 +192,7 @@ const fr: Copy = {
   cAppSecret: 'App secret (réglages de l’app Meta)', cCallback: 'URL de rappel', cVerify: 'Jeton de vérification',
   cMetaHelp: 'Dans votre app Meta, indiquez cette URL de rappel et ce jeton pour les webhooks WhatsApp.',
   aAsk: 'Demander à {name}', aFound: 'Ce qui a été trouvé',
+  xTitle: 'Employés IA sur cet ordinateur', xHelp: 'Votre équipe IA peut utiliser cet ordinateur dans ses tâches et ses horaires. Lire des fichiers, ouvrir des pages et les apps ci-dessous se fait tout de suite ; les étapes plus risquées attendent votre accord dans la Boîte de réception ; mots de passe, banque et réglages système ne sont jamais permis.', xOn: 'Les employés IA peuvent utiliser cet ordinateur', xApps: 'Apps ouvertes sans demander (séparées par des virgules)', xShortcuts: 'Raccourcis lancés sans demander (séparés par des virgules)', xWrites: 'Nouveaux fichiers dans les dossiers autorisés', xCommands: 'Commandes du terminal', xAuto: 'Sans demander', xAsk: 'Me demander', xNever: 'Jamais', xSafe: 'Les sûres en lecture seule sans demander, les autres me demandent', xHours: 'Seulement à ces heures', xFrom: 'de', xTo: 'à', xSave: 'Enregistrer les règles', xSaved: 'Enregistré.', xLocal: 'Sur l’ordinateur, autorisez-le aussi une fois dans le Connector puis relancez-le :', xByAi: 'IA', xKindApp: 'Ouvrir une app', xKindShortcut: 'Raccourci', xPower: 'Donnez ensuite à un employé le pouvoir « Utiliser l’ordinateur de l’entreprise » dans Agent Studio.',
 };
 
 const zh: Copy = {
@@ -218,6 +224,7 @@ const zh: Copy = {
   cAppSecret: 'App secret（Meta 应用设置）', cCallback: '回调 URL', cVerify: '验证令牌',
   cMetaHelp: '在你的 Meta 应用中，为 WhatsApp webhook 设置此回调 URL 和验证令牌。',
   aAsk: '问 {name}', aFound: '找到的内容',
+  xTitle: '这台电脑上的 AI 员工', xHelp: '让 AI 团队在任务和班次中使用这台电脑。读取文件、打开网页和下面的应用会立即执行；风险较高的步骤会在收件箱等待你的批准；密码、银行和系统设置永远不允许。', xOn: 'AI 员工可以使用这台电脑', xApps: '无需询问即可打开的应用（用逗号分隔）', xShortcuts: '无需询问即可运行的快捷指令（用逗号分隔）', xWrites: '允许文件夹中的新文件', xCommands: '终端命令', xAuto: '无需询问', xAsk: '先问我', xNever: '从不', xSafe: '安全的只读命令无需询问，其余先问我', xHours: '仅限这些时间', xFrom: '从', xTo: '到', xSave: '保存规则', xSaved: '已保存。', xLocal: '在电脑上，也要在 Connector 中允许一次，然后重新启动：', xByAi: 'AI', xKindApp: '打开应用', xKindShortcut: '快捷指令', xPower: '然后在 Agent Studio 中给员工“使用公司电脑”能力。',
 };
 
 const ar: Copy = {
@@ -249,6 +256,7 @@ const ar: Copy = {
   cAppSecret: 'App secret (إعدادات تطبيق Meta)', cCallback: 'رابط الاستدعاء', cVerify: 'رمز التحقق',
   cMetaHelp: 'في تطبيق Meta، اضبط رابط الاستدعاء ورمز التحقق هذين لـ webhooks واتساب.',
   aAsk: 'اسأل {name}', aFound: 'ما الذي وجده',
+  xTitle: 'موظفو الذكاء الاصطناعي على هذا الحاسوب', xHelp: 'اسمح لفريق الذكاء الاصطناعي باستخدام هذا الحاسوب في المهام والورديات. قراءة الملفات وفتح الصفحات والتطبيقات أدناه تتم فورًا؛ الخطوات الأكثر خطورة تنتظر موافقتك في البريد الوارد؛ كلمات المرور والبنوك وإعدادات النظام غير مسموح بها أبدًا.', xOn: 'يمكن لموظفي الذكاء الاصطناعي استخدام هذا الحاسوب', xApps: 'تطبيقات تُفتح دون سؤال (مفصولة بفواصل)', xShortcuts: 'اختصارات تُشغَّل دون سؤال (مفصولة بفواصل)', xWrites: 'ملفات جديدة في المجلدات المسموح بها', xCommands: 'أوامر الطرفية', xAuto: 'دون سؤال', xAsk: 'اسألني أولًا', xNever: 'أبدًا', xSafe: 'الأوامر الآمنة للقراءة فقط دون سؤال، والباقي يسألني', xHours: 'في هذه الساعات فقط', xFrom: 'من', xTo: 'إلى', xSave: 'حفظ القواعد', xSaved: 'تم الحفظ.', xLocal: 'على الحاسوب، اسمح بذلك أيضًا مرة واحدة في Connector ثم أعد تشغيله:', xByAi: 'ذكاء', xKindApp: 'فتح تطبيق', xKindShortcut: 'اختصار', xPower: 'ثم امنح موظفًا قدرة «استخدام حاسوب الشركة» في Agent Studio.',
 };
 
 const COPY: Record<string, Copy> = { en, el, es, 'pt-BR': ptBR, de, fr, 'zh-CN': zh, ar };

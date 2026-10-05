@@ -4,6 +4,7 @@
 //   node firbo-connector.mjs pair ABCD2345 --allow ~/Projects            (read-only: list and read files)
 //   node firbo-connector.mjs pair ABCD2345 --allow-browser                (website/voice may open HTTPS pages)
 //   node firbo-connector.mjs pair ABCD2345 --allow ~/Projects --allow-write --allow-exec --allow-browser
+//   node firbo-connector.mjs allow-apps                                  (macOS: AI employees may open apps and run your Shortcuts)
 //   node firbo-connector.mjs run                                         (keep this window open)
 //   node firbo-connector.mjs status | forget
 //
@@ -12,6 +13,7 @@
 //   - --allow-exec is a general shell as your local user; its cwd does NOT confine what it can access
 //   - writing files needs --allow-write, running commands needs --allow-exec; without them those jobs are refused
 //   - opening HTTPS pages needs --allow-browser; it never grants file or shell access
+//   - opening apps and running Shortcuts (macOS) needs --allow-apps; a Shortcut asks for your y/n unless --auto
 //   - unless you pass --auto, every write and command waits for your y/n in this window
 //   - nothing is installed, nothing listens on your network: this program only calls Firbo and asks for jobs
 // Needs Node.js 22.13+ for durable execution (built-in SQLite). No npm packages.
@@ -41,13 +43,14 @@ const LOCAL_ERRORS = new Set([
   'declined_on_this_computer', 'commands_disabled', 'unknown_job',
   'operation_stopped', 'unsafe_file_type', 'write_verification_failed', 'process_spawn_failed', 'reserved_local_path',
   'browser_disabled', 'invalid_browser_url', 'browser_open_failed',
+  'apps_disabled', 'apps_unsupported', 'invalid_app_name', 'app_open_failed', 'shortcut_failed',
 ]);
 const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'ENOTDIR', 'EISDIR', 'ELOOP']);
 
 /** Validate independently of the server. A job cannot grant its own local powers. */
 export function validateJob(job) {
   if (!job || typeof job !== 'object' || Array.isArray(job)) throw new Error('bad_job');
-  if (!['list', 'read', 'write', 'exec', 'browser_open'].includes(job.kind)) throw new Error('unknown_job');
+  if (!['list', 'read', 'write', 'exec', 'browser_open', 'open_app', 'shortcut'].includes(job.kind)) throw new Error('unknown_job');
   const p = job.params ?? {};
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('bad_job_params');
   const validPath = value => value === undefined || (typeof value === 'string' && value.length <= 500 && !value.includes('\0'));
@@ -56,7 +59,34 @@ export function validateJob(job) {
   if (job.kind === 'write' && (typeof p.content !== 'string' || p.content.length > MAX_CONTENT || (p.overwrite !== undefined && typeof p.overwrite !== 'boolean'))) throw new Error('bad_job_params');
   if (job.kind === 'exec' && (typeof p.command !== 'string' || !p.command.trim() || p.command.length > 500 || p.command.includes('\0'))) throw new Error('bad_job_params');
   if (job.kind === 'browser_open' && (typeof p.url !== 'string' || !p.url.trim() || p.url.length > 2048 || /[\r\n\0]/.test(p.url))) throw new Error('bad_job_params');
+  if (job.kind === 'open_app' && !APP_NAME.test(typeof p.app === 'string' ? p.app : '')) throw new Error('invalid_app_name');
+  if (job.kind === 'shortcut' && !APP_NAME.test(typeof p.name === 'string' ? p.name : '')) throw new Error('invalid_app_name');
   return p;
+}
+
+// An app or Shortcut name: letters, digits, spaces and a few signs. Never a path, never options.
+export const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._&+'()-]{0,59}$/u;
+
+/** macOS only: `open -a <App>` or `shortcuts run <Name>`, without a shell. Resolves when the launcher finishes. */
+export async function launchMac(kind, name, { spawnImpl = spawn, platform = process.platform, timeoutMs = 60_000 } = {}) {
+  if (platform !== 'darwin') throw new Error('apps_unsupported');
+  if (!APP_NAME.test(name)) throw new Error('invalid_app_name');
+  const [cmd, args, failure] = kind === 'open_app' ? ['/usr/bin/open', ['-a', name], 'app_open_failed'] : ['/usr/bin/shortcuts', ['run', name], 'shortcut_failed'];
+  return await new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error); else resolve(kind === 'open_app' ? { app: name, opened: true } : { name, ran: true });
+    };
+    const timer = setTimeout(() => finish(new Error(failure)), kind === 'open_app' ? 15_000 : timeoutMs);
+    try {
+      const child = spawnImpl(cmd, args, { shell: false, stdio: 'ignore' });
+      child.once('error', () => finish(new Error(failure)));
+      child.once('close', code => finish(code === 0 ? undefined : new Error(failure)));
+    } catch { finish(new Error(failure)); }
+  });
 }
 
 export function normalizeBrowserUrl(value) {
@@ -176,7 +206,7 @@ async function confirmLocally(cfg, question, signal) {
   return /^y(es)?$/i.test(String(answer).trim());
 }
 
-export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, browserLauncher = openBrowser } = {}) {
+export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, browserLauncher = openBrowser, macLauncher = launchMac } = {}) {
   stopCheck(signal);
   const p = validateJob(job);
   if (!cfg || !Array.isArray(cfg.roots) || cfg.roots.some(root => typeof root !== 'string' || !root)) throw new Error('no_folder_allowed');
@@ -185,6 +215,15 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
     if (cfg.allowBrowser !== true) throw new Error('browser_disabled');
     stopCheck(signal);
     return await browserLauncher(normalizeBrowserUrl(p.url));
+  }
+  if (job.kind === 'open_app' || job.kind === 'shortcut') {
+    if (cfg.allowApps !== true) throw new Error('apps_disabled');
+    // A Shortcut can do anything you built into it: ask here unless you chose --auto. Opening an app does not ask.
+    if (job.kind === 'shortcut' && !(await confirmLocally(cfg, `Firbo wants to run your Shortcut "${p.name}". Allow?`, signal))) {
+      stopCheck(signal); throw new Error('declined_on_this_computer');
+    }
+    stopCheck(signal);
+    return await macLauncher(job.kind, job.kind === 'open_app' ? p.app : p.name);
   }
   if (!roots.length) throw new Error('no_folder_allowed');
   if (job.kind === 'list') {
@@ -649,11 +688,13 @@ export function localCapabilities(cfg) {
   if (cfg?.allowWrite === true && cfg?.roots?.length) kinds.push('write');
   if (cfg?.allowExec === true && cfg?.roots?.length) kinds.push('exec');
   if (cfg?.allowBrowser === true) kinds.push('browser_open');
-  return { job_kinds: kinds };
+  if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
+  // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
+  return Array.isArray(cfg?.roots) && cfg.roots.length ? { job_kinds: kinds, roots: cfg.roots.slice(0, 8) } : { job_kinds: kinds };
 }
 const retryableConnection = error => error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
 export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
-  if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true)) throw new Error('invalid_local_config');
+  if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true && cfg.allowApps !== true)) throw new Error('invalid_local_config');
   cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
   const scope = hashBytes(API + '\n' + cfg.token);
   const journal = await LocalJobJournal.open(directory, scope);
@@ -709,7 +750,7 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   if (!/^[A-Z0-9]{8,20}$/.test(normalized)) throw new Error('invalid_pairing_code');
   const roots = [];
   for (const root of args.allow ?? []) roots.push(await fs.realpath(path.resolve(expand(root))));
-  if (!roots.length && args.allowBrowser !== true) throw new Error('no_folder_allowed');
+  if (!roots.length && args.allowBrowser !== true && args.allowApps !== true) throw new Error('no_folder_allowed');
   const pending = `${configPath}.${randomUUID()}.pending`;
   let handle;
   try {
@@ -720,7 +761,7 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   try {
     const res = await callFn('pair', { code: normalized, platform: `${os.platform()} ${os.arch()}` });
     if (typeof res?.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true };
+    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, ...(args.allowApps === true ? { allowApps: true } : {}) };
     try {
       await handle.writeFile(JSON.stringify(cfg, null, 2));
       await handle.sync();
@@ -756,6 +797,7 @@ export function parseArgs(argv) {
     else if (a === '--allow-write') out.allowWrite = true;
     else if (a === '--allow-exec') out.allowExec = true;
     else if (a === '--allow-browser') out.allowBrowser = true;
+    else if (a === '--allow-apps') out.allowApps = true;
     else if (a === '--auto') out.auto = true;
     else out._.push(a);
   }
@@ -767,12 +809,12 @@ async function main() {
   const [cmd, arg] = args._;
   if (cmd === 'run' || cmd === 'pair') requireDurableNode();
   if (cmd === 'pair') {
-    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser]');
+    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser] [--allow-apps]');
     const { cfg, deviceName } = await pairConnector(arg, args);
     const { roots } = cfg;
     console.log(`Paired as "${deviceName}".`);
     console.log(roots.length ? `Allowed folders: ${roots.join(', ')}` : 'Browser-only connection: file and shell access are off.');
-    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Ask for write/exec: ${cfg.auto ? 'no' : 'yes'}`);
+    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Apps/Shortcuts: ${cfg.allowApps ? 'allowed' : 'off'}   Ask for write/exec: ${cfg.auto ? 'no' : 'yes'}`);
     console.log('Now run:  node firbo-connector.mjs run');
     return;
   }
@@ -784,17 +826,34 @@ async function main() {
     return;
   }
   if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then pair with --allow <folder> and/or --allow-browser.');
-  if (cmd === 'allow-browser') {
-    cfg.allowBrowser = true;
+  // Change one local permission without pairing again. Each one is your decision on this computer, not Firbo's.
+  const SETTINGS = {
+    'allow-browser': ['allowBrowser', 'Website/voice browser opening is now allowed.'],
+    'allow-apps': ['allowApps', 'AI employees may now open apps and run your Shortcuts (macOS). Shortcuts still ask unless "auto" is on.'],
+    'allow-write': ['allowWrite', 'Writing files inside your allowed folders is now allowed.'],
+    'allow-exec': ['allowExec', 'Running commands is now allowed (as your user, starting in an allowed folder).'],
+    auto: ['auto', 'Writes, commands and Shortcuts no longer wait for your y/n here. Firbo still applies its own approval rules.'],
+  };
+  if (cmd in SETTINGS || cmd === 'add-folder') {
+    if (cmd === 'add-folder') {
+      if (!arg) throw new Error('Usage: node firbo-connector.mjs add-folder <folder>');
+      const root = await fs.realpath(path.resolve(expand(arg)));
+      cfg.roots = [...new Set([...(cfg.roots ?? []), root])];
+      console.log(`Allowed folders: ${cfg.roots.join(', ')}`);
+    } else {
+      const [key, message] = SETTINGS[cmd];
+      cfg[key] = arg !== 'off';
+      console.log(arg === 'off' ? `${key} is now off.` : message);
+    }
     await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
-    console.log('Website/voice browser opening is now allowed. Restart with: node firbo-connector.mjs run');
+    console.log('Restart with: node firbo-connector.mjs run');
     return;
   }
   if (cmd === 'status') {
     console.log(JSON.stringify({ ...cfg, token: '(hidden)' }, null, 2));
     return;
   }
-  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | allow-browser | forget');
+  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | allow-browser | allow-apps | allow-write | allow-exec | auto [off] | add-folder <folder> | forget');
   console.log('Firbo Connector: local consent and folder rules remain active. Ctrl+C requests Stop.');
   console.log('Pending results are stored privately on this computer, UNENCRYPTED, until acknowledged.');
   const controller = new AbortController();

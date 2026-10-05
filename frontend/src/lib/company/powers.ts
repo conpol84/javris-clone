@@ -25,6 +25,7 @@ export const POWER_META: Record<string, PowerMeta> = {
   image_generate: { color: '#f472b6', live: true, desc: 'studio.power.image_generate' },
   image_analyze: { color: '#e879f9', live: true, desc: 'studio.power.image_analyze' },
   code_interpreter: { color: '#fb7185', live: true, desc: 'studio.power.code_interpreter' },
+  computer_use: { color: '#38bdf8', live: true, desc: 'studio.power.computer_use' },
 };
 
 export const FALLBACK_POWER: PowerMeta = { color: '#94a3b8', live: false, desc: 'studio.power.other' };
