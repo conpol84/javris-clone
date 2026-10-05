@@ -4,7 +4,7 @@
 // Plain JSON instead of provider function-calling, so free models, the gateway and own keys all work the same.
 import { extractModelJson, strictModelJson } from './model-json.ts';
 
-export type ToolName = 'web_search' | 'read_page' | 'memory_search' | 'think';
+export type ToolName = 'web_search' | 'read_page' | 'memory_search' | 'server_task' | 'think';
 export interface LoopStep { action: ToolName; input: string; ok: boolean }
 export type LoopTools = Partial<Record<Exclude<ToolName, 'think'>, (input: string) => Promise<string>>>;
 type Msg = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -13,6 +13,7 @@ const TOOL_HELP: Record<ToolName, string> = {
   web_search: '{"action": "web_search", "input": "search words"} searches the internet and returns titles, links and snippets.',
   read_page: '{"action": "read_page", "input": "https://..."} returns the text of one web page (use links from search results).',
   memory_search: '{"action": "memory_search", "input": "words"} searches what the company saved in its memory.',
+  server_task: '{"action": "server_task", "input": "the job, with all details"} hands a job to the company server agent, which can run code, read and write files, read PDFs and use git, and returns its result.',
   think: '{"action": "think", "input": "your notes"} lets you plan before the next step.',
 };
 
@@ -31,7 +32,7 @@ export function loopInstructions(tools: ToolName[], maxSteps: number): string {
 export const REPAIR_SYSTEM = 'Write the final answer to the TASK below, using only the MATERIAL FOUND and the DRAFT notes. Reply with ONLY one JSON object, no reasoning before or after it: {"summary": string (max 300 chars), "report": string (markdown, the finished work product with its source links), "actions": []}. Keep it concise. Never add facts or links that are not in the material. If nothing useful was found, say so in the report.';
 
 // Some models answer in their own native tool syntax, e.g. <|tool_call_start|>[web_search(input='...')]<|tool_call_end|>.
-const NATIVE_CALL = /\b(web_search|read_page|memory_search|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
+const NATIVE_CALL = /\b(web_search|read_page|memory_search|server_task|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
 
 export function parseToolRequest(text: string, allowed: ToolName[]): { action: ToolName; input: string } | null {
   const o = extractModelJson(text);
@@ -92,7 +93,7 @@ export async function runAgentLoop(o: {
   const steps: LoopStep[] = [];
   const evidence: string[] = o.evidence ?? [];
   if (o.material) evidence.push(o.material);
-  const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'think'];
+  const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'server_task', 'think'];
   let calls = 0;
   let insisted = false;
   let nudges = 0;

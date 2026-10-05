@@ -371,6 +371,23 @@ Deno.serve(async (req) => {
     const { data } = await query.order('importance', { ascending: false }).limit(6);
     return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
   };
+  // The company server agent (OpenJarvis on Firbo's VPS: code, files, PDFs, git). It runs on Firbo's own server, so only
+  // companies with a platform admin get it, and only for agents allowed (not just approval) to use a matching power.
+  const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
+  const serverUrl = (Deno.env.get('OPENJARVIS_URL') ?? '').replace(/\/+$/, '');
+  const serverKey = Deno.env.get('OPENJARVIS_API_KEY') ?? '';
+  if (!free && /^https:\/\//.test(serverUrl) && serverKey && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
+    const { data: admins } = await admin.from('platform_admins').select('user_id');
+    const ids = (admins ?? []).map((a: any) => a.user_id);
+    const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
+    if ((count ?? 0) > 0) loopTools.server_task = async (job) => {
+      const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` },
+        body: JSON.stringify({ messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
+      if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
+      const out = await res.json();
+      return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';
+    };
+  }
   let text = '';
   let steps: LoopStep[] = [];
   let calls = 0;
@@ -409,7 +426,7 @@ Deno.serve(async (req) => {
   const ownUsed = !!own && used === own;
   // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
   const cost = ownUsed ? 0 : Math.round(routedCost * 1e6) / 1e6;
-  const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => s.action === 'read_page' ? 'browser_extract' : s.action)])];
+  const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => s.action === 'read_page' ? 'browser_extract' : s.action === 'server_task' ? 'server_agent' : s.action)])];
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];

@@ -170,3 +170,13 @@ test('a leftover tool request for a tool that does not exist is not a report', a
   assert.equal(isUnusableReply('{"action":"web_search","input":"x"}'), false);
   assert.equal(isLeftoverToolRequest(JSON.stringify({ summary: 's', report: 'r', actions: [{ action: 'send_email', input: 'x' }] })), false);
 });
+test('the server agent is offered only when the runner gives it, and its result is fed back', async () => {
+  const replies = ['{"action":"server_task","input":"sum column B of the attached CSV"}', final];
+  const seen = [];
+  const out = await runAgentLoop({ call: async (m) => { seen.push(m); return replies.shift(); }, system: 'S', user: 'U',
+    tools: { server_task: async (job) => `Total: 42 (${job.slice(0, 10)})` } });
+  assert.deepEqual(out.steps.map(s => s.action), ['server_task']);
+  assert.match(seen[0][0].content, /server_task/);
+  assert.match(seen[1].at(-1).content, /Total: 42/);
+  assert.equal(loopInstructions(['web_search'], 3).includes('server_task'), false);
+});
