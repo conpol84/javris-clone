@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['src/openjarvis/server/local_tts.py','src/openjarvis/server/firbo_piper_server.py','src/openjarvis/server/firbo_free_app.py','deploy/hostinger/local_model_rollout.py','tests/firbo/test_local_tts.py','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-voice.yml']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
 permissions: {contents: read}
 jobs:
   test:
@@ -20,6 +20,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
-      - run: |
-          npm install --global npm@11.19.0
-          cd frontend && npm ci && npm test && npx --no-install tsc -b
+      - name: Install pinned npm in a runner-writable prefix
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/firbo-npm" npm@11.19.0
+          echo "$RUNNER_TEMP/firbo-npm/bin" >> "$GITHUB_PATH"
+      - name: Frontend tests and types
+        working-directory: frontend
+        run: npm ci && npm test && npx --no-install tsc -b

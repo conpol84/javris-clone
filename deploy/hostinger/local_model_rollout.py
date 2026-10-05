@@ -154,7 +154,7 @@ for p in ['/health','/v1/firbo/free/status','/v1/firbo/free/chat/completions','/
  try:r=urllib.request.urlopen(req,timeout=3)
  except urllib.error.HTTPError as e:r=e
  with r:out[p]={'code':r.code,'body':json.loads(r.read(10000))}
-out['hashes']={n:hashlib.sha256(open(importlib.util.find_spec('openjarvis.server.'+n[:-3]).origin,'rb').read()).hexdigest() for n in ['free_inference.py','firbo_free_app.py']}
+out['hashes']={n:hashlib.sha256(open(importlib.util.find_spec('openjarvis.server.'+n[:-3]).origin,'rb').read()).hexdigest() for n in ['free_inference.py','firbo_free_app.py','local_tts.py']}
 print(json.dumps(out))
 '''
 

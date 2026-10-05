@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
     paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
 permissions:
   contents: read
@@ -29,7 +29,10 @@ jobs:
           /tmp/firbo-local-python/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_capacity.py tests/firbo/test_local_rollout.py | tee /tmp/firbo-local-evidence/python.txt
       - name: Real Ollama weights, API-only install, repeat and both rollbacks
         run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_REPOSITORY python3 tests/firbo/local_model_docker.py
-      - run: npm install --global npm@11.19.0
+      - name: Install pinned npm in a runner-writable prefix
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/firbo-npm" npm@11.19.0
+          echo "$RUNNER_TEMP/firbo-npm/bin" >> "$GITHUB_PATH"
       - run: npm ci
         working-directory: frontend
       - name: Full frontend tests/types and actual-page workbench build

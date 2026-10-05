@@ -479,3 +479,41 @@ This checkpoint continues the plan above; it does not replace or restart it.
 - The general Python CI regression has a concrete root cause: `tests/firbo/test_control_plane.py` replaced global `openjarvis` modules during pytest collection. The reconciliation branch now confines that synthetic module loader and restores the real module state after each isolated load.
 - No production deployment, pricing, plan or product behavior was changed by this reconciliation work.
 
+## CONTINUATION CHECKPOINT — 5 October 2026, 19:55 UTC
+
+This checkpoint supersedes older deployment identities and immediate-action instructions above. Preserve the completed work and the entire agreed backlog; never reset to an older snapshot to resume.
+
+### Source and live production
+
+- Canonical branch: `codex/firbo-reconcile-20261005`. Draft PR #12 targets the active Claude production line. Draft PR #13 uses the same branch and targets `main` solely to run general CI; do not merge it. Duplicate validation PR #14 has been closed without merging.
+- Candidate parent before the canary/workflow regression fix: `1686df5f3396b778308b6ecdc999b4d075cbc3eb`. The continuation commit containing this checkpoint is the next candidate. No merge or production promotion occurred.
+- Live `firboai.app`: READY production deployment `dpl_4eTujgjX3LpRPe2ptGn6eATMFFA4`, source `127333e6dbdf94943246aabcf516438729363881`. That source already contains the current Computers/Website-to-Laptop UI. Older instructions saying this UI is preview-only or must first be published are obsolete.
+- Fresh public backend health: HTTP 200, `{"status":"ok","contract":"firbo-control/v1"}`. This proves availability, not real-account or physical-device acceptance.
+- Connector: ACTIVE v17, artifact `523976edf5e85533452dc4cd981f3e71f6fda7385adb577c34244b4b87628d41`; deployed source matches the candidate. Agent-chat differs only by equivalent Unicode-regex spelling. Agent-runner has meaningful drift: candidate saves bounded successful tool-output previews in task steps; live does not. Reconcile that exact drift after the CI gate.
+- Fresh device inventory: 3 records / 0 paired / 0 online / 0 browser-ready / 0 connector jobs. No owner-laptop pairing or physical execution has been accepted. Cloud/CI execution cannot substitute for this.
+- `jarvis_parity` remains recorded as applied without re-executing the schema. Both `match_knowledge` overloads deny anonymous execution and allow authenticated execution.
+
+### Completed CI repairs and verification
+
+- Ruff failures on the older validation branch came from a stale source ref. The reconciliation and validation histories were joined without force-updating either branch. The remaining formatter blank line and stale health/auth expectations were corrected.
+- Health tests now assert the control contract; missing Supabase configuration is tested separately for anonymous rejection (401) and an authenticated request (503).
+- Rollout manifests now pin the exact formatted runtime bytes and verified native helper. Voice rollback keeps the original already-installed local API hash baseline.
+- The actual local-model canary hashed only two runtime files while its manifest required three, so it could never pass. It now hashes `local_tts.py` too. A regression executes the actual canary against the in-process ASGI API, verifies all hashes, health, and anonymous denials without a model/provider request.
+- The two known local-model/voice npm EACCES failures now install pinned npm in a runner-writable prefix. The native/model/voice rollout workflows now cover PRs targeting the active Claude production line.
+- Local checks: Ruff clean; 1,429 Python files formatted; 322 isolated Firbo/API/gateway tests and 4 subtests passed; 92 connector execution/durability/receipt tests passed; 42 agent-loop/briefing/delivery tests passed.
+- At parent `1686df5f`, Frontend CI, Desktop Build & Release, dependency gate and connectivity passed. General CI and the remaining gates were queued/running. These results do not establish that the next candidate is fully green; inspect completed runs for its exact source SHA.
+- A broader local server test was stopped by automatic approval review after an unexpected request to `public-api.granola.ai` with no established authorized/synthetic payload. Do not bypass the block. The isolated checks above completed safely.
+
+### Exact next order — unchanged
+
+1. Clear actual remaining CI/Ruff failures and verify the exact candidate commit.
+2. Reconcile production and source.
+3. Pair the real owner/test laptop and verify browser-open execution with a durable receipt.
+4. Implement and accept browser `click/type/scroll/DOM/upload/download` through the existing scoped device/job/receipt architecture.
+5. Complete useful-work E2E with a persisted artifact, read-back and receipt.
+6. Accept Knowledge, Skills, Workflows and OAuth with real permitted actions.
+7. Harden Free entitlements, costs, budgets and fallback.
+8. Complete voice/Desktop/security/backup/monitoring acceptance.
+9. Produce the final evidence-based production assessment.
+
+`browser_open` still launches a page only. Full browser automation, real integrations, signed Desktop distribution, off-host encrypted restore and physical voice acceptance remain open. Do not repeat the already-completed VPS installation, schema, receipt or stale-recovery work.

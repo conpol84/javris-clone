@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['deploy/hostinger/local_voice_rollout.py','src/openjarvis/server/local_tts.py','src/openjarvis/server/firbo_piper_server.py','src/openjarvis/server/firbo_free_app.py','tests/firbo/test_local_voice_rollout.py','.github/workflows/firbo-local-voice-rollout.yml']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
 permissions: {contents: read}
 jobs:
   guards:

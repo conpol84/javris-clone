@@ -1,7 +1,13 @@
 """Local rollout pure validation contracts; full Docker lifecycle is a separate job."""
 
+import contextlib
 import importlib.util
+import io
+import json
+import urllib.error
+import urllib.request
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -28,6 +34,59 @@ def test_native_source_library_stays_pinned():
         rollout.sha((ROOT / "deploy/hostinger/native_control_rollout.py").read_bytes())
         == rollout.NATIVE_SHA
     )
+
+
+def test_actual_canary_accepts_current_runtime_and_denies_anonymous_requests(
+    monkeypatch,
+):
+    from fastapi.testclient import TestClient
+
+    from openjarvis.server.firbo_free_app import app
+
+    requests = []
+
+    def in_process_urlopen(request, *, timeout):
+        url = urlsplit(request.full_url)
+        assert (url.scheme, url.netloc) == ("http", "127.0.0.1:8000")
+        requests.append((request.get_method(), url.path))
+        response = client.request(
+            request.get_method(),
+            url.path,
+            content=request.data,
+            headers=dict(request.header_items()),
+        )
+        body = io.BytesIO(response.content)
+        if response.status_code >= 400:
+            raise urllib.error.HTTPError(
+                request.full_url, response.status_code, response.reason_phrase, {}, body
+            )
+        body.code = response.status_code
+        return body
+
+    class InProcessCanary:
+        def docker(self, *args, **kwargs):
+            assert args == ("exec", "candidate", "python", "-c", rollout.CANARY)
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                exec(compile(rollout.CANARY, "<rollout-canary>", "exec"), {})
+            self.result = json.loads(output.getvalue())
+            return output.getvalue()
+
+    def unexpected_retry(seconds):
+        pytest.fail("Current runtime must pass the first canary probe")
+
+    monkeypatch.setattr(urllib.request, "urlopen", in_process_urlopen)
+    monkeypatch.setattr(rollout.time, "sleep", unexpected_retry)
+    probe = InProcessCanary()
+    with TestClient(app) as client:
+        assert rollout.check_api(probe, "candidate") is True
+    assert probe.result["hashes"] == rollout.SOURCE_HASHES
+    assert requests == [
+        ("GET", "/health"),
+        ("GET", "/v1/firbo/free/status"),
+        ("POST", "/v1/firbo/free/chat/completions"),
+        ("GET", "/v1/firbo/session"),
+    ]
 
 
 def test_admin_pilot_never_enables_customers_or_cloud():

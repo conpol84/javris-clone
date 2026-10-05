@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['deploy/hostinger/native_control_rollout.py','tests/firbo/test_native_rollout.py','tests/firbo/native_rollout_docker.py','.github/workflows/firbo-native-rollout.yml','src/openjarvis/server/firbo_app.py','src/openjarvis/server/firbo_control.py']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
     paths: ['deploy/hostinger/native_control_rollout.py','tests/firbo/test_native_rollout.py','tests/firbo/native_rollout_docker.py','.github/workflows/firbo-native-rollout.yml','src/openjarvis/server/firbo_app.py','src/openjarvis/server/firbo_control.py']
 permissions:
   contents: read
