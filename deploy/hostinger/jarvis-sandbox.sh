@@ -20,7 +20,18 @@ PY=$(systemctl cat openjarvis | sed -n 's/^ExecStart=\([^ ]*\)jarvis .*/\1python
 [ -x "$PY" ] || PY="$ADMIN_HOME/.venv/bin/python"
 [ -x "$PY" ] || { echo "Could not find the OpenJarvis python ($PY)"; exit 1; }
 echo "1/6 Docker SDK in the OpenJarvis environment"
-"$PY" -m pip install -q 'docker>=7' 2>/dev/null || uv pip install -q --python "$PY" 'docker>=7'
+# The OpenJarvis environment belongs to the jarvis user and may have been made by uv (no pip inside): try pip,
+# then pip bootstrapped with ensurepip, then uv wherever it is installed. Always as jarvis, so file owners stay right.
+# Run from /tmp: tools read config files from the current folder, and jarvis may not read /root.
+J() { (cd /tmp && runuser -u jarvis -- env UV_NO_CONFIG=1 "$@"); }
+if ! J "$PY" -c 'import docker' 2>/dev/null; then
+  J "$PY" -m pip install -q 'docker>=7' 2>/dev/null \
+  || { J "$PY" -m ensurepip -q >/dev/null 2>&1 && J "$PY" -m pip install -q 'docker>=7'; } \
+  || { UV=$(command -v uv || ls /home/jarvis/.local/bin/uv /home/jarvis/.cargo/bin/uv /root/.local/bin/uv /root/.cargo/bin/uv 2>/dev/null | head -1)
+       [ -n "$UV" ] && J "$UV" pip install -q --no-config --python "$PY" 'docker>=7'; } \
+  || { echo "Could not install the Docker SDK into $PY. Send this line to support."; exit 1; }
+fi
+J "$PY" -c 'import docker' || { echo "Docker SDK still missing in $PY"; exit 1; }
 
 echo "2/6 Sandbox image and Docker access"
 docker pull -q python:3.12-slim >/dev/null
@@ -59,7 +70,9 @@ KEY=$(openssl rand -hex 24)
 VLLM=$(grep -h '^VLLM_API_KEY=' "$ADMIN_HOME/serve.env" 2>/dev/null | tail -1 || true)
 umask 077
 { echo "OPENJARVIS_API_KEY=$KEY"; [ -n "$VLLM" ] && echo "$VLLM"; echo "OPENJARVIS_HOME=$BOX_HOME"; } > "$BOX_HOME/serve.env"
-chown -R jarvis:jarvis "$BOX_HOME"
+# The jarvis launcher looks for its Python environment inside OPENJARVIS_HOME: share the admin one read-only (code only, no data).
+ln -sfn "$ADMIN_HOME/.venv" "$BOX_HOME/.venv"
+chown -R jarvis:jarvis "$BOX_HOME"; chown -h jarvis:jarvis "$BOX_HOME/.venv"
 
 echo "4/6 Service openjarvis-box (port 8766)"
 EXEC=$(systemctl cat openjarvis | sed -n 's/^ExecStart=//p' | head -1 | sed 's/--port[= ]*8765/--port 8766/')
@@ -121,7 +134,7 @@ fi
 
 echo "6/6 Check"
 for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8766/health >/dev/null 2>&1 && break; sleep 2; done
-curl -fsS http://127.0.0.1:8766/health && echo
+curl -fsS http://127.0.0.1:8766/health && echo || { echo "The sandbox did not start. Last log lines:"; journalctl -u openjarvis-box -n 15 --no-pager | grep -viE "key|token|secret"; exit 1; }
 curl -fsS -H "Authorization: Bearer $KEY" http://127.0.0.1:8766/v1/info && echo
 echo
 echo "================================================================"

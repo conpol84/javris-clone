@@ -131,3 +131,11 @@ export function handoffFrom(reply: string, agents: { id: string; name: string }[
   if (!agent || !question) return { text, agentId: null, question: '' };
   return { text: `${text}\n\n[[ask:${agent.id}]] ${question}`, agentId: agent.id, question };
 }
+
+/** The record of the task the owner is asking about (result + work log), to put right next to the question:
+ * smaller models follow the latest user message far better than a long system prompt. Empty when no task matches. */
+export function focusBriefing(tasks: BriefTask[], names: Map<string, string>, userText: string, chars = 2500): string {
+  const brief = taskBriefing(tasks, names, userText, { focusChars: chars });
+  const at = brief.indexOf('\nFULL RESULT of ');
+  return at < 0 ? '' : brief.slice(at + 1);
+}
