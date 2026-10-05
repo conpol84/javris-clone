@@ -153,6 +153,7 @@ class Ledger:
 
             def count(sql, args=()):
                 return db.execute(sql, args).fetchone()[0]
+
             if (
                 count("SELECT COUNT(*) FROM requests WHERE state='running'")
                 >= self.limits.global_parallel
