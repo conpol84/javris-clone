@@ -35,7 +35,27 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open']);
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task']);
+export function browserTaskParams(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const p=raw as Record<string, unknown>;
+  if(Object.keys(p).some(k=>!['steps','timeout_ms'].includes(k)))return null;
+  const timeout=p.timeout_ms??120_000;
+  if(!Number.isInteger(timeout)||Number(timeout)<1000||Number(timeout)>300_000||!Array.isArray(p.steps)||!p.steps.length||p.steps.length>20)return null;
+  const fields:Record<string,string[]>={open:['url'],read:[],click:['selector'],fill:['selector','text'],scroll:['pixels'],upload:['selector','path'],download:['url','path']};
+  for(const s of p.steps){
+    if(!s||typeof s!=='object'||Array.isArray(s)||!Object.hasOwn(fields,s.action))return null;
+    const keys=fields[s.action];
+    if(Object.keys(s).some(k=>k!=='action'&&!keys.includes(k))||keys.some(k=>!Object.hasOwn(s,k)))return null;
+    if(keys.includes('url')&&(typeof s.url!=='string'||s.url.length>2048||!browserUrl(s.url)))return null;
+    if(keys.includes('selector')&&(typeof s.selector!=='string'||!s.selector||s.selector.length>200||/[\u0000-\u001f\u007f]/.test(s.selector)||/>>|(?:^|\s)(?:text|xpath|id|data-testid)=/i.test(s.selector)))return null;
+    if(keys.includes('path')&&(typeof s.path!=='string'||!s.path||s.path.length>500||/[\u0000-\u001f\u007f]/.test(s.path)))return null;
+    if(s.action==='fill'&&(typeof s.text!=='string'||s.text.length>4000||/[\u0000-\u0008\u000b-\u001f\u007f]/.test(s.text)))return null;
+    if(s.action==='scroll'&&(!Number.isInteger(s.pixels)||Math.abs(s.pixels)>4000))return null;
+  }
+  if(p.steps[0].action!=='open')return null;
+  return {steps:p.steps,timeout_ms:timeout};
+}
 function browserUrl(value: unknown): string | null {
   const raw = str(value, 2048).trim();
   if (!raw || /[\r\n\0]/.test(raw)) return null;
@@ -307,7 +327,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'create_job') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
@@ -330,6 +350,11 @@ Deno.serve(async (req) => {
       const url = browserUrl(p.url);
       if (!url) return json(400, { error: 'bad_request' });
       params = { url };
+    } else if (kind === 'browser_task') {
+      if(body.confirm!==true)return json(400,{error:'confirm_required'});
+      if(!Array.isArray(dev.capabilities?.job_kinds)||!dev.capabilities.job_kinds.includes('browser_task')||!dev.last_seen_at||Date.now()-Date.parse(dev.last_seen_at)>60_000||!Number.isFinite(Date.parse(dev.last_seen_at)))return json(409,{error:'device_not_ready'});
+      const plan=browserTaskParams(p);if(!plan)return json(400,{error:'bad_request'});
+      params=plan;
     } else {
       return json(400, { error: 'bad_request' });
     }

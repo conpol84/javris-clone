@@ -29,6 +29,7 @@ except SystemExit:
 reports = []
 CASES = [("computer-actions", w, "loaded", "owner") for w in (320, 390, 768, 1440)]
 CASES += [("computer-mac-setup", w, "loaded", "owner") for w in (320, 1440)]
+CASES += [("computer-browser-plan", w, "loaded", "owner") for w in (320, 1440)]
 CASES += [
     ("computer-state", 320, state, "owner") for state in ("loading", "empty", "error")
 ]
@@ -86,12 +87,26 @@ with sync_playwright() as pw:
             page.goto(
                 v.BASE
                 + path
-                + f"?lang=en&state={state}&role={role}&computer_actions=1&device_delay=900&pair_delay="
+                + f"?lang=en&state={state}&role={role}&computer_actions=1&device_delay=900&browser_control={1 if kind == 'computer-browser-plan' else 0}&pair_delay="
                 + ("900" if kind == "computer-user-switch" else "0"),
                 wait_until="networkidle",
             )
             expect(page.locator("main h1")).to_be_visible()
-            if kind == "computer-state":
+            if kind == "computer-browser-plan":
+                page.get_by_test_id("select-device-d1").click()
+                composer = page.get_by_test_id("browser-task-composer")
+                expect(composer).to_be_visible()
+                expect(composer.locator("fieldset")).to_have_count(2)
+                composer.get_by_role("button", name="Add step", exact=True).click()
+                composer.locator("select").nth(2).select_option("fill")
+                composer.get_by_label("Element selector", exact=True).fill("#search")
+                composer.get_by_label("Text", exact=True).fill("Synthetic search")
+                assert not page.evaluate(v.GEOMETRY)["bad"]
+                composer.get_by_role("button", name="Remove step", exact=True).last.click()
+                expect(composer.locator("fieldset")).to_have_count(2)
+                page.get_by_test_id("select-device-d2").click()
+                expect(composer).to_have_count(0)
+            elif kind == "computer-state":
                 if state == "error":
                     expect(
                         page.get_by_role("alert").filter(
