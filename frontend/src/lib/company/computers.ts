@@ -33,7 +33,7 @@ export interface DeviceRow {
 export interface JobRow {
   id: string;
   device_id: string;
-  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'open_app' | 'shortcut';
+  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'browser_task' | 'open_app' | 'shortcut';
   params: Record<string, unknown>;
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   result: Record<string, unknown> | null;

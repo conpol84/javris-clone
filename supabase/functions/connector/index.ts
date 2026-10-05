@@ -6,7 +6,7 @@
 // The computer's owner stays in control locally: the program enforces its own allowed folders and refuses anything
 // it was not started with (no writing, no commands) no matter what this service sends.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { APP_NAME, cleanPolicy } from '../_shared/computer-policy.ts';
+import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -36,7 +36,7 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','open_app','shortcut']);
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task','open_app','shortcut']);
 function browserUrl(value: unknown): string | null {
   const raw = str(value, 2048).trim();
   if (!raw || /[\r\n\0]/.test(raw)) return null;
@@ -312,7 +312,7 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'create_job') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
@@ -339,6 +339,11 @@ Deno.serve(async (req) => {
       const name = str(kind === 'open_app' ? p.app : p.name, 60).trim();
       if (!APP_NAME.test(name)) return json(400, { error: 'bad_request' });
       params = kind === 'open_app' ? { app: name } : { name };
+    } else if (kind === 'browser_task') {
+      if(body.confirm!==true)return json(400,{error:'confirm_required'});
+      if(!Array.isArray(dev.capabilities?.job_kinds)||!dev.capabilities.job_kinds.includes('browser_task')||!dev.last_seen_at||Date.now()-Date.parse(dev.last_seen_at)>60_000||!Number.isFinite(Date.parse(dev.last_seen_at)))return json(409,{error:'device_not_ready'});
+      const plan=browserTaskParams(p);if(!plan)return json(400,{error:'bad_request'});
+      params=plan;
     } else {
       return json(400, { error: 'bad_request' });
     }

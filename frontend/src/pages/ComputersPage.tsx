@@ -16,6 +16,8 @@ import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
 import { connectorCommands, suggestedComputerPlatform, type ComputerAccess, type ComputerPlatform } from '../lib/company/computer-setup';
 import { computerSetupLabels } from '../lib/company/computer-setup-labels';
+import { BrowserTaskComposer } from '../components/devices/BrowserTaskComposer';
+import { browserTaskLabels } from '../lib/company/browser-task-labels';
 
 type Kind = JobRow['kind'];
 const KINDS: Kind[] = ['list', 'read', 'write', 'exec', 'browser_open'];
@@ -165,7 +167,14 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const chosen = devices.find((d) => d.id === sel && d.paired && !d.revoked_at) ?? null;
   const unpaired = (d: DeviceRow) => !d.paired;
   const voiceChosen = devices.find((d) => d.id === voiceLaptop && canOpenBrowser(d) && isOnline(d, now)) ?? null;
-  const kindLabel = (k: JobRow['kind']) => k === 'browser_open' ? web.browser : k === 'open_app' ? wc('xKindApp') : k === 'shortcut' ? wc('xKindShortcut') : t(`comp.kind.${k}` as TKey);
+  const kindLabel = (k: Kind) => k === 'browser_task' ? browserTaskLabels(lang).title : k === 'browser_open' ? web.browser : k === 'open_app' ? wc('xKindApp') : k === 'shortcut' ? wc('xKindShortcut') : t(`comp.kind.${k}` as TKey);
+  const giveBrowser = async (plan: {steps:Record<string, unknown>[];timeout_ms:number}) => {
+    if(!chosen||!canManage||mutation.current||deviceQuery.phase!=='ready'||!isOnline(chosen,now)||!chosen.capabilities?.job_kinds?.includes('browser_task'))return;
+    mutation.current=true;setBusy(true);
+    try {await giveJob(chosen.id,'browser_task',plan,true);if(live.current){toast.success(t('comp.queued'));await loadJobs();}}
+    catch {if(live.current)toast.error(browserTaskLabels(lang).error);}
+    finally {mutation.current=false;if(live.current)setBusy(false);}
+  };
   const chooseVoice = (d: DeviceRow) => { if (!canOpenBrowser(d) || !isOnline(d, now)) return; setVoiceLaptop(orgId, d.id); setVoiceLaptopState(d.id); };
 
   return (
@@ -177,7 +186,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
           <p className="fb-muted mt-1 max-w-3xl text-sm">{t('comp.intro')}</p>
         </header>
         <DeviceFabric deviceReady={deviceQuery.phase==='ready'} orgId={orgId} canManage={canManage} devices={devices} />
-        <p className="fb-glass p-4 text-sm" data-testid="computer-capability-note">{l.capabilityNote}</p>
+        <p className="fb-glass p-4 text-sm" data-testid="computer-capability-note">{chosen?.capabilities?.job_kinds?.includes('browser_task') ? browserTaskLabels(lang).note : l.capabilityNote}</p>
 
         {!canManage ? (
           <div className="fb-glass p-5 text-sm">{t('comp.ownersOnly')}</div>
@@ -313,6 +322,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                   <button className="fb-btn fb-btn--primary self-start" disabled={busy || deviceQuery.phase !== 'ready' || !isOnline(chosen, now)}>{t('comp.send')}</button>
                 </form>
 
+                {chosen.capabilities?.job_kinds?.includes('browser_task') && <BrowserTaskComposer key={chosen.id} disabled={busy || deviceQuery.phase!=='ready' || !isOnline(chosen,now)} onSubmit={giveBrowser}/>}
                 <h3 className="font-semibold">{l.history}</h3>
                 <p className="fb-dim text-xs">{l.cancelNotice}</p>
                 {jobQuery.phase === 'error' ? <div role="alert"><p>{l.jobsError}</p><button type="button" className="fb-btn fb-btn--ghost" onClick={() => void loadJobs()}>{l.refresh}</button></div> : jobQuery.phase === 'loading' ? <p role="status">{t('common.loading')}</p> : !jobs.length ? <p>{l.noJobs}</p> : null}

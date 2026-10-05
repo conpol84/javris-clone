@@ -1,0 +1,28 @@
+name: Firbo scoped local browser
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8, main]
+    paths: ['frontend/public/firbo-*.mjs', 'tools/firbo-browser-runtime/**', 'supabase/functions/connector/**', 'tests/firbo/browser-control*.mjs', '.github/workflows/firbo-browser-control.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-browser-control-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm ci --prefix tools/firbo-browser-runtime --ignore-scripts
+      - run: node tools/firbo-browser-runtime/node_modules/playwright/cli.js install --with-deps chromium
+      - name: Scope, consent, DNS pinning, Stop and existing durable execution
+        run: node --test tests/firbo/browser-control.test.mjs tests/firbo/connector-execution.test.mjs tests/firbo/connector-durable.test.mjs tests/firbo/connector-receipts.test.mjs
+      - name: Real visible Chromium with exclusively synthetic HTTP transport
+        run: xvfb-run -a node --test tests/firbo/browser-control-rendered.test.mjs

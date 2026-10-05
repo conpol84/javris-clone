@@ -2,7 +2,7 @@
 // Three outcomes: "auto" (runs now, the employee gets the result), "approve" (waits for the owner in the Inbox)
 // and "deny" (never). The Connector program on the computer still enforces its own local limits on top of this.
 
-export const COMPUTER_KINDS = ['list', 'read', 'write', 'exec', 'browser_open', 'open_app', 'shortcut'] as const;
+export const COMPUTER_KINDS = ['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut'] as const;
 export type ComputerKind = typeof COMPUTER_KINDS[number];
 export type Verdict = 'auto' | 'approve' | 'deny';
 
@@ -79,6 +79,9 @@ export function decideComputer(kind: ComputerKind, params: Record<string, unknow
   switch (kind) {
     case 'list': case 'read': case 'browser_open':
       return { verdict: 'auto', reason: 'read_only' };
+    case 'browser_task':
+      // The computer shows the plan and asks its owner before it runs; clicks, typing and uploads ask again.
+      return { verdict: 'auto', reason: 'reviewed_on_the_computer' };
     case 'open_app':
       return has(policy.apps, params.app) ? { verdict: 'auto', reason: 'allowed_app' } : { verdict: 'approve', reason: 'app_not_on_list' };
     case 'shortcut':
@@ -103,6 +106,28 @@ const httpsUrl = (raw: string) => {
   } catch { return null; }
 };
 
+/** A scoped browser plan (open, read, click, fill, scroll, upload, download); null when anything is off. The computer reviews it again locally. */
+export function browserTaskParams(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const p=raw as Record<string, unknown>;
+  if(Object.keys(p).some(k=>!['steps','timeout_ms'].includes(k)))return null;
+  const timeout=p.timeout_ms??120_000;
+  if(!Number.isInteger(timeout)||Number(timeout)<1000||Number(timeout)>300_000||!Array.isArray(p.steps)||!p.steps.length||p.steps.length>20)return null;
+  const fields:Record<string,string[]>={open:['url'],read:[],click:['selector'],fill:['selector','text'],scroll:['pixels'],upload:['selector','path'],download:['url','path']};
+  for(const s of p.steps){
+    if(!s||typeof s!=='object'||Array.isArray(s)||!Object.hasOwn(fields,s.action))return null;
+    const keys=fields[s.action];
+    if(Object.keys(s).some(k=>k!=='action'&&!keys.includes(k))||keys.some(k=>!Object.hasOwn(s,k)))return null;
+    if(keys.includes('url')&&(typeof s.url!=='string'||s.url.length>2048||!httpsUrl(s.url)))return null;
+    if(keys.includes('selector')&&(typeof s.selector!=='string'||!s.selector||s.selector.length>200||/[\u0000-\u001f\u007f]/.test(s.selector)||/>>|(?:^|\s)(?:text|xpath|id|data-testid)=/i.test(s.selector)))return null;
+    if(keys.includes('path')&&(typeof s.path!=='string'||!s.path||s.path.length>500||/[\u0000-\u001f\u007f]/.test(s.path)))return null;
+    if(s.action==='fill'&&(typeof s.text!=='string'||s.text.length>4000||/[\u0000-\u0008\u000b-\u001f\u007f]/.test(s.text)))return null;
+    if(s.action==='scroll'&&(!Number.isInteger(s.pixels)||Math.abs(s.pixels)>4000))return null;
+  }
+  if(p.steps[0].action!=='open')return null;
+  return {steps:p.steps,timeout_ms:timeout};
+}
+
 /**
  * What the employee asked for, in plain words: "open_app Safari", "open_url https://…", "list Documents", "read notes.txt",
  * "write report.md :: text", "run git status", "shortcut Daily backup". A JSON {"kind": …, …} object works too.
@@ -125,7 +150,7 @@ export function parseComputerRequest(input: string): { kind: ComputerKind; param
     if (/^https?:\/\//i.test(rest)) return parseComputerRequest(`open_url ${rest}`);
     return APP_NAME.test(rest) ? { kind: 'open_app', params: { app: rest } } : { error: 'bad_app_name' };
   }
-  if (['open_url', 'url', 'browser_open', 'browse'].includes(verb)) {
+  if (['open_url', 'url', 'browser_open'].includes(verb)) {
     const url = httpsUrl(rest);
     return url ? { kind: 'browser_open', params: { url } } : { error: 'https_link_required' };
   }
@@ -138,6 +163,13 @@ export function parseComputerRequest(input: string): { kind: ComputerKind; param
     return path && content ? { kind: 'write', params: { path, content: content.slice(0, 100_000), overwrite: false } } : { error: 'write_needs_path_and_content' };
   }
   if (['run', 'exec', 'command', 'shell'].includes(verb)) return rest ? { kind: 'exec', params: { command: rest.slice(0, 500) } } : { error: 'command_required' };
+  if (['browse', 'browser_task'].includes(verb)) {
+    let plan: unknown = null;
+    try { plan = JSON.parse(rest); } catch { /* not JSON */ }
+    const steps = Array.isArray(plan) ? { steps: plan } : plan;
+    const ok = browserTaskParams(steps);
+    return ok ? { kind: 'browser_task', params: ok } : { error: 'browse_needs_a_plan' };
+  }
   if (['shortcut', 'shortcuts'].includes(verb)) return APP_NAME.test(rest) ? { kind: 'shortcut', params: { name: rest } } : { error: 'bad_shortcut_name' };
   return { error: 'unknown_action' };
 }
@@ -154,5 +186,8 @@ export function describeComputerResult(kind: ComputerKind, result: unknown, max 
   if (kind === 'open_app') return `Opened ${String(r.app ?? 'the app')}.`;
   if (kind === 'shortcut') return `Ran the shortcut ${String(r.name ?? '')}.`;
   if (kind === 'browser_open') return `Opened ${String(r.url ?? 'the page')} in the browser.`;
+  if (kind === 'browser_task' && Array.isArray(r.steps)) {
+    return (r.steps as Record<string, unknown>[]).map(st => `${String(st.step ?? '')}. ${String(st.action ?? '')}${st.url ? ` ${String(st.url)}` : ''}${typeof st.text === 'string' ? `\n${st.text}` : ''}`).join('\n').slice(0, max);
+  }
   return JSON.stringify(r).slice(0, max);
 }

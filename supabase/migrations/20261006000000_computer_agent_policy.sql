@@ -17,7 +17,7 @@ alter table public.connector_jobs drop constraint if exists connector_jobs_origi
 alter table public.connector_jobs add constraint connector_jobs_origin_check check (origin in ('owner', 'approval', 'agent'));
 alter table public.connector_jobs drop constraint if exists connector_jobs_kind_check;
 alter table public.connector_jobs add constraint connector_jobs_kind_check
-  check (kind = any (array['list', 'read', 'write', 'exec', 'browser_open', 'open_app', 'shortcut']));
+  check (kind = any (array['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut']));
 create index if not exists connector_jobs_agent_task_idx on public.connector_jobs (agent_task_id) where agent_task_id is not null;
 create index if not exists connector_jobs_agent_idx on public.connector_jobs (agent_id) where agent_id is not null;
 
@@ -58,7 +58,7 @@ begin
     return jsonb_build_object('decision','rejected','duplicate',false);
   end if;
 
-  if p_device is null or p_kind not in ('list','read','write','exec','browser_open','open_app','shortcut') or p_params is null or jsonb_typeof(p_params)<>'object' then
+  if p_device is null or p_kind not in ('list','read','write','exec','browser_open','browser_task','open_app','shortcut') or p_params is null or jsonb_typeof(p_params)<>'object' then
     raise exception 'bad_execution' using errcode='22023';
   end if;
   select * into d from public.connector_devices where id=p_device and organization_id=a.organization_id and paired=true and revoked_at is null;

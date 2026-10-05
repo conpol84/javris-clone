@@ -50,7 +50,7 @@ const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'E
 /** Validate independently of the server. A job cannot grant its own local powers. */
 export function validateJob(job) {
   if (!job || typeof job !== 'object' || Array.isArray(job)) throw new Error('bad_job');
-  if (!['list', 'read', 'write', 'exec', 'browser_open', 'open_app', 'shortcut'].includes(job.kind)) throw new Error('unknown_job');
+  if (!['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut'].includes(job.kind)) throw new Error('unknown_job');
   const p = job.params ?? {};
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('bad_job_params');
   const validPath = value => value === undefined || (typeof value === 'string' && value.length <= 500 && !value.includes('\0'));
@@ -121,6 +121,7 @@ export async function openBrowser(value, { spawnImpl = spawn, platform = process
 
 function safeLocalError(error) {
   if (LOCAL_ERRORS.has(error?.message)) return error.message;
+  if (/^(?:browser_[a-z_]+|invalid_browser_plan)$/.test(error?.message ?? '')) return error.message;
   if (FILE_ERRORS.has(error?.code)) return `file_${error.code.toLowerCase()}`;
   return 'local_operation_failed';
 }
@@ -211,6 +212,35 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
   const p = validateJob(job);
   if (!cfg || !Array.isArray(cfg.roots) || cfg.roots.some(root => typeof root !== 'string' || !root)) throw new Error('no_folder_allowed');
   const roots = cfg.roots;
+  if (job.kind === 'browser_task') {
+    if (cfg.allowBrowser !== true || cfg.allowBrowserControl !== true) throw new Error('browser_control_disabled');
+    const { executeBrowserPlan } = await import('./firbo-browser.mjs');
+    return executeBrowserPlan(p, cfg, {signal,
+      // Never inherit --auto for browser control. A remote step cannot approve itself.
+      confirm:(kind, detail, stop)=>confirmLocally({...cfg,auto:false}, `${kind}: ${JSON.stringify(detail)}`, stop),
+      onProgress:progress=>console.log(`Firbo browser: ${JSON.stringify(progress)}`),
+      readFile:async(target,limit)=>{
+        const handle=await openRegular(await jobPath(target,roots,cfg),false,false);
+        try {
+          const bytes=Buffer.alloc(limit+1); let count=0;
+          while(count<bytes.length){stopCheck(signal);const r=await handle.read(bytes,count,bytes.length-count,count);if(!r.bytesRead)break;count+=r.bytesRead;}
+          if(count>limit)throw new Error('browser_transfer_too_large');
+          return {bytes:bytes.subarray(0,count)};
+        } finally {await handle.close();}
+      },
+      writeFile:async(target,bytes)=>{
+        if(cfg.allowWrite!==true)throw new Error('writing_disabled');
+        const file=await jobPath(target,roots,cfg),handle=await openRegular(file,true,false);
+        try {
+          stopCheck(signal);await handle.writeFile(bytes);await handle.sync();
+          const verify=Buffer.alloc(bytes.length);let count=0;
+          while(count<verify.length){const r=await handle.read(verify,count,verify.length-count,count);if(!r.bytesRead)break;count+=r.bytesRead;}
+          if(count!==bytes.length||hashBytes(verify)!==hashBytes(bytes))throw new Error('write_verification_failed');
+          return {path:file,bytes:bytes.length,sha256:hashBytes(verify),verified:true};
+        } finally {await handle.close();}
+      },
+    });
+  }
   if (job.kind === 'browser_open') {
     if (cfg.allowBrowser !== true) throw new Error('browser_disabled');
     stopCheck(signal);
@@ -688,6 +718,7 @@ export function localCapabilities(cfg) {
   if (cfg?.allowWrite === true && cfg?.roots?.length) kinds.push('write');
   if (cfg?.allowExec === true && cfg?.roots?.length) kinds.push('exec');
   if (cfg?.allowBrowser === true) kinds.push('browser_open');
+  if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && cfg?.browserSites?.length) kinds.push('browser_task');
   if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
   // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
   return Array.isArray(cfg?.roots) && cfg.roots.length ? { job_kinds: kinds, roots: cfg.roots.slice(0, 8) } : { job_kinds: kinds };
@@ -798,6 +829,10 @@ export function parseArgs(argv) {
     else if (a === '--allow-exec') out.allowExec = true;
     else if (a === '--allow-browser') out.allowBrowser = true;
     else if (a === '--allow-apps') out.allowApps = true;
+    else if (a === '--browser-site') {
+      const site=argv[++i]; if(!site||site.startsWith('--'))throw new Error('invalid_browser_plan');
+      (out.browserSites ??= []).push(site);
+    }
     else if (a === '--auto') out.auto = true;
     else out._.push(a);
   }
@@ -854,6 +889,14 @@ async function main() {
     return;
   }
   if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | allow-browser | allow-apps | allow-write | allow-exec | auto [off] | add-folder <folder> | forget');
+  if(args.browserSites?.length){
+    const { browserOrigin, verifyBrowserRuntime }=await import('./firbo-browser.mjs');
+    if(!cfg.allowBrowser)throw new Error('browser_disabled');
+    cfg.browserSites=args.browserSites.map(browserOrigin);
+    cfg.allowBrowserControl=true;
+    await verifyBrowserRuntime();
+    console.log(`Browser task sites for this run: ${cfg.browserSites.join(', ')}. Local approval remains required; close the controlled window or press Ctrl+C to stop.`);
+  }
   console.log('Firbo Connector: local consent and folder rules remain active. Ctrl+C requests Stop.');
   console.log('Pending results are stored privately on this computer, UNENCRYPTED, until acknowledged.');
   const controller = new AbortController();

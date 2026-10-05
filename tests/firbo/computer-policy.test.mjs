@@ -62,3 +62,13 @@ test('results come back as short text', () => {
   assert.equal(describeComputerResult('list', { entries: [{ name: 'Docs', type: 'dir' }, { name: 'a.txt', type: 'file' }] }), '[folder] Docs\na.txt');
   assert.equal(describeComputerResult('open_app', { app: 'Safari', opened: true }), 'Opened Safari.');
 });
+
+test('a browser plan for an employee: validated here, reviewed again on the computer', async () => {
+  const { browserTaskParams } = await import('../../supabase/functions/_shared/computer-policy.ts');
+  const ok = parseComputerRequest('browse [{"action":"open","url":"https://example.com"},{"action":"read"}]');
+  assert.equal(ok.kind, 'browser_task');
+  assert.equal(decideComputer('browser_task', ok.params, on).verdict, 'auto');
+  assert.ok('error' in parseComputerRequest('browse [{"action":"read"}]'));
+  assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'http://plain.example' }] }), null);
+  assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'fill', selector: 'xpath=//input', text: 'x' }] }), null);
+});
