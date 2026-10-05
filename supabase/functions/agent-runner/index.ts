@@ -306,22 +306,28 @@ Deno.serve(async (req) => {
     return reply;
   };
   // Inside the loop every reply must be a tool request or the final answer. When the economy combo answers with neither
-  // (some of its models invent tool names), the rest of this run moves up to the quality combo: paid plans only.
+  // (some of its models invent tool names) or is too slow, the rest of this run moves up to the quality combo: paid plans only.
   let escalated = false;
   const callLoop = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
-    const reply = await callOnce(messages, timeoutMs);
-    const valid = isFinalAnswer(reply) || !!parseToolRequest(reply, [...TOOL_LIST]);
-    // The economy combo can be slow, so the step's own time may be spent: what counts is the time left for the whole task.
-    const left = requestStarted + WALL_CLOCK_MS - Date.now() - 20_000;
-    if (valid || escalated || !gateway || planFree || orgPlan?.plan === 'free' || gateway.model === 'firbo-quality' || left < 10_000) return reply;
-    try {
-      const up = gatewayForOrgPlan({ ...agent, model: 'omniroute:firbo-quality' }, orgPlan?.plan, name => Deno.env.get(name));
-      if (!up) return reply;
-      escalated = true;
-      console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from: gateway.model, to: up.model, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
-      gateway = up;
-      return await callOnce(messages, Math.min(45_000, left));
-    } catch { return reply; }
+    const canUp = !escalated && !!gateway && !planFree && orgPlan?.plan !== 'free' && gateway.model !== 'firbo-quality';
+    let reply = '';
+    let reason = 'invalid_reply';
+    // With the quality combo ready behind it, a slow economy step is cut at 30 s instead of eating the whole budget.
+    try { reply = await callOnce(messages, canUp ? Math.min(timeoutMs, 30_000) : timeoutMs); }
+    // Only a timeout moves up; a gateway error stays an error (no silent second route).
+    catch (error) { if (!canUp || lastError !== 'gateway_timeout_or_cancelled' || req.signal.aborted) throw error; reason = 'slow'; }
+    // Only a request for a tool this agent really has counts: asking for one it lacks is as unusable as a made-up name.
+    const mine = [...(Object.keys(loopTools) as (typeof TOOL_LIST[number])[]), ...(usable('think') ? ['think' as const] : [])];
+    const valid = !!reply && (isFinalAnswer(reply) || !!parseToolRequest(reply, mine));
+    // What counts is the time left for the whole task, not the step's own time.
+    const left = requestStarted + WALL_CLOCK_MS - Date.now() - 5_000;
+    if (valid || !canUp || left < 8_000) { if (!reply) throw new Error(lastError); return reply; }
+    const up = (() => { try { return gatewayForOrgPlan({ ...agent, model: 'omniroute:firbo-quality' }, orgPlan?.plan, name => Deno.env.get(name)); } catch { return null; } })();
+    if (!up) { if (!reply) throw new Error(lastError); return reply; }
+    escalated = true;
+    console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from: gateway!.model, to: up.model, reason, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
+    gateway = up;
+    return await callOnce(messages, Math.min(45_000, left));
   };
   const callModel = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     let completion: any = null;
