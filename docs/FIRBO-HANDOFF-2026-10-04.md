@@ -12,7 +12,7 @@ The owner means **the Firbo website opened in the mobile browser**, not a native
 Repository: `conpol84/javris-clone` — currently PUBLIC. Do not commit tokens, .env files, connector journals or private rollback files.
 
 Work branch: `codex/firbo-unified-gateway`  
-Current head: **9aca210dbb5219ccb8bb85c017e151f87adf4da9**  
+Current branch head at final audit: **66fe7d850b02166214f1aed2fd4b082a4b9586d4** (documentation-only follow-ups after the tested Website↔Laptop implementation). Last explicitly tested Website↔Laptop code source: **9aca210dbb5219ccb8bb85c017e151f87adf4da9**.  
 Base branch: `claude/omniroute-engine`, base SHA **50bea79134fb28aacc9d5d3fcd949ba8d8239d78**  
 PR: **#9**, open, mergeable, DRAFT. Do not merge merely because this slice is green.
 
@@ -444,3 +444,24 @@ CI truth at source `9aca210...`:
 Current Supabase Security Advisor still reports leaked-password protection disabled and six authenticated-callable SECURITY DEFINER functions requiring review. RLS-with-no-policy findings on secret/service-only tables must **not** be “fixed” by exposing client policies.
 
 The branch contains later documentation-only commits after the tested implementation. Treat **9aca210...** as the last explicitly cited tested Website↔Laptop implementation source until a newer code SHA is fully re-run. Read branch history before editing; never reset to the old source snapshots referenced earlier in the conversation.
+
+
+## FINAL LIVE AUDIT — 4 October 2026, before handoff
+
+This final audit re-read the live services rather than relying only on prior notes:
+
+- Supabase connector Edge Function: ACTIVE **v7**, artifact SHA **523976edf5e85533452dc4cd981f3e71f6fda7385adb577c34244b4b87628d41**, with both `browser_open` and `connector_finish_execution` present.
+- Live `connector_devices.capabilities` column exists as JSONB with default `{}`.
+- Live device inventory remains **1 total / 0 paired / 0 online**. Therefore physical phone-website -> laptop execution has NOT been accepted on the owner's hardware.
+- Vercel production `firboai.app`: deployment **dpl_AXUPy9TUxZxrEsSZaWs4fFtDPHN6**, source **184c7acb43d49031e440e5a309719eec7379a5cf**, READY.
+- Exact Website↔Laptop preview: deployment **dpl_HgjvYvdAWyAo4WmNjFJKqq7UF5GG**, source **9aca210dbb5219ccb8bb85c017e151f87adf4da9**, READY. Production publication remains unconfirmed.
+- At source `9aca210...`, the current regression set is mostly green, including Frontend CI, Computer Manager, M2 mobile, real local-operation checks, control-plane, no-paid text, connectivity, M1, voice/hologram, native rollout, connected devices and SAST.
+- Two workflows remain red and must not be hidden: **Firbo local voice and model compatibility** (runner npm global-install EACCES setup failure) and **Firbo actual local-model install and useful draft** (disposable Docker API canary `local_api_boot_or_auth_check_failed` after actual Qwen smoke passed). These do not roll back already-live VPS Ollama, but they must be diagnosed before calling the PR fully green.
+- Security Advisor still reports leaked-password protection disabled and six authenticated-callable SECURITY DEFINER functions requiring review. Secret/service-only RLS tables with no client policies must not be exposed merely to silence the linter.
+
+### Exact immediate blockers
+1. **Publish the reviewed Website↔Laptop frontend to production** or use the exact READY preview for acceptance; do not claim `firboai.app` contains it yet.
+2. **Run/pair the current Connector on a real personal/test laptop with `--allow-browser`**, then complete the physical voice/browser receipt checklist.
+3. After that, evolve `browser_open` into the dedicated visible-browser executor (click/type/scroll/upload/download/readback) without using generic shell as the final architecture.
+
+Everything else in this handoff remains part of the same MASTER-PLAN-V2 backlog and must not be silently dropped.
