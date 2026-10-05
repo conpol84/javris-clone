@@ -20,7 +20,17 @@ PY=$(systemctl cat openjarvis | sed -n 's/^ExecStart=\([^ ]*\)jarvis .*/\1python
 [ -x "$PY" ] || PY="$ADMIN_HOME/.venv/bin/python"
 [ -x "$PY" ] || { echo "Could not find the OpenJarvis python ($PY)"; exit 1; }
 echo "1/6 Docker SDK in the OpenJarvis environment"
-"$PY" -m pip install -q 'docker>=7' 2>/dev/null || uv pip install -q --python "$PY" 'docker>=7'
+# The OpenJarvis environment belongs to the jarvis user and may have been made by uv (no pip inside): try pip,
+# then pip bootstrapped with ensurepip, then uv wherever it is installed. Always as jarvis, so file owners stay right.
+J() { runuser -u jarvis -- "$@"; }
+if ! J "$PY" -c 'import docker' 2>/dev/null; then
+  J "$PY" -m pip install -q 'docker>=7' 2>/dev/null \
+  || { J "$PY" -m ensurepip -q >/dev/null 2>&1 && J "$PY" -m pip install -q 'docker>=7'; } \
+  || { UV=$(command -v uv || ls /home/jarvis/.local/bin/uv /home/jarvis/.cargo/bin/uv /root/.local/bin/uv /root/.cargo/bin/uv 2>/dev/null | head -1)
+       [ -n "$UV" ] && J "$UV" pip install -q --python "$PY" 'docker>=7'; } \
+  || { echo "Could not install the Docker SDK into $PY. Send this line to support."; exit 1; }
+fi
+J "$PY" -c 'import docker' || { echo "Docker SDK still missing in $PY"; exit 1; }
 
 echo "2/6 Sandbox image and Docker access"
 docker pull -q python:3.12-slim >/dev/null
