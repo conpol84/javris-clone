@@ -12,6 +12,7 @@ const MUTATIONS = new Set(['click', 'fill', 'upload']);
 const MAX_BYTES = 4 * 1024 * 1024;
 const check = signal => { if (signal?.aborted) throw new Error('operation_stopped'); };
 const hash = data => createHash('sha256').update(data).digest('hex');
+const byteClip = (value, limit) => Buffer.from(String(value)).subarray(0, Math.max(0, limit)).toString('utf8');
 const fail = () => { throw new Error('invalid_browser_plan'); };
 const bounded = (v, n) => typeof v === 'string' && v.length > 0 && v.length <= n && !/[\u0000-\u001f\u007f]/.test(v);
 
@@ -125,7 +126,7 @@ export async function executeBrowserPlan(raw, cfg, {
   const stop = new AbortController(), abort = ()=>stop.abort();
   signal?.addEventListener('abort', abort, {once:true});
   const timer=setTimeout(abort, plan.timeout_ms);
-  let browser, context, page, activeAction='', networkFailure='', transferred=0, requests=0, finished=false;
+  let browser, context, page, activeAction='', networkFailure='', transferred=0, requests=0, finished=false, textBudget=20_000;
   const close = ()=>{ void browser?.close().catch(()=>{}); };
   stop.signal.addEventListener('abort', close, {once:true});
   const ensure = () => { check(stop.signal); if (networkFailure) throw new Error(networkFailure); };
@@ -180,8 +181,12 @@ export async function executeBrowserPlan(raw, cfg, {
       ensure();
       onProgress({step:index+1,total:plan.steps.length,action:s.action,status:'running'});
       let result={};
-      if (s.action==='open') { await page.goto(s.url,{waitUntil:'domcontentloaded'}); result={url:page.url()}; }
-      if (s.action==='read') result={untrusted_page_data:true,url:page.url(),title:(await page.title()).slice(0,500),text:(await page.locator('body').innerText()).slice(0,4000)};
+      if (s.action==='open') { await page.goto(s.url,{waitUntil:'domcontentloaded'}); result={url:byteClip(page.url(),2048)}; }
+      if (s.action==='read') {
+        const raw=await page.locator('body').innerText(),text=byteClip(raw,Math.min(4000,textBudget));
+        textBudget=Math.max(0,textBudget-Buffer.byteLength(text));
+        result={untrusted_page_data:true,url:byteClip(page.url(),2048),title:byteClip(await page.title(),500),text,truncated:text!==raw};
+      }
       if (s.action==='scroll') await page.mouse.wheel(0,s.pixels);
       if (['click','fill','upload'].includes(s.action)) {
         const target=page.locator('css='+s.selector);
