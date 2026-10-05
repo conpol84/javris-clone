@@ -1,6 +1,10 @@
 # Automatic HTTPS (Let's Encrypt). Both names must have an A record pointing at this server first.
 {$API_DOMAIN} {
 	encode zstd gzip
+	# The OpenJarvis server agent (systemd on the host, port 8765; ufw admits only Docker networks). Its own key guards /v1.
+	handle_path /jarvis/* {
+		reverse_proxy 172.17.0.1:8765
+	}
 	reverse_proxy firbo-api:8000
 }
 

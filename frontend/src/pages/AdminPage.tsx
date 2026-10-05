@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import { Panel } from '../components/command/Panel';
 import { NativeGatewayConsole } from '../components/gateway/NativeGatewayConsole';
+import { ServerJarvisPanel } from '../components/admin/ServerJarvisPanel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { AdminError, loadAdminOverview, type AdminOverview } from '../lib/company/admin';
 import '../styles/firbo.css';
 
-const TABS = ['overview', 'companies', 'users', 'console'] as const;
+const TABS = ['overview', 'companies', 'users', 'jarvis', 'console'] as const;
 type Tab = (typeof TABS)[number];
 
 /** One Firbo login. Both overview and native engine controls are server-authorized. */
@@ -48,7 +49,7 @@ export function AdminPage() {
         style={tab === k ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}>{t(`adm.tab.${k}` as TKey)}</button>)}</div>
     </div>
     <div className="mx-auto min-h-0 w-full max-w-[1300px] flex-1 space-y-4 overflow-y-auto px-4 pb-8 md:px-6">
-      {tab === 'overview' ? <>
+      {tab === 'jarvis' ? <ServerJarvisPanel /> : tab === 'overview' ? <>
         <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {stat(t('adm.stat.companies'), fmt.number(data.totals.companies))}
           {stat(t('adm.stat.users'), fmt.number(data.totals.users))}
