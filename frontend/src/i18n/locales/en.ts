@@ -415,6 +415,7 @@ export const en = {
   'jv.agent': "Agent",
   'jv.engine': "Engine",
   'jv.refresh': "Refresh",
+  'jv.open': "Open its dashboard",
   'jv.ask': "Give the server agent a job",
   'jv.placeholder': "e.g. Write a Python script that sums a CSV column and run it on a sample.",
   'jv.send': "Send",

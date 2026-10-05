@@ -412,6 +412,7 @@ const ar: Dictionary = {
   'jv.agent': "الوكيل",
   'jv.engine': "المحرك",
   'jv.refresh': "تحديث",
+  'jv.open': "افتح لوحة التحكم",
   'jv.ask': "أعطِ وكيل الخادم مهمة",
   'jv.placeholder': "مثال: اكتب سكربت Python يجمع عمود CSV وشغّله على عيّنة.",
   'jv.send': "إرسال",

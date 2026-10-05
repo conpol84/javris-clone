@@ -407,6 +407,7 @@ const ptBR: Dictionary = {
   'jv.agent': "Agente",
   'jv.engine': "Motor",
   'jv.refresh': "Atualizar",
+  'jv.open': "Abrir o painel",
   'jv.ask': "Dê uma tarefa ao agente do servidor",
   'jv.placeholder': "ex.: Escreva um script Python que some uma coluna CSV e rode com uma amostra.",
   'jv.send': "Enviar",

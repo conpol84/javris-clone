@@ -408,6 +408,7 @@ const zhCN: Dictionary = {
   'jv.agent': "智能体",
   'jv.engine': "引擎",
   'jv.refresh': "刷新",
+  'jv.open': "打开它的控制台",
   'jv.ask': "给服务器智能体分配任务",
   'jv.placeholder': "例如：写一个对 CSV 列求和的 Python 脚本，并用样例运行。",
   'jv.send': "发送",

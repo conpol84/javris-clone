@@ -3,6 +3,9 @@ import { Panel } from '../command/Panel';
 import { useI18n } from '../../i18n/I18nProvider';
 import { requireClient } from '../../lib/company/client';
 
+// The server agent's own dashboard (behind a Caddy password on the VPS).
+const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://jarvis.firboai.app';
+
 interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string }
 interface Turn { q: string; a: string; meta: string; error?: boolean }
 
@@ -50,6 +53,7 @@ export function ServerJarvisPanel() {
           <span className="fb-chip">{t('jv.engine')}: {status.engine || '—'}</span>
         </>}
         <button className="fb-btn fb-btn--ghost" onClick={() => void refresh()}>{t('jv.refresh')}</button>
+        <a className="fb-btn fb-btn--primary" href={DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
       </div>
       {status && !status.configured && <p className="fb-dim mt-2 text-xs">{t('jv.setup')}</p>}
     </Panel>

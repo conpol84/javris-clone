@@ -407,6 +407,7 @@ const de: Dictionary = {
   'jv.agent': "Agent",
   'jv.engine': "Engine",
   'jv.refresh': "Aktualisieren",
+  'jv.open': "Dashboard öffnen",
   'jv.ask': "Gib dem Server-Agent eine Aufgabe",
   'jv.placeholder': "z. B. Schreibe ein Python-Skript, das eine CSV-Spalte summiert, und führe es mit einem Beispiel aus.",
   'jv.send': "Senden",

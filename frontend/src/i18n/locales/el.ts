@@ -407,6 +407,7 @@ const el: Dictionary = {
   'jv.agent': "Agent",
   'jv.engine': "Μηχανή",
   'jv.refresh': "Ανανέωση",
+  'jv.open': "Άνοιγμα του dashboard του",
   'jv.ask': "Δώσε δουλειά στον agent του server",
   'jv.placeholder': "π.χ. Γράψε ένα Python script που αθροίζει μια στήλη CSV και τρέξ' το σε δείγμα.",
   'jv.send': "Αποστολή",

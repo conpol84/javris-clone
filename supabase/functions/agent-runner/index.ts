@@ -372,15 +372,21 @@ Deno.serve(async (req) => {
     return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
   };
   // The company server agent (OpenJarvis on Firbo's VPS: code, files, PDFs, git). It runs on Firbo's own server, so only
-  // companies with a platform admin get it, and only for agents allowed (not just approval) to use a matching power.
+  // the top paid plans (FIRBO_SERVER_AGENT_PLANS, default business and enterprise) and companies with a platform admin
+  // get it, and only for agents allowed (not just approval) to use a matching power.
   const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
   const serverUrl = (Deno.env.get('OPENJARVIS_URL') ?? '').replace(/\/+$/, '');
   const serverKey = Deno.env.get('OPENJARVIS_API_KEY') ?? '';
   if (!free && /^https:\/\//.test(serverUrl) && serverKey && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
-    const { data: admins } = await admin.from('platform_admins').select('user_id');
-    const ids = (admins ?? []).map((a: any) => a.user_id);
-    const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
-    if ((count ?? 0) > 0) loopTools.server_task = async (job) => {
+    const plans = (Deno.env.get('FIRBO_SERVER_AGENT_PLANS') ?? 'business,enterprise').split(',').map(x => x.trim()).filter(Boolean);
+    let entitled = plans.includes(String(orgPlan?.plan ?? ''));
+    if (!entitled) {
+      const { data: admins } = await admin.from('platform_admins').select('user_id');
+      const ids = (admins ?? []).map((a: any) => a.user_id);
+      const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
+      entitled = (count ?? 0) > 0;
+    }
+    if (entitled) loopTools.server_task = async (job) => {
       const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
       // The server agent requires a model name: use the one it runs by default.
       const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
