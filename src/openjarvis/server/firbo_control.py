@@ -355,10 +355,15 @@ def _audit(request_id: str, user_id: str, name: str, phase: str, revision: str) 
         with sqlite3.connect(location, timeout=5) as db:
             db.execute("pragma synchronous=FULL")
             db.execute(
-                "create table if not exists control_events (request_id text, user_id text, target text, phase text, revision text, at text default (strftime('%Y-%m-%dT%H:%M:%fZ','now')), primary key(request_id,phase))"
+                "create table if not exists control_events ("
+                "request_id text, user_id text, target text, phase text, "
+                "revision text, "
+                "at text default (strftime('%Y-%m-%dT%H:%M:%fZ','now')), "
+                "primary key(request_id,phase))"
             )
             db.execute(
-                "insert into control_events(request_id,user_id,target,phase,revision) values(?,?,?,?,?)",
+                "insert into control_events"
+                "(request_id,user_id,target,phase,revision) values(?,?,?,?,?)",
                 (request_id, user_id, name, phase, revision),
             )
     except (OSError, sqlite3.Error):
