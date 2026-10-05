@@ -162,3 +162,11 @@ test('a made-up function call is never taken for the work', async () => {
   assert.equal(looksLikeToolCall(JSON.stringify({ name: 'Acme', report: 'r' })), false);
   assert.equal(isUnusableReply('## Tips\n1. Post daily'), false);
 });
+test('a leftover tool request for a tool that does not exist is not a report', async () => {
+  const { isLeftoverToolRequest, isUnusableReply } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  const ask = '```json\n{\n  "action": "ask",\n  "input": "Please provide the recent completions"\n}\n```';
+  assert.equal(isLeftoverToolRequest(ask), true);
+  // Inside the loop the same shape is a normal step, so it must not count as an unusable reply there.
+  assert.equal(isUnusableReply('{"action":"web_search","input":"x"}'), false);
+  assert.equal(isLeftoverToolRequest(JSON.stringify({ summary: 's', report: 'r', actions: [{ action: 'send_email', input: 'x' }] })), false);
+});

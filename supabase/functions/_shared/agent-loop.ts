@@ -235,6 +235,15 @@ export function isUnusableReply(text: string): boolean {
   return looksLikeThinking(text) || looksLikeToolCall(text);
 }
 
+/**
+ * True when the FINAL text is still a tool request such as {"action": "ask", "input": "..."} (often for a tool that does
+ * not exist). Inside the loop that shape is a normal step; as the last reply it is never the work.
+ */
+export function isLeftoverToolRequest(text: string): boolean {
+  const o = strictModelJson(text.replace(/```(?:json)?/gi, ''));
+  return !!o && typeof o.report !== 'string' && typeof o.summary !== 'string' && typeof o.action === 'string' && 'input' in o;
+}
+
 /** Source links (title + URL) listed in tool results, for a fallback report. */
 export function sourcesIn(evidence: string[], max = 8): { title: string; url: string }[] {
   const seen = new Set<string>();

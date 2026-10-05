@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, finishCutOff, isUnusableReply, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 
@@ -384,14 +384,14 @@ Deno.serve(async (req) => {
   try {
     const out = await runAgentLoop({ evidence,
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
-      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: web.block,
+      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
     });
     text = out.text; steps = out.steps; calls = out.calls;
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
     const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
-    if (text && isUnusableReply(text)) text = sourcesReport().text;
+    if (text && (isUnusableReply(text) || isLeftoverToolRequest(text))) text = sourcesReport().text;
   } catch {
     // The model failed or timed out at the end, but the research is not lost: hand over the sources that were found.
     if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }

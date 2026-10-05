@@ -45,7 +45,7 @@ export interface PulseData {
 export function pulseBlock(p: PulseData): string {
   const t = (s: string, n: number) => String(s ?? '').replace(/\[[^\]]*\]/g, '').replace(/\s+/g, ' ').trim().slice(0, n);
   const lines = [
-    `COMPANY PULSE (last 24 hours, from Firbo's own records; use it for digests, status reports and to propose next steps):`,
+    `COMPANY PULSE (last 24 hours, from Firbo's own records; use it for digests, status reports and to propose next steps). It is complete: never ask for more information. When nothing happened, say so plainly and still propose the day's priorities from the company goal:`,
     `- Finished tasks: ${p.completed.length}. Failed tasks: ${p.failed.length}. Open tasks: ${p.open}. Actions waiting for human approval: ${p.approvals}.`,
     ...p.completed.slice(0, 8).map(c => `- Done${c.agent ? ` by ${t(c.agent, 40)}` : ''}: ${t(c.title, 100)}${c.summary ? ` — ${t(c.summary, 220)}` : ''}`),
     ...p.failed.slice(0, 5).map(f => `- Failed: ${t(f.title, 100)}`),
