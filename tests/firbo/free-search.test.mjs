@@ -71,3 +71,18 @@ test('a long query that finds nothing is retried with its key words', async () =
   });
   assert.match(out, /CRM news - https:\/\/a\.gr\/crm/);
 });
+test('deep research reads the top result pages and skips private or failing ones', async () => {
+  const { resultLinks, readTopPages } = await import('../../supabase/functions/_shared/free-search.ts');
+  const results = '1. A - https://a.example/x\n   s\nRecent news:\nN1. B (Mon) - https://b.example/y\nN2. A again - https://a.example/x\nW1. C - https://c.example/z';
+  assert.deepEqual(resultLinks(results, 3), ['https://a.example/x', 'https://b.example/y', 'https://c.example/z']);
+  const long = 'word '.repeat(100);
+  const fetcher = async (url) => url.startsWith('https://a.example')
+    ? new Response(`<html><title>A page</title><article>${long}</article></html>`, { headers: { 'content-type': 'text/html' } })
+    : new Response('nope', { status: 500 });
+  const pages = await readTopPages(results, fetcher, undefined, { max: 2 });
+  assert.equal(pages.length, 1);
+  assert.equal(pages[0].url, 'https://a.example/x');
+  assert.match(pages[0].text, /^A page word/);
+  assert.deepEqual(await readTopPages('1. P - http://127.0.0.1/admin', fetcher), []);
+  assert.deepEqual(await readTopPages(results, fetcher, undefined, { budgetMs: 500 }), []);
+});

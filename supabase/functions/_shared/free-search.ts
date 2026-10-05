@@ -175,3 +175,29 @@ export async function readPageDirect(rawUrl: string, fetcher: Fetcher = fetch, s
   }
   throw new Error('page_too_many_redirects');
 }
+
+/** Links listed in search results ("1. Title - https://..."), first come first, without repeats. */
+export function resultLinks(results: string, max = 2): string[] {
+  const out: string[] = [];
+  for (const m of results.matchAll(/^\s*(?:[NW]?\d+)\.\s+.+?\s+-\s+(https?:\/\/\S+)/gm)) {
+    if (!out.includes(m[1])) out.push(m[1]);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * Deep research: the text of the top result pages, read at the same time and only within `budgetMs`
+ * (a page that is slow, private or not text is skipped). Small models rarely ask to read pages themselves,
+ * so the agent gets the articles, not only their titles.
+ */
+export async function readTopPages(results: string, fetcher: Fetcher = fetch, signal?: AbortSignal, o: { max?: number; budgetMs?: number; chars?: number } = {}): Promise<{ url: string; text: string }[]> {
+  const budget = o.budgetMs ?? 6_000;
+  if (budget < 1_500) return [];
+  const limit = AbortSignal.timeout(budget);
+  const pages = await Promise.all(resultLinks(results, o.max ?? 2).map(url =>
+    readPageDirect(url, fetcher, signal ? AbortSignal.any([signal, limit]) : limit)
+      .then(text => ({ url, text: text.replace(/\s+/g, ' ').trim().slice(0, o.chars ?? 2500) }))
+      .catch(() => null)));
+  return pages.filter((p): p is { url: string; text: string } => !!p && p.text.length > 200);
+}

@@ -6,7 +6,7 @@ import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, 
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, isUnusableReply, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
-import { freeWebSearch, readPageDirect } from '../_shared/free-search.ts';
+import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -73,6 +73,8 @@ async function gatherWeb(tools: { tool_name: string; enabled: boolean; policy: s
   };
   const clean = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const parts: string[] = [];
+  const started = Date.now();
+  let found = '';
   if (usable('web_search')) {
     // Tags such as "[Urgent]" or "[Test 3]" in a title are not what the owner wants searched.
     const query = clean(taskTitle.replace(/\[[^\]]*\]/g, ' '), 200);
@@ -81,15 +83,22 @@ async function gatherWeb(tools: { tool_name: string; enabled: boolean; policy: s
         const out = await call('/search', { query, max_results: 5, ...(provider ? { provider } : {}) });
         const results = Array.isArray(out?.results) ? out.results.slice(0, 5) : [];
         if (!results.length) continue;
-        parts.push(`WEB SEARCH for "${query}":\n${results.map((item: any, i: number) => `${i + 1}. ${clean(item.title, 120)} - ${clean(item.url, 200)}\n   ${clean(item.snippet, 300)}`).join('\n')}`);
+        found = results.map((item: any, i: number) => `${i + 1}. ${clean(item.title, 120)} - ${clean(item.url, 200)}\n   ${clean(item.snippet, 300)}`).join('\n');
+        parts.push(`WEB SEARCH for "${query}":\n${found}`);
         used.push('web_search'); break;
       } catch { /* Preserve existing best-effort web behavior. */ }
     }
     // No search provider in the gateway (or nothing found): keyless web + news search.
     if (!used.includes('web_search')) {
-      const found = await freeWebSearch(query, lang, fetch, signal).catch(() => '');
+      found = await freeWebSearch(query, lang, fetch, signal).catch(() => '');
       if (found) { parts.push(`WEB SEARCH for "${query}":\n${found}`); used.push('web_search'); }
     }
+  }
+  // Deep research: read the top results too, within what is left of the 15 s web budget.
+  if (found && (usable('browser_extract') || usable('browser_navigate')) && !/https?:\/\//.test(taskDescription)) {
+    const pages = await readTopPages(found, fetch, signal, { budgetMs: 13_000 - (Date.now() - started) });
+    for (const page of pages) parts.push(`PAGE ${page.url}:\n${page.text}`);
+    if (pages.length && !used.includes('browser_extract')) used.push('browser_extract');
   }
   if (usable('browser_extract')) {
     const urls = [...new Set((taskDescription.match(/https?:\/\/[^\s<>"')]+/g) ?? []).slice(0, 2))];
