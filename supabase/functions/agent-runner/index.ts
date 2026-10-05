@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
@@ -305,6 +305,24 @@ Deno.serve(async (req) => {
     }
     return reply;
   };
+  // Inside the loop every reply must be a tool request or the final answer. When the economy combo answers with neither
+  // (some of its models invent tool names), the rest of this run moves up to the quality combo: paid plans only.
+  let escalated = false;
+  const callLoop = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
+    const reply = await callOnce(messages, timeoutMs);
+    const valid = isFinalAnswer(reply) || !!parseToolRequest(reply, [...TOOL_LIST]);
+    // The economy combo can be slow, so the step's own time may be spent: what counts is the time left for the whole task.
+    const left = requestStarted + WALL_CLOCK_MS - Date.now() - 20_000;
+    if (valid || escalated || !gateway || planFree || orgPlan?.plan === 'free' || gateway.model === 'firbo-quality' || left < 10_000) return reply;
+    try {
+      const up = gatewayForOrgPlan({ ...agent, model: 'omniroute:firbo-quality' }, orgPlan?.plan, name => Deno.env.get(name));
+      if (!up) return reply;
+      escalated = true;
+      console.warn(JSON.stringify({ event: 'firbo_agent_route_up', task_id: task.id, from: gateway.model, to: up.model, reply_head: reply.replace(/\s+/g, ' ').slice(0, 120) }));
+      gateway = up;
+      return await callOnce(messages, Math.min(45_000, left));
+    } catch { return reply; }
+  };
   const callModel = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     let completion: any = null;
     if (free) {
@@ -457,7 +475,7 @@ Deno.serve(async (req) => {
   };
   try {
     const out = await runAgentLoop({ evidence,
-      call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
+      call: callLoop, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
       maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`, toolHelp,
     });
@@ -504,7 +522,7 @@ Deno.serve(async (req) => {
   const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
     result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
       queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
-      ran_at: new Date().toISOString(), routing, ...(upgraded ? { routed_up: 'feedback' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
+      ran_at: new Date().toISOString(), routing, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
   // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
   if (!reconcile && !resultError && parsed.learned.length) {
     const { data: known } = await admin.from('memories').select('content').eq('organization_id', task.organization_id).contains('metadata', { source: 'learned' }).order('created_at', { ascending: false }).limit(200);

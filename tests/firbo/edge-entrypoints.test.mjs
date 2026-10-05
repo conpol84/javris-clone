@@ -323,3 +323,14 @@ test('agent-chat: the scheduler secret lets Telegram act only as the person it n
   const outsider=await invoke('agent-chat',{unsigned:true,cron:'cron-test',noMembership:true},{system_user_id:USER});
   assert.equal(outsider.response.status,403);
 });
+test('agent-runner: an economy reply that is neither a tool call nor an answer moves the run up to the quality route (paid plans only)', async () => {
+  const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
+  const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
+  const {state,response}=await invoke('agent-runner',{tools,plan:'pro',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final]});
+  assert.equal(response.status,200);
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model);
+  assert.deepEqual(chats,['firbo-economy','firbo-quality']);
+  assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'invalid_reply');
+  const free=await invoke('agent-runner',{tools,plan:'free',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final,final,final]});
+  assert.ok(!free.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
+});
