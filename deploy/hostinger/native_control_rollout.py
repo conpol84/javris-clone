@@ -27,9 +27,9 @@ import time
 import urllib.error
 import urllib.request
 
-SOURCE_REF = '8e810ca8fc1c86725d8636e198ef8d95553b66dd'
+SOURCE_REF = 'b494df70d7b46a20af510964af72fe6e24e3b125'
 SOURCE_BASE = 'https://raw.githubusercontent.com/conpol84/javris-clone/' + SOURCE_REF + '/src/openjarvis/server/'
-SOURCE_HASHES = {'firbo_app.py': '80ee271e03b40892510114c11cda2fd4cfc0fa1a91330ebcaa87ffd0f9c5e8af', 'firbo_control.py': 'd1f568fe4d915284f6e990b3362e28156595e5dae13741d8a32ab41adf211a71'}  # Filled from the reviewed, unchanged native-control source.
+SOURCE_HASHES = {'firbo_app.py': 'd4882b0b2c13bac843ea849d7ba0688f4f562313db3ef436aeccae8279576f07', 'firbo_control.py': '46607e5009c6ba87069b1c6a327a65bff24e34de79a0b1277da89c00a0b72099'}  # Exact candidate source; prior release manifests remain immutable.
 EXPECTED_DB = 'https://bfeinnsorgjycivozcau.supabase.co'
 NAMES = ('firbo-api', 'firbo-omniroute', 'firbo-caddy', 'firbo-redis')
 ROOT = Path('/root/firbo-native-releases')
