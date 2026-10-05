@@ -8,7 +8,8 @@ export type IntegrationKind =
   | 'threads' | 'instagram' | 'devto' | 'matrix' | 'zulip' | 'rocketchat' | 'todoist' | 'monday' | 'homeassistant' | 'ifttt' | 'brevo' | 'mailchimp'
   | 'stripe' | 'shopify' | 'woocommerce' | 'lemonsqueezy' | 'gumroad' | 'calendly' | 'calcom' | 'intercom'
   | 'youtube' | 'tiktok' | 'salesforce' | 'quickbooks' | 'homeassistant_devices' | 'traccar'
-  | 'mcp' | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox';
+  | 'mcp' | 'zapier' | 'make' | 'n8n' | 'gmail' | 'gcal' | 'gdrive' | 'sheets' | 'outlook' | 'linkedin' | 'dropbox'
+  | 'gdrive_read' | 'gmail_read' | 'gcal_read' | 'outlook_read';
 
 export type IntegrationCategory = 'messaging' | 'email' | 'work' | 'crm' | 'productivity' | 'social' | 'automation' | 'commerce';
 
@@ -123,6 +124,11 @@ export const LIVE_APPS: LiveApp[] = [
   { kind: 'sheets', name: 'Google Sheets', color: '#0f9d58', cat: 'productivity', oauth: 'GOOGLE', fields: [f('spreadsheet_id', 'ID from the sheet address', false, 'Spreadsheet ID'), f('range', 'Sheet1!A:B', false, 'Range', true)], about: 'Adds a row to a spreadsheet when you approve an action.', help: 'Sign in with Google and give the spreadsheet ID: the long code between /d/ and /edit in the sheet’s address.' },
   { kind: 'linkedin', name: 'LinkedIn', color: '#0a66c2', cat: 'social', oauth: 'LINKEDIN', fields: [], about: 'Posts to your LinkedIn profile when you approve an action.', help: 'Sign in with LinkedIn. Access lasts about 60 days, then you sign in again.' },
   { kind: 'dropbox', name: 'Dropbox', color: '#0061ff', cat: 'productivity', oauth: 'DROPBOX', fields: [], about: 'Saves a text file in your Dropbox when you approve an action.', help: 'Sign in with Dropbox. Files go to a Firbo folder.' },
+  // Read-only sign-ins for the company knowledge base: the AI team can read and search them, never send or change anything.
+  { kind: 'gdrive_read', name: 'Google Drive · read', color: '#fbbc04', cat: 'productivity', oauth: 'GOOGLE', fields: [], readOnly: true, about: 'Lets your AI team read your Drive documents in Knowledge.', help: 'Sign in with Google (read-only). Then add it as a source on the Knowledge page.' },
+  { kind: 'gmail_read', name: 'Gmail · read', color: '#ea4335', cat: 'email', oauth: 'GOOGLE', fields: [], readOnly: true, about: 'Lets your AI team read recent emails in Knowledge.', help: 'Sign in with Google (read-only). Then add it as a source on the Knowledge page.' },
+  { kind: 'gcal_read', name: 'Google Calendar · read', color: '#4285f4', cat: 'productivity', oauth: 'GOOGLE', fields: [], readOnly: true, about: 'Lets your AI team see your calendar in Knowledge.', help: 'Sign in with Google (read-only). Then add it as a source on the Knowledge page.' },
+  { kind: 'outlook_read', name: 'Outlook · read', color: '#0078d4', cat: 'email', oauth: 'MICROSOFT', fields: [], readOnly: true, about: 'Lets your AI team read recent emails and files in Knowledge.', help: 'Sign in with Microsoft (read-only). Then add it as a source on the Knowledge page.' },
   { kind: 'webhook', name: 'Webhook', color: '#34d399', cat: 'automation', fields: [f('url', 'https://hooks.example.com/…', true)] },
 ];
 

@@ -277,7 +277,7 @@ function IntegrationWorkspace() {
                           <Plug size={13} /> {t('int.mcp.tools')}
                         </button>
                       )}
-                      {LIVE_APPS.find((a) => a.kind === r.kind)?.readOnly && (
+                      {LIVE_APPS.find((a) => a.kind === r.kind)?.readOnly && !r.kind.endsWith('_read') && (
                         <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 12px', fontSize: 13 }} disabled={busy !== null} onClick={() => void peek(r)}>
                           <BarChart3 size={13} /> {t('int.snapshot')}
                         </button>
