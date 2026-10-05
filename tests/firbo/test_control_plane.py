@@ -1,10 +1,11 @@
 """Isolated control-plane regression tests. No network, real accounts or AI spend."""
+
 import importlib.util
 import json
-from pathlib import Path
 import sqlite3
 import sys
 import types
+from pathlib import Path
 
 import httpx
 import pytest
@@ -13,28 +14,75 @@ from fastapi.testclient import TestClient
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT / "src" / "openjarvis" / "server"
-# Load the tested modules without initialising the unrelated legacy desktop engine.
-for name, path in [("openjarvis", SOURCE.parent), ("openjarvis.server", SOURCE)]:
-    module = types.ModuleType(name)
-    module.__path__ = [str(path)]
-    sys.modules[name] = module
+
+# These tests need a tiny OpenJarvis package surface so importing the Firbo
+# control plane does not initialise the unrelated desktop engine. Keep that
+# isolation private to each load: never leave fake openjarvis modules in
+# sys.modules, because pytest collects the rest of the real OpenJarvis suite
+# in the same interpreter.
+_isolated_modules: dict[str, types.ModuleType] = {}
+
 legacy = types.ModuleType("openjarvis.server.gateway_routes")
 legacy.router = APIRouter(prefix="/v1/gateway")
+
+
 @legacy.router.get("/usage")
 async def old_usage():
     return {"global_cost": 999}
+
+
 @legacy.router.post("/playground")
 async def old_playground():
     return {"reply": "mock"}
-sys.modules[legacy.__name__] = legacy
+
+
+_isolated_modules[legacy.__name__] = legacy
+
+
+def _snapshot_openjarvis() -> dict[str, types.ModuleType]:
+    return {
+        name: module
+        for name, module in sys.modules.items()
+        if name == "openjarvis" or name.startswith("openjarvis.")
+    }
+
+
+def _restore_openjarvis(snapshot: dict[str, types.ModuleType]) -> None:
+    for name in [
+        key
+        for key in tuple(sys.modules)
+        if key == "openjarvis" or key.startswith("openjarvis.")
+    ]:
+        sys.modules.pop(name, None)
+    sys.modules.update(snapshot)
+
+
+def _install_isolated_modules() -> None:
+    package = types.ModuleType("openjarvis")
+    package.__path__ = [str(SOURCE.parent)]
+    server = types.ModuleType("openjarvis.server")
+    server.__path__ = [str(SOURCE)]
+    sys.modules["openjarvis"] = package
+    sys.modules["openjarvis.server"] = server
+    sys.modules.update(_isolated_modules)
+
 
 def load(name):
-    full = "openjarvis.server." + name
-    spec = importlib.util.spec_from_file_location(full, SOURCE / f"{name}.py")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[full] = module
-    spec.loader.exec_module(module)
-    return module
+    snapshot = _snapshot_openjarvis()
+    try:
+        _install_isolated_modules()
+        full = "openjarvis.server." + name
+        spec = importlib.util.spec_from_file_location(full, SOURCE / f"{name}.py")
+        if spec is None or spec.loader is None:
+            raise ImportError(full)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[full] = module
+        spec.loader.exec_module(module)
+        _isolated_modules[full] = module
+        return module
+    finally:
+        _restore_openjarvis(snapshot)
+
 
 control = load("firbo_control")
 application = load("firbo_app")
