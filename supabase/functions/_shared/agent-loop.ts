@@ -35,6 +35,7 @@ export function loopInstructions(tools: ToolName[], maxSteps: number, help: Part
     'You will receive the result and can use another tool. Research properly: search, then read the most relevant pages, then answer.',
     'When you have enough, reply with the final JSON object described above. In the report, cite the source URLs you used.',
     'Only state facts, names, dates and links that appear in tool results or in what you were given. If the tools found nothing useful, say so plainly in the report instead of inventing an answer.',
+    'You have no other way to get live data: never write a calculation result, weather, exchange rate, image or document passage that a tool above would give without calling that tool first.',
   ].join('\n');
 }
 
@@ -141,6 +142,9 @@ export async function runAgentLoop(o: {
   let nudges = 0;
   let repaired = false;
   let stepFailed = false;
+  let checked = false;
+  // Tools that give facts the model cannot know by itself (not web reading or notes): an answer that skips all of them is checked once.
+  const factTools = allowed.filter(t => !['web_search', 'read_page', 'memory_search', 'think'].includes(t));
   while (true) {
     const left = budget - (now() - started);
     const last = stepFailed || steps.length >= maxSteps || left < 8_000 || allowed.length === 0;
@@ -196,6 +200,12 @@ export async function runAgentLoop(o: {
           if (isFinalAnswer(clean)) return { text: clean, steps, calls, evidence };
         }
         return { text, steps, calls, evidence };
+      }
+      if (isFinalAnswer(text) && !checked && steps.length === 0 && factTools.length > 0 && budget - (now() - started) > 8_000) {
+        checked = true;
+        messages.push({ role: 'assistant', content: text.slice(0, 2000) });
+        messages.push({ role: 'user', content: `You answered without using any tool. If the task needs ${factTools.join(', ')}, use those tools now, one JSON request at a time, instead of writing results yourself. If it truly needs none, reply with the same final JSON object again.` });
+        continue;
       }
       return { text, steps, calls, evidence };
     }
@@ -302,4 +312,10 @@ export function sourcesIn(evidence: string[], max = 8): { title: string; url: st
     if (out.length >= max) break;
   }
   return out;
+}
+
+/** Removes markdown images whose link did not come from a tool result (a model may invent "generated_image.png"). */
+export function dropUnbackedImages(report: string, evidence: string[]): string {
+  const seen = evidence.join('\n');
+  return report.replace(/!\[([^\]]*)\]\(([^)\s]+)[^)]*\)/g, (m, _alt: string, link: string) => (/^https:\/\//.test(link) && seen.includes(link) ? m : ''));
 }

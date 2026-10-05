@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForAgent, gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
-import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
+import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
@@ -523,6 +523,7 @@ Deno.serve(async (req) => {
   const cost = ownUsed ? 0 : Math.round(routedCost * 1e6) / 1e6;
   const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => POWER_OF[s.action] ?? s.action)])];
   const parsed = parseModelJson(text);
+  parsed.report = dropUnbackedImages(parsed.report, evidence);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];
   const marked = parsed.actions.filter(a => {

@@ -326,10 +326,11 @@ test('agent-chat: the scheduler secret lets Telegram act only as the person it n
 test('agent-runner: an economy reply that is neither a tool call nor an answer moves the run up to the quality route (paid plans only)', async () => {
   const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
   const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
-  const {state,response}=await invoke('agent-runner',{tools,plan:'pro',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final]});
+  const {state,response}=await invoke('agent-runner',{tools,plan:'pro',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final,final]});
   assert.equal(response.status,200);
   const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model);
-  assert.deepEqual(chats,['firbo-economy','firbo-quality']);
+  assert.deepEqual(chats.slice(0,2),['firbo-economy','firbo-quality']);
+  assert.ok(!chats.slice(1).includes('firbo-economy'));
   assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'invalid_reply');
   const free=await invoke('agent-runner',{tools,plan:'free',chatReplies:['Step 1: mcp_weather_weather Thessaloniki',final,final,final]});
   assert.ok(!free.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
@@ -338,9 +339,9 @@ test('agent-runner: the quality route works even when the per-agent allowlist le
   const env={FIRBO_GATEWAY_ALLOWED_MODELS:'firbo-economy'};
   const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
   const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
-  const up=await invoke('agent-runner',{env,tools,plan:'pro',chatReplies:['{"action":"get_package_price","input":{}}',final]});
+  const up=await invoke('agent-runner',{env,tools,plan:'pro',chatReplies:['{"action":"get_package_price","input":{}}',final,final]});
   assert.equal(up.response.status,200);
-  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model),['firbo-economy','firbo-quality']);
+  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model).slice(0,2),['firbo-economy','firbo-quality']);
   const liked=await invoke('agent-runner',{env,feedback:[{rating:-1,note:null},{rating:-1,note:null}],plan:'pro'});
   assert.equal(liked.response.status,200);
   assert.equal(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
@@ -349,9 +350,9 @@ test('agent-runner: the direct OmniRoute route (no gateway mode) also moves up t
   const env={FIRBO_TEXT_ROUTING_MODE:'legacy'};
   const tools=[{tool_name:'weather',enabled:true,policy:'allow'}];
   const final=JSON.stringify({summary:'Sunny',report:'Sunny in Thessaloniki',actions:[]});
-  const up=await invoke('agent-runner',{env,model:'omniroute:firbo-economy',tools,plan:'pro',chatReplies:['{"action":"get_company_pricing","input":{}}',final]});
+  const up=await invoke('agent-runner',{env,model:'omniroute:firbo-economy',tools,plan:'pro',chatReplies:['{"action":"get_company_pricing","input":{}}',final,final]});
   assert.equal(up.response.status,200);
-  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model),['firbo-economy','firbo-quality']);
+  assert.deepEqual(up.state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).map(c=>JSON.parse(c.init.body).model).slice(0,2),['firbo-economy','firbo-quality']);
   assert.equal(up.state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'invalid_reply');
   const liked=await invoke('agent-runner',{env,model:'omniroute:firbo-economy',feedback:[{rating:-1,note:null},{rating:-1,note:null}],plan:'pro'});
   assert.equal(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');

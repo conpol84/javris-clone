@@ -206,3 +206,15 @@ test('XML tool syntax (<calculator><input>...</input></calculator>) reaches our 
   assert.equal(parseToolRequest('<think>plan the work</think>', ['think']), null);
   assert.equal(isLeftoverToolRequest(xml), true);
 });
+
+test('an answer that skips the fact tools is checked once; invented images are dropped', async () => {
+  const { dropUnbackedImages } = await import('../../supabase/functions/_shared/agent-loop.ts');
+  const invented = JSON.stringify({ summary: 'Done', report: 'Weather 22°C ![img](generated_image.png)', actions: [] });
+  const replies = [invented, '{"action":"weather","input":"Thessaloniki"}', JSON.stringify({ summary: 'Done', report: 'Weather 18°C', actions: [] })];
+  const out = await runAgentLoop({ call: async () => replies.shift(), system: 'S', user: 'U', tools: { weather: async () => '18 °C' } });
+  assert.deepEqual(out.steps.map(s => s.action), ['weather']);
+  assert.match(out.text, /18°C/);
+  const plain = await runAgentLoop({ call: async () => invented, system: 'S', user: 'U', tools: { web_search: async () => 'x' } });
+  assert.equal(plain.calls, 1);
+  assert.equal(dropUnbackedImages('a ![x](generated_image.png) b ![y](https://cdn.example/i.png)', ['Image created: https://cdn.example/i.png']), 'a  b ![y](https://cdn.example/i.png)');
+});
