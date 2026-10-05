@@ -65,26 +65,66 @@ export interface SkillRow {
   enabled: boolean;
   created_at: string;
 }
+const SKILL_FIELDS = 'id, agent_id, slug, name, description, instructions, source, enabled, created_at';
+export interface SkillInput { name: string; instructions: string; description?: string; slug?: string; agentId?: string | null; source?: string }
+
+/** Stable per-name key for custom skills, including names written in non-Latin alphabets. */
+export function customSkillSlug(name: string): string {
+  return `custom-${name.trim().normalize('NFKC').toLocaleLowerCase('en').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '') || 'skill'}`;
+}
+function skillContent(s: Pick<SkillInput, 'name' | 'instructions' | 'description'>) {
+  const name = s.name.trim();
+  const instructions = s.instructions.trim();
+  if (!name || name.length > 80 || instructions.length < 10 || instructions.length > 4000) throw new Error('skill_invalid');
+  return { name, instructions, description: s.description?.trim().slice(0, 300) ?? '' };
+}
+function skillError(error: { code?: string; message?: string } | null) {
+  if (!error) return;
+  if (error.code === '23505') throw new Error('skill_already_installed');
+  throw new Error(error.message || 'skill_not_changed');
+}
 export async function listSkills(orgId: string): Promise<SkillRow[]> {
-  const { data, error } = await requireClient().from('skills').select('id, agent_id, slug, name, description, instructions, source, enabled, created_at')
+  const { data, error } = await requireClient().from('skills').select(SKILL_FIELDS)
     .eq('organization_id', orgId).order('created_at');
   if (error) throw error;
   return (data ?? []) as SkillRow[];
 }
-export async function addSkill(orgId: string, userId: string, s: { name: string; instructions: string; description?: string; slug?: string; agentId?: string | null; source?: string }) {
-  const { error } = await requireClient().from('skills').insert({
-    organization_id: orgId, created_by: userId, name: s.name.slice(0, 80), instructions: s.instructions.slice(0, 4000),
-    description: s.description?.slice(0, 300) ?? null, slug: s.slug ?? null, agent_id: s.agentId ?? null, source: s.source ?? 'custom', enabled: true,
-  });
-  if (error) throw error;
+export async function addSkill(orgId: string, userId: string, s: SkillInput): Promise<SkillRow> {
+  if (!orgId || !userId) throw new Error('skill_not_changed');
+  const content = skillContent(s);
+  const db = requireClient();
+  const slug = s.slug?.trim() || customSkillSlug(content.name);
+  const agentId = s.agentId || null;
+  // Catch repeat clicks before sending a write; the database unique index also closes concurrent races.
+  let lookup = db.from('skills').select('id').eq('organization_id', orgId).eq('slug', slug);
+  lookup = agentId ? lookup.eq('agent_id', agentId) : lookup.is('agent_id', null);
+  const existing = await lookup.limit(1).maybeSingle();
+  skillError(existing.error);
+  if (existing.data) throw new Error('skill_already_installed');
+  const { data, error } = await db.from('skills').insert({
+    organization_id: orgId, created_by: userId, ...content,
+    slug, agent_id: agentId, source: s.source ?? 'custom', enabled: true,
+  }).select(SKILL_FIELDS).single();
+  skillError(error);
+  if (!data?.id) throw new Error('skill_not_changed');
+  return data as SkillRow;
 }
-export async function setSkillEnabled(id: string, enabled: boolean) {
-  const { error } = await requireClient().from('skills').update({ enabled }).eq('id', id);
-  if (error) throw error;
+export async function updateSkill(orgId: string, id: string, s: Pick<SkillInput, 'name' | 'instructions' | 'description'>): Promise<SkillRow> {
+  const content = skillContent(s);
+  const { data, error } = await requireClient().from('skills').update(content).eq('organization_id', orgId).eq('id', id).select(SKILL_FIELDS).maybeSingle();
+  skillError(error);
+  if (data?.id !== id || data.name !== content.name || data.instructions !== content.instructions) throw new Error('skill_not_changed');
+  return data as SkillRow;
 }
-export async function deleteSkill(id: string) {
-  const { error } = await requireClient().from('skills').delete().eq('id', id);
-  if (error) throw error;
+export async function setSkillEnabled(orgId: string, id: string, enabled: boolean) {
+  const { data, error } = await requireClient().from('skills').update({ enabled }).eq('organization_id', orgId).eq('id', id).select('id, enabled').maybeSingle();
+  skillError(error);
+  if (data?.id !== id || data.enabled !== enabled) throw new Error('skill_not_changed');
+}
+export async function deleteSkill(orgId: string, id: string) {
+  const { data, error } = await requireClient().from('skills').delete().eq('organization_id', orgId).eq('id', id).select('id').maybeSingle();
+  skillError(error);
+  if (data?.id !== id) throw new Error('skill_not_changed');
 }
 
 // ------------------------------------------------------------------ workflows
@@ -99,6 +139,7 @@ export interface WorkflowRow {
   trigger_config: { cadence?: 'hourly' | 'daily' | 'weekly'; hour?: number; minute?: number; weekday?: number; tz?: string; input?: string } | null;
   next_run_at: string | null;
   created_at: string;
+  revision?: number;
   workflow_steps?: WorkflowStep[];
 }
 export interface WorkflowRunRow {
@@ -116,7 +157,7 @@ export interface WorkflowRunRow {
 
 export async function listWorkflows(orgId: string): Promise<WorkflowRow[]> {
   const { data, error } = await requireClient().from('workflows')
-    .select('id, name, description, enabled, trigger_type, trigger_config, next_run_at, created_at, workflow_steps(id, position, agent_id, action)')
+    .select('id, name, description, enabled, trigger_type, trigger_config, next_run_at, created_at, revision, workflow_steps(id, position, agent_id, action)')
     .eq('organization_id', orgId).order('created_at', { ascending: false });
   if (error) throw error;
   return ((data ?? []) as WorkflowRow[]).map(w => ({ ...w, workflow_steps: [...(w.workflow_steps ?? [])].sort((a, b) => a.position - b.position) }));
@@ -159,38 +200,66 @@ export function nextRunAt(cfg: { cadence?: string; hour?: number; minute?: numbe
   return new Date(now.getTime() + 86_400_000).toISOString();
 }
 
-/** Saves a workflow and its steps (replacing the old steps). Returns the workflow id. */
-export async function saveWorkflow(orgId: string, userId: string, w: { id?: string; name: string; description?: string; trigger_type: WorkflowTrigger; trigger_config: WorkflowRow['trigger_config']; enabled: boolean; steps: WorkflowStep[] }): Promise<string> {
+function workflowError(error: { message?: string; code?: string } | null) {
+  if (error) throw new Error(error.message || 'workflow_not_changed');
+}
+/** One authenticated transaction saves the definition and every step, or preserves the old definition. */
+export async function saveWorkflow(orgId: string, userId: string, w: { id?: string; expectedRevision?: number; name: string; description?: string; trigger_type: WorkflowTrigger; trigger_config: WorkflowRow['trigger_config']; enabled: boolean; steps: WorkflowStep[] }): Promise<string> {
+  if (!orgId || !userId) throw new Error('workflow_not_changed');
+  const name = w.name.trim();
+  const steps = w.steps.map((s, position) => ({ position, agent_id: s.agent_id, action: s.action.trim() }));
+  if (!name || name.length > 120 || (w.description?.length ?? 0) > 500 || steps.length < 1 || steps.length > 8
+    || steps.some(s => !s.agent_id || !s.action || s.action.length > 3000)) throw new Error('workflow_invalid');
   const db = requireClient();
-  const row = {
-    organization_id: orgId, name: w.name.slice(0, 120), description: w.description?.slice(0, 500) ?? null, enabled: w.enabled,
-    trigger_type: w.trigger_type, trigger_config: w.trigger_config ?? {}, updated_at: new Date().toISOString(),
-    next_run_at: w.trigger_type === 'schedule' && w.enabled ? nextRunAt(w.trigger_config ?? {}) : null,
-  };
-  let id = w.id;
-  if (id) {
-    const { error } = await db.from('workflows').update(row).eq('id', id);
-    if (error) throw error;
-    const { error: delError } = await db.from('workflow_steps').delete().eq('workflow_id', id);
-    if (delError) throw delError;
-  } else {
-    const { data, error } = await db.from('workflows').insert({ ...row, created_by: userId }).select('id').single();
-    if (error) throw error;
-    id = (data as { id: string }).id;
+  let expectedRevision = w.expectedRevision;
+  // Preserve the pre-existing call signature while never issuing an unversioned edit.
+  if (w.id && expectedRevision == null) {
+    const previous = await db.from('workflows').select('revision').eq('organization_id', orgId).eq('id', w.id).maybeSingle();
+    workflowError(previous.error);
+    if (!previous.data || !Number.isInteger(previous.data.revision)) throw new Error('workflow_not_found');
+    expectedRevision = previous.data.revision;
   }
-  const steps = w.steps.filter(s => s.action.trim() && s.agent_id).map((s, i) => ({ organization_id: orgId, workflow_id: id, position: i, agent_id: s.agent_id, action: s.action.slice(0, 3000) }));
-  if (steps.length) {
-    const { error } = await db.from('workflow_steps').insert(steps);
-    if (error) throw error;
+  const { data, error } = await db.rpc('save_workflow', {
+    p_org: orgId, p_id: w.id ?? null, p_expected_revision: expectedRevision ?? null,
+    p_workflow: { name, description: w.description ?? '', enabled: w.enabled, trigger_type: w.trigger_type,
+      trigger_config: w.trigger_config ?? {}, steps },
+  });
+  workflowError(error);
+  const saved = data as (WorkflowRow & { organization_id?: string }) | null;
+  if (!saved?.id || (w.id && saved.id !== w.id) || saved.organization_id !== orgId
+    || saved.name !== name || saved.enabled !== w.enabled || saved.trigger_type !== w.trigger_type
+    || (saved.description ?? '') !== (w.description ?? '') || !Number.isInteger(saved.revision)
+    || (w.id && expectedRevision != null && saved.revision !== expectedRevision + 1)
+    || (saved.workflow_steps?.length ?? 0) !== steps.length
+    || saved.workflow_steps!.some((s, index) => s.position !== index || s.agent_id !== steps[index].agent_id || s.action !== steps[index].action)) {
+    throw new Error('workflow_not_changed');
   }
-  return id!;
+  return saved.id;
 }
-export async function deleteWorkflow(id: string) {
-  const { error } = await requireClient().from('workflows').delete().eq('id', id);
-  if (error) throw error;
+/** Delete only the requested company's confirmed definition; active runs are protected in the database. */
+export async function deleteWorkflow(id: string, orgId?: string, expectedRevision?: number) {
+  const db = requireClient();
+  if (!orgId) {
+    const previous = await db.from('workflows').select('organization_id, revision').eq('id', id).maybeSingle();
+    workflowError(previous.error);
+    if (!previous.data?.organization_id) throw new Error('workflow_not_found');
+    orgId = previous.data.organization_id;
+    expectedRevision ??= previous.data.revision;
+  }
+  const { data, error } = await db.rpc('delete_workflow', { p_org: orgId, p_id: id, p_expected_revision: expectedRevision ?? null });
+  workflowError(error);
+  if (data !== id) throw new Error('workflow_not_changed');
 }
-export const startWorkflow = (workflowId: string, input = '') => fn<{ run_id: string }>('workflow-runner', { action: 'start', workflow_id: workflowId, input });
-export const workflowHook = (workflowId: string) => fn<{ url: string }>('workflow-runner', { action: 'set_hook', workflow_id: workflowId });
+export async function startWorkflow(workflowId: string, input = '') {
+  const result = await fn<{ run_id: string }>('workflow-runner', { action: 'start', workflow_id: workflowId, input });
+  if (!result?.run_id) throw new Error('workflow_not_changed');
+  return result;
+}
+export async function workflowHook(workflowId: string, expectedRevision?: number) {
+  const result = await fn<{ url: string }>('workflow-runner', { action: 'set_hook', workflow_id: workflowId, ...(expectedRevision != null ? { expected_revision: expectedRevision } : {}) });
+  if (!result?.url || !/^https:\/\//.test(result.url)) throw new Error('workflow_not_changed');
+  return result;
+}
 
 // ------------------------------------------------------------------ report feedback
 export interface FeedbackRow { id: string; task_id: string; rating: number; note: string | null }

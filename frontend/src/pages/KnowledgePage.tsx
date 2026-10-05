@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { BookOpen, Globe, Link2, RefreshCw, Search, Trash2, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
@@ -14,10 +14,18 @@ const ERRORS: Record<string, WorkspaceKey> = { plan_limit: 'kLimit', bad_url: 'k
 
 /** The company's own documents, links and connected apps, which every AI employee searches before answering. */
 export function KnowledgePage() {
-  const c = useWorkspaceCopy();
   const { current } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canManage = MANAGER_ROLES.includes(current?.role ?? 'viewer');
+  // Changing company remounts all drafts, search results and source/app lists.
+  return <KnowledgeWorkspace key={orgId} orgId={orgId} canManage={canManage} />;
+}
+
+export function KnowledgeWorkspace({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+  const c = useWorkspaceCopy();
+  const active = useRef(true);
+  const operation = useRef(false);
+  const loadVersion = useRef(0);
   const [sources, setSources] = useState<KnowledgeSource[]>([]);
   const [apps, setApps] = useState<IntegrationRow[]>([]);
   const [name, setName] = useState('');
@@ -28,35 +36,64 @@ export function KnowledgePage() {
   const [query, setQuery] = useState('');
   const [hits, setHits] = useState<KnowledgeHit[] | null>(null);
 
+  useEffect(() => {
+    active.current = true;
+    return () => { active.current = false; loadVersion.current++; };
+  }, []);
+
   const load = useCallback(async () => {
     if (!orgId) return;
-    try { setSources(await listKnowledge(orgId)); } catch { toast.error(c('kErr')); }
+    const version = ++loadVersion.current;
+    try {
+      const rows = await listKnowledge(orgId);
+      if (active.current && version === loadVersion.current) setSources(rows);
+    } catch { if (active.current && version === loadVersion.current) toast.error(c('kErr')); }
   }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (orgId) listIntegrations(orgId).then(setApps).catch(() => undefined); }, [orgId]);
+  useEffect(() => {
+    let cancelled = false;
+    if (orgId) listIntegrations(orgId).then(rows => { if (!cancelled && active.current) setApps(rows); })
+      .catch(() => { if (!cancelled && active.current) toast.error(c('kErr')); });
+    return () => { cancelled = true; };
+  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const readable = useMemo(() => apps.filter(a => (READABLE_APPS as readonly string[]).includes(a.kind)), [apps]);
   const fail = (err: unknown) => toast.error(c(ERRORS[err instanceof Error ? err.message : ''] ?? 'kErr'));
   const run = async (key: string, job: () => Promise<unknown>, reset?: () => void) => {
+    if (!active.current || !orgId || !canManage || operation.current) return;
+    operation.current = true;
     setBusy(key);
-    try { await job(); reset?.(); toast.success(c('kSaved')); await load(); } catch (err) { fail(err); } finally { setBusy(''); }
+    try {
+      await job();
+      if (!active.current) return;
+      reset?.(); toast.success(c('kSaved')); await load();
+    } catch (err) {
+      if (active.current) { fail(err); await load(); }
+    } finally { operation.current = false; if (active.current) setBusy(''); }
   };
 
   const addText = (e: FormEvent) => { e.preventDefault(); void run('text', () => addKnowledgeText(orgId, name.trim(), text), () => { setName(''); setText(''); }); };
   const addFile = async (file: File) => {
     if (file.size > FILE_MAX || !/\.(txt|md|markdown|csv|json)$/i.test(file.name)) return void toast.error(c('kTooShort'));
-    const body = await file.text();
-    void run('file', () => addKnowledgeText(orgId, file.name.slice(0, 120), body, true));
+    try {
+      const body = await file.text();
+      if (active.current) void run('file', () => addKnowledgeText(orgId, file.name.slice(0, 120), body, true));
+    } catch (err) { if (active.current) fail(err); }
   };
   const addUrl = (e: FormEvent) => { e.preventDefault(); void run('url', () => addKnowledgeUrl(orgId, url.trim()), () => setUrl('')); };
   const addApp = (e: FormEvent) => { e.preventDefault(); if (app) void run('app', () => addKnowledgeApp(orgId, app), () => setApp('')); };
   const search = async (e: FormEvent) => {
     e.preventDefault();
-    if (!query.trim()) return;
+    if (!query.trim() || !orgId || !active.current || operation.current) return;
+    operation.current = true;
     setBusy('search');
-    try { setHits((await searchKnowledge(orgId, query.trim())).results); } catch (err) { fail(err); } finally { setBusy(''); }
+    try {
+      const result = await searchKnowledge(orgId, query.trim());
+      if (active.current) setHits(result.results);
+    } catch (err) { if (active.current) fail(err); }
+    finally { operation.current = false; if (active.current) setBusy(''); }
   };
-  const tone = (s: KnowledgeSource) => (s.status === 'error' ? 'err' : s.status === 'ready' ? 'ok' : 'warn');
+  const tone = (s: KnowledgeSource) => (s.status === 'failed' ? 'err' : s.status === 'ready' ? 'ok' : 'warn');
 
   return (
     <div className="fb-root h-full overflow-y-auto">
@@ -73,7 +110,7 @@ export function KnowledgePage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <label className="fb-btn fb-btn--ghost cursor-pointer">
                       <Upload size={14} /> <span className="text-[12px]">{c('kFile')}</span>
-                      <input type="file" accept=".txt,.md,.markdown,.csv,.json" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void addFile(f); }} />
+                      <input type="file" accept=".txt,.md,.markdown,.csv,.json" className="hidden" disabled={busy !== ''} onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void addFile(f); }} />
                     </label>
                     <button className="fb-btn fb-btn--primary" disabled={busy !== '' || !name.trim() || text.trim().length < 20}>{c('kAdd')}</button>
                   </div>
@@ -103,7 +140,7 @@ export function KnowledgePage() {
               <div className="fb-eyebrow flex items-center gap-1.5"><Search size={13} /> {c('kSearch')}</div>
               <div className="flex gap-2">
                 <input className="fb-input flex-1" value={query} onChange={e => setQuery(e.target.value)} placeholder={c('kSearchPh')} />
-                <button className="fb-btn fb-btn--ghost" disabled={busy === 'search' || !query.trim()}><Search size={14} /></button>
+                <button className="fb-btn fb-btn--ghost" disabled={busy !== '' || !query.trim()}><Search size={14} /></button>
               </div>
               {hits && (hits.length ? (
                 <ol className="fb-col gap-2">

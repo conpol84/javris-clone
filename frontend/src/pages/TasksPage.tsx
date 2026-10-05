@@ -1,10 +1,12 @@
-import { useMemo, useState, type FormEvent, useRef } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, useRef } from 'react';
 import { toast } from 'sonner';
-import { LayoutGrid, List, ListChecks } from 'lucide-react';
+import { ListChecks, RotateCcw, Trash2, XCircle } from 'lucide-react';
 import { StatusDot } from '../components/command/Panel';
 import { Avatar, EmptyState, PageHeader, Pill, Segmented, Stat } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { appendTaskNote, createTask, setTaskStatus } from '../lib/company/data';
+import { appendTaskNote, createTask } from '../lib/company/data';
+import { CANCELLABLE_TASK_STATUSES, manageTask, taskActionErrorCode, taskNeedsReconciliation } from '../lib/company/task-actions';
+import { taskActionLabels } from '../lib/company/task-action-labels';
 import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { Modal } from '../components/team/Modal';
@@ -20,6 +22,7 @@ import {
   WRITER_ROLES,
   type TaskPriority,
   type TaskStatus,
+  type TaskRow,
 } from '../lib/company/types';
 import { useOrgData } from '../lib/company/useOrgData';
 import '../styles/firbo.css';
@@ -36,6 +39,8 @@ export function TasksPage() {
   const orgId = current?.organization.id ?? '';
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
+  const canManage = MANAGER_ROLES.includes(role);
+  const taskLabels = taskActionLabels[lang];
   const data = useOrgData(orgId, MANAGER_ROLES.includes(role));
   const [title, setTitle] = useState('');
   const titleRef = useRef<HTMLInputElement>(null);
@@ -48,6 +53,9 @@ export function TasksPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const [modalId, setModalId] = useState<string | null>(null);
+  const [taskAction, setTaskAction] = useState<{ task: TaskRow; orgId: string; action: 'cancel' | 'delete' | 'recover' } | null>(null);
+  const [mutationId, setMutationId] = useState<string | null>(null);
+  useEffect(() => { setTaskAction(null); setModalId(null); setOpenId(null); }, [orgId]);
   const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
   const receiptLabel: Record<string,string> = { en:'Execution receipts',el:'Αποδείξεις εκτέλεσης',es:'Recibos de ejecución','pt-BR':'Comprovantes de execução',fr:'Reçus d’exécution',de:'Ausführungsbelege',ar:'إيصالات التنفيذ','zh-CN':'执行回执' };
   const receiptWord: Record<string,string> = { en:'Verified',el:'Επαληθευμένο',es:'Verificado','pt-BR':'Verificado',fr:'Vérifié',de:'Verifiziert',ar:'تم التحقق','zh-CN':'已验证' };
@@ -78,7 +86,7 @@ export function TasksPage() {
     { id: 'pending', statuses: ['pending', 'blocked'], tone: '#7f9fc4' },
     { id: 'running', statuses: ['running'], tone: '#22d3ee' },
     { id: 'awaiting_approval', statuses: ['awaiting_approval'], tone: '#fbbf24' },
-    { id: 'completed', statuses: ['completed', 'failed'], tone: '#34d399' },
+    { id: 'completed', statuses: ['completed', 'failed', 'cancelled'], tone: '#34d399' },
   ];
   const agent = (id: string | null) => data.agents.find((a) => a.id === id);
 
@@ -112,6 +120,8 @@ export function TasksPage() {
   };
 
   const run = async (id: string) => {
+    const task = data.tasks.find((row) => row.id === id);
+    if (task && taskNeedsReconciliation(task)) return void toast.error(taskLabels.reconciliation);
     setRunningId(id);
     try {
       const out = await runTask(id, lang);
@@ -139,15 +149,68 @@ export function TasksPage() {
     await run(id);
   };
 
-  const changeStatus = async (id: string, status: TaskStatus) => {
+  const actionError = (err: unknown) => {
+    const code = taskActionErrorCode(err);
+    toast.error(taskLabels[code === 'in_progress' ? 'inProgress' : code === 'not_stalled' ? 'notStalled' : code === 'cancel_first' ? 'cancelFirst' : code]);
+  };
+
+  const changeStatus = async (task: TaskRow, status: TaskStatus) => {
+    if (!canWrite || mutationId || data.error || task.status === status) return;
+    if (status === 'cancelled') {
+      if (!canManage) return;
+      setTaskAction({ task, orgId, action: 'cancel' });
+      return;
+    }
+    setMutationId(task.id);
     try {
-      await setTaskStatus(id, status);
-      await data.reload();
+      await manageTask({ orgId, taskId: task.id, expectedStatus: task.status, action: 'set_status', status });
     } catch (err) {
-      console.error(err);
-      toast.error(t('tasks.updateError'));
+      actionError(err);
+    } finally {
+      setMutationId(null);
+      await data.reload();
     }
   };
+
+  const confirmTaskAction = async () => {
+    if (!taskAction || taskAction.orgId !== orgId || !canManage || mutationId || data.error) return;
+    const { task, action } = taskAction;
+    setMutationId(task.id);
+    try {
+      await manageTask({ orgId, taskId: task.id, expectedStatus: task.status, action });
+      toast.success(action === 'delete' ? taskLabels.removed : action === 'recover' ? taskLabels.recovered : taskLabels.cancelled);
+      setTaskAction(null);
+      if (action === 'delete') {
+        if (modalId === task.id) setModalId(null);
+        if (openId === task.id) setOpenId(null);
+        setNotes((prev) => { const next = { ...prev }; delete next[task.id]; return next; });
+      }
+    } catch (err) {
+      actionError(err);
+      setTaskAction(null);
+    } finally {
+      setMutationId(null);
+      await data.reload();
+    }
+  };
+
+  const lifecycleButtons = (task: TaskRow) => canManage && (
+    <div className="flex flex-wrap gap-2">
+      {task.status === 'running' && (
+        <button className="fb-btn fb-btn--ghost" style={{ height: 30, fontSize: 12 }} disabled={mutationId !== null || runningId !== null || !!data.error} onClick={() => setTaskAction({ task, orgId, action: 'recover' })}>
+          <RotateCcw size={13} aria-hidden="true" />{taskLabels.recover}
+        </button>
+      )}
+      {CANCELLABLE_TASK_STATUSES.includes(task.status) && (
+        <button className="fb-btn fb-btn--ghost" style={{ height: 30, fontSize: 12 }} disabled={mutationId !== null || runningId !== null || !!data.error} onClick={() => setTaskAction({ task, orgId, action: 'cancel' })}>
+          <XCircle size={13} aria-hidden="true" />{taskLabels.cancel}
+        </button>
+      )}
+      <button className="fb-btn fb-btn--ghost" style={{ height: 30, fontSize: 12, color: 'var(--fb-err)' }} disabled={task.status === 'running' || mutationId !== null || runningId !== null || !!data.error} title={task.status === 'running' ? taskLabels.inProgress : undefined} onClick={() => setTaskAction({ task, orgId, action: 'delete' })}>
+        <Trash2 size={13} aria-hidden="true" />{taskLabels.remove}
+      </button>
+    </div>
+  );
 
   return (
     <div className="fb-root h-full overflow-y-auto">
@@ -243,10 +306,11 @@ export function TasksPage() {
                               <Pill tone={task.priority === 'urgent' ? 'err' : task.priority === 'high' ? 'warn' : 'neutral'}>{t(`priority.${task.priority}` as TKey)}</Pill>
                               {task.status === 'failed' && <Pill tone="err">{t('status.failed')}</Pill>}
                               {task.status === 'blocked' && <Pill tone="warn">{t('status.blocked')}</Pill>}
+                              {task.status === 'cancelled' && <Pill tone="neutral">{t('status.cancelled')}</Pill>}
                             </div>
                             {task.due_at && <div className="mt-2 text-[11px]" style={{ color: overdue ? 'var(--fb-warn)' : 'var(--fb-dim)' }}>{t(overdue ? 'tasks.overdue' : 'tasks.due', { date: fmt.dateTime(task.due_at) })}</div>}
                             {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
-                              <button className="fb-btn fb-btn--primary mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} disabled={runningId !== null} onClick={() => void run(task.id)}>
+                              <button className="fb-btn fb-btn--primary mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task)} onClick={() => void run(task.id)}>
                                 {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
                               </button>
                             )}
@@ -255,6 +319,9 @@ export function TasksPage() {
                                 {t('run.show')}
                               </button>
                             )}
+                            <div className="mt-3">{lifecycleButtons(task)}</div>
+                            {task.status === 'running' && canManage && <p className="fb-dim mt-2 text-xs">{taskLabels.inProgress}</p>}
+                            {taskNeedsReconciliation(task) && <p className="fb-dim mt-2 text-xs">{taskLabels.reconciliation}</p>}
                           </li>
                         );
                       })}
@@ -293,7 +360,7 @@ export function TasksPage() {
                     </button>
                   )}
                   {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
-                    <button className="fb-btn fb-btn--primary" style={{ height: 32, padding: '0 14px', fontSize: 13 }} disabled={runningId !== null} onClick={() => void run(task.id)}>
+                    <button className="fb-btn fb-btn--primary" style={{ height: 32, padding: '0 14px', fontSize: 13 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task)} onClick={() => void run(task.id)}>
                       {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
                     </button>
                   )}
@@ -301,16 +368,19 @@ export function TasksPage() {
                     className="fb-input"
                     style={{ width: 'auto', height: 32, fontSize: 12 }}
                     value={task.status}
-                    disabled={!canWrite}
+                    disabled={!canWrite || task.status === 'running' || mutationId !== null || runningId !== null || !!data.error}
                     aria-label={t('tasks.statusAria', { title: task.title })}
-                    onChange={(e) => void changeStatus(task.id, e.target.value as TaskStatus)}
+                    onChange={(e) => void changeStatus(task, e.target.value as TaskStatus)}
                   >
                     {STATUSES.map((s) => (
-                      <option key={s} value={s}>
+                      <option key={s} value={s} disabled={s === 'running' || s === 'awaiting_approval' || (taskNeedsReconciliation(task) && s !== task.status && s !== 'cancelled') || (s === 'cancelled' && (!canManage || !CANCELLABLE_TASK_STATUSES.includes(task.status)))}>
                         {t(`status.${s}` as TKey)}
                       </option>
                     ))}
                   </select>
+                  {lifecycleButtons(task)}
+                  {task.status === 'running' && canManage && <p className="fb-dim w-full text-xs">{taskLabels.inProgress}</p>}
+                  {taskNeedsReconciliation(task) && <p className="fb-dim w-full text-xs">{taskLabels.reconciliation}</p>}
                   {openId === task.id && task.result && (
                     <div className="w-full rounded-xl p-3 text-sm" style={{ background: 'rgba(5,10,20,.7)', border: '1px solid var(--fb-border)' }}>
                       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -364,7 +434,7 @@ export function TasksPage() {
                             placeholder={t('run.moreInfoPh')}
                             onChange={(e) => setNotes((prev) => ({ ...prev, [task.id]: e.target.value }))}
                           />
-                          <button className="fb-btn fb-btn--primary self-start" disabled={runningId === task.id || !(notes[task.id] ?? '').trim()} onClick={() => void rerunWithInfo(task.id)}>
+                          <button className="fb-btn fb-btn--primary self-start" disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task) || !(notes[task.id] ?? '').trim()} onClick={() => void rerunWithInfo(task.id)}>
                             {t('run.moreInfoRun')}
                           </button>
                         </div>
@@ -402,7 +472,7 @@ export function TasksPage() {
                 <div className="fb-col gap-2 pt-2" style={{ borderTop: '1px solid var(--fb-border)' }}>
                   <label className="fb-eyebrow" htmlFor={`modal-more-${mt.id}`}>{t('run.moreInfo')}</label>
                   <textarea id={`modal-more-${mt.id}`} className="fb-input" rows={2} maxLength={2000} value={notes[mt.id] ?? ''} placeholder={t('run.moreInfoPh')} onChange={(e) => setNotes((prev) => ({ ...prev, [mt.id]: e.target.value }))} />
-                  <button className="fb-btn fb-btn--primary self-start" disabled={runningId === mt.id || !(notes[mt.id] ?? '').trim()} onClick={() => void rerunWithInfo(mt.id).then(() => setModalId(null))}>
+                  <button className="fb-btn fb-btn--primary self-start" disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(mt) || !(notes[mt.id] ?? '').trim()} onClick={() => void rerunWithInfo(mt.id).then(() => setModalId(null))}>
                     {t('run.moreInfoRun')}
                   </button>
                 </div>
@@ -411,6 +481,18 @@ export function TasksPage() {
           </Modal>
         );
       })()}
+      {taskAction && taskAction.orgId === orgId && (
+        <Modal title={taskAction.action === 'delete' ? taskLabels.remove : taskAction.action === 'recover' ? taskLabels.recover : taskLabels.cancel} onClose={() => { if (!mutationId) setTaskAction(null); }}>
+          <p className="mb-3 break-words font-medium">{taskAction.task.title}</p>
+          <p className="fb-muted text-sm">{taskAction.action === 'delete' ? taskLabels.removeAsk : taskAction.action === 'recover' ? taskLabels.recoverAsk : taskLabels.cancelAsk}</p>
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <button className="fb-btn fb-btn--ghost" disabled={mutationId !== null} onClick={() => setTaskAction(null)}>{taskLabels.keep}</button>
+            <button className="fb-btn fb-btn--primary" disabled={mutationId !== null || !!data.error} onClick={() => void confirmTaskAction()}>
+              {mutationId ? taskAction.action === 'delete' ? taskLabels.removing : taskAction.action === 'recover' ? taskLabels.recovering : taskLabels.cancelling : taskAction.action === 'delete' ? taskLabels.remove : taskAction.action === 'recover' ? taskLabels.recover : taskLabels.cancel}
+            </button>
+          </div>
+        </Modal>
+      )}
       </div>
     </div>
   );

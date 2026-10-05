@@ -912,6 +912,27 @@ function readSecret(kind: string, raw: string): Record<string, string> {
   return kind === 'telegram' ? { token: raw } : { url: raw };
 }
 
+/** The service-only RPC commits the visible connection and its private credentials together. */
+async function saveLegacyIntegration(admin: ReturnType<typeof createClient>, input: {
+  organizationId: string; userId: string; kind: string; name: string;
+  config: Record<string, unknown>; secret: Record<string, string>;
+}): Promise<{ integration?: Record<string, unknown>; error?: 'forbidden' | 'plan_limit' | 'save_failed' }> {
+  try {
+    const { data, error } = await admin.rpc('firbo_save_legacy_integration', {
+      p_org: input.organizationId, p_user: input.userId, p_kind: input.kind, p_name: input.name,
+      p_config: input.config, p_secret: JSON.stringify(input.secret),
+    });
+    if (error) return { error: error.message?.includes('plan_limit') ? 'plan_limit' : error.message?.includes('forbidden') ? 'forbidden' : 'save_failed' };
+    if (!data || typeof data !== 'object' || typeof data.id !== 'string' || data.kind !== input.kind || data.status !== 'active') return { error: 'save_failed' };
+    // Match the existing public response; credentials can never be echoed by an RPC response.
+    const integration: Record<string, unknown> = {};
+    for (const key of ['id', 'kind', 'name', 'config', 'status', 'last_error', 'last_used_at', 'created_at']) integration[key] = data[key];
+    return { integration };
+  } catch {
+    return { error: 'save_failed' };
+  }
+}
+
 /** Browser comes back here from the provider with ?code&state. Only a state we signed (company, person, app, 10 minutes) is accepted. */
 async function oauthCallback(req: Request): Promise<Response> {
   const q = new URL(req.url).searchParams;
@@ -935,10 +956,9 @@ async function oauthCallback(req: Request): Promise<Response> {
     const who = await cfg.who(access);
     const config: Record<string, unknown> = { account: who.account, ...(st.c ?? {}), ...(who.extra ?? {}) };
     if ((st.k === 'gmail' || st.k === 'outlook') && !config.to) config.to = who.account;
-    const { data: row, error } = await admin.from('integrations').insert({ organization_id: st.o, kind: st.k, name: String(st.n ?? st.k).slice(0, 80), config, created_by: st.u, last_used_at: new Date().toISOString() }).select('id').single();
-    if (error || !row) return back(error?.message?.includes('plan_limit') ? 'oauth_error=plan_limit' : 'oauth_error=save_failed');
     const secret = { access_token: access, ...(tok.refresh_token ? { refresh_token: String(tok.refresh_token) } : {}), expires_at: String(Date.now() + Number(tok.expires_in ?? 3600) * 1000) };
-    await admin.from('integration_secrets').insert({ integration_id: row.id, secret: JSON.stringify(secret) });
+    const saved = await saveLegacyIntegration(admin, { organizationId: st.o, userId: st.u, kind: st.k, name: String(st.n ?? st.k).slice(0, 80), config, secret });
+    if (saved.error) return back(`oauth_error=${saved.error}`);
     return back(`connected=${encodeURIComponent(st.k)}`);
   } catch {
     return back('oauth_error=exchange_failed');
@@ -1054,14 +1074,9 @@ Deno.serve(async (req) => {
     } catch {
       return json(502, { error: 'test_failed' });
     }
-    const { data: row, error } = await admin
-      .from('integrations')
-      .insert({ organization_id: orgId, kind, name, config: parsed.config, created_by: user.id, last_used_at: new Date().toISOString() })
-      .select('id, kind, name, config, status, last_error, last_used_at, created_at')
-      .single();
-    if (error || !row) return json(error?.message?.includes('plan_limit') ? 429 : 500, { error: error?.message?.includes('plan_limit') ? 'plan_limit' : 'save_failed' });
-    await admin.from('integration_secrets').insert({ integration_id: row.id, secret: JSON.stringify(parsed.secret) });
-    return json(200, { integration: row });
+    const saved = await saveLegacyIntegration(admin, { organizationId: orgId, userId: user.id, kind, name, config: parsed.config, secret: parsed.secret });
+    if (saved.error) return json(saved.error === 'forbidden' ? 403 : saved.error === 'plan_limit' ? 429 : 503, { error: saved.error });
+    return json(200, { integration: saved.integration });
   }
 
   const id = String(body.id ?? '');
@@ -1072,8 +1087,14 @@ Deno.serve(async (req) => {
   if (!(await isManager(integ.organization_id))) return json(403, { error: 'forbidden' });
 
   if (body.action === 'disconnect') {
-    await admin.from('integrations').delete().eq('id', id);
-    return json(200, { ok: true });
+    try {
+      const { data: deleted, error } = await admin.from('integrations').delete().eq('id', id).eq('organization_id', integ.organization_id).select('id').maybeSingle();
+      if (error) return json(503, { error: 'save_failed' });
+      if (!deleted || deleted.id !== id) return json(404, { error: 'not_found' });
+      return json(200, { ok: true });
+    } catch {
+      return json(503, { error: 'save_failed' });
+    }
   }
 
   if (body.action === 'snapshot') {

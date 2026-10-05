@@ -44,7 +44,10 @@ Dashboard → **API Keys**:
 1. `firbo-inference` → inference key → put into `.env` as `OMNIROUTE_API_KEY`
 2. `firbo-manage` → key **with manage scope** → `OMNIROUTE_MANAGEMENT_KEY`
 
-Then: `docker compose up -d` (applies the new .env).
+For an existing stack, use `./set-gateway-keys.sh`: it privately checks the two
+distinct key scopes, backs up and atomically updates `.env`, then verifies the
+API restart. Update the matching Supabase inference secret before revoking old
+keys. See [credential recovery](../../docs/FIRBO-CREDENTIAL-RECOVERY.md).
 
 ## 5. Connect Supabase (agents call the gateway)
 Supabase → Edge Functions → **Secrets**:
@@ -75,7 +78,7 @@ Then in Firbo: *Talk to Firbo AI* → give a command → result under *Tasks*.
 - Update: `git pull && docker compose pull && docker compose up -d --build`
 - Logs: `docker compose logs -f omniroute` / `firbo-api` / `caddy`
 - Backup: copy `deploy/hostinger/data/` (OmniRoute database + encrypted keys) and `.env` somewhere safe. Hostinger weekly snapshots are a good second layer.
-- Forgot dashboard password: `docker exec -it firbo-omniroute node bin/reset-password.mjs`
+- Forgot dashboard password: after installing the helper, `python3 gateway-credentials.py reset-dashboard` (hidden input, existing reset CLI and gateway health check). Existing CLI and API-key recovery steps are in the [credential guide](../../docs/FIRBO-CREDENTIAL-RECOVERY.md).
 - Security: only 80/443/22 are open; keys live only in `.env`, OmniRoute's encrypted store and Supabase secrets — never in the browser or git. Use SSH keys and disable password SSH.
 
 ## Repair, health report and the branded gateway
@@ -85,8 +88,10 @@ cd ~/javris-clone/deploy/hostinger && git pull && ./repair.sh
 ```
 
 `repair.sh` backs up `.env` and the gateway data, fills in only the missing settings (secrets, domains, password),
-restarts the stack and prints a health report that never contains passwords. If the gateway still shows
-"zero-config mode" or you cannot log in, run `./repair.sh --fresh`.
+restarts the stack and prints a health report. A newly generated bootstrap password
+may be printed, so do not share its entire output. `--fresh` moves the gateway
+database aside and is not password recovery; use the credential guide when you
+cannot log in.
 
 **Firbo name and logo in the gateway.** The branding lives in the fork `conpol84/OmniRoute`, branch `firbo/branding`.
 GitHub builds the image for you (the small VPS cannot): open the fork -> Actions -> enable workflows -> run "Firbo image".
@@ -96,7 +101,12 @@ then put `OMNIROUTE_IMAGE=ghcr.io/conpol84/omniroute:firbo` in `.env` and run `d
 
 ## Cost levels (Economy / Quality)
 
-After connecting providers in the gateway, run `./setup-gateway.sh` once (and again whenever you add providers). It creates the combos `firbo-economy` (free first) and `firbo-quality` (best first). In Supabase -> Edge Functions -> Secrets set `OMNIROUTE_BASE_URL=https://gateway.<your-domain>/v1` and `OMNIROUTE_API_KEY` (the same value as `OMNIROUTE_API_KEY` in `.env`: `grep ^OMNIROUTE_API_KEY= .env`).
+After connecting providers, explicitly run `./setup-gateway.sh` when you intend
+to replace the `firbo-economy` and `firbo-quality` combos. It requires distinct,
+verified inference/management keys. Do not run it during password/key recovery.
+In Supabase → Edge Functions → Secrets set `OMNIROUTE_BASE_URL=https://gateway.<your-domain>/v1`
+and the matching inference-only `OMNIROUTE_API_KEY` privately; never print it into
+a shared diagnostic report.
 
 ## Providers or keys disappear after a restart
 

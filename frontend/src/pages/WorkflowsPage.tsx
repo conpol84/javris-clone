@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Copy, Pencil, Play, Plus, Trash2, Webhook, Workflow as WorkflowIcon, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { useI18n } from '../i18n/I18nProvider';
@@ -9,18 +9,25 @@ import { notifyPlanLimit } from '../lib/company/limits';
 import { MANAGER_ROLES, WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import { deleteWorkflow, listWorkflowRuns, listWorkflows, saveWorkflow, startWorkflow, workflowHook, type WorkflowRow, type WorkflowRunRow, type WorkflowStep, type WorkflowTrigger } from '../lib/company/workspace';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
+import { WORKFLOW_MESSAGES, workflowFailure } from '../lib/company/workflowCopy';
 import { EmptyState, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import '../styles/firbo.css';
 
 type Cadence = 'hourly' | 'daily' | 'weekly';
-interface Draft { id?: string; name: string; description: string; trigger: WorkflowTrigger; cadence: Cadence; time: string; weekday: number; enabled: boolean; steps: WorkflowStep[] }
+interface Draft { id?: string; expectedRevision?: number; name: string; description: string; trigger: WorkflowTrigger; cadence: Cadence; time: string; weekday: number; enabled: boolean; steps: WorkflowStep[] }
 const blank = (): Draft => ({ name: '', description: '', trigger: 'manual', cadence: 'daily', time: '09:00', weekday: 1, enabled: true, steps: [{ position: 0, agent_id: null, action: '' }] });
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; } };
 
 /** Chains of AI employees: each step's result feeds the next. Started by hand, on a schedule or from another app. */
 export function WorkflowsPage() {
+  const { current, user } = useCompanyAuth();
+  return <WorkflowWorkspace key={`${user?.id ?? ''}:${current?.organization.id ?? ''}:${current?.role ?? ''}`} />;
+}
+
+export function WorkflowWorkspace() {
   const c = useWorkspaceCopy();
   const i18n = useI18n();
+  const messages = WORKFLOW_MESSAGES[i18n.lang];
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canManage = MANAGER_ROLES.includes(current?.role ?? 'viewer');
@@ -32,14 +39,27 @@ export function WorkflowsPage() {
   const [inputs, setInputs] = useState<Record<string, string>>({});
   const [hook, setHook] = useState<{ id: string; url: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const alive = useRef(true);
+  const loadVersion = useRef(0);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; loadVersion.current++; }; }, []);
 
   const load = useCallback(async () => {
     if (!orgId) return;
-    try { const [f, r] = await Promise.all([listWorkflows(orgId), listWorkflowRuns(orgId)]); setFlows(f); setRuns(r); }
-    catch { toast.error(c('kErr')); }
+    const version = ++loadVersion.current;
+    setLoading(true);
+    try {
+      const [f, r, a] = await Promise.all([listWorkflows(orgId), listWorkflowRuns(orgId), listAgents(orgId)]);
+      if (!alive.current || version !== loadVersion.current) return;
+      setFlows(f); setRuns(r); setAgents(a.filter(x => x.enabled)); setLoadError(false);
+    } catch {
+      if (alive.current && version === loadVersion.current) setLoadError(true);
+    } finally {
+      if (alive.current && version === loadVersion.current) setLoading(false);
+    }
   }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, [load]);
-  useEffect(() => { if (orgId) listAgents(orgId).then(a => setAgents(a.filter(x => x.enabled))).catch(() => undefined); }, [orgId]);
   // Runs move on the server every minute: refresh while any is running.
   useEffect(() => {
     if (!runs.some(r => r.status === 'running')) return;
@@ -51,14 +71,14 @@ export function WorkflowsPage() {
   const flowName = useMemo(() => new Map(flows.map(f => [f.id, f.name])), [flows]);
   const act = async (job: () => Promise<unknown>, done?: string) => {
     setBusy(true);
-    try { await job(); if (done) toast.success(done); await load(); return true; }
-    catch (err) { if (!notifyPlanLimit(err, i18n.t as never)) toast.error(c('kErr')); return false; }
-    finally { setBusy(false); }
+    try { await job(); if (!alive.current) return false; if (done) toast.success(done); await load(); return true; }
+    catch (err) { if (alive.current && !notifyPlanLimit(err, i18n.t as never)) toast.error(workflowFailure(i18n.lang, err)); return false; }
+    finally { if (alive.current) setBusy(false); }
   };
 
   const edit = (w: WorkflowRow) => {
     const cfg = w.trigger_config ?? {};
-    setDraft({ id: w.id, name: w.name, description: w.description ?? '', trigger: w.trigger_type, cadence: (cfg.cadence as Cadence) ?? 'daily',
+    setDraft({ id: w.id, expectedRevision: w.revision, name: w.name, description: w.description ?? '', trigger: w.trigger_type, cadence: (cfg.cadence as Cadence) ?? 'daily',
       time: `${String(cfg.hour ?? 9).padStart(2, '0')}:${String(cfg.minute ?? 0).padStart(2, '0')}`, weekday: cfg.weekday ?? 1, enabled: w.enabled,
       steps: (w.workflow_steps ?? []).length ? w.workflow_steps!.map(s => ({ ...s })) : blank().steps });
   };
@@ -69,7 +89,7 @@ export function WorkflowsPage() {
     if (!draft.name.trim() || !steps.length) return void toast.error(c('wNoSteps'));
     const [hour, minute] = draft.time.split(':').map(Number);
     const ok = await act(() => saveWorkflow(orgId, user.id, {
-      id: draft.id, name: draft.name.trim(), description: draft.description, enabled: draft.enabled, steps,
+      id: draft.id, expectedRevision: draft.expectedRevision, name: draft.name.trim(), description: draft.description, enabled: draft.enabled, steps,
       trigger_type: draft.trigger,
       trigger_config: draft.trigger === 'schedule' ? { cadence: draft.cadence, hour, minute, weekday: draft.weekday, tz: tz() } : {},
     }), c('wSaved'));
@@ -82,7 +102,9 @@ export function WorkflowsPage() {
     <div className="fb-root h-full overflow-y-auto">
       <div className="fb-wide mx-auto px-4 pb-10 pt-14 md:px-8 md:pt-8">
         <PageHeader eyebrow={c('wEyebrow')} title={c('wTitle')} sub={c('wSub')}
-          right={canManage && !draft ? <button className="fb-btn fb-btn--primary" onClick={() => setDraft(blank())}><Plus size={14} /> {c('wNew')}</button> : undefined} />
+          right={canManage && !draft ? <button className="fb-btn fb-btn--primary" disabled={busy || loading || loadError} onClick={() => setDraft(blank())}><Plus size={14} /> {c('wNew')}</button> : undefined} />
+        {loading && <p role="status" className="fb-dim mb-3 text-sm">{i18n.t('common.loading')}</p>}
+        {loadError && <div role="alert" className="fb-glass mb-4 p-4"><p>{messages.load}</p><button className="fb-btn fb-btn--ghost mt-2" disabled={loading} onClick={() => void load()}>{messages.retry}</button></div>}
         {draft && (
           <form onSubmit={save} className="fb-glass fb-col mb-4 gap-3 p-4">
             <div className="grid gap-2 sm:grid-cols-2">
@@ -130,13 +152,13 @@ export function WorkflowsPage() {
         )}
         <div className="grid items-start gap-4 lg:grid-cols-[1.4fr_1fr]">
           <section className="fb-col gap-3">
-            {flows.length === 0 && !draft ? <div className="fb-glass p-4"><EmptyState icon={<WorkflowIcon size={20} />} title={c('wEmpty')} /></div> : flows.map(w => (
+            {!loading && !loadError && flows.length === 0 && !draft ? <div className="fb-glass p-4"><EmptyState icon={<WorkflowIcon size={20} />} title={c('wEmpty')} /></div> : flows.map(w => (
               <article key={w.id} className="fb-glass fb-col gap-2 p-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="min-w-0 flex-1 truncate text-[15px] font-semibold">{w.name}</h3>
                   <Pill tone={w.enabled ? 'ok' : 'neutral'}>{w.trigger_type === 'schedule' ? c('wSchedule') : w.trigger_type === 'webhook' ? c('wWebhook') : c('wManual')}</Pill>
-                  {canManage && <button className="fb-btn fb-btn--ghost" aria-label={c('wEdit')} title={c('wEdit')} onClick={() => edit(w)}><Pencil size={14} /></button>}
-                  {canManage && <button className="fb-btn fb-btn--ghost" aria-label={c('wDelete')} title={c('wDelete')} disabled={busy} onClick={() => act(() => deleteWorkflow(w.id))}><Trash2 size={14} /></button>}
+                  {canManage && <button className="fb-btn fb-btn--ghost" aria-label={c('wEdit')} title={c('wEdit')} disabled={busy || loading || loadError} onClick={() => edit(w)}><Pencil size={14} /></button>}
+                  {canManage && <button className="fb-btn fb-btn--ghost" aria-label={c('wDelete')} title={c('wDelete')} disabled={busy || loading || loadError} onClick={() => act(() => deleteWorkflow(w.id, orgId, w.revision))}><Trash2 size={14} /></button>}
                 </div>
                 {w.description && <p className="fb-dim text-[13px]">{w.description}</p>}
                 <ol className="flex flex-wrap items-center gap-1.5 text-[12px]">
@@ -148,12 +170,12 @@ export function WorkflowsPage() {
                 {canRun && w.enabled && (
                   <div className="flex flex-wrap gap-2">
                     <input className="fb-input min-w-0 flex-1" value={inputs[w.id] ?? ''} onChange={e => setInputs({ ...inputs, [w.id]: e.target.value })} placeholder={c('wInput')} />
-                    <button className="fb-btn fb-btn--primary" disabled={busy} onClick={() => act(() => startWorkflow(w.id, inputs[w.id] ?? ''), c('wStarted'))}><Play size={14} /> {c('wRun')}</button>
+                    <button className="fb-btn fb-btn--primary" disabled={busy || loading || loadError} onClick={() => act(() => startWorkflow(w.id, inputs[w.id] ?? ''), c('wStarted'))}><Play size={14} /> {c('wRun')}</button>
                   </div>
                 )}
                 {canManage && w.trigger_type === 'webhook' && (
                   <div className="fb-col gap-1">
-                    <button className="fb-btn fb-btn--ghost self-start" disabled={busy} onClick={async () => { setBusy(true); try { setHook({ id: w.id, ...(await workflowHook(w.id)) }); } catch { toast.error(c('kErr')); } finally { setBusy(false); } }}><Webhook size={14} /> {c('wHook')}</button>
+                    <button className="fb-btn fb-btn--ghost self-start" disabled={busy || loading || loadError} onClick={async () => { setBusy(true); setHook(null); try { const result = await workflowHook(w.id, w.revision); if (alive.current) { setHook({ id: w.id, ...result }); await load(); } } catch (err) { if (alive.current) toast.error(workflowFailure(i18n.lang, err)); } finally { if (alive.current) setBusy(false); } }}><Webhook size={14} /> {c('wHook')}</button>
                     {hook?.id === w.id && (
                       <div className="fb-col gap-1 rounded-lg border border-amber-300/30 p-2 text-[12px]">
                         <span className="text-amber-200">{c('wHookShown')}</span>

@@ -1,0 +1,115 @@
+name: Firbo workspace lifecycle and atomic persistence
+on:
+  pull_request:
+    paths: ['supabase/migrations/**', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-workspace-lifecycle.yml']
+  push:
+    branches: [codex/firbo-reconcile-20261005]
+    paths: ['supabase/migrations/**', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-workspace-lifecycle.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-workspace-lifecycle-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  handlers:
+    name: Synthetic handler failure and authorization probes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Actual handlers with mocked database and blocked external transports
+        run: >-
+          node --experimental-strip-types --test
+          tests/firbo/knowledge-entrypoint.test.mjs
+          tests/firbo/legacy-integrations-persistence.test.mjs
+          tests/firbo/workflow-lifecycle.test.mjs
+          tests/firbo/company-skills.test.mjs
+  postgres:
+    name: PostgreSQL ${{ matrix.target }} lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [knowledge, integrations, workflows, skills, tasks, run-protocol]
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: firbo_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d firbo_test"
+          --health-interval 5s --health-timeout 5s --health-retries 5
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-only
+      PGDATABASE: firbo_test
+      FIRBO_LIFECYCLE_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Load fixture, actual candidate migration and rollback assertions
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/firbo-lifecycle-evidence
+          case "$FIRBO_LIFECYCLE_TARGET" in
+            knowledge)
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/knowledge/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215732_knowledge_atomic_replace.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/knowledge/postgres-regressions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            integrations)
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/legacy-integrations/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261001000009_integrations.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215728_integrations_atomic_connect.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/legacy-integrations/postgres-regressions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            workflows)
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/workflows/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215721_workflow_atomic_save.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/workflows/postgres-assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            skills)
+              python3 tests/firbo/workspace-postgres-loader.py skills --output /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005223348_skills_lifecycle_integrity.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/skills/postgres-acceptance.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            run-protocol)
+              python3 tests/firbo/workspace-postgres-loader.py tasks --output /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/run-protocol-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261004032400_connector_execution_receipts.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215417_firbo_task_lifecycle.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005222500_task_run_protocol.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/run-protocol-regressions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              python3 tests/firbo/tasks/run-protocol-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            tasks)
+              python3 tests/firbo/workspace-postgres-loader.py tasks --output /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215417_firbo_task_lifecycle.sql
+              python3 - <<'PY'
+          from pathlib import Path
+          source = Path('tests/firbo/tasks/postgres-regressions.sql').read_text()
+          Path('/tmp/firbo-lifecycle-evidence/assertions.sql').write_text('begin;\n' + source + '\nrollback;\n')
+          PY
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+          esac
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-${{ matrix.target }}-lifecycle-evidence
+          path: /tmp/firbo-lifecycle-evidence/
+          retention-days: 7

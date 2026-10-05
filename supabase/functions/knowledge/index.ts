@@ -42,7 +42,7 @@ async function readApp(kind: string, token: string, config: Record<string, unkno
     for (const p of pages) {
       const titleProp = Object.values(p.properties ?? {}).find((x: any) => x?.type === 'title') as any;
       const title = (titleProp?.title ?? []).map((t: any) => t.plain_text).join('') || 'Notion page';
-      const b = await get(`https://api.notion.com/v1/blocks/${p.id}/children?page_size=100`, h).then(x => x.json()).catch(() => ({ results: [] }));
+      const b = await get(`https://api.notion.com/v1/blocks/${p.id}/children?page_size=100`, h).then(x => x.json());
       const text = (b.results ?? []).map((blk: any) => (blk[blk.type]?.rich_text ?? []).map((t: any) => t.plain_text).join('')).filter(Boolean).join('\n');
       if (text.trim()) docs.push({ title, url: p.url ?? null, text });
     }
@@ -54,16 +54,19 @@ async function readApp(kind: string, token: string, config: Record<string, unkno
     const h = { ...bearer, 'user-agent': 'firbo-ai', accept: 'application/vnd.github+json' };
     const docs: Doc[] = [];
     const readme = await fetch(`https://api.github.com/repos/${repo}/readme`, { headers: { ...h, accept: 'application/vnd.github.raw' }, signal: sig() });
-    if (readme.status === 401) throw new Error('reauth');
+    if (readme.status === 401 || readme.status === 403) throw new Error('reauth');
+    if (!readme.ok && readme.status !== 404) throw new Error(`http_${readme.status}`);
     if (readme.ok) docs.push({ title: `${repo} README`, url: `https://github.com/${repo}#readme`, text: await readme.text() });
     const tree = await fetch(`https://api.github.com/repos/${repo}/contents/docs`, { headers: h, signal: sig() });
+    if (!tree.ok && tree.status !== 404) throw new Error(`http_${tree.status}`);
     if (tree.ok) {
       for (const f of ((await tree.json()) ?? []).filter((x: any) => x.type === 'file' && /\.(md|mdx|txt)$/i.test(x.name)).slice(0, 15)) {
         const raw = await fetch(f.download_url, { signal: sig() });
-        if (raw.ok) docs.push({ title: `${repo}/${f.path}`, url: f.html_url ?? null, text: await raw.text() });
+        if (!raw.ok) throw new Error(`http_${raw.status}`);
+        docs.push({ title: `${repo}/${f.path}`, url: f.html_url ?? null, text: await raw.text() });
       }
     }
-    const issues = await get(`https://api.github.com/repos/${repo}/issues?state=all&per_page=30&sort=updated`, h).then(x => x.json()).catch(() => []);
+    const issues = await get(`https://api.github.com/repos/${repo}/issues?state=all&per_page=30&sort=updated`, h).then(x => x.json());
     for (const i of issues ?? []) docs.push({ title: `${i.pull_request ? 'PR' : 'Issue'} #${i.number}: ${flat(i.title, 150)}`, url: i.html_url ?? null, text: `${i.title}\nState: ${i.state}\n${i.body ?? ''}` });
     return docs;
   }
@@ -75,7 +78,9 @@ async function readApp(kind: string, token: string, config: Record<string, unkno
       const exportAs = f.mimeType === 'application/vnd.google-apps.spreadsheet' ? 'text/csv' : 'text/plain';
       const url = f.mimeType.startsWith('application/vnd.google-apps.') ? `https://www.googleapis.com/drive/v3/files/${f.id}/export?mimeType=${encodeURIComponent(exportAs)}` : `https://www.googleapis.com/drive/v3/files/${f.id}?alt=media`;
       const r = await fetch(url, { headers: bearer, signal: sig() });
-      if (r.ok) docs.push({ title: f.name, url: f.webViewLink ?? null, text: (await r.text()).slice(0, 60_000) });
+      if (r.status === 401 || r.status === 403) throw new Error('reauth');
+      if (!r.ok) throw new Error(`http_${r.status}`);
+      docs.push({ title: f.name, url: f.webViewLink ?? null, text: (await r.text()).slice(0, 60_000) });
     }
     return docs;
   }
@@ -85,8 +90,7 @@ async function readApp(kind: string, token: string, config: Record<string, unkno
     const plain = (part: any): string => part?.mimeType === 'text/plain' && part.body?.data ? decode(part.body.data) : (part?.parts ?? []).map(plain).find(Boolean) ?? '';
     const docs: Doc[] = [];
     for (const m of (list.messages ?? []).slice(0, 30)) {
-      const msg = await get(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`, bearer).then(x => x.json()).catch(() => null);
-      if (!msg) continue;
+      const msg = await get(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${m.id}?format=full`, bearer).then(x => x.json());
       const hdr = (n: string) => (msg.payload?.headers ?? []).find((x: any) => String(x.name).toLowerCase() === n)?.value ?? '';
       const body = plain(msg.payload) || msg.snippet || '';
       docs.push({ title: `Email: ${flat(hdr('subject'), 150) || '(no subject)'}`, url: `https://mail.google.com/mail/u/0/#all/${m.id}`, text: `From: ${hdr('from')}\nDate: ${hdr('date')}\nSubject: ${hdr('subject')}\n\n${body.slice(0, 8000)}` });
@@ -125,12 +129,18 @@ Deno.serve(async (req) => {
       let q = admin.from('knowledge_chunks').select('id, title, content').is('vec', null).limit(20);
       if (filter.org) q = q.eq('organization_id', filter.org);
       if (filter.source) q = q.eq('source_id', filter.source);
-      const { data } = await q;
+      const { data, error } = await q;
+      if (error) throw new Error('database_unavailable');
       if (!data?.length) break;
       for (const c of data) {
         const v = await embed(`${c.title}\n${c.content}`);
         if (!v) return done; // no model in this runtime: keyword search still works
-        await admin.from('knowledge_chunks').update({ vec: JSON.stringify(v) }).eq('id', c.id);
+        let update = admin.from('knowledge_chunks').update({ vec: JSON.stringify(v) }).eq('id', c.id);
+        if (filter.org) update = update.eq('organization_id', filter.org);
+        if (filter.source) update = update.eq('source_id', filter.source);
+        const { data: saved, error: saveError } = await update.select('id').maybeSingle();
+        if (saveError) throw new Error('database_unavailable');
+        if (!saved) continue; // a concurrent source deletion/replacement removed this passage
         done++;
         if (Date.now() - started > budgetMs) break;
       }
@@ -138,10 +148,12 @@ Deno.serve(async (req) => {
     return done;
   };
 
+  try {
   // Scheduler: finish the vectors in the background.
   const cron = req.headers.get('x-cron-secret');
   if (cron) {
-    const { data: sec } = await admin.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+    const { data: sec, error } = await admin.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+    if (error) throw new Error('database_unavailable');
     if (!sec || sec.value !== cron) return json(401, { error: 'unauthorized' });
     if (body.action !== 'embed_pending') return json(400, { error: 'bad_request' });
     return json(200, { embedded: await embedPending({}, 100_000) });
@@ -151,7 +163,11 @@ Deno.serve(async (req) => {
   const { data: who } = await userClient.auth.getUser();
   const user = who?.user;
   if (!user) return json(401, { error: 'unauthorized' });
-  const roleIn = async (org: string) => (await admin.from('organization_members').select('role').eq('organization_id', org).eq('user_id', user.id).maybeSingle()).data?.role as string | undefined;
+  const roleIn = async (org: string) => {
+    const { data, error } = await admin.from('organization_members').select('role').eq('organization_id', org).eq('user_id', user.id).maybeSingle();
+    if (error) throw new Error('database_unavailable');
+    return data?.role as string | undefined;
+  };
 
   // Replaces a source's passages with the given documents and starts the vectors.
   const store = async (source: { id: string; organization_id: string }, docs: Doc[]) => {
@@ -160,18 +176,21 @@ Deno.serve(async (req) => {
     for (const d of docs) {
       const text = d.text.slice(0, Math.max(0, MAX_TEXT - total));
       total += text.length;
-      chunkText(text).forEach((content, i) => rows.push({ organization_id: source.organization_id, source_id: source.id, title: d.title.slice(0, 200), url: d.url, content, chunk_index: i, metadata: {} }));
+      chunkText(text).forEach((content, i) => rows.push({ title: d.title.slice(0, 200), url: d.url, content, chunk_index: i, metadata: {} }));
       if (total >= MAX_TEXT) break;
     }
     const keep = rows.slice(0, MAX_CHUNKS);
-    await admin.from('knowledge_chunks').delete().eq('source_id', source.id);
-    for (let i = 0; i < keep.length; i += 100) {
-      const { error } = await admin.from('knowledge_chunks').insert(keep.slice(i, i + 100));
-      if (error) throw new Error('save_failed');
-    }
-    await admin.from('knowledge_sources').update({ status: 'ready', item_count: keep.length, last_synced_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq('id', source.id);
-    const embedded = await embedPending({ source: source.id }, 40_000);
-    return { passages: keep.length, embedded, truncated: rows.length > keep.length || total >= MAX_TEXT };
+    if (!keep.length) throw new Error('empty_source');
+    // The RPC locks the scoped source and replaces passages plus ready metadata
+    // in one transaction. Any failed insert rolls back to the previous knowledge.
+    const { data: passages, error } = await admin.rpc('replace_knowledge_chunks', { p_org: source.organization_id, p_source: source.id, p_actor: user.id, p_chunks: keep });
+    if (error || passages !== keep.length) throw new Error('save_failed');
+    let embedded = 0;
+    let embeddingError: string | null = null;
+    try { embedded = await embedPending({ org: source.organization_id, source: source.id }, 40_000); }
+    catch { embeddingError = 'embedding_incomplete'; }
+    // Keywords remain available immediately; optional vectors can finish by cron.
+    return { passages: keep.length, embedded, embedding_pending: embedded < keep.length, embedding_error: embeddingError, truncated: rows.length > keep.length || total >= MAX_TEXT };
   };
 
   const sync = async (source: any) => {
@@ -180,14 +199,18 @@ Deno.serve(async (req) => {
       return await store(source, [{ title: source.name, url: source.url, text }]);
     }
     if (source.type === 'integration') {
-      const { data: integ } = await admin.from('integrations').select('id, kind, config, organization_id').eq('id', source.integration_id).maybeSingle();
+      const { data: integ, error } = await admin.from('integrations').select('id, kind, config, organization_id').eq('id', source.integration_id).eq('organization_id', source.organization_id).maybeSingle();
+      if (error) throw new Error('database_unavailable');
       if (!integ || integ.organization_id !== source.organization_id || !READABLE_APPS.includes(integ.kind)) throw new Error('app_missing');
       let token = '';
       if (integ.kind === 'notion' || integ.kind === 'github') {
-        const { data: s } = await admin.from('integration_secrets').select('secret').eq('integration_id', integ.id).maybeSingle();
+        const { data: s, error: secretError } = await admin.from('integration_secrets').select('secret').eq('integration_id', integ.id).maybeSingle();
+        if (secretError) throw new Error('database_unavailable');
         try { token = JSON.parse(String(s?.secret ?? '{}')).token ?? ''; } catch { token = ''; }
       } else {
-        const { data: c } = await admin.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+        const { data: c, error: cronError } = await admin.from('cron_secrets').select('value').eq('name', 'shifts').maybeSingle();
+        if (cronError) throw new Error('database_unavailable');
+        if (!c?.value) throw new Error('reauth');
         const r = await fetch(`${url}/functions/v1/integrations`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${service}`, 'x-cron-secret': c?.value ?? '' }, body: JSON.stringify({ action: 'access_token', id: integ.id }), signal: sig() });
         token = r.ok ? String((await r.json()).token ?? '') : '';
         if (r.status === 409) throw new Error('reauth');
@@ -198,9 +221,12 @@ Deno.serve(async (req) => {
     throw new Error('not_syncable');
   };
 
-  const fail = async (sourceId: string, error: unknown) => {
+  const fail = async (source: { id: string; organization_id: string }, error: unknown) => {
     const reason = error instanceof Error ? error.message.slice(0, 80) : 'failed';
-    await admin.from('knowledge_sources').update({ status: 'failed', last_error: reason, updated_at: new Date().toISOString() }).eq('id', sourceId);
+    const { data, error: saveError } = await admin.from('knowledge_sources').update({ status: 'failed', last_error: reason, updated_at: new Date().toISOString() })
+      .eq('id', source.id).eq('organization_id', source.organization_id).eq('status', 'indexing').select('id').maybeSingle();
+    if (saveError) return json(503, { error: 'status_save_failed', reason });
+    if (!data) return json(409, { error: 'source_changed', reason });
     return json(502, { error: 'sync_failed', reason });
   };
 
@@ -218,8 +244,10 @@ Deno.serve(async (req) => {
   if (['add_text', 'add_url', 'add_app'].includes(body.action)) {
     const org = String(body.organization_id ?? '');
     if (!org || !MANAGERS.includes((await roleIn(org)) ?? '')) return json(403, { error: 'forbidden' });
-    const { count } = await admin.from('knowledge_sources').select('id', { count: 'exact', head: true }).eq('organization_id', org);
-    const { data: cap } = await admin.rpc('plan_limit', { p_org: org, p_key: 'knowledge_sources' });
+    const { count, error: countError } = await admin.from('knowledge_sources').select('id', { count: 'exact', head: true }).eq('organization_id', org);
+    if (countError || count == null) throw new Error('database_unavailable');
+    const { data: cap, error: capError } = await admin.rpc('plan_limit', { p_org: org, p_key: 'knowledge_sources' });
+    if (capError || (cap != null && !Number.isFinite(Number(cap)))) throw new Error('database_unavailable');
     if (cap != null && (count ?? 0) >= Number(cap)) return json(429, { error: 'plan_limit' });
     let row: Record<string, unknown>;
     let docs: Doc[] | null = null;
@@ -234,7 +262,8 @@ Deno.serve(async (req) => {
       if (!/^https?:\/\/[^\s]+$/.test(link) || link.length > 500) return json(400, { error: 'bad_url' });
       row = { type: 'url', name: flat(body.name, 120) || link.replace(/^https?:\/\//, '').slice(0, 120), url: link };
     } else {
-      const { data: integ } = await admin.from('integrations').select('id, kind, name, organization_id').eq('id', String(body.integration_id ?? '')).maybeSingle();
+      const { data: integ, error: integrationError } = await admin.from('integrations').select('id, kind, name, organization_id').eq('id', String(body.integration_id ?? '')).eq('organization_id', org).maybeSingle();
+      if (integrationError) throw new Error('database_unavailable');
       if (!integ || integ.organization_id !== org || !READABLE_APPS.includes(integ.kind)) return json(400, { error: 'app_not_readable' });
       row = { type: 'integration', name: integ.name, integration_id: integ.id, metadata: { kind: integ.kind } };
     }
@@ -243,22 +272,31 @@ Deno.serve(async (req) => {
     try {
       return json(200, { source_id: source.id, ...(docs ? await store(source, docs) : await sync(source)) });
     } catch (e) {
-      return await fail(source.id, e);
+      return await fail(source, e);
     }
   }
 
   if (body.action === 'sync' || body.action === 'delete') {
-    const { data: source } = await admin.from('knowledge_sources').select('*').eq('id', String(body.source_id ?? '')).maybeSingle();
+    const { data: source, error: sourceError } = await admin.from('knowledge_sources').select('*').eq('id', String(body.source_id ?? '')).maybeSingle();
+    if (sourceError) throw new Error('database_unavailable');
     if (!source) return json(404, { error: 'not_found' });
     if (!MANAGERS.includes((await roleIn(source.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     if (body.action === 'delete') {
-      await admin.from('knowledge_chunks').delete().eq('source_id', source.id);
-      await admin.from('knowledge_sources').delete().eq('id', source.id);
+      // The composite FK cascades chunks atomically with this source deletion.
+      const { data: deleted, error } = await userClient.from('knowledge_sources').delete().eq('id', source.id).eq('organization_id', source.organization_id).select('id').maybeSingle();
+      if (error) return json(503, { error: 'delete_failed' });
+      if (!deleted) return json(404, { error: 'not_found' });
       return json(200, { ok: true });
     }
-    await admin.from('knowledge_sources').update({ status: 'indexing' }).eq('id', source.id);
-    try { return json(200, await sync(source)); } catch (e) { return await fail(source.id, e); }
+    const { data: claimed, error: claimError } = await admin.from('knowledge_sources').update({ status: 'indexing', last_error: null })
+      .eq('id', source.id).eq('organization_id', source.organization_id).neq('status', 'indexing').select('id').maybeSingle();
+    if (claimError) throw new Error('database_unavailable');
+    if (!claimed) return json(409, { error: 'sync_in_progress' });
+    try { return json(200, await sync(source)); } catch (e) { return await fail(source, e); }
   }
 
   return json(400, { error: 'bad_request' });
+  } catch {
+    return json(503, { error: 'database_unavailable' });
+  }
 });

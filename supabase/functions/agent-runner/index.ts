@@ -9,6 +9,7 @@ import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeft
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
+import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -241,17 +242,43 @@ Deno.serve(async (req) => {
   const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
   if (Number.isNaN(cap) || cap < 0) return json(503, { error: 'budget_unavailable' });
   if ((orgDay ?? 0) >= cap) return json(429, { error: 'plan_limit' });
-  const { data: claimed } = await admin.from('tasks').update({ status: 'running', started_at: new Date().toISOString() }).eq('id', task.id).in('status', RUNNABLE).select('id').maybeSingle();
-  if (!claimed) return json(409, { error: 'not_runnable' });
+  const { data: installedSkills, error: skillsError } = await admin.from('skills').select('id, slug, name, description, instructions, agent_id').eq('organization_id', task.organization_id).eq('enabled', true)
+    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).order('created_at').limit(1000);
+  if (skillsError) return json(503, { error: 'skills_unavailable' });
+  const skillRows = (installedSkills ?? []) as CompanySkill[];
+  let claimed: any;
+  try {
+    const claim = await admin.rpc('claim_task_run', { p_org: task.organization_id, p_task: task.id, p_actor: user.id });
+    if (claim.error) {
+      const conflicts = ['not_runnable', 'task_active_jobs', 'task_pending_approvals', 'task_reconciliation_required', 'state_conflict'];
+      const conflict = conflicts.find(code => String(claim.error.message).includes(code));
+      return json(conflict ? 409 : 503, { error: conflict ?? 'task_claim_unavailable', retry_safe: false });
+    }
+    claimed = claim.data;
+  } catch { return json(503, { error: 'task_claim_unavailable', retry_safe: false }); }
+  if (claimed?.id !== task.id || claimed?.organization_id !== task.organization_id || claimed?.status !== 'running'
+    || typeof claimed?.run_claim !== 'string' || !/^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(claimed.run_claim)) {
+    return json(503, { error: 'task_claim_unavailable', retry_safe: false });
+  }
+  // The report and its approvals become visible in one transaction. A claim
+  // capability prevents a late response from overwriting a newer execution.
+  const publish = async (status: string, result: Record<string, unknown>, approvals: any[] = []) => {
+    try {
+      const saved = await admin.rpc('publish_task_run', { p_org: task.organization_id, p_task: task.id, p_claim: claimed.run_claim,
+        p_status: status, p_result: result, p_approvals: approvals });
+      if (saved.error || saved.data?.id !== task.id || saved.data?.organization_id !== task.organization_id
+        || saved.data?.run_claim !== claimed.run_claim || saved.data?.status !== status || saved.data?.queued !== approvals.length) return false;
+      return true;
+    } catch { return false; }
+  };
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', task.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata').eq('organization_id', task.organization_id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
   const memory = memoryBlocks(memRows ?? []);
   // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
-  const { data: skillRows } = await admin.from('skills').select('name, instructions').eq('organization_id', task.organization_id).eq('enabled', true)
-    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).order('created_at').limit(8);
-  if ((skillRows ?? []).length) memory.push(`SKILLS (ways of working your company set up; when the task matches one, follow its steps):\n${(skillRows ?? []).map((k: any) => `### ${String(k.name).slice(0, 80)}\n${String(k.instructions).slice(0, 1200)}`).join('\n\n')}`);
+  const skillsContext = companySkillContext(skillRows, `${task.title ?? ''} ${task.description ?? ''}`);
+  if (skillsContext) memory.push(skillsContext);
   const notes = feedback.filter(f => f.rating < 0 && f.note).map(f => `- ${String(f.note).replace(/\s+/g, ' ').slice(0, 200)}`);
   if (notes.length) memory.push(`OWNER FEEDBACK ON YOUR RECENT REPORTS (they were not good enough; do better on these points):\n${notes.join('\n')}`);
   // Scheduled work (a morning digest, a proactive check...) sees what really happened in the company lately.
@@ -397,6 +424,7 @@ Deno.serve(async (req) => {
     console.warn(JSON.stringify({ event: 'firbo_agent_tool_failed', task_id: task.id, tool, reason: error instanceof Error ? error.message.slice(0, 160) : 'error' }));
   const flat = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const loopTools: LoopTools = {};
+  if (skillRows.length) loopTools.skill_read = async identifier => readCompanySkill(skillRows, identifier);
   if (!free && usable('web_search')) loopTools.web_search = async (q) => {
     if (gw) for (const provider of [undefined, 'duckduckgo-free']) {
       try {
@@ -512,7 +540,8 @@ Deno.serve(async (req) => {
   if (!text || !used) {
     // Earlier successful steps were real model calls: keep their usage so budgets stay honest.
     if (inTok + outTok > 0 && used) await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model: `${(used as any).provider}:${(used as any).model}`, input_tokens: inTok, output_tokens: outTok, cost_usd: routedCost, latency_ms: Date.now() - t0, ...(own && used === own ? { own_key: true } : {}) });
-    await admin.from('tasks').update({ status: 'failed', result: { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) } }).eq('id', task.id);
+    const saved = await publish('failed', { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) });
+    if (!saved) return json(503, { error: 'result_save_failed', retry_safe: false, routing });
     return json(502, { error: 'model_error', reason: lastError, routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
   }
   const usedNow = used as { provider: string; model: string };
@@ -534,17 +563,21 @@ Deno.serve(async (req) => {
   }).map(a => ({ ...a, payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] } }));
   const queue = free || agent.autonomy === 'suggest' ? [] : marked;
   const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
-  let approvalError = false;
-  if (!usageError && queue.length) {
-    const saved = await admin.from('approvals').insert(queue.map(a => ({ organization_id: task.organization_id, task_id: task.id, agent_id: agent.id, action: a.action, payload: a.payload, status: 'pending', risk: a.risk })));
-    approvalError = !!saved.error;
+  let reconcile = !!usageError;
+  let finalStatus = reconcile ? 'blocked' : queue.length ? 'awaiting_approval' : 'completed';
+  const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
+    queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
+    ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
+  let saved = await publish(finalStatus, result, reconcile ? [] : queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk })));
+  if (!saved && !reconcile) {
+    // A rejected transaction still owns its claim and can save a blocked report.
+    // If the first call committed but its response was lost, its cleared claim
+    // rejects this fallback, preserving the already-published report/receipts.
+    reconcile = true;
+    finalStatus = 'blocked';
+    saved = await publish(finalStatus, { ...result, queued: null, error: 'result_save_failed', reconcile_required: true });
   }
-  const reconcile = !!usageError || approvalError;
-  const finalStatus = reconcile ? 'blocked' : queue.length ? 'awaiting_approval' : 'completed';
-  const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
-    result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-      queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
-      ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
+  const resultError = !saved;
   // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
   if (!reconcile && !resultError && parsed.learned.length) {
     const { data: known } = await admin.from('memories').select('content').eq('organization_id', task.organization_id).contains('metadata', { source: 'learned' }).order('created_at', { ascending: false }).limit(200);

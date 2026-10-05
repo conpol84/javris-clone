@@ -33,21 +33,69 @@ Deno.serve(async (req) => {
   const cronSecret = String(sec?.value ?? '');
   const background: Promise<unknown>[] = [];
 
+  const recordFailure = async (taskId: string, orgId: string, runId: string, step: number, reason: string, httpStatus?: number) => {
+    const { data: task, error: readError } = await admin.from('tasks').select('status, result')
+      .eq('organization_id', orgId).eq('id', taskId).maybeSingle();
+    if (readError) throw new Error('failure_receipt_read_failed');
+    // A concurrent retry may encounter the already-claimed/successful task. Preserve its work.
+    if (task?.status === 'completed' || task?.status === 'awaiting_approval' || (httpStatus === 409 && task?.status === 'running')) return;
+    const unconfirmed = reason === 'runner_transport_unconfirmed';
+    if (task?.status === 'pending') {
+      const { data: marked, error } = await admin.from('tasks').update({ status: unconfirmed ? 'blocked' : 'failed',
+        result: { error: reason, ...(httpStatus ? { runner_http_status: httpStatus } : {}),
+          ...(unconfirmed ? { execution_status: 'unconfirmed', reconcile_required: true } : {}) } })
+        .eq('organization_id', orgId).eq('id', taskId).eq('status', 'pending').select('id').maybeSingle();
+      if (error) throw new Error('failure_task_receipt_failed');
+      if (!marked) return; // another request claimed it after the read; never overwrite its execution
+    }
+    const now = new Date().toISOString();
+    const { data: markedRun, error } = await admin.from('workflow_runs').update({ status: 'failed', finished_at: now, updated_at: now,
+      result: { error: reason, step, ...(httpStatus ? { runner_http_status: httpStatus } : {}),
+        ...(unconfirmed ? { reconcile_required: true } : {}) } })
+      .eq('organization_id', orgId).eq('id', runId).eq('task_id', taskId).eq('status', 'running').select('id').maybeSingle();
+    if (error) throw new Error('failure_run_receipt_failed');
+    if (!markedRun) return; // the run already moved or finished; this stale failure must not alter it
+  };
+
   /** Runs one task through agent-runner in the background (as the workflow's owner, in their language). */
-  const kick = async (taskId: string, userId: string) => {
+  const kick = async (taskId: string, userId: string, orgId: string, runId: string, step: number) => {
     const { data: profile } = await admin.from('profiles').select('locale').eq('id', userId).maybeSingle();
     const lang = LANGS.includes(String(profile?.locale)) ? String(profile?.locale) : 'en';
-    background.push(fetch(`${url}/functions/v1/agent-runner`, {
-      method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${service}`, 'x-cron-secret': cronSecret },
-      body: JSON.stringify({ task_id: taskId, lang, system_user_id: userId }), signal: AbortSignal.timeout(145_000),
-    }).catch(() => undefined));
+    const job = async () => {
+      let response: Response;
+      try {
+        response = await fetch(`${url}/functions/v1/agent-runner`, {
+          method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${service}`, 'x-cron-secret': cronSecret },
+          body: JSON.stringify({ task_id: taskId, lang, system_user_id: userId }), signal: AbortSignal.timeout(145_000),
+        });
+      } catch {
+        await recordFailure(taskId, orgId, runId, step, 'runner_transport_unconfirmed');
+        return;
+      }
+      if (!response.ok) {
+        // Only recognized public error codes enter the receipt; provider bodies and secrets do not.
+        let reason = `runner_http_${response.status}`;
+        const codes = ['unauthorized','forbidden','no_agent','agent_disabled','not_configured','free_cron_identity_required',
+          'budget_unavailable','budget_exceeded','rate_limited','plan_limit','skills_unavailable','reconciliation_required','model_error','result_save_failed','not_runnable'];
+        try { const body = await response.json(); if (codes.includes(body?.error)) reason = body.error; } catch { /* retain HTTP code */ }
+        await recordFailure(taskId, orgId, runId, step, reason, response.status);
+      }
+    };
+    background.push(job().catch(() => {
+      console.error(JSON.stringify({ event: 'workflow_failure_receipt_failed', workflow_run_id: runId, task_id: taskId }));
+    }));
   };
 
   /** Creates the task for step `n` of a run and starts it; finishes the run when there are no more steps. */
   const startStep = async (run: any, wf: any, n: number, input: string) => {
-    const { data: steps } = await admin.from('workflow_steps').select('id, position, agent_id, action').eq('workflow_id', wf.id).order('position');
+    const { data: steps, error: stepsError } = await admin.from('workflow_steps').select('id, position, agent_id, action').eq('organization_id', wf.organization_id).eq('workflow_id', wf.id).order('position');
     const all = steps ?? [];
     const now = new Date().toISOString();
+    if (stepsError || !all.length) {
+      await admin.from('workflow_runs').update({ status: 'failed', finished_at: now, updated_at: now,
+        result: { error: stepsError ? 'steps_read_failed' : 'no_steps', step: n } }).eq('organization_id', wf.organization_id).eq('id', run.id);
+      return;
+    }
     if (n >= all.length) {
       await admin.from('workflow_runs').update({ status: 'completed', finished_at: now, updated_at: now, result: { summary: clip(input, 2000) } }).eq('id', run.id);
       return;
@@ -68,8 +116,13 @@ Deno.serve(async (req) => {
       await admin.from('workflow_runs').update({ status: 'failed', finished_at: now, updated_at: now, result: { error: 'task_create_failed', step: n } }).eq('id', run.id);
       return;
     }
-    await admin.from('workflow_runs').update({ step: n, task_id: task.id, updated_at: now }).eq('id', run.id);
-    await kick(task.id, owner);
+    const { data: linked, error: linkError } = await admin.from('workflow_runs').update({ step: n, task_id: task.id, updated_at: now })
+      .eq('organization_id', wf.organization_id).eq('id', run.id).eq('status','running').select('id').maybeSingle();
+    if (linkError || !linked) {
+      await admin.from('tasks').update({ status: 'failed', result: { error: 'workflow_link_failed' } }).eq('organization_id', wf.organization_id).eq('id', task.id).eq('status','pending');
+      throw new Error('workflow_link_failed');
+    }
+    await kick(task.id, owner, wf.organization_id, run.id, n);
   };
 
   const startRun = async (wf: any, trigger: string, input: string, userId: string | null) => {
@@ -129,7 +182,7 @@ Deno.serve(async (req) => {
       } else if (task.status === 'pending' && age > 3 * 60_000) {
         // The start was lost (deploy, restart): start the step again, once per few minutes.
         await admin.from('workflow_runs').update({ updated_at: now }).eq('id', run.id);
-        await kick(task.id, run.started_by ?? wf.created_by);
+        await kick(task.id, run.started_by ?? wf.created_by, wf.organization_id, run.id, run.step);
       }
     }
     await finish();
@@ -156,7 +209,14 @@ Deno.serve(async (req) => {
   if (body.action === 'set_hook') {
     if (!MANAGERS.includes(role)) return json(403, { error: 'forbidden' });
     const key = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('');
-    await admin.from('workflows').update({ hook_hash: await sha256(key), trigger_type: 'webhook', updated_at: new Date().toISOString() }).eq('id', wf.id);
+    const hash = await sha256(key);
+    const expected = body.expected_revision ?? wf.revision;
+    if (!Number.isInteger(expected) || expected !== wf.revision) return json(409, { error: 'workflow_conflict' });
+    const { data: saved, error } = await admin.from('workflows').update({ hook_hash: hash, trigger_type: 'webhook', updated_at: new Date().toISOString() })
+      .eq('organization_id', wf.organization_id).eq('id', wf.id).eq('revision', expected).select('id, hook_hash').maybeSingle();
+    if (error) return json(500, { error: 'save_failed' });
+    if (!saved) return json(409, { error: 'workflow_conflict' });
+    if (saved.id !== wf.id || saved.hook_hash !== hash) return json(500, { error: 'save_failed' });
     return json(200, { url: `${url}/functions/v1/workflow-runner?hook=${wf.id}&key=${key}` });
   }
   return json(400, { error: 'bad_request' });

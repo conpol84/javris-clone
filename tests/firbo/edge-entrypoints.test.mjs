@@ -14,6 +14,7 @@ const ORG='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const AGENT='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const TASK='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const CONVO='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const CLAIM='ffffffff-ffff-4fff-8fff-ffffffffffff';
 const root = new URL('../../',import.meta.url);
 const originalFetch=globalThis.fetch, originalDeno=globalThis.Deno;
 const temp=await mkdtemp(join(tmpdir(),'firbo-edge-tests-'));
@@ -68,7 +69,28 @@ function fixture(options={}) {
   };
   const client=(_url,key)=>({
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
-    rpc:async(fn,args)=>{state.rpcs=[...(state.rpcs??[]),{fn,args}];if(fn==='match_knowledge')return{data:options.knowledgeHits??[],error:null};if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};return{data:100,error:options.planError?{message:'db failure'}:null};},
+    rpc:async(fn,args)=>{
+      state.rpcs=[...(state.rpcs??[]),{fn,args}];
+      if(fn==='claim_task_run') {
+        if(options.claimLost||options.activeExecution)return{data:null,error:{message:options.activeExecution?'task_active_jobs':'not_runnable'}};
+        if(options.claimUnavailable)return{data:null,error:{message:'database unavailable'}};
+        return{data:options.malformedClaim?{}:{id:TASK,organization_id:ORG,status:'running',run_claim:CLAIM},error:null};
+      }
+      if(fn==='publish_task_run') {
+        if(options.publishConflict)return{data:null,error:{message:'state_conflict'}};
+        if(options.resultError||options.approvalError&&args.p_approvals.length)return{data:null,error:{message:'db failure'}};
+        if(options.publishResponseLost&&state.rpcs.filter(r=>r.fn==='publish_task_run').length>1)return{data:null,error:{message:'state_conflict'}};
+        // Model the successful RPC effects for existing accounting/receipt
+        // assertions. Real transaction/isolation guarantees use PostgreSQL tests.
+        state.writes.push({table:'tasks',op:'rpc',payload:{status:args.p_status,result:args.p_result}});
+        if(args.p_approvals.length)state.writes.push({table:'approvals',op:'rpc',payload:args.p_approvals.map(a=>({...a,organization_id:ORG,task_id:TASK,agent_id:AGENT,status:'pending'}))});
+        if(options.publishResponseLost)return{data:null,error:{message:'response lost after commit'}};
+        return{data:{id:TASK,organization_id:ORG,status:args.p_status,run_claim:CLAIM,queued:args.p_approvals.length},error:null};
+      }
+      if(fn==='match_knowledge')return{data:options.knowledgeHits??[],error:null};
+      if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};
+      return{data:100,error:options.planError?{message:'db failure'}:null};
+    },
     from:table=>{
       let op='select',payload,selection;const filters=[];
       const b={
@@ -136,6 +158,23 @@ test('task retains human approval requirement',async()=>{const {state,body}=awai
 test('suggest-only task does not insert external approvals',async()=>{const {state,body}=await invoke('agent-runner',{autonomy:'suggest'});assert.equal(body.status,'completed');assert.ok(!state.writes.some(w=>w.table==='approvals'));});
 test('blocked tool proposals are dropped',async()=>{const {state,body}=await invoke('agent-runner',{tools:[{tool_name:'send_email',enabled:false,policy:'block'}]});assert.equal(body.dropped,1);assert.ok(!state.writes.some(w=>w.table==='approvals'));});
 test('lost task claim stops duplicate execution',async()=>{const {state,response}=await invoke('agent-runner',{claimLost:true});assert.equal(response.status,409);assert.equal(state.calls.length,0);});
+test('active previous computer execution prevents a new model request',async()=>{const {state,response,body}=await invoke('agent-runner',{taskStatus:'failed',activeExecution:true});assert.equal(response.status,409);assert.equal(body.error,'task_active_jobs');assert.equal(state.calls.length,0);});
+test('unavailable or malformed claim fails before inference',async()=>{for(const options of [{claimUnavailable:true},{malformedClaim:true}]){const {state,response}=await invoke('agent-runner',options);assert.equal(response.status,503);assert.equal(state.calls.length,0);}});
+test('report and approvals use one organization-scoped claim publication',async()=>{
+  const {state,response}=await invoke('agent-runner');assert.equal(response.status,200);
+  const claim=state.rpcs.find(r=>r.fn==='claim_task_run');assert.deepEqual(claim.args,{p_org:ORG,p_task:TASK,p_actor:USER});
+  const publications=state.rpcs.filter(r=>r.fn==='publish_task_run');assert.equal(publications.length,1);
+  assert.equal(publications[0].args.p_claim,CLAIM);assert.equal(publications[0].args.p_result.report,'Result');assert.equal(publications[0].args.p_approvals.length,1);
+  assert.ok(!state.writes.some(w=>w.op==='insert'&&w.table==='approvals'));
+});
+test('lost committed publication response cannot overwrite an existing result with fallback',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{publishResponseLost:true});assert.equal(response.status,503);assert.equal(body.retry_safe,false);
+  const results=state.writes.filter(w=>w.table==='tasks'&&w.payload.result);assert.equal(results.length,1);assert.equal(results[0].payload.status,'awaiting_approval');
+});
+test('late or recovered claim publishes neither a success nor new approvals',async()=>{
+  const {state,response}=await invoke('agent-runner',{publishConflict:true});assert.equal(response.status,503);
+  assert.ok(!state.writes.some(w=>w.table==='tasks'||w.table==='approvals'));
+});
 test('ambiguous prior result requires reconciliation instead of retry',async()=>{const {state,response}=await invoke('agent-runner',{result:{reconcile_required:true}});assert.equal(response.status,409);assert.equal(state.calls.length,0);});
 test('task persists gateway routing trace',async()=>{const {state}=await invoke('agent-runner');const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result);assert.equal(result.payload.result.routing.route,'omniroute');});
 test('approval save failure is blocked and marked for reconciliation',async()=>{const {state,response}=await invoke('agent-runner',{approvalError:true});assert.equal(response.status,503);const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result);assert.equal(result.payload.status,'blocked');assert.equal(result.payload.result.reconcile_required,true);});

@@ -135,3 +135,8 @@ oj-debug.*.json
 # server secrets and data
 deploy/hostinger/.env
 deploy/hostinger/data/
+**/.gateway-credential-backups/
+**/.firbo-credential-*
+
+# Supabase CLI local state
+supabase/.temp/

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Trash2 } from 'lucide-react';
 import { Panel, StatusDot } from '../command/Panel';
@@ -6,7 +6,8 @@ import { deleteAgent, updateAgent, updateTool } from '../../lib/company/data';
 import { Modal } from './Modal';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { OWN_KEY_PROVIDERS } from '../../lib/company/ownKeys';
-import { planHas, useOwnKeys, usePlanUsage } from '../../lib/company/usePlan';
+import { planHas, useOwnKeys, usePlanUsageState } from '../../lib/company/usePlan';
+import { keyStatusCopy } from '../../lib/company/keyStatusCopy';
 import { AUTONOMY_LEVELS } from '../../lib/company/templates';
 import { agentLabel } from '../../lib/company/labels';
 import { agentColor, STATE_KEY, type AgentState } from '../../lib/company/status';
@@ -56,18 +57,38 @@ export function AgentDrawer({
   const suggestion = autonomySuggestion(stats, agent.autonomy);
   const { current } = useCompanyAuth();
   const orgId = current?.organization.id;
-  const plan = usePlanUsage(orgId);
-  const [ownKeys] = useOwnKeys(orgId);
+  const planState = usePlanUsageState(orgId);
+  const plan = planState.plan;
+  const [ownKeys, reloadKeys, keyState] = useOwnKeys(orgId);
+  const copy = keyStatusCopy(i18n.lang);
+  const checked = planState.status === 'ready' && keyState.status === 'ready';
+  const canChangeModel = canManage && checked && !!orgId;
+  const scopeKey = `${orgId ?? ''}:${agent.id}`;
+  const [draftScope, setDraftScope] = useState(scopeKey);
+  const shownModel = draftScope === scopeKey ? model : agent.model ?? 'auto';
+  const shownBudget = draftScope === scopeKey ? budget : agent.monthly_budget_usd?.toString() ?? '';
+  const scope = useRef({ key: scopeKey, orgId, generation: 0 });
+  if (scope.current.key !== scopeKey) scope.current = { key: scopeKey, orgId, generation: scope.current.generation + 1 };
+  const generation = scope.current.generation;
+  const priorOrg = useRef(orgId);
+  useEffect(() => {
+    if (priorOrg.current !== orgId) onClose();
+    priorOrg.current = orgId;
+    setBudget(agent.monthly_budget_usd?.toString() ?? ''); setModel(agent.model ?? 'auto'); setConfirmRemove(false); setRemoving(false); setDraftScope(scopeKey);
+  }, [orgId, agent.id, agent.model, agent.monthly_budget_usd]); // eslint-disable-line react-hooks/exhaustive-deps
   // Free companies always run on Firbo's free models (server rule), so the model choice is locked there instead of pretending.
   const freePlan = plan?.plan.id === 'free';
   const ownAllowed = planHas(plan, 'byo_keys');
 
   const run = async (fn: () => Promise<void>, ok?: string) => {
+    if (!canManage || !orgId || scope.current.generation !== generation) return;
     try {
       await fn();
+      if (scope.current.generation !== generation) return;
       if (ok) toast.success(ok);
       onChanged();
     } catch (err) {
+      if (scope.current.generation !== generation) return;
       console.error(err);
       // Show the short reason (e.g. not_removed) so a failure is never silent or vague.
       const code = err instanceof Error && /^[a-z0-9_ .:-]{1,80}$/i.test(err.message) ? ` [${err.message}]` : '';
@@ -76,12 +97,14 @@ export function AgentDrawer({
   };
 
   const saveBudget = () => {
+    if (draftScope !== scopeKey) return;
     const v = budget.trim() === '' ? null : Number(budget);
     if (v !== null && (!Number.isFinite(v) || v < 0)) return toast.error(t('drawer.budgetInvalid'));
     void run(() => updateAgent(agent.id, { monthly_budget_usd: v }), t('drawer.budgetSaved'));
   };
 
   const saveModel = () => {
+    if (!canChangeModel || freePlan || draftScope !== scopeKey) return;
     const v = model.trim() || 'auto';
     if (!/^(auto|[a-z0-9_-]{1,32}:\S{1,100})$/i.test(v)) return toast.error(t('drawer.modelInvalid'));
     void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved'));
@@ -151,7 +174,12 @@ export function AgentDrawer({
       )}
 
       <div className="fb-eyebrow mb-2 mt-5">{t('drawer.model')}</div>
-      {freePlan ? (
+      {planState.loading && <p role="status" className="fb-dim mb-2 text-xs">{copy.loadingPlan}</p>}
+      {keyState.loading && <p role="status" className="fb-dim mb-2 text-xs">{copy.loadingKeys}</p>}
+      {planState.status === 'error' && <div role="alert" className="mb-2 text-xs">{copy.planError} <button className="fb-link" onClick={planState.retry}>{copy.retry}</button></div>}
+      {keyState.status === 'error' && <div role="alert" className="mb-2 text-xs">{copy.keysError} <button className="fb-link" onClick={reloadKeys}>{copy.retry}</button></div>}
+      {!checked && <p className="fb-dim mb-2 text-xs">{copy.waiting}</p>}
+      {checked && freePlan ? (
         <p className="rounded-xl p-3 text-xs" style={{ border: '1px solid var(--fb-border)', background: 'rgba(34,211,238,0.06)' }}>
           {t('drawer.freeModel')}{' '}
           <a className="fb-link font-semibold" href="/billing">
@@ -160,14 +188,15 @@ export function AgentDrawer({
         </p>
       ) : (
       <>
-      {ownAllowed && ownKeys.length > 0 && (
+      {checked && ownAllowed && ownKeys.length > 0 && (
         <div className="mb-2">
           <select
             className="fb-input text-xs"
-            disabled={!canManage}
+            disabled={!canChangeModel}
             aria-label={t('drawer.ownKeyPick')}
-            value={ownKeys.some((k) => k.models.some((m) => `${k.provider}:${m}` === model)) ? model : ''}
+            value={ownKeys.some((k) => k.models.some((m) => `${k.provider}:${m}` === shownModel)) ? shownModel : ''}
             onChange={(e) => {
+              if (!canChangeModel || freePlan) return;
               const v = e.target.value;
               if (!v) return;
               setModel(v);
@@ -187,7 +216,7 @@ export function AgentDrawer({
           </select>
         </div>
       )}
-      {ownKeys.length === 0 && (
+      {checked && ownKeys.length === 0 && (
         <p className="fb-dim mb-2 text-[11px]">
           {t(ownAllowed ? 'drawer.ownKeyHint' : 'drawer.ownKeyPlan')}{' '}
           <a className="fb-link" href={ownAllowed ? '/settings' : '/billing'}>
@@ -201,10 +230,10 @@ export function AgentDrawer({
             key={v}
             type="button"
             className="fb-chip cursor-pointer"
-            disabled={!canManage}
-            aria-pressed={model === v}
-            style={model === v ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}
-            onClick={() => (setModel(v), void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved')))}
+            disabled={!canChangeModel}
+            aria-pressed={shownModel === v}
+            style={shownModel === v ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)' } : undefined}
+            onClick={() => { if (!canChangeModel || freePlan) return; setModel(v); void run(() => updateAgent(agent.id, { model: v }), t('drawer.modelSaved')); }}
           >
             {t(v === 'auto' ? 'drawer.tier.auto' : v.endsWith('economy') ? 'drawer.tier.economy' : 'drawer.tier.quality')}
           </button>
@@ -214,8 +243,8 @@ export function AgentDrawer({
         <input
           className="fb-input font-mono text-xs"
           list={`models-${agent.id}`}
-          value={model}
-          disabled={!canManage}
+          value={shownModel}
+          disabled={!canChangeModel}
           aria-label={t('drawer.modelAria')}
           dir="ltr"
           onChange={(e) => setModel(e.target.value)}
@@ -226,7 +255,7 @@ export function AgentDrawer({
             <option key={m} value={m} />
           ))}
         </datalist>
-        <button className="fb-btn fb-btn--ghost shrink-0 whitespace-nowrap" style={{ height: 42 }} disabled={!canManage} onClick={saveModel}>
+        <button className="fb-btn fb-btn--ghost shrink-0 whitespace-nowrap" style={{ height: 42 }} disabled={!canChangeModel} onClick={saveModel}>
           {t('common.save')}
         </button>
       </div>
@@ -240,7 +269,7 @@ export function AgentDrawer({
           className="fb-input"
           inputMode="decimal"
           placeholder={t('drawer.budgetPlaceholder')}
-          value={budget}
+          value={shownBudget}
           disabled={!canManage}
           aria-label={t('drawer.budgetAria')}
           onChange={(e) => setBudget(e.target.value)}
@@ -318,9 +347,10 @@ export function AgentDrawer({
                 setRemoving(true);
                 void run(async () => {
                   await deleteAgent(agent.id);
+                  if (scope.current.generation !== generation) return;
                   setConfirmRemove(false);
                   onClose();
-                }, t('drawer.removed')).finally(() => setRemoving(false));
+                }, t('drawer.removed')).finally(() => { if (scope.current.generation === generation) setRemoving(false); });
               }}
             >
               <Trash2 size={14} /> {removing ? '…' : t('drawer.removeYes')}
