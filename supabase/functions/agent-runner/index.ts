@@ -381,8 +381,11 @@ Deno.serve(async (req) => {
     const ids = (admins ?? []).map((a: any) => a.user_id);
     const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
     if ((count ?? 0) > 0) loopTools.server_task = async (job) => {
-      const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` },
-        body: JSON.stringify({ messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
+      const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
+      // The server agent requires a model name: use the one it runs by default.
+      const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+      const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers,
+        body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
       if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
       const out = await res.json();
       return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';

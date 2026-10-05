@@ -39,9 +39,11 @@ Deno.serve(async (req) => {
     const message = String(body.message ?? '').trim().slice(0, 4000);
     if (!message) return json(400, { error: 'empty_message' });
     const started = Date.now();
+    // The server agent requires a model name: the chosen one, else the one it runs by default.
+    const model = body.model ? String(body.model).slice(0, 120) : String((await get('/v1/info').catch(() => ({})))?.model || 'default');
     try {
       const res = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers, signal: AbortSignal.timeout(140_000),
-        body: JSON.stringify({ ...(body.model ? { model: String(body.model).slice(0, 120) } : {}), messages: [{ role: 'user', content: message }], stream: false }) });
+        body: JSON.stringify({ model, messages: [{ role: 'user', content: message }], stream: false }) });
       if (!res.ok) return json(502, { error: `jarvis_http_${res.status}` });
       const out = await res.json();
       return json(200, { reply: String(out?.choices?.[0]?.message?.content ?? ''), model: out?.model ?? null, ms: Date.now() - started });
