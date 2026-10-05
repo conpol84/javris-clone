@@ -40,6 +40,9 @@ const CeoPage = lazyPage(() => import('./pages/CeoPage'), 'CeoPage');
 const StorePage = lazyPage(() => import('./pages/StorePage'), 'StorePage');
 const ReviewsPage = lazyPage(() => import('./pages/ReviewsPage'), 'ReviewsPage');
 const MemoryPage = lazyPage(() => import('./pages/MemoryPage'), 'MemoryPage');
+const KnowledgePage = lazyPage(() => import('./pages/KnowledgePage'), 'KnowledgePage');
+const SkillsPage = lazyPage(() => import('./pages/SkillsPage'), 'SkillsPage');
+const WorkflowsPage = lazyPage(() => import('./pages/WorkflowsPage'), 'WorkflowsPage');
 const BillingPage = lazyPage(() => import('./pages/BillingPage'), 'BillingPage');
 const HubPage = lazyPage(() => import('./pages/HubPage'), 'HubPage');
 const CodingPage = lazyPage(() => import('./pages/CodingPage'), 'CodingPage');
@@ -233,6 +236,9 @@ function AuthedApp() {
           <Route path="hub" element={COMPANY_ENABLED ? <HubPage /> : <Navigate to="/" replace />} />
           <Route path="billing" element={COMPANY_ENABLED ? <BillingPage /> : <Navigate to="/" replace />} />
           <Route path="memory" element={COMPANY_ENABLED ? <MemoryPage /> : <Navigate to="/" replace />} />
+          <Route path="knowledge" element={COMPANY_ENABLED ? <KnowledgePage /> : <Navigate to="/" replace />} />
+          <Route path="skills" element={COMPANY_ENABLED ? <SkillsPage /> : <Navigate to="/" replace />} />
+          <Route path="workflows" element={COMPANY_ENABLED ? <WorkflowsPage /> : <Navigate to="/" replace />} />
           <Route path="reviews" element={COMPANY_ENABLED ? <ReviewsPage /> : <Navigate to="/" replace />} />
           <Route path="store" element={COMPANY_ENABLED ? <StorePage /> : <Navigate to="/" replace />} />
           <Route path="ceo" element={COMPANY_ENABLED ? <CeoPage /> : <Navigate to="/" replace />} />

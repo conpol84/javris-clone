@@ -497,7 +497,7 @@ Deno.serve(async (req) => {
   try {
     const out = await runAgentLoop({ evidence,
       call: callLoop, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
-      maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
+      maxSteps: Math.min(8, Math.max(5, Number(agent.max_steps) || 6)), budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
       repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`, toolHelp,
     });
     text = out.text; steps = out.steps; calls = out.calls;

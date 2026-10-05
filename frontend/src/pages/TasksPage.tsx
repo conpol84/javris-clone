@@ -9,6 +9,7 @@ import { RunError, runErrorText, runTask } from '../lib/company/runner';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { Modal } from '../components/team/Modal';
 import { ReportView } from '../components/company/ReportView';
+import { ReportFeedback } from '../components/company/ReportFeedback';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -318,6 +319,7 @@ export function TasksPage() {
                       </div>
                       {task.result.summary && <p className="mb-2 font-medium">{task.result.summary}</p>}
                       <ReportView result={task.result} compact />
+                      {task.result.ai_generated && task.result.report && <div className="mt-2"><ReportFeedback task={task} /></div>}
                       {task.result.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${task.result.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
                       {task.result.actions && task.result.actions.length > 0 && (
                         <div className="mt-3">
@@ -384,6 +386,7 @@ export function TasksPage() {
               {r.ai_generated && <span className="fb-chip self-start">{t('run.ai')}</span>}
               {r.summary && <p className="font-medium">{r.summary}</p>}
               <ReportView result={r} />
+              {r.ai_generated && r.report && <ReportFeedback task={mt} />}
               {r.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${r.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
               {r.actions && r.actions.length > 0 && (
                 <div>

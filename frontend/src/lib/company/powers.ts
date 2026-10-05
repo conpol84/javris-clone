@@ -11,14 +11,20 @@ export interface PowerMeta {
 export const POWER_META: Record<string, PowerMeta> = {
   web_search: { color: '#00d4ff', live: true, desc: 'studio.power.web_search' },
   browser_extract: { color: '#60a5fa', live: true, desc: 'studio.power.browser_extract' },
-  http_request: { color: '#38bdf8', live: false, desc: 'studio.power.http_request' },
+  http_request: { color: '#38bdf8', live: true, desc: 'studio.power.http_request' },
   browser_navigate: { color: '#818cf8', live: false, desc: 'studio.power.browser_navigate' },
   pdf_extract: { color: '#f472b6', live: false, desc: 'studio.power.pdf_extract' },
-  memory_search: { color: '#a78bfa', live: false, desc: 'studio.power.memory_search' },
+  memory_search: { color: '#a78bfa', live: true, desc: 'studio.power.memory_search' },
   memory_store: { color: '#c084fc', live: false, desc: 'studio.power.memory_store' },
-  knowledge_search: { color: '#fbbf24', live: false, desc: 'studio.power.knowledge_search' },
+  knowledge_search: { color: '#fbbf24', live: true, desc: 'studio.power.knowledge_search' },
   file_write: { color: '#fb923c', live: false, desc: 'studio.power.file_write' },
-  think: { color: '#a3e635', live: false, desc: 'studio.power.think' },
+  think: { color: '#a3e635', live: true, desc: 'studio.power.think' },
+  calculator: { color: '#34d399', live: true, desc: 'studio.power.calculator' },
+  weather: { color: '#7dd3fc', live: true, desc: 'studio.power.weather' },
+  exchange_rate: { color: '#facc15', live: true, desc: 'studio.power.exchange_rate' },
+  image_generate: { color: '#f472b6', live: true, desc: 'studio.power.image_generate' },
+  image_analyze: { color: '#e879f9', live: true, desc: 'studio.power.image_analyze' },
+  code_interpreter: { color: '#fb7185', live: true, desc: 'studio.power.code_interpreter' },
 };
 
 export const FALLBACK_POWER: PowerMeta = { color: '#94a3b8', live: false, desc: 'studio.power.other' };

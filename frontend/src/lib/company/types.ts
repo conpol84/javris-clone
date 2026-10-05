@@ -60,6 +60,10 @@ export interface TaskResult {
   /** Research steps the agent took (search, read a page, memory), newest runner only. */
   steps?: { action: string; input: string; ok?: boolean }[];
   powers_used?: string[];
+  /** The model route that wrote the report (provider:model). */
+  model?: string;
+  /** Why the run moved to the quality route ('feedback' after 👎, 'invalid_reply' when the economy model failed). */
+  routed_up?: string;
   actions?: { action: string; risk: string; payload: Record<string, unknown> }[];
   queued?: number;
   dropped?: string[];

@@ -3,6 +3,8 @@ import { Check, Copy } from 'lucide-react';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { CODING_TOOLS } from '../lib/company/coding';
+import { usePlatformAdmin } from '../lib/company/admin';
+import { ServerJarvisPanel } from '../components/admin/ServerJarvisPanel';
 import '../styles/firbo.css';
 
 const GATEWAY = ((import.meta.env.VITE_OMNIROUTE_URL as string | undefined) ?? 'https://gateway.firboai.app').replace(/\/+$/, '');
@@ -34,6 +36,7 @@ function Code({ text }: { text: string }) {
 /** Point any coding assistant on your own computer at the company's AI gateway. Nothing typed here leaves the browser. */
 export function CodingPage() {
   const { t } = useI18n();
+  const platformAdmin = usePlatformAdmin();
   const [url, setUrl] = useState(GATEWAY);
   const [key, setKey] = useState('');
   const [model, setModel] = useState('auto');
@@ -49,6 +52,9 @@ export function CodingPage() {
           <h1 className="fb-grad-text mt-1 text-2xl font-semibold">{t('coding.title')}</h1>
           <p className="fb-muted mt-1 max-w-3xl text-sm">{t('coding.intro')}</p>
         </header>
+
+        {/* The server coding agent (platform admins): it works on code on Firbo's server with files, git and tests. */}
+        {platformAdmin && <ServerJarvisPanel coding />}
 
         <section className="fb-glass fb-col gap-3 p-5">
           <div className="grid gap-3 md:grid-cols-3">

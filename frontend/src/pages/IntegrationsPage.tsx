@@ -16,6 +16,7 @@ import '../styles/firbo.css';
 import '../styles/connected-world.css';
 import {beginConnection,connectionManifest,finishConnection,connectBridge,readConnection,disconnectConnection,isConnectedApp,type ConnectionManifest,type ConnectionSnapshot} from '../lib/company/connected-apps';
 import {deviceMessages} from '../lib/company/device-messages';
+import { TwoWayChannel } from '../components/company/TwoWayChannel';
 
 const BRAND = Object.fromEntries(LIVE_APPS.map((a) => [a.kind, a.name])) as Record<IntegrationKind, string>;
 
@@ -284,6 +285,7 @@ function IntegrationWorkspace() {
                       <button className="fb-btn fb-btn--ghost" style={{ height: 32, padding: '0 10px' }} disabled={busy !== null} aria-label={t('int.disconnect')} title={t('int.disconnect')} onClick={() => void remove(r)}>
                         <Trash2 size={14} />
                       </button>
+                      {['telegram', 'whatsapp', 'twilio'].includes(r.kind) && canManage && <TwoWayChannel integration={r} onChange={() => void reload()} />}
                       {mcpOpen === r.id && (
                         <div className="fb-col mt-2 w-full gap-2 border-t pt-3" style={{ borderColor: 'var(--fb-border)' }}>
                           {mcpList.length === 0 ? (

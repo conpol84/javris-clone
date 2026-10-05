@@ -208,5 +208,5 @@ export async function rateReport(orgId: string, userId: string, task: { id: stri
 
 // ------------------------------------------------------------------ two-way chat channels
 export const enableInbound = (integrationId: string, extra: Record<string, string> = {}) =>
-  fn<{ ok: true; callback_url?: string; verify_token?: string }>('channel-inbound', { action: 'enable', integration_id: integrationId, ...extra });
+  fn<{ ok: true; callback_url?: string; verify_token?: string; sms_webhook_url?: string }>('channel-inbound', { action: 'enable', integration_id: integrationId, ...extra });
 export const disableInbound = (integrationId: string) => fn<{ ok: true }>('channel-inbound', { action: 'disable', integration_id: integrationId });

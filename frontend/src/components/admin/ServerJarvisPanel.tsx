@@ -10,7 +10,7 @@ interface Status { configured: boolean; online?: boolean; model?: string; agent?
 interface Turn { q: string; a: string; meta: string; error?: boolean }
 
 /** The OpenJarvis server on the VPS: live status and a direct line to it (platform admins only, checked by the server). */
-export function ServerJarvisPanel() {
+export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: boolean } = {}) {
   const { t } = useI18n();
   const [status, setStatus] = useState<Status | null>(null);
   const [failed, setFailed] = useState(false);
@@ -18,6 +18,8 @@ export function ServerJarvisPanel() {
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
+  // Coding mode: the server agent works on code in its workspace (files, git, patches, tests) and remembers the last turns.
+  const [coding, setCoding] = useState(codingDefault);
 
   const refresh = useCallback(async () => {
     setFailed(false);
@@ -33,7 +35,7 @@ export function ServerJarvisPanel() {
     if (!q || busy) return;
     setBusy(true);
     setMessage('');
-    const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'chat', message: q, ...(model ? { model } : {}) } });
+    const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'chat', message: q, ...(model ? { model } : {}), ...(coding ? { mode: 'code', history: turns.filter(x => !x.error).slice(-4).flatMap(x => [{ role: 'user', content: x.q }, { role: 'assistant', content: x.a.slice(0, 4000) }]) } : {}) } });
     const reply = data as { reply?: string; model?: string; ms?: number } | null;
     setTurns(prev => [...prev, error || !reply?.reply
       ? { q, a: t('jv.error'), meta: '', error: true }
@@ -64,6 +66,7 @@ export function ServerJarvisPanel() {
           {status.models.filter(m => m !== status.model).map(m => <option key={m} value={m}>{m}</option>)}
         </select>}
         <textarea className="fb-input min-h-[80px]" value={message} maxLength={4000} onChange={e => setMessage(e.target.value)} placeholder={t('jv.placeholder')} />
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={coding} onChange={e => setCoding(e.target.checked)} /> {'</>'} Coding agent · git · files · tests</label>
         <div className="flex items-center gap-3">
           <button className="fb-btn fb-btn--primary" disabled={busy || !message.trim()}>{busy ? t('jv.thinking') : t('jv.send')}</button>
           <span className="fb-dim text-xs">{t('jv.slow')}</span>

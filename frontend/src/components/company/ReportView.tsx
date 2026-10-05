@@ -1,10 +1,11 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ExternalLink, Globe, BookOpen, Brain, Search } from 'lucide-react';
+import { ExternalLink, Globe, BookOpen, Brain, Search, Calculator, CloudSun, Coins, Library, ImagePlus, ScanEye, Server } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nProvider';
 import type { TaskResult } from '../../lib/company/types';
 
-const STEP_ICON = { web_search: Search, read_page: Globe, memory_search: BookOpen, think: Brain } as const;
+const STEP_ICON = { web_search: Search, read_page: Globe, memory_search: BookOpen, think: Brain, calculator: Calculator, weather: CloudSun, exchange_rate: Coins,
+  knowledge_search: Library, generate_image: ImagePlus, analyze_image: ScanEye, server_task: Server } as const;
 
 /** Links found in the report: the sources the agent cites. Only http(s), deduplicated, at most 12. */
 export function reportSources(report: string): string[] {
@@ -48,6 +49,10 @@ export function ReportView({ result, compact = false }: { result: TaskResult; co
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
+              // Images an employee created: only https links, never bigger than the report.
+              img: ({ src, alt }) => (typeof src === 'string' && /^https:\/\//.test(src)
+                ? <a href={src} target="_blank" rel="noopener noreferrer nofollow"><img src={src} alt={alt ?? ''} loading="lazy" className="my-2 max-h-96 max-w-full rounded-lg border border-white/10" /></a>
+                : null),
               a: ({ href, children }) => (
                 <a href={href} target="_blank" rel="noopener noreferrer nofollow" className="fb-link underline">
                   {children}
