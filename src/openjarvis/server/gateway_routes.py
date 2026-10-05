@@ -731,7 +731,10 @@ async def gateway_set_savings(request: Request) -> Dict[str, Any]:
             status_code=502, detail="Gateway rejected the management key"
         )
     if resp.status_code >= 400:
-        raise HTTPException(\n            status_code=502, detail=f"Gateway error {resp.status_code}"\n        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Gateway error {resp.status_code}",
+        )
     _extra_cache.clear()
     return {"ok": True, "applied": patch}
 
