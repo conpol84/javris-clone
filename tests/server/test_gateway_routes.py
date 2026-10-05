@@ -165,7 +165,7 @@ def test_host_with_v1_suffix_is_normalized(
 
 
 class TestSupabaseAuth:
-    """Browsers authenticate with their Firbo (Supabase) session, not the server API key."""
+    """Browsers use their Firbo session, never the server API key."""
 
     @pytest.fixture(autouse=True)
     def _supabase(self, monkeypatch: pytest.MonkeyPatch):
