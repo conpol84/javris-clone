@@ -86,3 +86,12 @@ test('the CEO hand-over becomes a marker for a real employee only', () => {
   assert.equal(handoffFrom('Θα το δω.\nASK: CEO | Τι έγινε;', team, CEO).agentId, null);
   assert.equal(handoffFrom('Απλή απάντηση.', team, CEO).text, 'Απλή απάντηση.');
 });
+
+import { focusBriefing } from '../../supabase/functions/_shared/task-briefing.ts';
+test('the focused record carries the result and the work log, or nothing', () => {
+  const t = { ...greek, result: { ...greek.result, steps: [{ action: 'web_search', input: 'αγορά', ok: true, out: 'βρέθηκαν 3 άρθρα' }] } };
+  const f = focusBriefing([t], names, 'τι έκανες;');
+  assert.match(f, /^FULL RESULT of/);
+  assert.match(f, /WORK LOG[\s\S]*searched the web for "αγορά" -> found: βρέθηκαν 3 άρθρα/);
+  assert.equal(focusBriefing([t], names, 'καλημέρα'), '');
+});

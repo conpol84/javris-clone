@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { taskBriefing, type BriefTask, handoffFrom } from '../_shared/task-briefing.ts';
+import { taskBriefing, focusBriefing, type BriefTask, handoffFrom } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 
@@ -210,6 +210,9 @@ Deno.serve(async (req) => {
       : 'When asked what you did or how you did a task, explain it step by step from WORK LOG (what you searched, read, calculated or created and what you found), then the result. Never claim a step that is not in WORK LOG.',
     ...(body.voice === true ? ['This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences unless you are reading a task result, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
+  // The record of the task being asked about goes next to the question too (it is not saved in the conversation).
+  const focus = focusBriefing(tk as BriefTask[], names, text);
+  const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const t0 = Date.now();
   let completion: any = null;
   let used: { provider: string; model: string } | null = null;
@@ -225,7 +228,7 @@ Deno.serve(async (req) => {
     } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
   } else if (gateway) {
     try {
-      routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, ...past, { role: 'user', content: text }], Number(agent.temperature ?? 0.5), { signal: req.signal });
+      routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }], Number(agent.temperature ?? 0.5), { signal: req.signal });
       completion = routed.completion; routing = routed.trace;
       used = { provider: 'omniroute', model: gateway.model };
     } catch (error) {
@@ -241,7 +244,7 @@ Deno.serve(async (req) => {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
         body: JSON.stringify({ model: target.model,
           ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.5) }),
-          messages: [{ role: 'system', content: system }, ...past, { role: 'user', content: text }],
+          messages: [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }],
         }), signal: AbortSignal.timeout(90_000),
       });
       if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
