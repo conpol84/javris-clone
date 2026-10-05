@@ -17,16 +17,16 @@ import platform,re,shutil,stat,subprocess,sys,tempfile,time,urllib.request
 
 ROOT=Path('/root/firbo-voice-releases')
 RAW='https://raw.githubusercontent.com/conpol84/javris-clone/'
-NATIVE_REF='705b94b9921bf85733a64d9b5704ba7dbfafb0ce'
-NATIVE_SHA='c97c13436eecc4019061a261d15640b629629fdcde0d7e3f2a2353f6d573eb77'
+NATIVE_REF='94caf0a87d9700070825172629f864c3e51a5f65'
+NATIVE_SHA='943b559c3f01136b0b664b83bd29d2f49e0702dc46402a79adfa1f5cbcfe6f26'
 BASE_IMAGE='python:3.12.14-slim-bookworm@sha256:1aaa65a85fda306ffb8b910824d4e93bdce61e212c7e87168123ea3073b41a1a'
 PIPER_VERSION='1.8.0'
 PIPER='firbo-piper'
 SOURCE_HASHES={
- 'free_inference.py':'450a4d7ae83e7e665b293fac245125221bbcbb225e904ccde23cfa091efa14a6',
- 'firbo_free_app.py':'c9e4a914d95b5408b41f671f87da8ed00f98855f4797a91ed3a595650fbb6396',
- 'local_tts.py':'8ef57ce61873be951f99f1b9d8128726091caee3fa021d015e50c74d84ab3885',
- 'firbo_piper_server.py':'62e8e4045209bd591f4185b4747e8df03d7e711a3c4dfd09b5cdaae66e5b53e2',
+ 'free_inference.py':'41828f12bba435d8d09a74c00459f888a0a76456e5a1e45b770ad7fc239fd411',
+ 'firbo_free_app.py':'3d7281c2fa3428219b9791a47959935a8a44f654ee3fb759c156dd28a13aef28',
+ 'local_tts.py':'089f5593f551607f002bdceae6a4bfd2dd7f15f7c0de674ae666dfc70e46662e',
+ 'firbo_piper_server.py':'23c2cb9b5b52a072fb04f547ab4f1535616d498a699e0a63520e6c00d2da9e79',
 }
 VOICE_NAMES=['en_US-joe-medium','el_GR-rapunzelina-low','es_ES-davefx-medium','pt_BR-cadu-medium','fr_FR-gilles-low','de_DE-thorsten-medium','zh_CN-chaowen-medium']
 VOICE_HASHES={

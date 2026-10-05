@@ -27,12 +27,12 @@ import time
 import urllib.request
 
 ROOT=Path('/root/firbo-local-releases')
-NATIVE_REF='705b94b9921bf85733a64d9b5704ba7dbfafb0ce'
-NATIVE_SHA='c97c13436eecc4019061a261d15640b629629fdcde0d7e3f2a2353f6d573eb77'
+NATIVE_REF='94caf0a87d9700070825172629f864c3e51a5f65'
+NATIVE_SHA='943b559c3f01136b0b664b83bd29d2f49e0702dc46402a79adfa1f5cbcfe6f26'
 IMAGE='ollama/ollama@sha256:292ee7945dfc3d5840a181f3ab86fedb1e66703e02c8af98b50f4da56b7e278c'
 MODEL='qwen3:1.7b'
 MODEL_SHA='8f68893c685c3ddff2aa3fffce2aa60a30bb2da65ca488b61fff134a4d1730e7'
-SOURCE_HASHES={'free_inference.py': '450a4d7ae83e7e665b293fac245125221bbcbb225e904ccde23cfa091efa14a6', 'firbo_free_app.py': 'c9e4a914d95b5408b41f671f87da8ed00f98855f4797a91ed3a595650fbb6396', 'local_tts.py': '8ef57ce61873be951f99f1b9d8128726091caee3fa021d015e50c74d84ab3885'}
+SOURCE_HASHES={'free_inference.py': '41828f12bba435d8d09a74c00459f888a0a76456e5a1e45b770ad7fc239fd411', 'firbo_free_app.py': '3d7281c2fa3428219b9791a47959935a8a44f654ee3fb759c156dd28a13aef28', 'local_tts.py': '089f5593f551607f002bdceae6a4bfd2dd7f15f7c0de674ae666dfc70e46662e'}
 RAW='https://raw.githubusercontent.com/conpol84/javris-clone/'
 NAME='firbo-ollama'
 NAMES=('firbo-api','firbo-omniroute','firbo-caddy','firbo-redis')
