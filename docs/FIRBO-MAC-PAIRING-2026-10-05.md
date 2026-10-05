@@ -38,3 +38,11 @@ Continue the existing master plan and `FIRBO-HANDOFF-2026-10-04.md`. This is a f
 4. Then continue the unchanged sequence: visible scoped browser executor; useful-work artifact/read-back/receipt; Knowledge/Skills/Workflows/OAuth; Free hardening; voice/Desktop/security/backup/monitoring/mobile/languages; final production assessment.
 
 Do not equate SOURCE, local automated, rendered, real-device or LIVE evidence. Do not merge the CI-only PR, silently promote production, or grant file/shell permissions merely to open a browser. Physical installation/login/OS permissions remain owner-only when no authorized local tool exists.
+
+## Subsequent CI evidence and synthetic webhook correction
+
+The unchanged Mac/UI implementation at `7a65ba2ba3a26335123a25263c449e1ffdc069f3` passed the complete Computer Manager rendered/lifecycle workflow (`37373295767`) and macOS local execution in both PR runs (`37373299431` and `37373295784`). Desktop, control-plane, Ruff and local-voice guards also passed. These are CI runner and synthetic-page results, not owner Mac acceptance. The local Chromium installation limitation above remains accurate; the CI rendered tests subsequently succeeded.
+
+A wider local server check was rejected by automatic approval review for an attempted SendBlue request with unverified payload/credentials. Read-only inspection found webhook tests constructing real sending channels: a background acknowledgment/reply could call the provider's real HTTP method. The follow-up changes only those tests: every channel has a permanent instance-bound mock sender, all recipients/credentials are explicitly fictional/synthetic, and the incoming-message regression checks the mock acknowledgment, bridge call and reply. This mock remains bound after the request/background task finishes. No production channel behavior changes.
+
+All 9 webhook tests passed with `httpx.post` blocked before transport and an assertion that it was never called. Ruff and formatting also passed. The full remote CI must be evaluated at the follow-up commit; do not treat the preceding head's partial success as full exact-head acceptance, and do not repeat a broad unmocked local server run.
