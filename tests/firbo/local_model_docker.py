@@ -134,11 +134,11 @@ for module in ["firbo_app.py", "firbo_control.py"]:
 spec2 = importlib.util.spec_from_file_location(
     "local_rollout", HERE / "deploy/hostinger/local_model_rollout.py"
 )
-l = importlib.util.module_from_spec(spec2)
-spec2.loader.exec_module(l)
-l.ROOT = root / "local-releases"
-l.load_native = lambda: r
-l.check_resources = lambda: {
+rollout = importlib.util.module_from_spec(spec2)
+spec2.loader.exec_module(rollout)
+rollout.ROOT = root / "local-releases"
+rollout.load_native = lambda: r
+rollout.check_resources = lambda: {
     "scope": "CI test bypasses hostname/capacity gate only; not user-VPS capacity",
     "logical_cpus": os.cpu_count(),
 }
@@ -146,11 +146,11 @@ l.check_resources = lambda: {
 
 def local_source(ref, path, expected):
     raw = (HERE / path).read_bytes()
-    assert l.sha(raw) == expected
+    assert rollout.sha(raw) == expected
     return raw
 
 
-l.download = local_source
+rollout.download = local_source
 
 
 def remote(path):
@@ -189,7 +189,7 @@ def new_ready(_):
         return False
 
 
-l.public_ready = new_ready
+rollout.public_ready = new_ready
 records = []
 
 
@@ -197,7 +197,7 @@ def invoke(argv):
     sys.argv = argv
     capture = io.StringIO()
     with contextlib.redirect_stdout(capture):
-        code = l.main()
+        code = rollout.main()
     report = json.loads(capture.getvalue())
     records.append(report)
     print(json.dumps(report, ensure_ascii=False), flush=True)
@@ -256,7 +256,7 @@ try:
     assert r.docker("exec", "firbo-api", "python", "-c", sqlite_probe).strip() == "1"
     # Native source was NOT replaced, only wrapper/new router modules were added.
     for module in ["firbo_app.py", "firbo_control.py"]:
-        expected = l.sha((HERE / "src/openjarvis/server" / module).read_bytes())
+        expected = rollout.sha((HERE / "src/openjarvis/server" / module).read_bytes())
         check = (
             "import hashlib,importlib.util;print(hashlib.sha256(open(importlib.util.find_spec('openjarvis.server.%s').origin,'rb').read()).hexdigest())"
             % module[:-3]
@@ -278,7 +278,7 @@ try:
     assert r.inspect("firbo-api")["Image"] == original["firbo-api"]["Image"]
     assert (stack / ".env").read_text() == files[".env"]
     # Force failure AFTER real model inference and actual API replacement.
-    l.public_ready = lambda _: False
+    rollout.public_ready = lambda _: False
     code, failed = invoke(
         ["local_model_rollout.py", "--source-ref", "a" * 40, "--apply"]
     )
