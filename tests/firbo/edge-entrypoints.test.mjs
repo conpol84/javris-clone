@@ -52,15 +52,16 @@ function fixture(options={}) {
     }
     state.reads.push(info);
     if(table==='conversations')return{data:options.missingConversation?null:{id:CONVO,organization_id:ORG,user_id:options.foreignConversation?'foreign':USER,agent_id:AGENT,title:'Test',status:'active'},error:null};
-    if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},error:null};
+    if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
       return{data:options.foreignAgent?null:agent,error:null};
     }
     if(table==='tasks')return{data:options.missingTask?null:task,error:null};
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
-    if(table==='memories'||table==='messages'||table==='approvals')return{data:[],error:null};
-    if(table==='organizations')return{data:{name:'Test company',profile:{}},error:null};
+    if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
+    if(table==='report_feedback')return{data:options.feedback??[],error:null};
+    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
@@ -89,6 +90,7 @@ function fixture(options={}) {
     if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
+    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}]});
     if(options.chatReplies&&String(url).endsWith('/chat/completions'))return Response.json({model:'provider/resolved',choices:[{message:{content:options.chatReplies.shift()}}],usage:{prompt_tokens:100,completion_tokens:20}});
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:'Result',actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
@@ -255,4 +257,52 @@ test('agent-runner: a blocked tool is never offered to the model', async () => {
   const chat=state.calls.find(c=>String(c.url).endsWith('/chat/completions'));
   assert.doesNotMatch(JSON.parse(chat.init.body).messages[0].content,/"action": "web_search"/);
   assert.ok(!state.calls.some(c=>String(c.url).endsWith('/search')));
+});
+
+test('agent-runner: two 👎 on recent reports move an economy agent up to the quality route, with the owner notes', async () => {
+  const feedback=[{rating:-1,note:'Too vague, add numbers'},{rating:1,note:null},{rating:-1,note:null}];
+  const {state,response}=await invoke('agent-runner',{feedback,plan:'pro'});
+  assert.equal(response.status,200);
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.equal(chat.model,'firbo-quality');
+  assert.match(chat.messages[0].content,/Too vague, add numbers/);
+  assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'feedback');
+  const liked=await invoke('agent-runner',{feedback:[{rating:-1,note:null},{rating:1,note:null}],plan:'pro'});
+  assert.notEqual(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
+});
+test('agent-runner: installed skills are part of the instructions', async () => {
+  const {state}=await invoke('agent-runner',{skills:[{name:'Price quotes',instructions:'Always add VAT 24% and a validity date.'}]});
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.match(chat.messages[0].content,/SKILLS[\s\S]*Price quotes[\s\S]*VAT 24%/);
+});
+test('agent-runner: the calculator power is offered and its exact result is fed back', async () => {
+  const tools=[{tool_name:'calculator',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"calculator","input":"1200 * 0.24"}',JSON.stringify({summary:'VAT is 288',report:'VAT is 288',actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies});
+  assert.equal(response.status,200);
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
+  assert.match(JSON.parse(chats[0].init.body).messages[0].content,/"action": "calculator"/);
+  assert.ok(JSON.parse(chats[1].init.body).messages.some(m=>/1200 \* 0\.24 = 288/.test(m.content)));
+});
+const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise'};
+const serverReplies=()=>['{"action":"server_task","input":"print(sum(range(10)))"}',JSON.stringify({summary:'45',report:'45',actions:[]})];
+test('agent-runner: a customer company gets only the sandboxed server agent, never the admin one', async () => {
+  const tools=[{tool_name:'code_interpreter',enabled:true,policy:'allow'}];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies:serverReplies(),plan:'pro',env:serverEnv});
+  assert.equal(response.status,200);
+  const urls=state.calls.map(c=>String(c.url));
+  assert.ok(urls.some(u=>u.startsWith('https://box-jarvis.example/jarvis-box/v1/chat/completions')));
+  assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')));
+  const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
+  assert.equal(box.init.headers.authorization,'Bearer box-key');
+  assert.match(JSON.parse(state.calls.find(c=>String(c.url).includes('gateway')).init.body).messages[0].content,/locked sandbox/);
+});
+test('agent-runner: the platform admin company uses the full server agent; a plan without the power gets none', async () => {
+  const tools=[{tool_name:'code_interpreter',enabled:true,policy:'allow'}];
+  const own=await invoke('agent-runner',{tools,chatReplies:serverReplies(),plan:'free',adminMember:true,platform_admins:[{user_id:USER}],env:serverEnv});
+  assert.equal(own.response.status,200);
+  assert.ok(own.state.calls.some(c=>String(c.url).startsWith('https://admin-jarvis.example/jarvis/v1/chat/completions')));
+  const starter=await invoke('agent-runner',{tools,plan:'starter',env:serverEnv});
+  assert.ok(!starter.state.calls.some(c=>/jarvis/.test(String(c.url))));
+  assert.doesNotMatch(JSON.parse(starter.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content,/server_task/);
 });

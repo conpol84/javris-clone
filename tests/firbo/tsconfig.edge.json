@@ -24,6 +24,8 @@
     "../../supabase/functions/_shared/model-json.ts",
     "../../supabase/functions/provider-keys/index.ts",
     "../../supabase/functions/_shared/agent-loop.ts",
-    "../../supabase/functions/_shared/free-search.ts"
+    "../../supabase/functions/_shared/free-search.ts",
+    "../../supabase/functions/_shared/agent-tools.ts",
+    "../../supabase/functions/_shared/company-pulse.ts"
   ]
 }

@@ -4,7 +4,9 @@
 // Plain JSON instead of provider function-calling, so free models, the gateway and own keys all work the same.
 import { extractModelJson, strictModelJson } from './model-json.ts';
 
-export type ToolName = 'web_search' | 'read_page' | 'memory_search' | 'server_task' | 'think';
+/** Every tool the loop knows, in one place: the parser, the help text and the checks all derive from it. */
+export const TOOL_LIST = ['web_search', 'read_page', 'memory_search', 'knowledge_search', 'server_task', 'calculator', 'weather', 'exchange_rate', 'analyze_image', 'generate_image', 'think'] as const;
+export type ToolName = typeof TOOL_LIST[number];
 export interface LoopStep { action: ToolName; input: string; ok: boolean }
 export type LoopTools = Partial<Record<Exclude<ToolName, 'think'>, (input: string) => Promise<string>>>;
 type Msg = { role: 'system' | 'user' | 'assistant'; content: string };
@@ -13,16 +15,23 @@ const TOOL_HELP: Record<ToolName, string> = {
   web_search: '{"action": "web_search", "input": "search words"} searches the internet and returns titles, links and snippets.',
   read_page: '{"action": "read_page", "input": "https://..."} returns the text of one web page (use links from search results).',
   memory_search: '{"action": "memory_search", "input": "words"} searches what the company saved in its memory.',
+  knowledge_search: '{"action": "knowledge_search", "input": "question or words"} searches the company\'s own documents, notes, emails and files (its knowledge base) and returns the matching passages with their source.',
   server_task: '{"action": "server_task", "input": "the job, with all details"} hands a job to the company server agent, which can run code, read and write files, read PDFs and use git, and returns its result.',
+  calculator: '{"action": "calculator", "input": "(1200 * 0.24) + 15% of 300"} calculates exactly; use it for every sum, percentage or price instead of doing math in your head.',
+  weather: '{"action": "weather", "input": "city"} returns the current weather and a 3-day forecast for a place.',
+  exchange_rate: '{"action": "exchange_rate", "input": "100 EUR to USD"} converts money with today\'s exchange rate.',
+  analyze_image: '{"action": "analyze_image", "input": "https://... image link, then your question"} looks at an image and describes it or answers the question.',
+  generate_image: '{"action": "generate_image", "input": "a detailed description of the image"} creates an image and returns its link to put in the report.',
   think: '{"action": "think", "input": "your notes"} lets you plan before the next step.',
 };
+const NAMES = TOOL_LIST.join('|');
 
 /** Instructions appended to the system prompt; only the tools this agent may use are listed. */
-export function loopInstructions(tools: ToolName[], maxSteps: number): string {
+export function loopInstructions(tools: ToolName[], maxSteps: number, help: Partial<Record<ToolName, string>> = {}): string {
   if (tools.length === 0) return '';
   return [
     `You can use tools before you answer, at most ${maxSteps} times. To use one, reply with ONLY one JSON object:`,
-    ...tools.map(t => `- ${TOOL_HELP[t]}`),
+    ...tools.map(t => `- ${help[t] ?? TOOL_HELP[t]}`),
     'You will receive the result and can use another tool. Research properly: search, then read the most relevant pages, then answer.',
     'When you have enough, reply with the final JSON object described above. In the report, cite the source URLs you used.',
     'Only state facts, names, dates and links that appear in tool results or in what you were given. If the tools found nothing useful, say so plainly in the report instead of inventing an answer.',
@@ -32,18 +41,18 @@ export function loopInstructions(tools: ToolName[], maxSteps: number): string {
 export const REPAIR_SYSTEM = 'Write the final answer to the TASK below, using only the MATERIAL FOUND and the DRAFT notes. Reply with ONLY one JSON object, no reasoning before or after it: {"summary": string (max 300 chars), "report": string (markdown, the finished work product with its source links), "actions": []}. Keep it concise. Never add facts or links that are not in the material. If nothing useful was found, say so in the report.';
 
 // Some models answer in their own native tool syntax, e.g. <|tool_call_start|>[web_search(input='...')]<|tool_call_end|>.
-const NATIVE_CALL = /\b(web_search|read_page|memory_search|server_task|think)\s*\(\s*(?:[a-z_]+\s*=\s*)?(["'])([\s\S]*?)\2/i;
+const NATIVE_CALL = new RegExp(`\\b(${NAMES})\\s*\\(\\s*(?:[a-z_]+\\s*=\\s*)?(["'])([\\s\\S]*?)\\2`, 'i');
 
 // Hermes / GLM style: <tool_call>server_task {"command": ...}</tool_call> or <tool_call>{"name": ..., "arguments": {...}}</tool_call>.
-const TAG_CALL = /<tool_call>\s*(?:(web_search|read_page|memory_search|server_task|think)\b)?\s*([\s\S]*?)\s*(?:<\/tool_call>|$)/i;
-const TOOL_NAMES = /^(web_search|read_page|memory_search|server_task|think)$/i;
+const TAG_CALL = new RegExp(`<tool_call>\\s*(?:(${NAMES})\\b)?\\s*([\\s\\S]*?)\\s*(?:</tool_call>|$)`, 'i');
+const TOOL_NAMES = new RegExp(`^(${NAMES})$`, 'i');
 
 /** The tool input from a native call's arguments: a string as is, a single text field, or the whole object as JSON. */
 function argsInput(args: unknown): string {
   if (typeof args === 'string') return args;
   if (!args || typeof args !== 'object') return '';
   const a = args as Record<string, unknown>;
-  for (const k of ['input', 'query', 'url', 'job', 'task', 'q', 'text']) if (typeof a[k] === 'string') return a[k] as string;
+  for (const k of ['input', 'query', 'url', 'job', 'task', 'q', 'text', 'expression', 'prompt', 'location', 'city', 'place', 'description']) if (typeof a[k] === 'string') return a[k] as string;
   return JSON.stringify(a);
 }
 
@@ -70,7 +79,7 @@ export function parseToolRequest(text: string, allowed: ToolName[]): { action: T
     if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }
   }
   // A server job may carry code: give it room; search words and links stay short.
-  input = input.trim().slice(0, action === 'server_task' ? 3000 : 500);
+  input = input.trim().slice(0, action === 'server_task' ? 3000 : action === 'generate_image' ? 800 : 500);
   return action && allowed.includes(action) && input ? { action, input } : null;
 }
 
@@ -101,6 +110,8 @@ export async function runAgentLoop(o: {
   material?: string;
   /** Filled with the material and tool results as they come in, so a caller keeps them even if the loop throws. */
   evidence?: string[];
+  /** Per-agent wording for a tool's help line (e.g. what the server agent may do for this company). */
+  toolHelp?: Partial<Record<ToolName, string>>;
   now?: () => number;
 }): Promise<{ text: string; steps: LoopStep[]; calls: number; evidence: string[] }> {
   const now = o.now ?? Date.now;
@@ -111,13 +122,13 @@ export async function runAgentLoop(o: {
   const budget = o.budgetMs ?? 60_000;
   const allowed = [...(Object.keys(o.tools) as ToolName[]), ...(o.allowThink ? ['think' as const] : [])];
   const messages: Msg[] = [
-    { role: 'system', content: [o.system, loopInstructions(allowed, maxSteps)].filter(Boolean).join('\n\n') },
+    { role: 'system', content: [o.system, loopInstructions(allowed, maxSteps, o.toolHelp)].filter(Boolean).join('\n\n') },
     { role: 'user', content: o.user },
   ];
   const steps: LoopStep[] = [];
   const evidence: string[] = o.evidence ?? [];
   if (o.material) evidence.push(o.material);
-  const everyTool: ToolName[] = ['web_search', 'read_page', 'memory_search', 'server_task', 'think'];
+  const everyTool: ToolName[] = [...TOOL_LIST];
   let calls = 0;
   let insisted = false;
   let nudges = 0;
@@ -261,7 +272,7 @@ export function isUnusableReply(text: string): boolean {
   if (parseToolRequest(text, ALL_TOOLS)) return false;
   return looksLikeThinking(text) || looksLikeToolCall(text);
 }
-const ALL_TOOLS: ToolName[] = ['web_search', 'read_page', 'memory_search', 'server_task', 'think'];
+const ALL_TOOLS: ToolName[] = [...TOOL_LIST];
 
 /**
  * True when the FINAL text is still a tool request such as {"action": "ask", "input": "..."} (often for a tool that does

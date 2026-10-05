@@ -8,6 +8,7 @@ import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, isUnusableReply, isLeftoverToolRequest, sourcesIn, REPAIR_SYSTEM, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
+import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -142,6 +143,9 @@ const NO_REPORT: Record<string, string> = {
   ar: 'لم يتمكن نموذج الذكاء الاصطناعي من كتابة التقرير النهائي هذه المرة. هذه هي المصادر التي وجدها؛ أعد تشغيل المهمة للحصول على تقرير كامل.',
 };
 
+// The power each loop tool counts as in the report.
+const POWER_OF: Record<string, string> = { read_page: 'browser_extract', server_task: 'server_agent', generate_image: 'image_generate', analyze_image: 'image_analyze' };
+
 // Edge functions are stopped after 150 s of wall-clock time; every model request must be over before that.
 const WALL_CLOCK_MS = 140_000;
 
@@ -191,19 +195,25 @@ Deno.serve(async (req) => {
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', task.organization_id).maybeSingle();
+  // Learning from feedback (OpenJarvis's learning/routing): when the owner marked at least two of this agent's last five
+  // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
+  const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
+  const feedback = (feedbackRows ?? []) as { rating: number; note: string | null }[];
+  const upgraded = feedback.filter(f => f.rating < 0).length >= 2 && orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
+  const routedAgent = upgraded ? { ...agent, model: 'omniroute:firbo-quality' } : agent;
   // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
   const own = await ownKeyTarget(admin, task.organization_id, agent.model);
   let free = false;
   let gateway: GatewayPlan | null = null;
   if (!own) {
-    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
+    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(task.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(routedAgent, orgPlan?.plan, name => Deno.env.get(name)); }
     catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   }
   // Free-plan routing uses zero-cost models, so a failed run can safely be retried (nothing to reconcile).
   const planFree = orgPlan?.plan === 'free' && Deno.env.get('FIRBO_FREE_PLAN_ROUTING') === 'gateway';
   // This pilot forwards a real caller JWT. Cron impersonation never opens the lane.
   if (free && systemRun) return json(503, { error: 'free_cron_identity_required' });
-  const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
+  const primary = routedAgent.model && routedAgent.model !== 'auto' ? routedAgent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
@@ -228,6 +238,12 @@ Deno.serve(async (req) => {
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata').eq('organization_id', task.organization_id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
   const memory = memoryBlocks(memRows ?? []);
+  // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
+  const { data: skillRows } = await admin.from('skills').select('name, instructions').eq('organization_id', task.organization_id).eq('enabled', true)
+    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).order('created_at').limit(8);
+  if ((skillRows ?? []).length) memory.push(`SKILLS (ways of working your company set up; when the task matches one, follow its steps):\n${(skillRows ?? []).map((k: any) => `### ${String(k.name).slice(0, 80)}\n${String(k.instructions).slice(0, 1200)}`).join('\n\n')}`);
+  const notes = feedback.filter(f => f.rating < 0 && f.note).map(f => `- ${String(f.note).replace(/\s+/g, ' ').slice(0, 200)}`);
+  if (notes.length) memory.push(`OWNER FEEDBACK ON YOUR RECENT REPORTS (they were not good enough; do better on these points):\n${notes.join('\n')}`);
   // Scheduled work (a morning digest, a proactive check...) sees what really happened in the company lately.
   let pulse = '';
   if (task.shift_id) {
@@ -352,7 +368,7 @@ Deno.serve(async (req) => {
     toolFailed('web_search', new Error('no_results'));
     return 'No results.';
   };
-  if (!free && (usable('browser_extract') || usable('browser_navigate'))) loopTools.read_page = async (u) => {
+  if (!free && (usable('browser_extract') || usable('browser_navigate') || usable('http_request'))) loopTools.read_page = async (u) => {
     if (!/^https?:\/\/[^\s]+$/.test(u)) return 'Give a full http(s) link.';
     if (gw) {
       try {
@@ -371,31 +387,58 @@ Deno.serve(async (req) => {
     const { data } = await query.order('importance', { ascending: false }).limit(6);
     return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
   };
-  // The company server agent (OpenJarvis on Firbo's VPS: code, files, PDFs, git). It runs on Firbo's own server, so only
-  // the top paid plans (FIRBO_SERVER_AGENT_PLANS, default business and enterprise) and companies with a platform admin
-  // get it, and only for agents allowed (not just approval) to use a matching power.
-  const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
-  const serverUrl = (Deno.env.get('OPENJARVIS_URL') ?? '').replace(/\/+$/, '');
-  const serverKey = Deno.env.get('OPENJARVIS_API_KEY') ?? '';
-  if (!free && /^https:\/\//.test(serverUrl) && serverKey && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
-    const plans = (Deno.env.get('FIRBO_SERVER_AGENT_PLANS') ?? 'business,enterprise').split(',').map(x => x.trim()).filter(Boolean);
-    let entitled = plans.includes(String(orgPlan?.plan ?? ''));
-    if (!entitled) {
-      const { data: admins } = await admin.from('platform_admins').select('user_id');
-      const ids = (admins ?? []).map((a: any) => a.user_id);
-      const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
-      entitled = (count ?? 0) > 0;
-    }
-    if (entitled) loopTools.server_task = async (job) => {
-      const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
-      // The server agent requires a model name: use the one it runs by default.
-      const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-      const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers,
-        body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
-      if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
-      const out = await res.json();
-      return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';
+  // Native tools (OpenJarvis's calculator, weather, currency, knowledge search, image tools), each behind its own power.
+  if (!free) {
+    if (usable('calculator')) loopTools.calculator = async (q) => calculatorTool(q);
+    if (usable('weather')) loopTools.weather = (q) => weatherTool(q, lang, fetch, req.signal);
+    if (usable('exchange_rate') || usable('currency')) loopTools.exchange_rate = (q) => exchangeRateTool(q, fetch, req.signal);
+    if (usable('knowledge_search') || usable('retrieval')) loopTools.knowledge_search = (q) => knowledgeSearch(admin, task.organization_id, q);
+    const gwV1 = gw ? `${gw.base.replace(/\/v1$/, '')}/v1` : '';
+    if (usable('image_generate')) loopTools.generate_image = (p) => generateImage(p, {
+      organizationId: task.organization_id, signal: req.signal,
+      gateway: gw && Deno.env.get('FIRBO_IMAGE_MODEL') ? { base: gwV1, key: gw.key, model: Deno.env.get('FIRBO_IMAGE_MODEL') } : undefined,
+      store: { upload: async (path, bytes, type) => {
+        const { error } = await admin.storage.from('media').upload(path, bytes, { contentType: type, upsert: false });
+        if (error) throw new Error('image_store_failed');
+        return admin.storage.from('media').getPublicUrl(path).data.publicUrl;
+      } },
+    });
+    if ((usable('image_analyze') || usable('vision')) && gw) loopTools.analyze_image = async (q) => {
+      const out = await analyzeImage(q, { gateway: { base: gwV1, key: gw.key, model: Deno.env.get('FIRBO_VISION_MODEL') ?? 'firbo-quality' }, signal: req.signal });
+      inTok += out.inTok; outTok += out.outTok;
+      routedCost += Math.round(((out.inTok * priceOf('omniroute', 'IN') + out.outTok * priceOf('omniroute', 'OUT')) / 1e6) * 1e6) / 1e6;
+      return out.text;
     };
+  }
+  // The server agent (OpenJarvis on Firbo's VPS). Companies of a platform admin use the full admin instance (code, files, PDFs, git).
+  // Every other company on an entitled plan (FIRBO_SERVER_AGENT_PLANS) gets only the customer instance: Python in a throw-away
+  // Docker sandbox, no shared memory or files, so one company can never see another's work. Only for agents allowed (not just
+  // approval) to use a matching power.
+  const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
+  let toolHelp: Partial<Record<'server_task', string>> | undefined;
+  if (!free && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
+    const { data: admins } = await admin.from('platform_admins').select('user_id');
+    const ids = (admins ?? []).map((a: any) => a.user_id);
+    const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
+    const adminCompany = (count ?? 0) > 0;
+    const plans = (Deno.env.get('FIRBO_SERVER_AGENT_PLANS') ?? 'business,enterprise').split(',').map(x => x.trim()).filter(Boolean);
+    const server = adminCompany ? { url: Deno.env.get('OPENJARVIS_URL'), key: Deno.env.get('OPENJARVIS_API_KEY') }
+      : plans.includes(String(orgPlan?.plan ?? '')) ? { url: Deno.env.get('OPENJARVIS_SANDBOX_URL'), key: Deno.env.get('OPENJARVIS_SANDBOX_API_KEY') } : null;
+    const serverUrl = (server?.url ?? '').replace(/\/+$/, '');
+    const serverKey = server?.key ?? '';
+    if (/^https:\/\//.test(serverUrl) && serverKey) {
+      if (!adminCompany) toolHelp = { server_task: '{"action": "server_task", "input": "the job, with the Python code or the data"} runs Python for you in a locked sandbox (no internet, nothing is kept) and returns the output: use it for data analysis, statistics, parsing and exact calculations. Put any data it needs inside the job.' };
+      loopTools.server_task = async (job) => {
+        const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
+        // The server agent requires a model name: use the one it runs by default.
+        const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+        const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers,
+          body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
+        if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
+        const out = await res.json();
+        return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';
+      };
+    }
   }
   let text = '';
   let steps: LoopStep[] = [];
@@ -412,7 +455,7 @@ Deno.serve(async (req) => {
     const out = await runAgentLoop({ evidence,
       call: callOnce, system, user: userMsg, tools: free ? {} : loopTools, allowThink: !free && usable('think'),
       maxSteps: 5, budgetMs: 70_000, finalTimeoutMs: 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
-      repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`,
+      repairSystem: `${REPAIR_SYSTEM} Write the summary and the report in ${LANG_NAME[lang]}.`, toolHelp,
     });
     text = out.text; steps = out.steps; calls = out.calls;
     // A provider that stops long answers early leaves the report cut off: fetch the rest (bounded by time).
@@ -435,7 +478,7 @@ Deno.serve(async (req) => {
   const ownUsed = !!own && used === own;
   // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
   const cost = ownUsed ? 0 : Math.round(routedCost * 1e6) / 1e6;
-  const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => s.action === 'read_page' ? 'browser_extract' : s.action === 'server_task' ? 'server_agent' : s.action)])];
+  const powers = [...new Set([...web.used, ...steps.filter(s => s.ok && s.action !== 'think').map(s => POWER_OF[s.action] ?? s.action)])];
   const parsed = parseModelJson(text);
   const tools = (agent.agent_tools ?? []) as { tool_name: string; enabled: boolean; policy: string }[];
   const dropped: string[] = [];
@@ -457,7 +500,7 @@ Deno.serve(async (req) => {
   const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
     result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
       queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
-      ran_at: new Date().toISOString(), routing, ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
+      ran_at: new Date().toISOString(), routing, ...(upgraded ? { routed_up: 'feedback' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
   // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
   if (!reconcile && !resultError && parsed.learned.length) {
     const { data: known } = await admin.from('memories').select('content').eq('organization_id', task.organization_id).contains('metadata', { source: 'learned' }).order('created_at', { ascending: false }).limit(200);

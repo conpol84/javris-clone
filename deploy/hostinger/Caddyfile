@@ -2,6 +2,10 @@
 {$API_DOMAIN} {
 	encode zstd gzip
 	# The OpenJarvis server agent (systemd on the host, port 8765; ufw admits only Docker networks). Its own key guards /v1.
+	# Customer sandbox instance (port 8766): only throw-away Docker code runs, no shared memory or files.
+	handle_path /jarvis-box/* {
+		reverse_proxy 172.17.0.1:8766
+	}
 	handle_path /jarvis/* {
 		reverse_proxy 172.17.0.1:8765
 	}
