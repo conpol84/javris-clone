@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import { ExternalLink, Globe, BookOpen, Brain, Search, Calculator, CloudSun, Coins, Library, ImagePlus, ScanEye, Server } from 'lucide-react';
 import { useI18n } from '../../i18n/I18nProvider';
 import type { TaskResult } from '../../lib/company/types';
+import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
 
 const STEP_ICON = { web_search: Search, read_page: Globe, memory_search: BookOpen, think: Brain, calculator: Calculator, weather: CloudSun, exchange_rate: Coins,
   knowledge_search: Library, generate_image: ImagePlus, analyze_image: ScanEye, server_task: Server } as const;
@@ -24,6 +25,7 @@ const host = (u: string) => {
 /** A task's report as a readable document: formatted text, the research steps taken and the sources. */
 export function ReportView({ result, compact = false }: { result: TaskResult; compact?: boolean }) {
   const { t } = useI18n();
+  const copy = useWorkspaceCopy();
   const report = result.report ?? '';
   const sources = reportSources(report);
   const steps = result.steps ?? [];
@@ -32,13 +34,20 @@ export function ReportView({ result, compact = false }: { result: TaskResult; co
       {steps.length > 0 && (
         <div>
           <div className="fb-eyebrow mb-1">{t('report.steps', { count: steps.length })}</div>
-          <ol className="flex flex-wrap gap-1.5">
+          <ol className="fb-col gap-1.5">
             {steps.map((s, i) => {
               const Icon = STEP_ICON[s.action as keyof typeof STEP_ICON] ?? Search;
-              return (
-                <li key={i} className="fb-chip max-w-full" title={s.input} style={s.ok === false ? { opacity: 0.55 } : undefined}>
-                  <Icon size={11} /> <span className="truncate">{s.action === 'read_page' ? host(s.input) : s.input}</span>
+              const label = <><Icon size={11} className="shrink-0" /> <span className="fb-dim shrink-0">{i + 1}.</span> <span className="truncate">{s.action === 'read_page' ? host(s.input) : s.input}</span></>;
+              // What the step found, so the owner can see the work and not only the final report.
+              return s.out ? (
+                <li key={i}>
+                  <details className="rounded-lg border border-white/10 px-2 py-1 text-[12px]">
+                    <summary className="flex cursor-pointer items-center gap-1.5" title={s.input}>{label}</summary>
+                    <p className="fb-dim mt-1 whitespace-pre-wrap break-words" dir="auto"><span className="fb-eyebrow mr-1">{copy('aFound')}</span>{s.out}</p>
+                  </details>
                 </li>
+              ) : (
+                <li key={i} className="flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1 text-[12px]" title={s.input} style={s.ok === false ? { opacity: 0.55 } : undefined}>{label}</li>
               );
             })}
           </ol>

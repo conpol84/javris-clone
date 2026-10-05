@@ -15,7 +15,7 @@ interface Parts { summary: string; report: string; actions: string[]; error: str
 
 const FINISHED = new Set(['completed', 'awaiting_approval', 'blocked', 'failed']);
 // Words that mean "task / report / result" in the 8 app languages (plus Greeklish), so "read me the last report" finds one.
-const ASKS_FOR_RESULT = /task|report|result|finding|εργασ|αναφορ|αποτελεσ|ergasi|anafor|apotelesm|tarea|informe|resultado|tache|rapport|resultat|aufgabe|bericht|ergebnis|tarefa|relatorio|任务|报告|结果|مهمة|تقرير|نتيجة/;
+const ASKS_FOR_RESULT = /task|report|result|finding|did you|have you done|εκανε|ekane|βρηκε|vrike|hiciste|hizo|fizeste|fez|gemacht|fait|做了|فعلت|εργασ|αναφορ|αποτελεσ|ergasi|anafor|apotelesm|tarea|informe|resultado|tache|rapport|resultat|aufgabe|bericht|ergebnis|tarefa|relatorio|任务|报告|结果|مهمة|تقرير|نتيجة/;
 
 const flat = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
 const clip = (v: unknown, n: number) => { const s = flat(v); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
@@ -93,7 +93,41 @@ export function taskBriefing(tasks: BriefTask[], names: Map<string, string>, use
       ...(p.report ? [`Report: ${clip(p.report, opts.focusChars ?? 3500)}`] : []),
       ...(p.error ? [`Problem: ${clip(p.error, 300)}`] : []),
       ...(p.actions.length ? [`Suggested next steps: ${p.actions.map(a => clip(a, 120)).join('; ')}`] : []),
+      ...workLog(focus.result),
     );
   }
   return out.join('\n');
+}
+
+const STEP_WORDS: Record<string, string> = {
+  web_search: 'searched the web for', read_page: 'read the page', memory_search: 'looked in company memory for', knowledge_search: 'searched company documents for',
+  server_task: 'ran a job on the server:', calculator: 'calculated', weather: 'checked the weather for', exchange_rate: 'converted', analyze_image: 'looked at the image',
+  generate_image: 'created an image of', think: 'planned:',
+};
+
+/** What the employee actually did on a task, step by step, from the saved result (newest runner only). */
+export function workLog(result: unknown): string[] {
+  const r = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : {};
+  const steps = Array.isArray(r.steps) ? r.steps as { action?: unknown; input?: unknown; ok?: unknown; out?: unknown }[] : [];
+  if (!steps.length) return [];
+  return ['WORK LOG (the steps this employee really took, in order; use it to explain how the work was done):',
+    ...steps.slice(0, 10).map((st, i) => `${i + 1}. ${STEP_WORDS[String(st.action)] ?? String(st.action)} "${clip(st.input, 140)}"${st.ok === false ? ' (failed)' : ''}${typeof st.out === 'string' && st.out ? ` -> found: ${clip(st.out, 220)}` : ''}`)];
+}
+
+/** Marker a CEO reply carries when it hands the owner over to an employee: "[[ask:<agent id>]] question". */
+export const HANDOFF = /\[\[ask:([0-9a-f-]{36})\]\]\s*(.*)$/s;
+
+/**
+ * Turns the CEO's last line "ASK: <employee name> | <question>" into the stored marker, for an employee of this company only.
+ * An unknown name (or the CEO itself) is dropped, so the owner never gets a button that leads nowhere.
+ */
+export function handoffFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; agentId: string | null; question: string } {
+  const m = /\n?[ \t*_]*ASK:\s*([^|\n]{1,80}?)\s*\|\s*([^\n]{1,400})\s*$/i.exec(reply.trimEnd());
+  if (!m) return { text: reply, agentId: null, question: '' };
+  const text = reply.trimEnd().slice(0, m.index).trimEnd();
+  const want = fold(m[1].replace(/[*_"«»]/g, '').trim());
+  const agent = agents.find(a => a.id !== selfId && fold(a.name) === want) ?? agents.find(a => a.id !== selfId && (fold(a.name).includes(want) || want.includes(fold(a.name))) && want.length >= 3);
+  const question = m[2].replace(/[*_]+$/g, '').trim();
+  if (!agent || !question) return { text, agentId: null, question: '' };
+  return { text: `${text}\n\n[[ask:${agent.id}]] ${question}`, agentId: agent.id, question };
 }

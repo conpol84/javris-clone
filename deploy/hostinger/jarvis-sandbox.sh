@@ -3,7 +3,8 @@
 # - Port 8766, its own home (/home/jarvis/.openjarvis-box): no shared memory, sessions or files with the admin instance.
 # - Only safe tools: Python runs in a throw-away Docker container (no network, 512 MB, 1 CPU, read-only, removed after each run).
 # - No shell, no file or git tools, no memory injection.
-# Run once as root:  bash /root/javris-clone/deploy/hostinger/jarvis-sandbox.sh
+# Run once as root. On the server, fetch it without changing the rest of the checkout:
+#   cd ~/javris-clone && git fetch origin claude/gifted-dijkstra-rph5j8 && git show FETCH_HEAD:deploy/hostinger/jarvis-sandbox.sh > ~/jarvis-sandbox.sh && bash ~/jarvis-sandbox.sh
 # It prints the new key to put in Supabase as OPENJARVIS_SANDBOX_API_KEY (never paste it in a chat).
 set -euo pipefail
 
@@ -97,16 +98,25 @@ ufw allow from 172.16.0.0/12 to any port 8766 proto tcp >/dev/null
 
 echo "5/6 Route https://api.<domain>/jarvis-box/ in Caddy"
 if ! grep -q 'handle_path /jarvis-box/\*' "$CADDYFILE"; then
-  "$PY" - "$CADDYFILE" <<'PYEOF'
+  # Put the route before the /jarvis/ block when there is one, else before the API's catch-all line.
+  if "$PY" - "$CADDYFILE" <<'PYEOF'
 import sys
 p = sys.argv[1]
 s = open(p).read()
-anchor = '\thandle_path /jarvis/* {'
 block = '\thandle_path /jarvis-box/* {\n\t\treverse_proxy 172.17.0.1:8766\n\t}\n'
-if anchor not in s: sys.exit('Could not find the /jarvis/ block in the Caddyfile')
-open(p, 'w').write(s.replace(anchor, block + anchor, 1))
+for anchor in ('\thandle_path /jarvis/* {', '\treverse_proxy firbo-api:8000'):
+    if anchor in s:
+        open(p, 'w').write(s.replace(anchor, block + anchor, 1))
+        sys.exit(0)
+sys.exit(1)
 PYEOF
-  docker restart firbo-caddy >/dev/null
+  then
+    docker restart firbo-caddy >/dev/null
+  else
+    echo "   Could not find where to add the route in $CADDYFILE."
+    echo "   Add these 3 lines inside the api.<domain> block, then run: docker restart firbo-caddy"
+    printf '\thandle_path /jarvis-box/* {\n\t\treverse_proxy 172.17.0.1:8766\n\t}\n'
+  fi
 fi
 
 echo "6/6 Check"

@@ -58,7 +58,7 @@ export interface TaskResult {
   summary?: string;
   report?: string;
   /** Research steps the agent took (search, read a page, memory), newest runner only. */
-  steps?: { action: string; input: string; ok?: boolean }[];
+  steps?: { action: string; input: string; ok?: boolean; out?: string }[];
   powers_used?: string[];
   /** The model route that wrote the report (provider:model). */
   model?: string;

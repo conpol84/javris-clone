@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { taskBriefing, type BriefTask } from '../_shared/task-briefing.ts';
+import { taskBriefing, type BriefTask, handoffFrom } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 
@@ -205,6 +205,9 @@ Deno.serve(async (req) => {
     body.voice === true
       ? 'When the founder asks what a task found or asks you to read a result, read it from FINISHED TASKS / FULL RESULT: the main findings in plain words, up to six short sentences (under 600 characters), then say the full report is in Tasks.'
       : 'When the teammate asks about a task or its result, answer from FINISHED TASKS / FULL RESULT: give the summary and the key findings, and say the full report is in Tasks, Show result. If a task is waiting for approval or needs more information, say so and what is needed.',
+    isCeo
+      ? 'When the founder wants details only the employee who did a task can give (how it was done, what exactly it searched or read, why it chose something, or to change that work), answer briefly from FINISHED TASKS and WORK LOG, then say you will put them through to that employee. In that case end your reply with one last line exactly like: ASK: <employee name from Team> | <the question for that employee, in the founder\'s language>. Use it only for one of the employees in Team, never for yourself, and at most once per reply.'
+      : 'When asked what you did or how you did a task, explain it step by step from WORK LOG (what you searched, read, calculated or created and what you found), then the result. Never claim a step that is not in WORK LOG.',
     ...(body.voice === true ? ['This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences unless you are reading a task result, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
   const t0 = Date.now();
@@ -253,7 +256,9 @@ Deno.serve(async (req) => {
   if (!completion || !used) return json(502, { error: 'model_error', reason: lastError, user_message: userRow, routing });
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
-  const reply: string = String(completion.choices[0].message.content);
+  // The CEO may put the owner through to the employee who did the work: the reply then carries a marker the app shows as a button.
+  const raw = String(completion.choices[0].message.content);
+  const reply: string = isCeo ? handoffFrom(raw, ag.filter((x: any) => x.enabled !== false).map((x: any) => ({ id: x.id, name: x.name })), agent.id).text : raw;
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);
   const ownUsed = !!own && used === own;

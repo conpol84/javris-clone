@@ -543,7 +543,7 @@ Deno.serve(async (req) => {
   const finalStatus = reconcile ? 'blocked' : queue.length ? 'awaiting_approval' : 'completed';
   const { error: resultError } = await admin.from('tasks').update({ status: finalStatus, completed_at: finalStatus === 'completed' ? new Date().toISOString() : null,
     result: { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-      queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
+      queued: reconcile ? null : queue.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
       ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) } }).eq('id', task.id);
   // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
   if (!reconcile && !resultError && parsed.learned.length) {

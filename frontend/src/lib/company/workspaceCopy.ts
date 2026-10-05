@@ -30,6 +30,7 @@ const en = {
   cHelp: 'Messages you send here go to your CEO, who answers in the same chat. Approvals arrive with Approve / Reject buttons.',
   cAppSecret: 'App secret (Meta app settings)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'In your Meta app, set this callback URL and verify token for WhatsApp webhooks.',
+  aAsk: 'Ask {name}', aFound: 'What it found',
 };
 type Copy = typeof en;
 
@@ -61,6 +62,7 @@ const el: Copy = {
   cHelp: 'Ό,τι γράφετε εδώ πηγαίνει στον CEO σας, που απαντά στην ίδια συνομιλία. Οι εγκρίσεις έρχονται με κουμπιά Έγκριση / Απόρριψη.',
   cAppSecret: 'App secret (ρυθμίσεις εφαρμογής Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'Στην εφαρμογή Meta, βάλτε αυτό το callback URL και verify token για τα webhooks του WhatsApp.',
+  aAsk: 'Ρώτησε: {name}', aFound: 'Τι βρήκε',
 };
 
 const es: Copy = {
@@ -91,6 +93,7 @@ const es: Copy = {
   cHelp: 'Lo que escribas aquí llega a tu CEO, que responde en el mismo chat. Las aprobaciones llegan con botones Aprobar / Rechazar.',
   cAppSecret: 'App secret (ajustes de la app de Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'En tu app de Meta, configura esta callback URL y el verify token para los webhooks de WhatsApp.',
+  aAsk: 'Preguntar a {name}', aFound: 'Qué encontró',
 };
 
 const ptBR: Copy = {
@@ -121,6 +124,7 @@ const ptBR: Copy = {
   cHelp: 'O que você escreve aqui vai para o seu CEO, que responde na mesma conversa. Aprovações chegam com botões Aprovar / Rejeitar.',
   cAppSecret: 'App secret (configurações do app Meta)', cCallback: 'Callback URL', cVerify: 'Verify token',
   cMetaHelp: 'No seu app Meta, configure esta callback URL e o verify token para os webhooks do WhatsApp.',
+  aAsk: 'Perguntar a {name}', aFound: 'O que encontrou',
 };
 
 const de: Copy = {
@@ -151,6 +155,7 @@ const de: Copy = {
   cHelp: 'Was du hier schreibst, geht an deinen CEO, der im selben Chat antwortet. Freigaben kommen mit Buttons Freigeben / Ablehnen.',
   cAppSecret: 'App-Secret (Meta-App-Einstellungen)', cCallback: 'Callback-URL', cVerify: 'Verify-Token',
   cMetaHelp: 'Trage in deiner Meta-App diese Callback-URL und das Verify-Token für WhatsApp-Webhooks ein.',
+  aAsk: '{name} fragen', aFound: 'Was gefunden wurde',
 };
 
 const fr: Copy = {
@@ -181,6 +186,7 @@ const fr: Copy = {
   cHelp: 'Ce que vous écrivez ici va à votre CEO, qui répond dans la même conversation. Les validations arrivent avec des boutons Approuver / Refuser.',
   cAppSecret: 'App secret (réglages de l’app Meta)', cCallback: 'URL de rappel', cVerify: 'Jeton de vérification',
   cMetaHelp: 'Dans votre app Meta, indiquez cette URL de rappel et ce jeton pour les webhooks WhatsApp.',
+  aAsk: 'Demander à {name}', aFound: 'Ce qui a été trouvé',
 };
 
 const zh: Copy = {
@@ -211,6 +217,7 @@ const zh: Copy = {
   cHelp: '你在这里发送的消息会交给你的 CEO，CEO 会在同一聊天中回复。审批会带有批准 / 拒绝按钮。',
   cAppSecret: 'App secret（Meta 应用设置）', cCallback: '回调 URL', cVerify: '验证令牌',
   cMetaHelp: '在你的 Meta 应用中，为 WhatsApp webhook 设置此回调 URL 和验证令牌。',
+  aAsk: '问 {name}', aFound: '找到的内容',
 };
 
 const ar: Copy = {
@@ -241,6 +248,7 @@ const ar: Copy = {
   cHelp: 'ما تكتبه هنا يصل إلى الرئيس التنفيذي الذي يرد في المحادثة نفسها. تصل الموافقات مع زري موافقة / رفض.',
   cAppSecret: 'App secret (إعدادات تطبيق Meta)', cCallback: 'رابط الاستدعاء', cVerify: 'رمز التحقق',
   cMetaHelp: 'في تطبيق Meta، اضبط رابط الاستدعاء ورمز التحقق هذين لـ webhooks واتساب.',
+  aAsk: 'اسأل {name}', aFound: 'ما الذي وجده',
 };
 
 const COPY: Record<string, Copy> = { en, el, es, 'pt-BR': ptBR, de, fr, 'zh-CN': zh, ar };

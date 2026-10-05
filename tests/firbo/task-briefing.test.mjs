@@ -60,3 +60,29 @@ test('the stored Data Analyst case reads cleanly', () => {
   const p = resultParts({ summary: '{\n  "summary": "I need your competitor matrix + product definition to produce TAM/SOM', report: '{"summary":"x"' });
   assert.equal(p.summary, 'I need your competitor matrix + product definition to produce TAM/SOM');
 });
+
+import { workLog, handoffFrom } from '../../supabase/functions/_shared/task-briefing.ts';
+const A = '11111111-2222-3333-4444-555555555555';
+const CEO = '99999999-2222-3333-4444-555555555555';
+const team = [{ id: CEO, name: 'CEO' }, { id: A, name: 'Research Agent' }];
+
+test('the work log lists the real steps and what each found', () => {
+  const log = workLog({ steps: [{ action: 'web_search', input: 'αθλητικά νέα', ok: true, out: '1. Άρθρο - https://a.gr' }, { action: 'read_page', input: 'https://a.gr', ok: false }] });
+  assert.match(log[1], /searched the web for "αθλητικά νέα" -> found: 1\. Άρθρο/);
+  assert.match(log[2], /read the page "https:\/\/a\.gr" \(failed\)/);
+  assert.deepEqual(workLog({ summary: 'old runner' }), []);
+});
+test('"what did you do" in Greek or Greeklish focuses the latest finished task', () => {
+  assert.equal(pickFocusTask([greek], 'τι έκανες;'), greek);
+  assert.equal(pickFocusTask([greek], 'ti ekanes?'), greek);
+});
+test('the CEO hand-over becomes a marker for a real employee only', () => {
+  const out = handoffFrom('Το έκανε ο Research Agent.\nASK: Research Agent | Ποιες πηγές διάβασες;', team, CEO);
+  assert.equal(out.agentId, A);
+  assert.equal(out.text, `Το έκανε ο Research Agent.\n\n[[ask:${A}]] Ποιες πηγές διάβασες;`);
+  const unknown = handoffFrom('Δεν ξέρω.\nASK: Κάποιος | Ερώτηση', team, CEO);
+  assert.equal(unknown.agentId, null);
+  assert.equal(unknown.text, 'Δεν ξέρω.');
+  assert.equal(handoffFrom('Θα το δω.\nASK: CEO | Τι έγινε;', team, CEO).agentId, null);
+  assert.equal(handoffFrom('Απλή απάντηση.', team, CEO).text, 'Απλή απάντηση.');
+});

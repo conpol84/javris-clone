@@ -9,8 +9,9 @@ import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
 import { dispatchLaptopBrowserCommand } from './laptop-bridge';
+import { parseHandoff, type Handoff } from './handoff';
 
-export interface CeoLine { who:'me'|'ceo'; text:string }
+export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null }
 /** Voice and typed turns share one conversation. Stop fences late UI/media results;
  * it does not claim that already-started server inference/work was interrupted.
  */
@@ -117,9 +118,10 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
       const response=await voiceDeadline(signal=>sendChat(convo.current!,message,lang,true,signal),active.signal,95_000);
       if(!valid(id)||!active.current())return;
-      const content=response?.message?.content;
-      if(typeof content!=='string'||!content.trim())throw new Error('invalid_chat_response');
-      setLines(lines=>[...lines,{who:'ceo',text:content}]);
+      const raw=response?.message?.content;
+      if(typeof raw!=='string'||!raw.trim())throw new Error('invalid_chat_response');
+      const {text:content,ask:handoff}=parseHandoff(raw);
+      setLines(lines=>[...lines,{who:'ceo',text:content,ask:handoff}]);
       if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
       const result=await speak(orgId,content,lang,{turn:active});
       if(!valid(id))return;

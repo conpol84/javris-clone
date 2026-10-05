@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
-import { Mic, MessageSquarePlus, Send, Square, Trash2, Volume2, VolumeX } from 'lucide-react';
+import { Mic, MessageSquare, MessageSquarePlus, Send, Square, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Wave } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
@@ -9,6 +9,8 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createConversation, deleteConversation, listAgents, listConversations, listMessages, type ConversationRow } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
 import { RunError, runErrorText, sendChat, type ChatMessage } from '../lib/company/runner';
+import { parseHandoff } from '../lib/company/handoff';
+import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
@@ -45,6 +47,9 @@ export function AgentChatPage() {
   const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
   const end = useRef<HTMLDivElement>(null);
   const activeId = params.get('c');
+  const copy = useWorkspaceCopy();
+  const askAgent = params.get('ask');
+  const askQuestion = params.get('q') ?? '';
   const voiceScope = JSON.stringify([orgId, user?.id, activeId, lang, canWrite]);
   const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
   useEffect(() => {
@@ -55,6 +60,22 @@ export function AgentChatPage() {
   const agentOf = useCallback((id: string | null) => agents.find((a) => a.id === id) ?? null, [agents]);
   const nameOf = (a: AgentRow | null) => (a ? agentLabel(a, i18n).name : t('unassigned'));
   const activeAgent = agentOf(active?.agent_id ?? null);
+
+  // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
+  const [listLoaded, setListLoaded] = useState(false);
+  useEffect(() => {
+    if (!askAgent || !listLoaded || !user || !orgId) return;
+    const agent = agents.find((a) => a.id === askAgent);
+    const next = new URLSearchParams(params);
+    next.delete('ask'); next.delete('q');
+    if (!agent) { setParams(next, { replace: true }); return; }
+    let live = true;
+    const existing = convos.find((c) => c.agent_id === agent.id);
+    (existing ? Promise.resolve(existing) : createConversation(orgId, user.id, agent.id).then((c) => { setConvos((prev) => [c, ...prev]); return c; }))
+      .then((c) => { if (!live) return; next.set('c', c.id); setParams(next, { replace: true }); setText(askQuestion); })
+      .catch(() => live && toast.error(t('chat.startError')));
+    return () => { live = false; };
+  }, [askAgent, listLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reloadList = useCallback(async () => {
     if (!orgId || !user) return;
@@ -69,6 +90,7 @@ export function AgentChatPage() {
         if (live) {
           setAgents(a);
           setConvos(c);
+          setListLoaded(true);
         }
       })
       .catch(() => live && toast.error(t('chat.loadError')));
@@ -141,7 +163,7 @@ export function AgentChatPage() {
       void reloadList();
       if (speakOnRef.current) {
         const turn = beginVoiceTurn(); voiceTurn.current = turn;
-        void speak(orgId, out.message.content, lang, { turn }).then(result => {
+        void speak(orgId, parseHandoff(out.message.content).text, lang, { turn }).then(result => {
           if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend) toast.error(voiceMessages(lang).playback);
         });
       }
@@ -280,16 +302,25 @@ export function AgentChatPage() {
             </header>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && <p className="fb-dim text-center text-sm">{t('chat.say', { agent: nameOf(activeAgent) })}</p>}
-              {messages.map((m) => (
+              {messages.map((m) => {
+                const { text: body, ask } = parseHandoff(m.content);
+                const askTo = ask ? agentOf(ask.agentId) : null;
+                return (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div
                     className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed"
                     style={m.role === 'user' ? { background: 'rgba(0, 212, 255,.16)', border: '1px solid var(--fb-border-strong)' } : { background: 'rgba(255,255,255,.05)', border: '1px solid var(--fb-border)' }}
                   >
-                    {m.content}
+                    {body}
+                    {ask && askTo && (
+                      <button type="button" className="fb-btn fb-btn--ghost mt-2 flex" onClick={() => setParams(new URLSearchParams({ ask: ask.agentId, q: ask.question }), { replace: false })}>
+                        <MessageSquare size={14} /> {copy('aAsk', { name: nameOf(askTo) })}
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
               {sending && (
                 <div className="fb-dim flex items-center gap-2 text-sm" aria-live="polite">
                   <Wave color="var(--fb-accent)" /> {t('chat.thinking', { agent: nameOf(activeAgent) })}
