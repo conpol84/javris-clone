@@ -240,26 +240,67 @@ class TestExtraEndpoints:
                         "fallbackCount": 2,
                     },
                     "byModel": [
-                        {"model": "gpt-x", "provider": "openai", "requests": 6, "totalTokens": 900, "cost": 0.05, "avgLatencyMs": 700, "apiKeyName": "secret-name"}
+                        {
+                            "model": "gpt-x",
+                            "provider": "openai",
+                            "requests": 6,
+                            "totalTokens": 900,
+                            "cost": 0.05,
+                            "avgLatencyMs": 700,
+                            "apiKeyName": "secret-name",
+                        }
                     ],
-                    "byProvider": [{"provider": "openai", "requests": 6, "totalTokens": 900, "cost": 0.05}],
-                    "dailyTrend": [{"date": "2026-10-01", "requests": 4, "totalTokens": 400, "cost": 0.02}],
+                    "byProvider": [
+                        {
+                            "provider": "openai",
+                            "requests": 6,
+                            "totalTokens": 900,
+                            "cost": 0.05,
+                        }
+                    ],
+                    "dailyTrend": [
+                        {
+                            "date": "2026-10-01",
+                            "requests": 4,
+                            "totalTokens": 400,
+                            "cost": 0.02,
+                        }
+                    ],
                     "byApiKey": [{"name": "should-not-leak", "key": "sk-leak"}],
                 },
             )
         )
         body = client.get("/v1/gateway/usage?range=30d").json()
         assert body["available"] and body["range"] == "30d"
-        assert body["requests"] == 10 and body["tokens_in"] == 1000 and body["cost"] == 0.1235
+        assert (
+            body["requests"] == 10
+            and body["tokens_in"] == 1000
+            and body["cost"] == 0.1235
+        )
         assert body["success_rate"] == 0.9 and body["fallbacks"] == 2
-        assert body["models"][0] == {"model": "gpt-x", "provider": "openai", "requests": 6, "tokens": 900, "cost": 0.05, "avg_latency_ms": 700}
+        assert body["models"][0] == {
+            "model": "gpt-x",
+            "provider": "openai",
+            "requests": 6,
+            "tokens": 900,
+            "cost": 0.05,
+            "avg_latency_ms": 700,
+        }
         assert "sk-leak" not in str(body) and "should-not-leak" not in str(body)
 
     @respx.mock
-    def test_usage_rejects_unknown_range_and_reports_unauthorized(self, client: TestClient):
-        route = respx.get(f"{HOST}/api/usage/analytics").mock(return_value=httpx.Response(401))
+    def test_usage_rejects_unknown_range_and_reports_unauthorized(
+        self, client: TestClient
+    ):
+        route = respx.get(f"{HOST}/api/usage/analytics").mock(
+            return_value=httpx.Response(401)
+        )
         body = client.get("/v1/gateway/usage?range=bogus").json()
-        assert body["range"] == "7d" and body["available"] is False and body["error"] == "unauthorized"
+        assert (
+            body["range"] == "7d"
+            and body["available"] is False
+            and body["error"] == "unauthorized"
+        )
         assert route.calls[0].request.url.params["range"] == "7d"
 
     @respx.mock
@@ -268,8 +309,28 @@ class TestExtraEndpoints:
             return_value=httpx.Response(
                 200,
                 json=[
-                    {"id": "1", "timestamp": "2026-10-01T10:00:00Z", "providerDisplay": "OpenAI", "provider": "openai", "model": "gpt-x", "status": 200, "duration": 900, "tokens": {"in": 10, "out": 20}, "comboName": None, "requestBody": {"secret": "prompt"}},
-                    {"id": "2", "timestamp": "2026-10-01T10:01:00Z", "provider": "groq", "model": "m", "status": 429, "duration": 50, "tokens": {"in": 1, "out": 0}, "error": "rate"},
+                    {
+                        "id": "1",
+                        "timestamp": "2026-10-01T10:00:00Z",
+                        "providerDisplay": "OpenAI",
+                        "provider": "openai",
+                        "model": "gpt-x",
+                        "status": 200,
+                        "duration": 900,
+                        "tokens": {"in": 10, "out": 20},
+                        "comboName": None,
+                        "requestBody": {"secret": "prompt"},
+                    },
+                    {
+                        "id": "2",
+                        "timestamp": "2026-10-01T10:01:00Z",
+                        "provider": "groq",
+                        "model": "m",
+                        "status": 429,
+                        "duration": 50,
+                        "tokens": {"in": 1, "out": 0},
+                        "error": "rate",
+                    },
                 ],
             )
         )
@@ -283,14 +344,35 @@ class TestExtraEndpoints:
         respx.get(f"{HOST}/api/free-models").mock(
             return_value=httpx.Response(
                 200,
-                json={"models": [{"provider": "groq", "modelId": "llama", "displayName": "Llama", "monthlyTokens": 1000000, "freeType": "monthly", "tos": "x"}]},
+                json={
+                    "models": [
+                        {
+                            "provider": "groq",
+                            "modelId": "llama",
+                            "displayName": "Llama",
+                            "monthlyTokens": 1000000,
+                            "freeType": "monthly",
+                            "tos": "x",
+                        }
+                    ]
+                },
             )
         )
         body = client.get("/v1/gateway/free-models").json()
-        assert body["models"] == [{"provider": "groq", "model": "llama", "name": "Llama", "monthly_tokens": 1000000, "free_type": "monthly"}]
+        assert body["models"] == [
+            {
+                "provider": "groq",
+                "model": "llama",
+                "name": "Llama",
+                "monthly_tokens": 1000000,
+                "free_type": "monthly",
+            }
+        ]
 
     @respx.mock
-    def test_quota_is_normalized_and_names_come_from_connections(self, client: TestClient):
+    def test_quota_is_normalized_and_names_come_from_connections(
+        self, client: TestClient
+    ):
         respx.get(f"{HOST}/api/usage/provider-limits").mock(
             return_value=httpx.Response(
                 200,
@@ -298,7 +380,10 @@ class TestExtraEndpoints:
                     "caches": {
                         "c1": {
                             "quotas": {
-                                "daily": {"remainingPercentage": 42.04, "resetAt": "2026-10-02T00:00:00Z"},
+                                "daily": {
+                                    "remainingPercentage": 42.04,
+                                    "resetAt": "2026-10-02T00:00:00Z",
+                                },
                                 "tokens": {"used": 10, "total": 100, "remaining": 90},
                                 "free": {"unlimited": True},
                             },
@@ -311,7 +396,19 @@ class TestExtraEndpoints:
             )
         )
         respx.get(f"{HOST}/api/providers").mock(
-            return_value=httpx.Response(200, json={"connections": [{"id": "c1", "provider": "openai", "name": "Main", "apiKey": "sk-leak"}]})
+            return_value=httpx.Response(
+                200,
+                json={
+                    "connections": [
+                        {
+                            "id": "c1",
+                            "provider": "openai",
+                            "name": "Main",
+                            "apiKey": "sk-leak",
+                        }
+                    ]
+                },
+            )
         )
         body = client.get("/v1/gateway/quota").json()
         assert body["available"] and len(body["providers"]) == 1
@@ -328,12 +425,31 @@ class TestExtraEndpoints:
         respx.get(f"{HOST}/api/keys").mock(
             return_value=httpx.Response(
                 200,
-                json={"keys": [{"id": "k1", "name": "agent-ceo", "key": "sk-or-abc", "isActive": False, "createdAt": "2026-10-01", "maxRequestsPerDay": 500}]},
+                json={
+                    "keys": [
+                        {
+                            "id": "k1",
+                            "name": "agent-ceo",
+                            "key": "sk-or-abc",
+                            "isActive": False,
+                            "createdAt": "2026-10-01",
+                            "maxRequestsPerDay": 500,
+                        }
+                    ]
+                },
             )
         )
         body = client.get("/v1/gateway/keys").json()
         assert body["keys"] == [
-            {"id": "k1", "name": "agent-ceo", "active": False, "created_at": "2026-10-01", "max_per_day": 500, "max_per_minute": None, "expires_at": None}
+            {
+                "id": "k1",
+                "name": "agent-ceo",
+                "active": False,
+                "created_at": "2026-10-01",
+                "max_per_day": 500,
+                "max_per_minute": None,
+                "expires_at": None,
+            }
         ]
         assert "sk-or-abc" not in str(body)
 
@@ -346,14 +462,26 @@ class TestHealthRoutingSavings:
         gateway_routes._extra_cache.clear()
 
     @respx.mock
-    def test_health_ranks_problem_providers_first_and_hides_nothing_secret(self, client: TestClient):
+    def test_health_ranks_problem_providers_first_and_hides_nothing_secret(
+        self, client: TestClient
+    ):
         respx.get(f"{HOST}/api/provider-metrics").mock(
             return_value=httpx.Response(
                 200,
                 json={
                     "metrics": {
-                        "openai": {"totalRequests": 100, "successRate": 99, "avgLatencyMs": 800, "lastRequestAt": "t1", "lastErrorAt": None},
-                        "groq": {"totalRequests": 50, "successRate": 40, "avgLatencyMs": 300},
+                        "openai": {
+                            "totalRequests": 100,
+                            "successRate": 99,
+                            "avgLatencyMs": 800,
+                            "lastRequestAt": "t1",
+                            "lastErrorAt": None,
+                        },
+                        "groq": {
+                            "totalRequests": 50,
+                            "successRate": 40,
+                            "avgLatencyMs": 300,
+                        },
                         "idle": {"totalRequests": 0},
                     }
                 },
@@ -368,16 +496,42 @@ class TestHealthRoutingSavings:
         respx.get(f"{HOST}/api/combos").mock(
             return_value=httpx.Response(
                 200,
-                json={"combos": [{"name": "cheap-first", "strategy": "priority", "models": [{"model": "groq/llama"}, "openai/gpt-5-mini"], "isActive": True}]},
+                json={
+                    "combos": [
+                        {
+                            "name": "cheap-first",
+                            "strategy": "priority",
+                            "models": [{"model": "groq/llama"}, "openai/gpt-5-mini"],
+                            "isActive": True,
+                        }
+                    ]
+                },
             )
         )
         body = client.get("/v1/gateway/routing").json()
-        assert body["combos"] == [{"name": "cheap-first", "strategy": "priority", "models": ["groq/llama", "openai/gpt-5-mini"], "enabled": True}]
+        assert body["combos"] == [
+            {
+                "name": "cheap-first",
+                "strategy": "priority",
+                "models": ["groq/llama", "openai/gpt-5-mini"],
+                "enabled": True,
+            }
+        ]
 
     @respx.mock
-    def test_savings_reports_settings_and_numeric_cache_stats_only(self, client: TestClient):
-        respx.get(f"{HOST}/api/settings/compression").mock(return_value=httpx.Response(200, json={"enabled": True, "defaultMode": "standard", "secret": "x"}))
-        respx.get(f"{HOST}/api/cache/stats").mock(return_value=httpx.Response(200, json={"hits": 7, "misses": 3, "note": "text"}))
+    def test_savings_reports_settings_and_numeric_cache_stats_only(
+        self, client: TestClient
+    ):
+        respx.get(f"{HOST}/api/settings/compression").mock(
+            return_value=httpx.Response(
+                200, json={"enabled": True, "defaultMode": "standard", "secret": "x"}
+            )
+        )
+        respx.get(f"{HOST}/api/cache/stats").mock(
+            return_value=httpx.Response(
+                200, json={"hits": 7, "misses": 3, "note": "text"}
+            )
+        )
         body = client.get("/v1/gateway/savings").json()
         assert body["compression"] == {"enabled": True, "mode": "standard"}
         assert body["cache"] == {"hits": 7.0, "misses": 3.0}
@@ -386,11 +540,25 @@ class TestHealthRoutingSavings:
     def test_playground_rate_limits_and_returns_reply(self, client: TestClient):
         gateway_routes._play_hits.clear()
         respx.post(f"{HOST}/v1/chat/completions").mock(
-            return_value=httpx.Response(200, json={"model": "gpt-5-mini", "choices": [{"message": {"content": "Hello"}}], "usage": {"prompt_tokens": 3, "completion_tokens": 2}})
+            return_value=httpx.Response(
+                200,
+                json={
+                    "model": "gpt-5-mini",
+                    "choices": [{"message": {"content": "Hello"}}],
+                    "usage": {"prompt_tokens": 3, "completion_tokens": 2},
+                },
+            )
         )
         first = client.post("/v1/gateway/playground", json={"message": "hi"})
-        assert first.status_code == 200 and first.json()["reply"] == "Hello" and first.json()["tokens_out"] == 2
-        statuses = [client.post("/v1/gateway/playground", json={"message": "hi"}).status_code for _ in range(6)]
+        assert (
+            first.status_code == 200
+            and first.json()["reply"] == "Hello"
+            and first.json()["tokens_out"] == 2
+        )
+        statuses = [
+            client.post("/v1/gateway/playground", json={"message": "hi"}).status_code
+            for _ in range(6)
+        ]
         assert 429 in statuses
 
 
@@ -408,24 +576,58 @@ class TestAdminGates:
 
     @respx.mock
     def test_only_platform_admins_can_change_savings(self, client: TestClient):
-        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "11111111-1111-1111-1111-111111111111"}))
-        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=False))
-        resp = client.post("/v1/gateway/savings", json={"enabled": True}, headers={"Authorization": "Bearer t"})
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            return_value=httpx.Response(
+                200, json={"id": "11111111-1111-1111-1111-111111111111"}
+            )
+        )
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(
+            return_value=httpx.Response(200, json=False)
+        )
+        resp = client.post(
+            "/v1/gateway/savings",
+            json={"enabled": True},
+            headers={"Authorization": "Bearer t"},
+        )
         assert resp.status_code == 403
 
     @respx.mock
     def test_platform_admin_can_change_savings(self, client: TestClient):
-        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "11111111-1111-1111-1111-111111111111"}))
-        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=True))
-        put = respx.put(f"{HOST}/api/settings/compression").mock(return_value=httpx.Response(200, json={"enabled": True}))
-        resp = client.post("/v1/gateway/savings", json={"enabled": True, "mode": "bogus"}, headers={"Authorization": "Bearer t"})
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            return_value=httpx.Response(
+                200, json={"id": "11111111-1111-1111-1111-111111111111"}
+            )
+        )
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(
+            return_value=httpx.Response(200, json=True)
+        )
+        put = respx.put(f"{HOST}/api/settings/compression").mock(
+            return_value=httpx.Response(200, json={"enabled": True})
+        )
+        resp = client.post(
+            "/v1/gateway/savings",
+            json={"enabled": True, "mode": "bogus"},
+            headers={"Authorization": "Bearer t"},
+        )
         assert resp.status_code == 200 and resp.json()["applied"] == {"enabled": True}
         assert put.called
 
     @respx.mock
     def test_playground_needs_an_admin_membership(self, client: TestClient):
-        respx.get("https://proj.supabase.test/auth/v1/user").mock(return_value=httpx.Response(200, json={"id": "22222222-2222-2222-2222-222222222222"}))
-        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(return_value=httpx.Response(200, json=False))
-        respx.get(url__regex=r"https://proj\.supabase\.test/rest/v1/organization_members.*").mock(return_value=httpx.Response(200, json=[]))
-        resp = client.post("/v1/gateway/playground", json={"message": "hi"}, headers={"Authorization": "Bearer t"})
+        respx.get("https://proj.supabase.test/auth/v1/user").mock(
+            return_value=httpx.Response(
+                200, json={"id": "22222222-2222-2222-2222-222222222222"}
+            )
+        )
+        respx.post("https://proj.supabase.test/rest/v1/rpc/is_platform_admin").mock(
+            return_value=httpx.Response(200, json=False)
+        )
+        respx.get(
+            url__regex=r"https://proj\.supabase\.test/rest/v1/organization_members.*"
+        ).mock(return_value=httpx.Response(200, json=[]))
+        resp = client.post(
+            "/v1/gateway/playground",
+            json={"message": "hi"},
+            headers={"Authorization": "Bearer t"},
+        )
         assert resp.status_code == 403

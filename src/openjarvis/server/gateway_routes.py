@@ -327,7 +327,9 @@ def _calls_summary(payload: Any, limit: int) -> List[Dict[str, Any]]:
             {
                 "id": str(row.get("id") or ""),
                 "at": str(row.get("timestamp") or ""),
-                "provider": str(row.get("providerDisplay") or row.get("provider") or ""),
+                "provider": str(
+                    row.get("providerDisplay") or row.get("provider") or ""
+                ),
                 "model": str(row.get("model") or ""),
                 "status": int(_num(row.get("status"))),
                 "duration_ms": int(_num(row.get("duration"))),
@@ -360,7 +362,9 @@ def _free_summary(payload: Any) -> List[Dict[str, Any]]:
     return out
 
 
-async def _cached(name: str, path: str, params: Dict[str, Any]) -> tuple[Any, Optional[str]]:
+async def _cached(
+    name: str, path: str, params: Dict[str, Any]
+) -> tuple[Any, Optional[str]]:
     host, key = _settings()
     cache_key = f"{name}|{host}|{sorted(params.items())}"
     now = time.monotonic()
@@ -406,9 +410,7 @@ def _plan_name(plan: Any) -> str:
 def _quota_summary(limits: Any, providers: Any) -> List[Dict[str, Any]]:
     caches = limits.get("caches", {}) if isinstance(limits, dict) else {}
     conns = providers.get("connections", []) if isinstance(providers, dict) else []
-    names = {
-        str(c.get("id")): c for c in conns if isinstance(c, dict) and c.get("id")
-    }
+    names = {str(c.get("id")): c for c in conns if isinstance(c, dict) and c.get("id")}
     out: List[Dict[str, Any]] = []
     for cid, entry in list(caches.items())[:60]:
         if not isinstance(entry, dict) or not isinstance(entry.get("quotas"), dict):
@@ -477,7 +479,12 @@ async def gateway_usage(range: str = "7d") -> Dict[str, Any]:
     """Secret-free usage and cost summary for the AI gateway."""
     chosen = range if range in _USAGE_RANGES else "7d"
     data, err = await _cached("usage", "/api/usage/analytics", {"range": chosen})
-    return {"range": chosen, "available": data is not None, "error": err, **_usage_summary(data)}
+    return {
+        "range": chosen,
+        "available": data is not None,
+        "error": err,
+        **_usage_summary(data),
+    }
 
 
 @router.get("/calls")
@@ -487,7 +494,11 @@ async def gateway_calls(limit: int = 25) -> Dict[str, Any]:
     data, err = await _cached(
         "calls", "/api/usage/call-logs", {"limit": n, "excludeTests": 1}
     )
-    return {"available": data is not None, "error": err, "calls": _calls_summary(data, n)}
+    return {
+        "available": data is not None,
+        "error": err,
+        "calls": _calls_summary(data, n),
+    }
 
 
 @router.get("/free-models")
@@ -502,7 +513,11 @@ async def gateway_quota() -> Dict[str, Any]:
     """Remaining quota per connected provider account (windows and resets only)."""
     limits, err = await _cached("quota", "/api/usage/provider-limits", {})
     providers, _ = await _cached("quota_providers", "/api/providers", {})
-    return {"available": limits is not None, "error": err, "providers": _quota_summary(limits, providers)}
+    return {
+        "available": limits is not None,
+        "error": err,
+        "providers": _quota_summary(limits, providers),
+    }
 
 
 @router.get("/keys")
@@ -594,7 +609,11 @@ _COMPRESSION_MODES = ("off", "lite", "standard", "aggressive", "ultra", "rtk")
 async def gateway_health() -> Dict[str, Any]:
     """Which AI providers are working right now, from real call statistics."""
     data, err = await _cached("pmetrics", "/api/provider-metrics", {})
-    return {"available": data is not None, "error": err, "providers": _health_summary(data)}
+    return {
+        "available": data is not None,
+        "error": err,
+        "providers": _health_summary(data),
+    }
 
 
 @router.get("/routing")
@@ -635,7 +654,10 @@ async def _supabase_get(request: Request, path: str) -> Any:
         async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
             resp = await client.get(
                 f"{base}{path}",
-                headers={"Authorization": f"Bearer {_bearer(request)}", "apikey": apikey},
+                headers={
+                    "Authorization": f"Bearer {_bearer(request)}",
+                    "apikey": apikey,
+                },
             )
         return resp.json() if resp.status_code == 200 else None
     except (httpx.HTTPError, ValueError):
@@ -649,7 +671,10 @@ async def _is_platform_admin(request: Request) -> bool:
         async with httpx.AsyncClient(timeout=httpx.Timeout(4.0)) as client:
             resp = await client.post(
                 f"{base}/rest/v1/rpc/is_platform_admin",
-                headers={"Authorization": f"Bearer {_bearer(request)}", "apikey": apikey},
+                headers={
+                    "Authorization": f"Bearer {_bearer(request)}",
+                    "apikey": apikey,
+                },
                 json={},
             )
         return resp.status_code == 200 and resp.json() is True
@@ -695,12 +720,16 @@ async def gateway_set_savings(request: Request) -> Dict[str, Any]:
     host, key = _settings()
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     try:
-        async with httpx.AsyncClient(base_url=host, headers=headers, timeout=httpx.Timeout(8.0)) as client:
+        async with httpx.AsyncClient(
+            base_url=host, headers=headers, timeout=httpx.Timeout(8.0)
+        ) as client:
             resp = await client.put("/api/settings/compression", json=patch)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=type(exc).__name__)
     if resp.status_code in (401, 403):
-        raise HTTPException(status_code=502, detail="Gateway rejected the management key")
+        raise HTTPException(
+            status_code=502, detail="Gateway rejected the management key"
+        )
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"Gateway error {resp.status_code}")
     _extra_cache.clear()
@@ -731,7 +760,9 @@ async def gateway_playground(request: Request) -> Dict[str, Any]:
     headers = {"Authorization": f"Bearer {key}"} if key else {}
     started = time.monotonic()
     try:
-        async with httpx.AsyncClient(base_url=host, headers=headers, timeout=httpx.Timeout(45.0, connect=3.0)) as client:
+        async with httpx.AsyncClient(
+            base_url=host, headers=headers, timeout=httpx.Timeout(45.0, connect=3.0)
+        ) as client:
             resp = await client.post(
                 "/v1/chat/completions",
                 json={
@@ -748,7 +779,11 @@ async def gateway_playground(request: Request) -> Dict[str, Any]:
     if resp.status_code >= 400:
         raise HTTPException(status_code=502, detail=f"Model error {resp.status_code}")
     data = resp.json()
-    choice = (data.get("choices") or [{}])[0].get("message", {}) if isinstance(data, dict) else {}
+    choice = (
+        (data.get("choices") or [{}])[0].get("message", {})
+        if isinstance(data, dict)
+        else {}
+    )
     usage = data.get("usage", {}) if isinstance(data, dict) else {}
     return {
         "model": str(data.get("model", model)) if isinstance(data, dict) else model,
