@@ -247,7 +247,7 @@ async def gateway_overview() -> Dict[str, Any]:
     return value
 
 
-# ---------------------------------------------------------------- usage / calls / free models
+# ------------------------------ usage / calls / free models
 
 _USAGE_RANGES = {"1d", "7d", "30d", "90d"}
 _extra_cache: Dict[str, Any] = {}
@@ -527,13 +527,13 @@ async def gateway_keys() -> Dict[str, Any]:
     return {"available": data is not None, "error": err, "keys": _keys_summary(data)}
 
 
-# ---------------------------------------------------------------- health, routing, savings, playground
+# ------------------------------ health, routing, savings, playground
 
 _HEALTH_RECENT_ERROR_SECONDS = 15 * 60
 
 
 def _health_summary(payload: Any) -> List[Dict[str, Any]]:
-    """Per-provider health from call statistics. Never includes keys or account names."""
+    """Summarize provider health without keys or account names."""
     metrics = payload.get("metrics", {}) if isinstance(payload, dict) else {}
     out: List[Dict[str, Any]] = []
     if not isinstance(metrics, dict):
@@ -625,7 +625,7 @@ async def gateway_routing() -> Dict[str, Any]:
 
 @router.get("/savings")
 async def gateway_savings() -> Dict[str, Any]:
-    """Token compression and response cache: settings and how much they are being used."""
+    """Return token-compression and response-cache settings and usage."""
     comp, err = await _cached("compression", "/api/settings/compression", {})
     cache, _ = await _cached("cache_stats", "/api/cache/stats", {})
     settings = comp if isinstance(comp, dict) else {}
@@ -707,7 +707,7 @@ async def _require(request: Request, who: str) -> None:
 
 @router.post("/savings")
 async def gateway_set_savings(request: Request) -> Dict[str, Any]:
-    """Switch token compression on or off and pick its strength. Platform admins only."""
+    """Change token compression settings. Platform admins only."""
     await _require(request, "platform")
     body = await request.json()
     patch: Dict[str, Any] = {}
@@ -731,7 +731,7 @@ async def gateway_set_savings(request: Request) -> Dict[str, Any]:
             status_code=502, detail="Gateway rejected the management key"
         )
     if resp.status_code >= 400:
-        raise HTTPException(status_code=502, detail=f"Gateway error {resp.status_code}")
+        raise HTTPException(\n            status_code=502, detail=f"Gateway error {resp.status_code}"\n        )
     _extra_cache.clear()
     return {"ok": True, "applied": patch}
 
@@ -741,7 +741,7 @@ _play_hits: Dict[str, List[float]] = {}
 
 @router.post("/playground")
 async def gateway_playground(request: Request) -> Dict[str, Any]:
-    """Send one short message to a model through the gateway. Workspace admins only, rate limited."""
+    """Send a short gateway message. Workspace admins only; rate limited."""
     await _require(request, "workspace")
     token = _bearer(request) or "local"
     now = time.monotonic()
