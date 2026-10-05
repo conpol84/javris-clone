@@ -102,7 +102,9 @@ with sync_playwright() as pw:
                 composer.get_by_label("Element selector", exact=True).fill("#search")
                 composer.get_by_label("Text", exact=True).fill("Synthetic search")
                 assert not page.evaluate(v.GEOMETRY)["bad"]
-                composer.get_by_role("button", name="Remove step", exact=True).last.click()
+                composer.get_by_role(
+                    "button", name="Remove step", exact=True
+                ).last.click()
                 expect(composer.locator("fieldset")).to_have_count(2)
                 page.get_by_test_id("select-device-d2").click()
                 expect(composer).to_have_count(0)
