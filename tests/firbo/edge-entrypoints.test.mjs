@@ -563,3 +563,10 @@ test('agent-runner: the direct OmniRoute route (no gateway mode) also moves up t
   const other=await invoke('agent-runner',{env,model:'openai:gpt-5-mini',tools,plan:'pro',chatReplies:['{"action":"get_company_pricing","input":{}}',final,final,final]});
   assert.ok(!other.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
 });
+
+test('employees work inside Mac apps with one approved AppleScript, never as a made-up action', async () => {
+  const { readFile: read } = await import('node:fs/promises');
+  const src = await read(new URL('../../supabase/functions/agent-runner/index.ts', import.meta.url), 'utf8');
+  assert.match(src, /run osascript -e/);
+  assert.match(src, /never put a script or a computer job in the final "actions" list/);
+});
