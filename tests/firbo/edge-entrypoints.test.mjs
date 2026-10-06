@@ -116,10 +116,12 @@ function fixture(options={}) {
     if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}]});
     if(options.chatReplies&&String(url).endsWith('/chat/completions'))return Response.json({model:'provider/resolved',choices:[{message:{content:options.chatReplies.shift()}}],usage:{prompt_tokens:100,completion_tokens:20}});
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
-    return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:'Result',actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
+    return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:options.shortReport?'Result':FULL_REPORT,actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
   };
   return state;
 }
+// A report that already meets the professional standard (sections, enough substance): it needs no quality pass.
+const FULL_REPORT=['## Executive summary','The market grew. '.repeat(40),'## Findings','Sales rose in every region. '.repeat(25),'## Recommendations','1. Expand online. '.repeat(25)].join('\n');
 async function invoke(name,options={},bodyExtra={}){
   const state=fixture(options);
   const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',...bodyExtra}:{task_id:TASK,...bodyExtra};
@@ -164,7 +166,7 @@ test('report and approvals use one organization-scoped claim publication',async(
   const {state,response}=await invoke('agent-runner');assert.equal(response.status,200);
   const claim=state.rpcs.find(r=>r.fn==='claim_task_run');assert.deepEqual(claim.args,{p_org:ORG,p_task:TASK,p_actor:USER});
   const publications=state.rpcs.filter(r=>r.fn==='publish_task_run');assert.equal(publications.length,1);
-  assert.equal(publications[0].args.p_claim,CLAIM);assert.equal(publications[0].args.p_result.report,'Result');assert.equal(publications[0].args.p_approvals.length,1);
+  assert.equal(publications[0].args.p_claim,CLAIM);assert.equal(publications[0].args.p_result.report,FULL_REPORT);assert.equal(publications[0].args.p_approvals.length,1);
   assert.ok(!state.writes.some(w=>w.op==='insert'&&w.table==='approvals'));
 });
 test('lost committed publication response cannot overwrite an existing result with fallback',async()=>{
@@ -268,7 +270,7 @@ for (const name of ['agent-chat','agent-runner']) {
 
 test('agent-runner: the agent searches, reads a page, then reports; usage and steps are recorded once', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'allow'},{tool_name:'browser_extract',enabled:true,policy:'allow'}];
-  const chatReplies=['{"action":"web_search","input":"sports market 2026"}','{"action":"read_page","input":"https://news.example/a"}',JSON.stringify({summary:'Market up 5%',report:'Source: https://news.example/a',actions:[]})];
+  const chatReplies=['{"action":"web_search","input":"sports market 2026"}','{"action":"read_page","input":"https://news.example/a"}',JSON.stringify({summary:'Market up 5%',report:FULL_REPORT+'\n## Sources\n- https://news.example/a',actions:[]})];
   const {state,response}=await invoke('agent-runner',{tools,chatReplies});
   assert.equal(response.status,200);
   const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
@@ -285,11 +287,27 @@ test('agent-runner: the agent searches, reads a page, then reports; usage and st
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
 });
 test('agent-runner: a gateway reply that is only the model thinking aloud is asked again', async () => {
-  const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:'Report',actions:[]})];
+  const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:FULL_REPORT,actions:[]})];
   const {state,response}=await invoke('agent-runner',{tools:[],chatReplies});
   assert.equal(response.status,200);
   assert.equal(state.calls.filter(c=>String(c.url).endsWith('/chat/completions')).length,2);
   assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.summary,'Market up 5%');
+});
+test('agent-runner: a draft below the professional standard gets exactly one quality pass on the same route', async () => {
+  const {state,response}=await invoke('agent-runner',{shortReport:true,noActions:true});
+  assert.equal(response.status,200);
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
+  assert.equal(chats.length,2);
+  assert.ok(chats.every(c=>String(c.url).startsWith('https://gateway.firboai.app/v1/')));
+  const polish=JSON.parse(chats[1].init.body).messages;
+  assert.match(polish[0].content,/senior editor/);assert.match(polish[0].content,/never add new facts/);
+  assert.match(polish[1].content,/DRAFT:/);
+  const first=JSON.parse(chats[0].init.body).messages[0].content;
+  assert.match(first,/DELIVERABLE: a professional report/);
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,1);assert.equal(usage[0].payload.input_tokens,200);
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.format,'report');assert.equal(result.calls,2);
 });
 test('agent-runner: a blocked tool is never offered to the model', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'block'}];
