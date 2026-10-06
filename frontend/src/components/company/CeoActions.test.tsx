@@ -45,12 +45,19 @@ describe('CEO action execution and combined offers', () => {
     api.eq.mockReturnValue({ eq: api.eq, maybeSingle: api.read }); api.select.mockReturnValue({ eq: api.eq }); api.from.mockReturnValue({ select: api.select });
   });
   it('renders task, meeting and employee handover together', () => {
-    const children = elements(CeoActions({ task: offer, ask: { agentId: 'agent-a', question: 'Explain' }, meet: { topic: 'Pricing', participants: ['agent-a'] } }));
-    expect(children.filter(e => typeof e.type === 'function')).toHaveLength(3);
+    const children = elements(CeoActions({ task: offer, ask: { agentId: 'agent-a', question: 'Explain' }, meet: { topic: 'Pricing', participants: ['agent-a'] }, app: { kind: 'gdrive_read', name: 'Google Drive · read', reason: 'Use approved briefs' } }));
+    expect(children.filter(e => typeof e.type === 'function')).toHaveLength(4);
   });
   it('renders both the task submission control and the meeting link', () => {
     const html = renderToStaticMarkup(CeoActions({ task: offer, meet: { topic: 'Pricing', participants: ['agent-a'] } }));
     expect(html).toContain('ctGive'); expect(html).toContain('/missions?meet=Pricing'); expect(html).toContain('mtOpen');
+  });
+  it('renders a work-source suggestion as a review link, not an automatic connection', () => {
+    const html = renderToStaticMarkup(CeoActions({ app: { kind: 'gdrive_read', name: 'Google Drive · read', reason: 'Use approved briefs' } }));
+    expect(html).toContain('caSource');
+    expect(html).toContain('Use approved briefs');
+    expect(html).toContain('/integrations?connect=gdrive_read');
+    expect(html).toContain('caConnect');
   });
   it('does not mark a rejected run completed or create a second task', async () => {
     api.runTask.mockRejectedValue(new Error('budget_exceeded'));

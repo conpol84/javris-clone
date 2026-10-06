@@ -361,3 +361,33 @@ Remains:
 References: https://github.com/conpol84/javris-clone/pull/19 ;
 https://github.com/conpol84/javris-clone/actions/runs/37412639429 ;
 https://firboai.app
+
+### Codex: CEO work-source proposals (candidate)
+
+Changed:
+- Continued Claude checkpoint `445933907548f9cc240f08bbb6c06b1f3b33cb59`
+  on `codex/firbo-work-source-proposals-20261006` without modifying device jobs,
+  permissions, integration rows or external channels.
+- Added organization-scoped, allowlisted proposals for Google Drive/Gmail/Google
+  Calendar/Outlook read, Notion and GitHub. Existing kinds are excluded; an
+  integration-read error disables proposals. The rendered action only opens the
+  exact Integrations setup page, where the owner must still review and consent.
+- Unknown, already-connected and channel-only markers are stripped. Frontend and
+  server have independent allowlists; labels cover all eight app languages.
+
+Tested / passed:
+- 110/110 expanded edge/meeting/briefing tests (including 21/21 focused action
+  tests), 19/19 focused frontend tests, 485/485 full frontend tests, frontend and
+  edge TypeScript, production build and diff check.
+  See `FIRBO-WORK-SOURCE-PROPOSALS-20261006.md`.
+
+Failed / limitations:
+- Initial focused test exposed underscore removal in `gdrive_read`; fixed before
+  the passing runs. The expanded suite then exposed its missing integration-table
+  mock; added with organization-scope assertions before the 110/110 pass. No
+  signed-in or provider acceptance is claimed, and this candidate is not live.
+
+Remains:
+- Exact-head CI, merge/deploy if accepted, then signed-in proposal/meeting/task
+  acceptance. Google/Microsoft consent/refresh/revoke, real device/channel and all
+  other master-plan gates remain open.

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { CheckCircle2, Loader2, Play, Users } from 'lucide-react';
+import { CheckCircle2, Loader2, Plug, Play, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import { useI18n } from '../../i18n/I18nProvider';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { requireClient } from '../../lib/company/client';
 import { createTask, listAgents } from '../../lib/company/data';
-import { meetingLink, type Handoff, type MeetingOffer, type TaskOffer } from '../../lib/company/handoff';
+import { meetingLink, workSourceLink, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from '../../lib/company/handoff';
 import { agentLabel } from '../../lib/company/labels';
 import { runErrorText, runTask } from '../../lib/company/runner';
 import { cleanTaskResult } from '../../lib/company/taskResult';
@@ -15,14 +15,28 @@ import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
 import { AskButton } from './AskButton';
 import { ReportView } from './ReportView';
 
-/** What the CEO offers under its reply: talk to an employee, give an employee a task, or call a meeting. */
-export function CeoActions({ ask, task, meet }: { ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null }) {
+/** What the CEO offers under its reply: employee hand-over, task, meeting or work-source setup. */
+export function CeoActions({ ask, task, meet, app }: { ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null; app?: WorkSourceOffer | null }) {
   const { current } = useCompanyAuth();
   return <>
     {ask && <AskButton ask={ask} />}
     {task && <TaskButton key={`${current?.organization.id}:${task.agentId}:${task.title}:${task.details}`} offer={task} />}
     {meet && <MeetButton offer={meet} />}
+    {app && <WorkSourceButton offer={app} />}
   </>;
+}
+
+/** A suggestion only: the owner reviews scope and grants provider consent on Integrations. */
+function WorkSourceButton({ offer }: { offer: WorkSourceOffer }) {
+  const copy = useWorkspaceCopy();
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      <span className="fb-dim text-[12px]">{copy('caSource')}: {offer.reason}</span>
+      <Link className="fb-btn fb-btn--ghost self-start" to={workSourceLink(offer)}>
+        <Plug size={14} /> {copy('caConnect', { name: offer.name })}
+      </Link>
+    </div>
+  );
 }
 
 function useAgent(id: string) {

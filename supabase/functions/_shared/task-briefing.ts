@@ -105,6 +105,17 @@ const STEP_WORDS: Record<string, string> = {
   generate_image: 'created an image of', think: 'planned:',
 };
 
+/** Curated integrations the CEO may suggest as read-only company work sources. */
+export const WORK_SOURCE_APPS = [
+  { kind: 'gdrive_read', name: 'Google Drive · read' },
+  { kind: 'gmail_read', name: 'Gmail · read' },
+  { kind: 'gcal_read', name: 'Google Calendar · read' },
+  { kind: 'outlook_read', name: 'Outlook · read' },
+  { kind: 'notion', name: 'Notion' },
+  { kind: 'github', name: 'GitHub' },
+] as const;
+export interface WorkSourceApp { kind: string; name: string }
+
 /** What the employee actually did on a task, step by step, from the saved result (newest runner only). */
 export function workLog(result: unknown): string[] {
   const r = result && typeof result === 'object' && !Array.isArray(result) ? result as Record<string, unknown> : {};
@@ -171,18 +182,40 @@ export function taskFrom(reply: string, agents: { id: string; name: string }[], 
 }
 
 /**
- * All the action lines the CEO ended its reply with (ASK, TASK and MEETING, in any order, up to three) as stored
+ * Turns "APP: <supported kind or name> | <why it helps>" into a setup marker. The caller passes only
+ * work sources that are not already connected, so the CEO can neither invent a provider nor claim an
+ * existing connection is missing. Opening setup never grants consent or connects an account.
+ */
+export function appFrom(reply: string, apps: WorkSourceApp[]): { text: string; kind: string | null; reason: string } {
+  const m = /(?:^|\n)[ \t*_]*APP:\s*([^|\n]{2,80}?)\s*\|\s*([^\n]{3,300})\s*$/i.exec(reply.trimEnd());
+  if (!m) return { text: reply, kind: null, reason: '' };
+  const text = reply.trimEnd().slice(0, m.index).trimEnd();
+  // Underscores are part of canonical kinds such as gdrive_read; only remove presentation markup.
+  const want = fold(m[1].replace(/[*"«»]/g, '').trim());
+  const app = apps.find(a => fold(a.kind) === want || fold(a.name) === want);
+  const reason = m[2].replace(/[*_]+$/g, '').trim().slice(0, 240);
+  if (!app || !reason || !/^[a-z][a-z0-9_]{1,31}$/.test(app.kind)) return { text, kind: null, reason: '' };
+  return { text: `${text}\n\n[[app:${app.kind}]] ${reason}`, kind: app.kind, reason };
+}
+
+/**
+ * All the action lines the CEO ended its reply with (ASK, TASK, MEETING and APP, in any order, up to four) as stored
  * markers after the text, one per paragraph. Lines naming no real employee are dropped.
  */
-export function ceoActions(reply: string, agents: { id: string; name: string }[], selfId: string): string {
+export function ceoActions(reply: string, agents: { id: string; name: string }[], selfId: string, apps: WorkSourceApp[] = []): string {
   let rest = reply.trimEnd();
   const marks: string[] = [];
-  for (let round = 0; round < 3; round++) {
+  for (let round = 0; round < 4; round++) {
     let changed = false;
-    for (const convert of [handoffFrom, taskFrom, meetingFrom]) {
-      const out = convert(rest, agents, selfId).text;
+    for (const convert of [
+      (value: string) => handoffFrom(value, agents, selfId),
+      (value: string) => taskFrom(value, agents, selfId),
+      (value: string) => meetingFrom(value, agents, selfId),
+      (value: string) => appFrom(value, apps),
+    ]) {
+      const out = convert(rest).text;
       if (out === rest) continue;
-      const at = out.search(/\n\n\[\[(?:ask|task|meet):/);
+      const at = out.search(/\n\n\[\[(?:ask|task|meet|app):/);
       if (at >= 0) { marks.unshift(out.slice(at + 2)); rest = out.slice(0, at).trimEnd(); }
       else rest = out.trimEnd();
       changed = true;

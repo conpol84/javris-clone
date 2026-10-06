@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { taskBriefing, focusBriefing, type BriefTask, ceoActions } from '../_shared/task-briefing.ts';
+import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 
@@ -173,17 +173,22 @@ Deno.serve(async (req) => {
   let tasksQuery = admin.from('tasks').select('title, status, priority, result, completed_at, updated_at, assigned_agent_id')
     .eq('organization_id', convo.organization_id).eq('kind', 'task');
   if (!isCeo) tasksQuery = tasksQuery.eq('assigned_agent_id', agent.id);
-  const [{ data: tkRows }, { data: apRows }, { data: agRows }, { data: spendMonth }] = await Promise.all([
+  const [{ data: tkRows }, { data: apRows }, { data: agRows }, { data: spendMonth }, { data: integrationRows, error: integrationsError }] = await Promise.all([
     tasksQuery.order('updated_at', { ascending: false }).limit(30),
     admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8),
     admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
     admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString()),
+    admin.from('integrations').select('kind, status').eq('organization_id', convo.organization_id).limit(100),
   ]);
   const list = (v: unknown): any[] => (Array.isArray(v) ? v : []);
   const [tk, ap, ag] = [list(tkRows), list(apRows), list(agRows)];
   const names = new Map<string, string>(ag.map((x: any) => [x.id, x.name]));
   const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
   const monthCost = list(spendMonth).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
+  const installedSources = new Set(list(integrationRows).map((x: any) => String(x.kind)));
+  // Fail closed: if integrations cannot be read, do not suggest any source. This avoids telling the
+  // founder to connect something whose existing connection we could not verify.
+  const availableSources = integrationsError ? [] : WORK_SOURCE_APPS.filter(app => !installedSources.has(app.kind));
   const open = tk.filter((x: any) => !['completed', 'awaiting_approval', 'blocked', 'failed', 'cancelled'].includes(x.status)).slice(0, 10);
   const snapshot = [
     'LIVE COMPANY DATA (use it; never invent numbers):',
@@ -191,6 +196,7 @@ Deno.serve(async (req) => {
     `Spend this month: $${monthCost.toFixed(2)}.`,
     `Pending approvals (${ap.length}): ${ap.map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
     `Open tasks: ${open.map((x: any) => `"${clip(x.title, 60)}" ${x.status}${x.assigned_agent_id ? ` by ${names.get(x.assigned_agent_id) ?? 'agent'}` : ' (unassigned)'}`).join(' | ') || 'none'}.`,
+    `Connected work sources: ${integrationsError ? 'unavailable' : WORK_SOURCE_APPS.filter(app => installedSources.has(app.kind)).map(app => app.name).join(', ') || 'none'}.`,
     taskBriefing(tk as BriefTask[], names, text, { focusChars: body.voice === true ? 2000 : 3500 }),
   ].join('\n');
   const system = [
@@ -211,8 +217,9 @@ Deno.serve(async (req) => {
     ...(isCeo ? [
       'You run this company like a real CEO: you delegate. When the founder asks for work to be done (a presentation, a report, research, an email or offer, a plan), do not do it yourself in the chat: say in one or two sentences which employee from Team will do it and what they will deliver, then end your reply with one line exactly like: TASK: <employee name from Team> | <task title, in the founder\'s language; start it with "Presentation:" for slides> | <what exactly to deliver: audience, length, data to use>. The founder starts it with one click. When you delegate, keep the whole reply under 80 words: the employee does the work, not you.',
       'When the founder asks for a meeting, or a decision clearly needs several employees to agree, say who you will bring and why in one or two sentences, then end your reply with one last line exactly like: MEETING: <short topic, in the founder\'s language> | <employee names from Team, comma separated>. Never say the meeting or the task already happened; the founder starts it with the button.',
+      `When the founder's work would materially benefit from an ongoing company source that is not connected, you may propose exactly one from this list: ${availableSources.map(app => `${app.kind} (${app.name})`).join(', ') || 'none'}. End with: APP: <exact kind> | <one short reason in the founder's language>. The button only opens setup: never claim it is connected, never request a password/key in chat, and do not propose an app unless it is relevant.`,
       'Never ask the founder for passwords, keys, SSH access, server addresses or DNS changes; Firbo connects apps and computers through its own Integrations and Computers pages.',
-      'Action lines (ASK, TASK, MEETING) go at the very end, one per line, at most one of each kind, and only for employees in Team.',
+      'Action lines (ASK, TASK, MEETING, APP) go at the very end, one per line, at most one of each kind; people must be employees in Team and APP must be from the available list.',
     ] : []),
     ...(body.voice === true ? ['This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences unless you are reading a task result, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
@@ -274,8 +281,8 @@ Deno.serve(async (req) => {
   const team = viaChannel ? [] : ag.filter((x: any) => x.enabled !== false).map((x: any) => ({ id: x.id, name: x.name }));
   let reply: string = raw;
   if (isCeo) {
-    reply = ceoActions(reply, team, agent.id);
-    if (viaChannel) reply = reply.replace(/\n*\[\[(?:ask|task|meet):[\s\S]*$/, '');
+    reply = ceoActions(reply, team, agent.id, availableSources);
+    if (viaChannel) reply = reply.replace(/\n*\[\[(?:ask|task|meet|app):[\s\S]*$/, '');
   }
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);

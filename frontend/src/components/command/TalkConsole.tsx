@@ -251,7 +251,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
                       <li key={i} className="fb-row p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                         <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : ceoName}</div>
                         {l.text}
-                        <CeoActions ask={l.ask} task={l.task} meet={l.meet} />
+                        <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app} />
                       </li>
                     ))}
                   </ul>
