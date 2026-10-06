@@ -16,6 +16,7 @@ declare
  ceo constant uuid := '55555555-0922-4922-8922-555555555555';
  speaker constant uuid := '66666666-0922-4922-8922-666666666666';
  k constant uuid := '70000000-0922-4922-8922-700000000001';
+ speaker_key constant uuid := '70000000-0922-4922-8922-700000000002';
  r jsonb;
  mission_id uuid;
 begin
@@ -26,14 +27,14 @@ begin
  if r->>'duplicate' <> 'true' then raise exception 'mission duplicate not suppressed: %',r; end if;
  r := public.firbo_reserve_inference(org,usr,ceo,'agent-chat',k,0.500000,60,100);
  if r->>'reason' <> 'budget_exceeded' then raise exception 'chat ignored mission reservation: %',r; end if;
- r := public.firbo_reserve_inference(org,usr,speaker,'mission-runner',k,0,60,1);
+ r := public.firbo_reserve_inference(org,usr,speaker,'mission-runner',speaker_key,0,60,1);
  if r->>'reason' <> 'plan_limit' then raise exception 'second speaker ignored company reservation: %',r; end if;
  r := public.firbo_reserve_inference(org,usr,ceo,'agent-chat',k,0,1,100);
  if r->>'reason' <> 'rate_limited' then raise exception 'chat ignored mission hourly use: %',r; end if;
  perform public.firbo_settle_inference(mission_id,'mission:model',100,50,0.600000,100,false);
  r := public.firbo_reserve_inference(org,usr,ceo,'agent-chat',k,0.500000,60,100);
  if r->>'reason' <> 'budget_exceeded' then raise exception 'settled mission spend lost: %',r; end if;
- r := public.firbo_reserve_inference(org,usr,speaker,'mission-runner',k,0,60,100);
+ r := public.firbo_reserve_inference(org,usr,speaker,'mission-runner',speaker_key,0,60,100);
  if r->>'ok' <> 'true' then raise exception 'own-key/Free zero-cost speaker rejected: %',r; end if;
  perform public.firbo_settle_inference((r->>'request_id')::uuid,'own:model',10,5,0,100,true);
  begin
