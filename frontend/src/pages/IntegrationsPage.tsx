@@ -166,10 +166,13 @@ function IntegrationWorkspace() {
     } catch {
       return void toast.error(t('int.mcp.badJson'));
     }
+    if (!window.confirm(t('int.mcp.confirm', { tool: mcpTool }))) return;
     setBusy(r.id);
     try {
-      const out = await mcpCall(r.id, mcpTool, args);
-      setMcpOut(out.text || '(empty)');
+      const out = await mcpCall(r.id, mcpTool, args, true);
+      const receipt = `${t('int.mcp.receipt')}: ${out.receipt.request_id} / ${out.receipt.result_id}\nSHA-256: ${out.receipt.arguments_sha256} / ${out.receipt.result_sha256}`;
+      setMcpOut(`${out.text || '(empty)'}\n\n${receipt}`);
+      if (out.is_error) toast.error(t('int.mcp.failed'));
     } catch (err) {
       toast.error(errText(err));
     } finally {
