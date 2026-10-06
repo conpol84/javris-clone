@@ -1,0 +1,30 @@
+name: Firbo FreeLLMAPI readiness
+on:
+  pull_request:
+    branches: [main, claude/gifted-dijkstra-rph5j8]
+    paths:
+      - deploy/hostinger/compose.freellmapi.yaml
+      - deploy/hostinger/freellmapi_probe.py
+      - tests/firbo/test_freellmapi_probe.py
+      - .github/workflows/firbo-freellmapi.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  private-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install pytest==9.1.1 ruff==0.16.10
+      - run: python -m pytest --confcutdir=tests/firbo -q tests/firbo/test_freellmapi_probe.py
+      - run: python -m ruff check deploy/hostinger/freellmapi_probe.py tests/firbo/test_freellmapi_probe.py
+      - run: python -m ruff format --check deploy/hostinger/freellmapi_probe.py tests/firbo/test_freellmapi_probe.py
+      - name: Validate standalone optional service without starting it
+        env:
+          FREELLMAPI_IMAGE: ghcr.io/tashfeenahmed/freellmapi@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          touch deploy/hostinger/.env.freellmapi
+          docker compose -f deploy/hostinger/compose.freellmapi.yaml --profile freellmapi config --quiet

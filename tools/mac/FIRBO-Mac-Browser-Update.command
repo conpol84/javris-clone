@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Approved FIRBO source, shared release tree 2f55f21.
+# Approved FIRBO source, shared Connector release 3fd0c86.
 # Stop the old Connector with Ctrl+C before running this file.
 # Existing pairing, local permissions and journal remain in place.
 if [ "$(uname -s)" != Darwin ]; then
@@ -31,7 +31,7 @@ curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
 (
   cd "$firbo_stage"
   shasum -a 256 -c <<'HASHES'
-55c429a7dcb61a1e5a6b19fcc7ffbeda5c24fb62edad13bfeae755b87b9c295b  firbo-connector.mjs
+84b40bfd71bf4b4a0b28baf4737e72dc99613fcc290997781ce464d56e626c92  firbo-connector.mjs
 2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3  firbo-browser.mjs
 HASHES
 )
