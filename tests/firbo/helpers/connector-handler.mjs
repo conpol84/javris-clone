@@ -50,7 +50,7 @@ export async function makeHandler() {
       if(row.status===(args.p_ok?'done':'error')&&row.report_sha256===args.p_digest)return{data:{duplicate:true,receipt:row.receipt},error:null};
       return{data:null,error:{message:'state_conflict'}};
     }
-    if(name==='connector_decide_execution')return{data:null,error:{message:'state_conflict'}};
+    if(name==='connector_decide_execution'){(state.decisions??=[]).push(args);return{data:null,error:{message:'state_conflict'}};}
     return{data:null,error:{message:'unexpected_rpc'}};
   }};
 

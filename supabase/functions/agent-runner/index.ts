@@ -10,7 +10,7 @@ import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-sea
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
-import { cleanPolicy, decideComputer, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
+import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -531,15 +531,20 @@ Deno.serve(async (req) => {
       loopTools.computer = async (input) => {
         const asked = parseComputerRequest(input);
         if ('error' in asked) return `Could not understand that (${asked.error}). Write one step, e.g. "open_app Safari", "list Documents" or "read notes.txt".`;
-        const machine = machines.find(d => online(d) && kindsOf(d).includes(asked.kind)) ?? machines.find(d => kindsOf(d).includes(asked.kind));
-        if (!machine) return `No company computer can "${asked.kind}" right now: the owner has to allow it in the Connector on that computer. Do not try again.`;
-        let { verdict, reason } = decideComputer(asked.kind, asked.params, machine.policy);
-        if (verdict === 'auto' && askFirst) { verdict = 'approve'; reason = 'employee_must_ask'; }
+        const picked = machines.find(d => online(d) && kindsOf(d).includes(asked.kind)) ?? machines.find(d => kindsOf(d).includes(asked.kind));
+        if (!picked) return `No company computer can "${asked.kind}" right now: the owner has to allow it in the Connector on that computer. Do not try again.`;
+        // The owner may change the rules or remove the computer while the employee works: read them again before every step.
+        const { data: fresh } = await admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy, paired, revoked_at')
+          .eq('id', picked.id).eq('organization_id', task.organization_id).maybeSingle();
+        if (!fresh || !fresh.paired || fresh.revoked_at) return `"${picked.name}" is no longer connected to the company. Do not try again.`;
+        const machine: Machine = { ...fresh, policy: cleanPolicy(fresh.agent_policy) };
+        if (!kindsOf(machine).includes(asked.kind)) return `"${machine.name}" cannot "${asked.kind}" any more. Do not try again.`;
+        const { verdict, reason } = decideForEmployee(asked.kind, asked.params, machine.policy, { askFirst, suggestOnly: agent.autonomy === 'suggest' });
         if (verdict === 'deny') return `Not allowed on "${machine.name}" (${reason}). Do not try again; say in the report what you could not do.`;
+        if (verdict === 'suggest') return `You may only suggest this step (${reason}): describe it in your report for the owner.`;
         if (verdict === 'approve') {
-          if (agent.autonomy === 'suggest') return `This needs the owner's approval (${reason}) and you may only suggest: describe the step in your report.`;
           if (computerApprovals.length >= 3) return 'Enough computer steps are already waiting for approval: finish your report now.';
-          computerApprovals.push({ action: `computer_${asked.kind}`, risk: ['exec', 'shortcut', 'write'].includes(asked.kind) ? 'high' : 'medium',
+          computerApprovals.push({ action: `computer_${asked.kind}`, risk: ['exec', 'shortcut', 'write', 'browser_task'].includes(asked.kind) ? 'high' : 'medium',
             payload: { ...asked.params, device_id: machine.id, device_name: machine.name, reason, ai_generated: true, disclosure: DISCLOSURE[lang] } });
           return `Sent to the owner for approval (${reason}) on "${machine.name}". It runs once approved; you will not see its result in this task, so finish your report and say what is waiting for approval.`;
         }

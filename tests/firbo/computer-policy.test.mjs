@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanPolicy, decideComputer, isSafeCommand, parseComputerRequest, withinHours, describeComputerResult, DEFAULT_POLICY } from '../../supabase/functions/_shared/computer-policy.ts';
+import { cleanPolicy, decideComputer, decideForEmployee, isSafeCommand, parseComputerRequest, withinHours, describeComputerResult, DEFAULT_POLICY } from '../../supabase/functions/_shared/computer-policy.ts';
 
 const on = cleanPolicy({ enabled: true });
 
@@ -71,4 +71,30 @@ test('a browser plan for an employee: validated here, reviewed again on the comp
   assert.ok('error' in parseComputerRequest('browse [{"action":"read"}]'));
   assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'http://plain.example' }] }), null);
   assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'fill', selector: 'xpath=//input', text: 'x' }] }), null);
+});
+
+test('an employee set to suggest only may look, and everything else becomes a suggestion', () => {
+  const on = cleanPolicy({ enabled: true, writes: 'auto', commands: 'safe' });
+  const me = { suggestOnly: true };
+  assert.equal(decideForEmployee('list', { path: '' }, on, me).verdict, 'auto');
+  assert.equal(decideForEmployee('read', { path: 'a.txt' }, on, me).verdict, 'auto');
+  for (const [kind, params] of [['open_app', { app: 'Safari' }], ['browser_open', { url: 'https://example.com/' }], ['write', { path: 'a.md', content: 'x' }],
+    ['exec', { command: 'git status' }], ['browser_task', { steps: [{ action: 'open', url: 'https://example.com/' }] }], ['shortcut', { name: 'Backup' }]]) {
+    assert.equal(decideForEmployee(kind, params, on, me).verdict, 'suggest', kind);
+  }
+  // The owner's "never" stays "never", whatever the employee may do.
+  assert.equal(decideForEmployee('exec', { command: 'sudo ls' }, on, me).verdict, 'deny');
+});
+
+test('an employee whose power is on approval never runs a step by itself, browser plans included', () => {
+  const on = cleanPolicy({ enabled: true });
+  const me = { askFirst: true };
+  for (const kind of ['list', 'read', 'browser_open', 'browser_task']) assert.equal(decideForEmployee(kind, { path: '', url: 'https://example.com/', steps: [] }, on, me).verdict, 'approve', kind);
+  assert.equal(decideForEmployee('list', { path: '' }, cleanPolicy({ enabled: false }), me).verdict, 'deny');
+});
+
+test('turning the computer off for AI is honoured on the very next step', () => {
+  const before = cleanPolicy({ enabled: true });
+  assert.equal(decideForEmployee('list', { path: '' }, before, {}).verdict, 'auto');
+  assert.equal(decideForEmployee('list', { path: '' }, cleanPolicy({}), {}).verdict, 'deny');
 });

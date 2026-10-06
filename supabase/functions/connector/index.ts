@@ -55,8 +55,8 @@ function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?:
   return roots.length ? { job_kinds: [...new Set(kinds)].slice(0, 8), roots: roots.slice(0, 8) } : { job_kinds: [...new Set(kinds)].slice(0, 8) };
 }
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut']);
-export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'|'open_app'|'shortcut'; params: Record<string, unknown> } | null {
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'|'browser_task'|'open_app'|'shortcut'; params: Record<string, unknown> } | null {
   const name=action.trim().toLowerCase();
   const path=str(payload.path,500);
   if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
@@ -70,6 +70,8 @@ export function executionForApproval(action: string, payload: Record<string, unk
   }
   if (name==='computer_open_app') { const app=str(payload.app,60).trim(); return APP_NAME.test(app)?{kind:'open_app',params:{app}}:null; }
   if (name==='computer_shortcut') { const shortcut=str(payload.name,60).trim(); return APP_NAME.test(shortcut)?{kind:'shortcut',params:{name:shortcut}}:null; }
+  // An employee's browser plan: only its steps and time limit go to the computer, which shows the plan to its owner again.
+  if (name==='computer_browser_task') { const plan=browserTaskParams({steps:payload.steps,...(payload.timeout_ms===undefined?{}:{timeout_ms:payload.timeout_ms})}); return plan?{kind:'browser_task',params:plan}:null; }
   return null;
 }
 
@@ -257,8 +259,10 @@ Deno.serve(async (req) => {
       if (!execution) return json(422,{error:'action_not_executable'});
       deviceId=str(body.device_id,60);
       if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400,{error:'device_required'});
-      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at').eq('id',deviceId).maybeSingle();
+      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at,capabilities').eq('id',deviceId).maybeSingle();
       if (!dev || dev.organization_id!==approval.organization_id || !dev.paired || dev.revoked_at) return json(404,{error:'device_not_ready'});
+      // Browser control runs only on a computer whose owner turned it on there.
+      if (execution.kind==='browser_task' && !(Array.isArray(dev.capabilities?.job_kinds) && dev.capabilities.job_kinds.includes('browser_task'))) return json(409,{error:'device_not_ready'});
       kind=execution.kind;params=execution.params;
     }
     const { data: decided, error: decideError } = await admin.rpc('connector_decide_execution', {

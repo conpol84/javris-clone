@@ -110,7 +110,7 @@ export const giveJob = (device_id: string, kind: JobRow['kind'], params: Record<
 export const setAgentPolicy = (device_id: string, policy: ComputerPolicy) => call<{ ok: true; policy: ComputerPolicy }>({ action: 'set_policy', device_id, policy });
 export const cancelJob = (job_id: string) => call<{ ok: true }>({ action: 'cancel_job', job_id });
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut']);
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
 export const isComputerApprovalAction = (action: string) => COMPUTER_APPROVAL_ACTIONS.has(action.trim().toLowerCase());
 export const decideComputerApproval = (input: {
   approval_id: string; decision: 'approved'|'rejected'; device_id?: string; note?: string; payload?: Record<string, unknown>;

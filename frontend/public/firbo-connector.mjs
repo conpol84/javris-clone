@@ -68,21 +68,28 @@ export function validateJob(job) {
 export const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._&+'()-]{0,59}$/u;
 
 /** macOS only: `open -a <App>` or `shortcuts run <Name>`, without a shell. Resolves when the launcher finishes. */
-export async function launchMac(kind, name, { spawnImpl = spawn, platform = process.platform, timeoutMs = 60_000 } = {}) {
+export async function launchMac(kind, name, { spawnImpl = spawn, platform = process.platform, timeoutMs = 60_000, signal } = {}) {
   if (platform !== 'darwin') throw new Error('apps_unsupported');
   if (!APP_NAME.test(name)) throw new Error('invalid_app_name');
+  stopCheck(signal);
   const [cmd, args, failure] = kind === 'open_app' ? ['/usr/bin/open', ['-a', name], 'app_open_failed'] : ['/usr/bin/shortcuts', ['run', name], 'shortcut_failed'];
   return await new Promise((resolve, reject) => {
     let settled = false;
+    let child;
+    // A Shortcut that runs too long or is stopped locally is ended, not left running in the background.
+    const end = () => { try { child?.kill('SIGTERM'); } catch { /* already gone */ } };
     const finish = error => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (error) reject(error); else resolve(kind === 'open_app' ? { app: name, opened: true } : { name, ran: true });
+      signal?.removeEventListener('abort', onAbort);
+      if (error) { end(); reject(error); } else resolve(kind === 'open_app' ? { app: name, opened: true } : { name, ran: true });
     };
-    const timer = setTimeout(() => finish(new Error(failure)), kind === 'open_app' ? 15_000 : timeoutMs);
+    const onAbort = () => finish(new Error('operation_stopped'));
+    const timer = setTimeout(() => finish(new Error(kind === 'open_app' ? failure : 'shortcut_timeout')), kind === 'open_app' ? 15_000 : timeoutMs);
+    signal?.addEventListener('abort', onAbort, { once: true });
     try {
-      const child = spawnImpl(cmd, args, { shell: false, stdio: 'ignore' });
+      child = spawnImpl(cmd, args, { shell: false, stdio: 'ignore' });
       child.once('error', () => finish(new Error(failure)));
       child.once('close', code => finish(code === 0 ? undefined : new Error(failure)));
     } catch { finish(new Error(failure)); }
@@ -253,7 +260,7 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
       stopCheck(signal); throw new Error('declined_on_this_computer');
     }
     stopCheck(signal);
-    return await macLauncher(job.kind, job.kind === 'open_app' ? p.app : p.name);
+    return await macLauncher(job.kind, job.kind === 'open_app' ? p.app : p.name, { signal });
   }
   if (!roots.length) throw new Error('no_folder_allowed');
   if (job.kind === 'list') {

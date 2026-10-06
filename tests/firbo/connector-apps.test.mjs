@@ -34,3 +34,22 @@ test('the computer reports app support and its folders, nothing else', () => {
   assert.deepEqual(caps.roots, ['/Users/me/Documents']);
   assert.ok(!JSON.stringify(caps).includes('secret'));
 });
+
+// A Shortcut that never ends: the child records whether it was killed.
+const hangingSpawn = (killed) => () => { const c = new EventEmitter(); c.kill = sig => { killed.push(sig); setTimeout(() => c.emit('close', null), 1); }; return c; };
+
+test('a Shortcut that runs too long is ended, not left running', async () => {
+  const killed = [];
+  await assert.rejects(launchMac('shortcut', 'Slow job', { spawnImpl: hangingSpawn(killed), platform: 'darwin', timeoutMs: 20 }), /shortcut_timeout/);
+  assert.deepEqual(killed, ['SIGTERM']);
+});
+
+test('Stop on the computer ends a running Shortcut at once', async () => {
+  const killed = [];
+  const stop = new AbortController();
+  const running = launchMac('shortcut', 'Slow job', { spawnImpl: hangingSpawn(killed), platform: 'darwin', timeoutMs: 60_000, signal: stop.signal });
+  setTimeout(() => stop.abort(), 10);
+  await assert.rejects(running, /operation_stopped/);
+  assert.deepEqual(killed, ['SIGTERM']);
+  await assert.rejects(launchMac('shortcut', 'Slow job', { spawnImpl: hangingSpawn([]), platform: 'darwin', signal: stop.signal }), /operation_stopped/);
+});

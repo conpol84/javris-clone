@@ -99,6 +99,20 @@ export function decideComputer(kind: ComputerKind, params: Record<string, unknow
   }
 }
 
+/**
+ * The decision for one employee's step: the owner's rules first, then the employee's own limits.
+ * An employee set to "ask first" (power on approval) never runs anything by itself; a suggest-only employee may
+ * only look (list, read) and every other step becomes a suggestion in its report.
+ */
+export function decideForEmployee(kind: ComputerKind, params: Record<string, unknown>, policy: ComputerPolicy,
+  employee: { askFirst?: boolean; suggestOnly?: boolean }, now = new Date()): { verdict: Verdict | 'suggest'; reason: string } {
+  const owner = decideComputer(kind, params, policy, now);
+  if (owner.verdict === 'deny') return owner;
+  if (employee.suggestOnly && !(owner.verdict === 'auto' && (kind === 'list' || kind === 'read'))) return { verdict: 'suggest', reason: 'employee_may_only_suggest' };
+  if (owner.verdict === 'auto' && employee.askFirst) return { verdict: 'approve', reason: 'employee_must_ask' };
+  return owner;
+}
+
 const httpsUrl = (raw: string) => {
   try {
     const u = new URL(raw.trim());
