@@ -37,6 +37,8 @@ try {
     assert.equal(await mode.getAttribute('data-core-mode'), 'lightweight');
     await page.locator('canvas').waitFor({ state: 'visible' });
     await page.waitForLoadState('networkidle');
+    const canvasBox = await page.locator('canvas').boundingBox();
+    assert.ok(canvasBox && canvasBox.height >= 600 && canvasBox.width >= viewport.width - 1, 'actual positioned core must have a full-size canvas');
     await page.screenshot({ path: `${evidence}/core-${viewport.width}-lightweight.png` });
     // Graphics-only changes must preserve the real in-memory microphone phase.
     assert.equal(await page.evaluate(async () => (await import('/src/lib/company/voiceActivity.ts')).getVoiceSnapshot().phase), 'listening');
