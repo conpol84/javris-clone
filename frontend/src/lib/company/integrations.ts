@@ -189,7 +189,11 @@ export interface McpTool {
   inputSchema: { properties?: Record<string, { type?: string; description?: string }>; required?: string[] };
 }
 export const mcpTools = (id: string) => callFn<{ tools: McpTool[] }>('mcp', { action: 'tools', id });
-export const mcpCall = (id: string, tool: string, args: Record<string, unknown>) => callFn<{ text: string; is_error: boolean }>('mcp', { action: 'call', id, tool, arguments: args });
+export interface McpReceipt { request_id: string; result_id: string; arguments_sha256: string; result_sha256: string }
+export const mcpCall = (id: string, tool: string, args: Record<string, unknown>, confirmed: boolean) =>
+  confirmed === true
+    ? callFn<{ text: string; is_error: boolean; receipt: McpReceipt }>('mcp', { action: 'call', id, tool, arguments: args, confirm: true })
+    : Promise.reject(new Error('confirm_required'));
 export const testIntegration = (id: string) => call<{ ok: true }>({ action: 'test', id });
 export const sendIntegration = (id: string, text: string) => call<{ ok: true }>({ action: 'send', id, text });
 export const snapshotIntegration = (id: string) => call<{ text: string }>({ action: 'snapshot', id });

@@ -453,3 +453,42 @@ Remains:
 References: https://github.com/conpol84/javris-clone/pull/21 ;
 https://github.com/conpol84/javris-clone/actions/runs/37423292153 ;
 https://firboai.app
+
+### Codex: MCP company boundary candidate (6 October 2026)
+
+Changed:
+- Continued exact Claude checkpoint `f24287b99cbfb5aa94fc19d7012b26b0fc8ecb22`
+  after confirming no direct-session branch drift. PR #13 remains untouched.
+- Hardened the existing MCP adapter with bounded request/response/session/tool
+  data, exact same-session tool discovery, explicit browser+server confirmation,
+  manager-role recheck, durable pre/post audit receipts and honest reconciliation
+  for ambiguous/unrecorded results. Missing quota, integration, secret or audit
+  state fails closed before any tool action.
+- New connections use the existing atomic integration+secret RPC. No migration,
+  SQL replay, provider consent, credential, integration row, external tool call,
+  device job or message was created. Eight-language confirmation copy included.
+  See `FIRBO-MCP-BOUNDARY-20261006.md`.
+
+Tested / passed:
+- 9/9 actual MCP Edge entrypoint tests with synthetic DB/remote doubles, 2/2
+  focused frontend receipt test, all 555 non-rendered FIRBO Node tests and all
+  489 frontend tests pass. Edge TypeScript, frontend production build, clean npm
+  11.19 install, diff check and production dependency audit (zero
+  vulnerabilities) pass. Exact-head CI remains a release gate.
+
+Failed / limitations:
+- The wildcard local FIRBO run reaches the existing rendered-browser fixture but
+  cannot load its pinned Playwright runtime in this workspace. This is an
+  environment limitation, not counted as a pass; exact-head CI must supply
+  independent rendered evidence.
+- Literal/local/internal hosts and redirects are denied, but the Edge fetch API
+  does not provide the Connector's socket-level DNS pinning. Network-pinned
+  egress remains required before declaring arbitrary tenant MCP hosts a complete
+  SSRF boundary.
+
+Remains:
+- Full non-rendered/frontend gates, exact-head PR workflows, merge and immutable
+  deployment verification. Then legitimate owner-approved provider acceptance
+  with receipt reconciliation; no real connection or call may be invented.
+- Mac, signed-in CEO, OAuth/channel, second customer and all remaining
+  master-plan gates stay open. No full-plan completion.

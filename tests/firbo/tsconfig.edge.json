@@ -31,6 +31,7 @@
     "../../supabase/functions/knowledge/index.ts",
     "../../supabase/functions/workflow-runner/index.ts",
     "../../supabase/functions/channel-inbound/index.ts",
-    "../../supabase/functions/integrations/index.ts"
+    "../../supabase/functions/integrations/index.ts",
+    "../../supabase/functions/mcp/index.ts"
   ]
 }
