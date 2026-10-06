@@ -99,3 +99,21 @@ identity. Production may change concurrently: re-read immediately before release
 
 Do not send external messages without the owner's specific authorization.
 Do not call any source/CI/rendered evidence real-device or full-plan completion.
+
+## Follow-up: preserve concurrent PR44 and make the Mac update accessible
+
+- Discovered concurrent PR44 `d30b24742bd02271526f735b56f1d83558559286` after
+  publishing the initial combined draft. Its runtime tree matches this candidate;
+  only the independently authored checkpoint documents differ. Merged its history
+  and retained both documents. No competing production release was attempted.
+- Added a download-only update notice to the selected paired Mac's Computers
+  workspace when browser_task is absent. Windows, unpaired/revoked and already
+  browser-capable devices do not get this notice. It derives from the current
+  selected device and inherits the existing company/user reset boundary.
+- Exposed the existing reviewed updater as a downloadable .command asset, with
+  local Terminal instructions in all eight languages. No automatic installation,
+  pairing, device job or permission change. The initial origin remains FIRBO;
+  local confirmation and browser plan approval remain mandatory.
+- Added a runtime-asset checksum regression and desktop/mobile rendered selection
+  and company-switch cases. These guard real updater drift and stale-device UI;
+  they do not claim physical Mac installation or browser acceptance.
