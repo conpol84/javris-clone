@@ -141,6 +141,7 @@ jobs:
               grep -q 'rollover lost unresolved liability' /tmp/firbo-lifecycle-evidence/rollover-baseline.txt
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006144554_inference_reservation_rollover.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006154856_inference_runner_attempt_ledger.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006212341_inference_accounting_snapshot.sql
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/mission-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/rollover-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
@@ -148,6 +149,7 @@ jobs:
               python3 tests/firbo/accounting/postgres-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               python3 tests/firbo/accounting/test_reconciliation_monitor.py
               python3 tests/firbo/accounting/monitor-postgres.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/snapshot-rpc-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
           esac
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
