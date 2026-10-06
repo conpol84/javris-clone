@@ -3,12 +3,13 @@ import { Panel } from '../command/Panel';
 import { useI18n } from '../../i18n/I18nProvider';
 import { requireClient } from '../../lib/company/client';
 import { ServerExecutionReceipt } from './ServerExecutionReceipt';
+import { ServerRuntimeInventory } from './ServerRuntimeInventory';
 import { serverExecution } from '../../../../supabase/functions/_shared/server-execution';
 
 // The server agent's own dashboard (behind a Caddy password on the VPS).
 const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://jarvis.firboai.app';
 
-interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string }
+interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string; runtime?: unknown }
 interface Turn { q: string; a: string; meta: string; error?: boolean; execution?: unknown }
 
 /** The OpenJarvis server on the VPS: live status and a direct line to it (platform admins only, checked by the server). */
@@ -65,6 +66,7 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
         <a className="fb-btn fb-btn--primary" href={DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
       </div>
       {status && !status.configured && <p className="fb-dim mt-2 text-xs">{t('jv.setup')}</p>}
+      {status?.online && <ServerRuntimeInventory value={status.runtime} />}
     </Panel>
     {status?.online && <Panel title={t('jv.ask')}>
       <form onSubmit={send} className="flex flex-col gap-2">

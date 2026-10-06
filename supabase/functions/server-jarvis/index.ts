@@ -3,6 +3,7 @@
 // The key never reaches the browser; every call is checked against public.platform_admins.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { serverExecution } from '../_shared/server-execution.ts';
+import { serverRuntime } from '../_shared/server-runtime.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -70,7 +71,8 @@ Deno.serve(async (req) => {
   try {
     const [info, models] = await Promise.all([get('/v1/info'), get('/v1/models').catch(() => ({ data: [] }))]);
     return json(200, { configured: true, online: true, model: info?.model ?? '', agent: info?.agent ?? '', engine: info?.engine ?? '',
-      models: (Array.isArray(models?.data) ? models.data : []).map((m: any) => String(m?.id ?? '')).filter(Boolean).slice(0, 50) });
+      models: (Array.isArray(models?.data) ? models.data : []).map((m: any) => String(m?.id ?? '')).filter(Boolean).slice(0, 50),
+      runtime: serverRuntime(info?.runtime) });
   } catch (error) {
     return json(200, { configured: true, online: false, reason: error instanceof Error ? error.message.slice(0, 40) : 'error' });
   }

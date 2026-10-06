@@ -1409,6 +1409,8 @@ async def reset_telemetry():
 @router.get("/v1/info")
 async def server_info(request: Request):
     """Return server configuration: model, agent, engine."""
+    from openjarvis.server.runtime_inventory import agent_runtime_inventory
+
     agent = getattr(request.app.state, "agent", None)
     agent_id = getattr(agent, "agent_id", None) if agent else None
     # Fall back to configured agent name if agent didn't instantiate
@@ -1418,6 +1420,7 @@ async def server_info(request: Request):
         "model": getattr(request.app.state, "model", ""),
         "agent": agent_id,
         "engine": getattr(request.app.state, "engine_name", ""),
+        "runtime": agent_runtime_inventory(agent),
     }
 
 

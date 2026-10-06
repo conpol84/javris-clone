@@ -16,7 +16,7 @@ jobs:
         run: |
           python3 -m venv /tmp/firbo-receipts
           /tmp/firbo-receipts/bin/pip install -r tests/firbo/requirements.txt
-          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py
+          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py
   bridge-and-panel:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -26,11 +26,11 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version: '22.22.0'}
       - name: Actual handlers with synthetic transports
-        run: node --experimental-strip-types --test tests/firbo/server-execution.test.mjs tests/firbo/server-jarvis-entrypoint.test.mjs tests/firbo/edge-entrypoints.test.mjs
+        run: node --experimental-strip-types --test tests/firbo/server-execution.test.mjs tests/firbo/server-runtime.test.mjs tests/firbo/server-jarvis-entrypoint.test.mjs tests/firbo/edge-entrypoints.test.mjs
       - run: npm install --global npm@11.19.0
       - run: npm ci --prefix frontend
       - name: Panel and strict types
         run: |
-          npm --prefix frontend test -- --run src/components/admin/ServerExecutionReceipt.test.tsx src/components/admin/ServerJarvisPanel.test.tsx
+          npm --prefix frontend test -- --run src/components/admin/ServerExecutionReceipt.test.tsx src/components/admin/ServerJarvisPanel.test.tsx src/components/admin/ServerRuntimeInventory.test.tsx
           frontend/node_modules/.bin/tsc --noEmit -p tests/firbo/tsconfig.edge.json
           npm --prefix frontend run build
