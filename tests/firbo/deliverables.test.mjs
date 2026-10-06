@@ -33,3 +33,9 @@ test('each deliverable carries its own standard', () => {
   assert.match(deliverableInstructions('presentation'), /---/);
   assert.match(deliverableInstructions('memo'), /Subject/);
 });
+
+test('the title decides: an analysis that will become slides later is still a report', () => {
+  assert.equal(detectDeliverable('Ανάλυση ανταγωνισμού: εφαρμογές player trading', 'Το αποτέλεσμα θα γίνει μετά παρουσίαση για τη διοίκηση.'), 'report');
+  assert.equal(detectDeliverable('Q4 για τη διοίκηση', 'Φτιάξε παρουσίαση 10 διαφανειών'), 'presentation');
+  assert.equal(detectDeliverable('Παρουσίαση: ανάλυση αγοράς'), 'presentation');
+});
