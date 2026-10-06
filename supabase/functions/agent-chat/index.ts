@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { taskBriefing, focusBriefing, type BriefTask, handoffFrom, meetingFrom, taskFrom } from '../_shared/task-briefing.ts';
+import { taskBriefing, focusBriefing, type BriefTask, ceoActions } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 
@@ -209,10 +209,10 @@ Deno.serve(async (req) => {
       ? 'When the founder wants details only the employee who did a task can give (how it was done, what exactly it searched or read, why it chose something, or to change that work), answer briefly from FINISHED TASKS and WORK LOG, then say you will put them through to that employee. In that case end your reply with one last line exactly like: ASK: <employee name from Team> | <the question for that employee, in the founder\'s language>. Use it only for one of the employees in Team, never for yourself, and at most once per reply.'
       : 'When asked what you did or how you did a task, explain it step by step from WORK LOG (what you searched, read, calculated or created and what you found), then the result. Never claim a step that is not in WORK LOG.',
     ...(isCeo ? [
-      'You run this company like a real CEO: you delegate. When the founder asks for work to be done (a presentation, a report, research, an email or offer, a plan), do not do it yourself in the chat: say in one or two sentences which employee from Team will do it and what they will deliver, then end your reply with one last line exactly like: TASK: <employee name from Team> | <task title, in the founder\'s language; start it with "Presentation:" for slides> | <what exactly to deliver: audience, length, data to use>. The founder starts it with one click.',
+      'You run this company like a real CEO: you delegate. When the founder asks for work to be done (a presentation, a report, research, an email or offer, a plan), do not do it yourself in the chat: say in one or two sentences which employee from Team will do it and what they will deliver, then end your reply with one line exactly like: TASK: <employee name from Team> | <task title, in the founder\'s language; start it with "Presentation:" for slides> | <what exactly to deliver: audience, length, data to use>. The founder starts it with one click. When you delegate, keep the whole reply under 80 words: the employee does the work, not you.',
       'When the founder asks for a meeting, or a decision clearly needs several employees to agree, say who you will bring and why in one or two sentences, then end your reply with one last line exactly like: MEETING: <short topic, in the founder\'s language> | <employee names from Team, comma separated>. Never say the meeting or the task already happened; the founder starts it with the button.',
       'Never ask the founder for passwords, keys, SSH access, server addresses or DNS changes; Firbo connects apps and computers through its own Integrations and Computers pages.',
-      'End a reply with at most one of the lines ASK, TASK or MEETING, and only for employees in Team.',
+      'Action lines (ASK, TASK, MEETING) go at the very end, one per line, at most one of each kind, and only for employees in Team.',
     ] : []),
     ...(body.voice === true ? ['This is a spoken conversation with the founder. Answer the exact question first, in one to three short natural sentences unless you are reading a task result, no markdown, lists, links or emoji. Be specific: name people, tasks and numbers from the live data. Never repeat what you already said earlier in this conversation or re-greet; if asked the same thing again, add new detail or a decision. Give at most one concrete recommendation, only when useful. If the data does not contain the answer, say so briefly and say how you would find out.'] : []),
   ].join('\n\n');
@@ -249,7 +249,8 @@ Deno.serve(async (req) => {
       const res = await fetch(`${target.base}/chat/completions`, {
         method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
         body: JSON.stringify({ model: target.model,
-          ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.5) }),
+          // Reasoning models (gpt-5, o-series) think briefly in a chat, so the reply is fast and never cut off by its own reasoning.
+          ...(openai ? { max_completion_tokens: 8000, ...(/^(gpt-5|o\d)/.test(target.model) ? { reasoning_effort: 'low' } : {}) } : { max_tokens: 1800, temperature: Number(agent.temperature ?? 0.5) }),
           messages: [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }],
         }), signal: AbortSignal.timeout(90_000),
       });
@@ -273,10 +274,8 @@ Deno.serve(async (req) => {
   const team = viaChannel ? [] : ag.filter((x: any) => x.enabled !== false).map((x: any) => ({ id: x.id, name: x.name }));
   let reply: string = raw;
   if (isCeo) {
-    reply = handoffFrom(reply, team, agent.id).text;
-    reply = taskFrom(reply, team, agent.id).text;
-    const meet = meetingFrom(reply, team, agent.id);
-    reply = viaChannel && meet.topic ? meet.text.replace(/\n*\[\[meet:[^\]]*\]\][\s\S]*$/, '') : meet.text;
+    reply = ceoActions(reply, team, agent.id);
+    if (viaChannel) reply = reply.replace(/\n*\[\[(?:ask|task|meet):[\s\S]*$/, '');
   }
   const inTok = Number(completion?.usage?.prompt_tokens ?? 0);
   const outTok = Number(completion?.usage?.completion_tokens ?? 0);

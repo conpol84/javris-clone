@@ -11,18 +11,24 @@ export interface Handoff { agentId: string; question: string }
 export interface TaskOffer { agentId: string; title: string; details: string }
 export interface MeetingOffer { topic: string; participants: string[] }
 
-/** The reply text to show and speak, and the hand-over, task or meeting the CEO offers when there is one. */
+/** The reply text to show and speak, and the hand-over, task and meeting the CEO offers (each at most once). */
 export function parseHandoff(content: string): { text: string; ask: Handoff | null; task: TaskOffer | null; meet: MeetingOffer | null } {
-  const m = MARK.exec(content);
-  if (m) return { text: content.slice(0, m.index).trimEnd(), ask: { agentId: m[1].toLowerCase(), question: m[2].trim().slice(0, 400) }, task: null, meet: null };
-  const t = TASK.exec(content);
-  if (t) {
-    const [title, ...rest] = t[2].trim().split('\n');
-    return { text: content.slice(0, t.index).trimEnd(), ask: null, task: { agentId: t[1].toLowerCase(), title: title.trim().slice(0, 160), details: rest.join('\n').trim().slice(0, 1500) }, meet: null };
+  const out: { text: string; ask: Handoff | null; task: TaskOffer | null; meet: MeetingOffer | null } = { text: content, ask: null, task: null, meet: null };
+  // Markers are the last paragraphs of the reply; peel them off from the end.
+  for (let i = 0; i < 3; i++) {
+    const m = MARK.exec(out.text);
+    const t = TASK.exec(out.text);
+    const g = MEET.exec(out.text);
+    const last = [m, t, g].filter((x): x is RegExpExecArray => !!x).sort((a, b) => b.index - a.index)[0];
+    if (!last) break;
+    if (last === m && !out.ask) out.ask = { agentId: m[1].toLowerCase(), question: m[2].trim().slice(0, 400) };
+    else if (last === t && !out.task) {
+      const [title, ...rest] = t[2].trim().split('\n');
+      out.task = { agentId: t[1].toLowerCase(), title: title.trim().slice(0, 160), details: rest.join('\n').trim().slice(0, 1500) };
+    } else if (last === g && !out.meet) out.meet = { topic: g[2].trim().slice(0, 160), participants: g[1].split(',').filter(Boolean).map((x) => x.toLowerCase()) };
+    out.text = out.text.slice(0, last.index).trimEnd();
   }
-  const g = MEET.exec(content);
-  if (g) return { text: content.slice(0, g.index).trimEnd(), ask: null, task: null, meet: { topic: g[2].trim().slice(0, 160), participants: g[1].split(',').filter(Boolean).map((x) => x.toLowerCase()) } };
-  return { text: content, ask: null, task: null, meet: null };
+  return out;
 }
 
 /** Link that opens a meeting ready to start, with the topic and the employees the CEO proposed. */

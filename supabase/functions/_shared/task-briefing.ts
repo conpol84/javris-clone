@@ -122,7 +122,7 @@ export const HANDOFF = /\[\[ask:([0-9a-f-]{36})\]\]\s*(.*)$/s;
  * An unknown name (or the CEO itself) is dropped, so the owner never gets a button that leads nowhere.
  */
 export function handoffFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; agentId: string | null; question: string } {
-  const m = /\n?[ \t*_]*ASK:\s*([^|\n]{1,80}?)\s*\|\s*([^\n]{1,400})\s*$/i.exec(reply.trimEnd());
+  const m = /(?:^|\n)[ \t*_]*ASK:\s*([^|\n]{1,80}?)\s*\|\s*([^\n]{1,400})\s*$/i.exec(reply.trimEnd());
   if (!m) return { text: reply, agentId: null, question: '' };
   const text = reply.trimEnd().slice(0, m.index).trimEnd();
   const want = fold(m[1].replace(/[*_"«»]/g, '').trim());
@@ -138,7 +138,7 @@ export function handoffFrom(reply: string, agents: { id: string; name: string }[
  * invites people when the meeting starts). The app shows it as a button that opens the meeting ready to start.
  */
 export function meetingFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; topic: string; ids: string[] } {
-  const m = /\n?[ \t*_]*MEETING:\s*([^|\n]{3,160}?)\s*(?:\|\s*([^\n]{0,400}))?\s*$/i.exec(reply.trimEnd());
+  const m = /(?:^|\n)[ \t*_]*MEETING:\s*([^|\n]{3,160}?)\s*(?:\|\s*([^\n]{0,400}))?\s*$/i.exec(reply.trimEnd());
   if (!m) return { text: reply, topic: '', ids: [] };
   const text = reply.trimEnd().slice(0, m.index).trimEnd();
   const topic = m[1].replace(/[*_"«»\[\]]/g, '').trim();
@@ -159,7 +159,7 @@ export function meetingFrom(reply: string, agents: { id: string; name: string }[
  * button that gives the task to that employee; nothing starts until the owner presses it.
  */
 export function taskFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; agentId: string | null; title: string } {
-  const m = /\n?[ \t*_]*TASK:\s*([^|\n]{1,80}?)\s*\|\s*([^|\n]{3,140}?)\s*(?:\|\s*([^\n]{0,900}))?\s*$/i.exec(reply.trimEnd());
+  const m = /(?:^|\n)[ \t*_]*TASK:\s*([^|\n]{1,80}?)\s*\|\s*([^|\n]{3,140}?)\s*(?:\|\s*([^\n]{0,900}))?\s*$/i.exec(reply.trimEnd());
   if (!m) return { text: reply, agentId: null, title: '' };
   const text = reply.trimEnd().slice(0, m.index).trimEnd();
   const want = fold(m[1].replace(/[*_"«»]/g, '').trim());
@@ -168,6 +168,29 @@ export function taskFrom(reply: string, agents: { id: string; name: string }[], 
   if (!agent || !title) return { text, agentId: null, title: '' };
   const details = (m[3] ?? '').replace(/[*_]+$/g, '').trim();
   return { text: `${text}\n\n[[task:${agent.id}]] ${title}${details ? `\n${details}` : ''}`, agentId: agent.id, title };
+}
+
+/**
+ * All the action lines the CEO ended its reply with (ASK, TASK and MEETING, in any order, up to three) as stored
+ * markers after the text, one per paragraph. Lines naming no real employee are dropped.
+ */
+export function ceoActions(reply: string, agents: { id: string; name: string }[], selfId: string): string {
+  let rest = reply.trimEnd();
+  const marks: string[] = [];
+  for (let round = 0; round < 3; round++) {
+    let changed = false;
+    for (const convert of [handoffFrom, taskFrom, meetingFrom]) {
+      const out = convert(rest, agents, selfId).text;
+      if (out === rest) continue;
+      const at = out.search(/\n\n\[\[(?:ask|task|meet):/);
+      if (at >= 0) { marks.unshift(out.slice(at + 2)); rest = out.slice(0, at).trimEnd(); }
+      else rest = out.trimEnd();
+      changed = true;
+      break;
+    }
+    if (!changed) break;
+  }
+  return [rest, ...marks].join('\n\n');
 }
 
 /** The record of the task the owner is asking about (result + work log), to put right next to the question:

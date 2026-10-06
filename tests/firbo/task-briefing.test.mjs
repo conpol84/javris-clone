@@ -113,3 +113,16 @@ test('a task the CEO gives becomes a marker for a real employee only', () => {
   assert.equal(taskFrom('Ok.\nTASK: Κανείς | Κάτι', team, CEO).text, 'Ok.');
   assert.equal(taskFrom('Απλή απάντηση.', team, CEO).text, 'Απλή απάντηση.');
 });
+
+import { ceoActions } from '../../supabase/functions/_shared/task-briefing.ts';
+test('the CEO can give a task and call a meeting in the same reply', () => {
+  const out = ceoActions('Θα αναθέσω την παρουσίαση και θα καλέσω σύσκεψη.\nTASK: Research Agent | Παρουσίαση: Δ΄ τρίμηνο | 10 διαφάνειες\nMEETING: Τιμές Δ΄ τριμήνου | Research Agent', team, CEO);
+  assert.equal(out, `Θα αναθέσω την παρουσίαση και θα καλέσω σύσκεψη.\n\n[[task:${A}]] Παρουσίαση: Δ΄ τρίμηνο\n10 διαφάνειες\n\n[[meet:${A}]] Τιμές Δ΄ τριμήνου`);
+  assert.equal(ceoActions('Απλή απάντηση.', team, CEO), 'Απλή απάντηση.');
+  assert.equal(ceoActions('Ok.\nTASK: Κανείς | Κάτι', team, CEO), 'Ok.');
+});
+
+test('a TASK line is never read as an ASK line (the "T" left behind in a live reply)', () => {
+  assert.equal(ceoActions('Θα το αναθέσω.\nTASK: Research Agent | Παρουσίαση: Q4 | 10 διαφάνειες', [], CEO), 'Θα το αναθέσω.');
+  assert.equal(handoffFrom('Ok.\nTASK: Research Agent | Παρουσίαση', team, CEO).text, 'Ok.\nTASK: Research Agent | Παρουσίαση');
+});
