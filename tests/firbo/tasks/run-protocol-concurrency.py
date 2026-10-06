@@ -14,6 +14,9 @@ OWNER = "aaaaaaaa-0701-4701-8701-aaaaaaaaaaaa"
 ORG = "11111111-0701-4701-8701-111111111111"
 AGENT = "33333333-0701-4701-8701-333333333333"
 DEVICE = "77777777-0701-4701-8701-777777777777"
+AGENT_DEVICE = "77777777-0702-4702-8702-777777777777"
+AGENT_POLICY = '{"enabled":true}'
+CAPABILITIES = '{"job_kinds":["list","read","write","exec","browser_open","browser_task","open_app","shortcut"]}'
 SERVICE = 'set local role service_role; set local request.jwt.claims=\'{"role":"service_role"}\';'
 AUTHENTICATED = f'set local role authenticated; set local request.jwt.claims=\'{{"role":"authenticated","sub":"{OWNER}"}}\';'
 
@@ -40,6 +43,21 @@ def claim(identifier: str) -> str:
     return json.loads(
         service(f"select public.claim_task_run('{ORG}','{identifier}','{OWNER}')")
     )["run_claim"]
+
+
+def agent_job_insert(identifier: str, token: str, kind: str = "list") -> str:
+    return f"""insert into public.connector_jobs(
+      organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,
+      agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
+      values('{ORG}','{AGENT_DEVICE}','{kind}','{{}}','queued','agent','{identifier}',
+      '{AGENT}','{token}','{AGENT_POLICY}'::jsonb,'{CAPABILITIES}'::jsonb)"""
+
+
+def agent_task() -> tuple[str, str, str]:
+    identifier = task()
+    token = claim(identifier)
+    job = service(agent_job_insert(identifier, token) + " returning id")
+    return identifier, token, job
 
 
 def publish(
@@ -260,6 +278,119 @@ def publish_before_recover(isolation: str) -> None:
     )
 
 
+def agent_job_before_publication(isolation: str) -> None:
+    t = task()
+    token = claim(t)
+    expected = "23514" if isolation == "read committed" else "40001"
+    race(
+        "inline employee job prevents overlapping parent publication",
+        isolation,
+        f"{SERVICE} {agent_job_insert(t, token)}",
+        f"{SERVICE} {publish(t, token)}",
+        expected,
+    )
+    assert (
+        sql(
+            f"select status='running' and run_claim='{token}' from public.tasks where id='{t}'"
+        )
+        == "t"
+    )
+    assert (
+        sql(
+            f"select count(*)=1 and bool_and(status='queued') from public.connector_jobs where agent_task_id='{t}'"
+        )
+        == "t"
+    )
+    service(
+        f"update public.connector_jobs set status='cancelled',finished_at=now() where agent_task_id='{t}' and status='queued'; {publish(t, token)}"
+    )
+
+
+def publication_before_agent_job(isolation: str) -> None:
+    t = task()
+    token = claim(t)
+    expected = "23514" if isolation == "read committed" else "40001"
+    first = f"{SERVICE} do $$ begin perform public.publish_task_run('{ORG}','{t}','{token}','{{\"report\":\"published\"}}','[]','completed'); end $$"
+    race(
+        "parent publication prevents a late inline employee job",
+        isolation,
+        first,
+        f"{SERVICE} {agent_job_insert(t, token)}",
+        expected,
+    )
+    assert (
+        sql(
+            f"select status='completed' and run_claim is null from public.tasks where id='{t}'"
+        )
+        == "t"
+    )
+    assert (
+        sql(f"select count(*) from public.connector_jobs where agent_task_id='{t}'")
+        == "0"
+    )
+
+
+def policy_revoke_before_dispatch(isolation: str) -> None:
+    t, token, job = agent_task()
+    first = f"{SERVICE} update public.connector_devices set agent_policy='{{\"enabled\":false}}'::jsonb where id='{AGENT_DEVICE}'"
+    second = f"{SERVICE} select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')"
+    expected = None if isolation == "read committed" else "40001"
+    race(
+        "device policy revocation wins over inline job dispatch",
+        isolation,
+        first,
+        second,
+        expected,
+    )
+    if isolation != "read committed":
+        service(
+            f"select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')"
+        )
+    assert (
+        sql(
+            f"select status='cancelled' and error='authorization_changed' from public.connector_jobs where id='{job}'"
+        )
+        == "t"
+    )
+    assert (
+        sql(
+            f"select status='running' and run_claim='{token}' from public.tasks where id='{t}'"
+        )
+        == "t"
+    )
+    service(
+        f"update public.connector_devices set agent_policy='{AGENT_POLICY}'::jsonb where id='{AGENT_DEVICE}'; {publish(t, token)}"
+    )
+
+
+def employee_revoke_before_dispatch(isolation: str, target: str) -> None:
+    t, token, job = agent_task()
+    where = (
+        f"public.agents where id='{AGENT}'"
+        if target == "agent"
+        else f"public.agent_tools where agent_id='{AGENT}' and tool_name='computer_use'"
+    )
+    table, predicate = where.split(" where ", 1)
+    race(
+        f"{target} revocation wins over inline job dispatch",
+        isolation,
+        f"{SERVICE} update {table} set enabled=false where {predicate}",
+        f"{SERVICE} select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')",
+        None if isolation == "read committed" else "40001",
+    )
+    if isolation != "read committed":
+        service(
+            f"select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')"
+        )
+    assert (
+        sql(
+            f"select status='cancelled' and error='authorization_changed' from public.connector_jobs where id='{job}'"
+        )
+        == "t"
+    )
+    service(f"update {table} set enabled=true where {predicate}; {publish(t, token)}")
+
+
 def visibility_and_fast_receipt() -> None:
     t = task()
     token = claim(t)
@@ -323,7 +454,11 @@ if __name__ == "__main__":
       insert into public.organizations(id,name,slug) values('{ORG}','Synthetic run races','synthetic-run-races');
       insert into public.organization_members(organization_id,user_id,role) values('{ORG}','{OWNER}','owner');
       insert into public.agents(id,organization_id,name,slug) values('{AGENT}','{ORG}','Synthetic run agent','synthetic-race-agent');
-      insert into public.connector_devices(id,organization_id,created_by,name,paired) values('{DEVICE}','{ORG}','{OWNER}','Synthetic paired race device',true);
+      update public.agent_tools set enabled=true,policy='allow' where agent_id='{AGENT}' and tool_name='computer_use';
+      insert into public.connector_devices(id,organization_id,created_by,name,paired,capabilities,agent_policy)
+        values('{DEVICE}','{ORG}','{OWNER}','Synthetic paired race device',true,'{CAPABILITIES}'::jsonb,'{AGENT_POLICY}'::jsonb);
+      insert into public.connector_devices(id,organization_id,created_by,name,paired,capabilities,agent_policy)
+        values('{AGENT_DEVICE}','{ORG}','{OWNER}','Synthetic employee race device',true,'{CAPABILITIES}'::jsonb,'{AGENT_POLICY}'::jsonb);
       set firbo.seeding='off';""")
     try:
         for level in ("read committed", "repeatable read", "serializable"):
@@ -334,6 +469,11 @@ if __name__ == "__main__":
             new_dependency_before_claim(level, "approval")
             recover_before_publish(level)
             publish_before_recover(level)
+            agent_job_before_publication(level)
+            publication_before_agent_job(level)
+            policy_revoke_before_dispatch(level)
+            employee_revoke_before_dispatch(level, "agent")
+            employee_revoke_before_dispatch(level, "tool")
         visibility_and_fast_receipt()
     finally:
         sql(

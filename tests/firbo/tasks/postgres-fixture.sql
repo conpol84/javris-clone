@@ -9,6 +9,7 @@ create table public.connector_devices (
   created_by uuid references auth.users(id) on delete set null,
   name text not null,
   paired boolean not null default false,
+  capabilities jsonb not null default '{"job_kinds":[]}'::jsonb,
   created_at timestamptz not null default now()
 );
 create table public.connector_jobs (
@@ -22,6 +23,7 @@ create table public.connector_jobs (
   params jsonb not null default '{}'::jsonb,
   status text not null default 'queued' check (status in ('queued','running','done','error','cancelled')),
   created_at timestamptz not null default now(),
+  started_at timestamptz,
   finished_at timestamptz,
   result jsonb,
   report_sha256 text,
