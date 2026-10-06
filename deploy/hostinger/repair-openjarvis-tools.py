@@ -6,6 +6,8 @@ No endpoint guessing, port publishing, config edits or provider switching.
 at a recognized forwarding site, with backup and rollback on failed health.
 --verify-execution additionally asks the admin agent to printf a unique marker.
 --diagnose-native tests safe native tools without modifying installed files.
+--apply-temperature-fix installs the measured route workaround, verifies both
+ordinary native executions and rolls back on failure.
 --trace-native also traces installed adapter/server/prompt boundaries, without
 executing any tools in the diagnostic worker or printing request/response prose.
 """
@@ -75,7 +77,30 @@ NEW_BLOCK = """            if resp.status_code == 400 and "tools" in payload:
                     payload.pop("tool_choice", None)
                     resp = self._client.post(url, json=payload)
 """
-CANDIDATE_SHA = "673f96dd99d9070bba33c0e7d9b0b9511ac902cad94d643448d9519551f38b61"
+PRE_TEMPERATURE_SHA = "673f96dd99d9070bba33c0e7d9b0b9511ac902cad94d643448d9519551f38b61"
+CANDIDATE_SHA = "d833c6cd073ee235ac1f47f74f668317397524ee31c37889b87e2e0393b8b395"
+TEMPERATURE_HELPER = '''\
+    def _prepare_firbo_tool_payload(self, payload: Dict[str, Any]) -> None:
+        """Use gateway sampling defaults on the measured FIRBO tool route.
+
+        The owner's repeated A/B test returned tools only when temperature
+        was omitted. Keep this compatibility workaround endpoint/model scoped;
+        never remove tools or relax an explicit tool_choice.
+        """
+        from urllib.parse import urlsplit
+
+        endpoint = urlsplit(self._host)
+        if (
+            payload.get("tools")
+            and payload.get("model") == "firbo-quality"
+            and endpoint.scheme == "https"
+            and endpoint.hostname == "gateway.firboai.app"
+            and endpoint.port in (None, 443)
+        ):
+            payload.pop("temperature", None)
+
+'''
+TEMPERATURE_CALL = "        self._prepare_firbo_tool_payload(payload)\n"
 
 
 def digest(data):
@@ -89,13 +114,23 @@ class RepairError(RuntimeError):
 def candidate(data):
     if digest(data) == CANDIDATE_SHA:
         return data
-    if digest(data) not in BASELINES:
+    if digest(data) not in BASELINES | {PRE_TEMPERATURE_SHA}:
         raise RepairError("unknown_engine_code_preserved")
     source = data.decode()
-    block = PREVIOUS_BLOCK if PREVIOUS_BLOCK in source else OLD_BLOCK
-    if source.count(block) != 1:
-        raise RepairError("unexpected_engine_structure")
-    source = source.replace(block, NEW_BLOCK, 1)
+    if digest(data) != PRE_TEMPERATURE_SHA:
+        block = PREVIOUS_BLOCK if PREVIOUS_BLOCK in source else OLD_BLOCK
+        if source.count(block) != 1:
+            raise RepairError("unexpected_engine_structure")
+        source = source.replace(block, NEW_BLOCK, 1)
+    if digest(source.encode()) != PRE_TEMPERATURE_SHA:
+        raise RepairError("pre_temperature_hash_mismatch")
+    anchor = '            payload["tool_choice"] = "auto"\n'
+    if source.count(anchor) != 3 or source.count("    def generate(") != 1:
+        raise RepairError("unexpected_temperature_structure")
+    source = source.replace(
+        "    def generate(", TEMPERATURE_HELPER + "    def generate(", 1
+    )
+    source = source.replace(anchor, anchor + TEMPERATURE_CALL)
     result = source.encode()
     ast.parse(result)
     if digest(result) != CANDIDATE_SHA:
@@ -611,6 +646,10 @@ def install(
     saved = backup / path.name
     saved.write_bytes(before)
     saved.chmod(0o600)
+    print(
+        json.dumps({"backup": str(backup), "phase": "before_service_restart"}),
+        flush=True,
+    )
     changed = False
     try:
         for service in SERVICES:
@@ -643,6 +682,9 @@ def install(
             raise RepairError(
                 "rollback_needs_attention_backup:" + str(backup)
             ) from None
+        print(
+            json.dumps({"rollback_completed": True, "backup": str(backup)}), flush=True
+        )
         raise
     return {"installed": True, "backup": str(backup), "sha256": digest(after)}
 
@@ -714,7 +756,9 @@ def native_case(service, runtime):
     return {
         "tool": name,
         "arguments": arguments,
-        "expected": str(left * right + 7),
+        "expected": str(float(left * right + 7))
+        if name == "calculator"
+        else str(left * right + 7),
         "prompt": "Use the "
         + name
         + " tool with exactly these arguments: "
@@ -817,13 +861,46 @@ def native_diagnostics(service, env, runtime, trace=False):
     )
 
 
+def verify_native_execution():
+    """Fail the transaction unless both ordinary agent routes execute arithmetic."""
+    verify_health()
+    for service in SERVICES:
+        env, runtime = info(service)
+        case = native_case(service, runtime)
+        result = local_request(
+            SERVICES[service],
+            env["OPENJARVIS_API_KEY"],
+            "/v1/chat/completions",
+            {
+                "model": runtime["model"],
+                "stream": False,
+                "firbo_include_execution": True,
+                "messages": [{"role": "user", "content": case["prompt"]}],
+            },
+            timeout=145,
+        )
+        receipt = native_receipt(result, case)
+        print(json.dumps({"service": service, "native_execution": receipt}), flush=True)
+        if (
+            not receipt["native_receipt_verified"]
+            or receipt["failed_count"] != 0
+            or receipt["tool_count"] != 1
+        ):
+            raise RepairError("native_execution_not_verified:" + service)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
+    parser.add_argument("--apply-temperature-fix", action="store_true")
     parser.add_argument("--verify-execution", action="store_true")
     parser.add_argument("--diagnose-native", action="store_true")
     parser.add_argument("--trace-native", action="store_true")
     args = parser.parse_args()
+    if args.apply_temperature_fix and (
+        args.apply or args.verify_execution or args.diagnose_native or args.trace_native
+    ):
+        parser.error("temperature repair runs alone and verifies native execution")
     if (args.diagnose_native or args.trace_native) and (
         args.apply or args.verify_execution
     ):
@@ -846,6 +923,27 @@ def main():
     )
     if Path(installed).resolve().parent != PACKAGE:
         raise RepairError("unexpected_installed_package")
+    if args.apply_temperature_fix:
+        for service in SERVICES:
+            _, runtime = info(service)
+            if runtime.get("model") != "firbo-quality":
+                raise RepairError("unmeasured_model_preserved")
+            native_case(service, runtime)
+        outcome = install(TARGET, "/var/backups", verify=verify_native_execution)
+        if outcome.get("already_installed"):
+            verify_native_execution()
+        print(
+            json.dumps(
+                {
+                    **outcome,
+                    "configuration_changed": False,
+                    "native_execution_verified": True,
+                    "full_parity_complete": False,
+                }
+            ),
+            flush=True,
+        )
+        return
     if args.diagnose_native or args.trace_native:
         for service in SERVICES:
             try:

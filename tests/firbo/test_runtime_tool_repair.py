@@ -19,11 +19,16 @@ spec = importlib.util.spec_from_file_location(
 repair = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(repair)
 CURRENT = (ROOT / "src/openjarvis/engine/_openai_compat.py").read_bytes()
+PRE_TEMPERATURE = (
+    CURRENT.decode()
+    .replace(repair.TEMPERATURE_HELPER, "", 1)
+    .replace(repair.TEMPERATURE_CALL, "")
+)
 
 
 @pytest.mark.parametrize("previous", [False, True])
 def test_known_baselines_produce_exact_tested_engine(previous):
-    source = CURRENT.decode().replace(
+    source = PRE_TEMPERATURE.replace(
         repair.NEW_BLOCK, repair.PREVIOUS_BLOCK if previous else repair.OLD_BLOCK
     )
     assert repair.candidate(source.encode()) == CURRENT
@@ -38,7 +43,7 @@ def test_unknown_change_is_preserved():
 def original_package(tmp_path):
     path = tmp_path / "engine.py"
     path.write_bytes(
-        CURRENT.decode().replace(repair.NEW_BLOCK, repair.OLD_BLOCK).encode()
+        PRE_TEMPERATURE.replace(repair.NEW_BLOCK, repair.OLD_BLOCK).encode()
     )
     path.chmod(0o640)
     return path
@@ -487,3 +492,58 @@ def test_missing_safe_tool_does_not_fall_back_to_shell():
         repair.native_case(
             "openjarvis.service", {"runtime": {"tool_names": ["shell_exec"]}}
         )
+
+
+def test_known_installed_temperature_baseline_upgrades():
+    assert repair.digest(PRE_TEMPERATURE.encode()) == repair.PRE_TEMPERATURE_SHA
+    assert repair.candidate(PRE_TEMPERATURE.encode()) == CURRENT
+
+
+@pytest.mark.parametrize("failed_port", [8765, 8766])
+def test_native_receipt_failure_rolls_back_install(tmp_path, monkeypatch, failed_port):
+    path = original_package(tmp_path)
+    before = path.read_bytes()
+    monkeypatch.setattr(repair, "verify_health", lambda: None)
+    monkeypatch.setattr(
+        repair,
+        "info",
+        lambda service: ({"OPENJARVIS_API_KEY": "test"}, {"model": "firbo-quality"}),
+    )
+    monkeypatch.setattr(
+        repair,
+        "native_case",
+        lambda *args: {"tool": "calculator", "expected": "7", "prompt": "calculate"},
+    )
+
+    def response(port, *args, **kwargs):
+        if port == failed_port:
+            return {"choices": [{"message": {"content": "7"}}]}
+        return {
+            "execution": {
+                "contract": "openjarvis-execution/v1",
+                "tool_count": 1,
+                "failed_count": 0,
+                "tools": [{"name": "calculator", "output": "7", "success": True}],
+            }
+        }
+
+    monkeypatch.setattr(repair, "local_request", response)
+    with pytest.raises(repair.RepairError, match="native_execution_not_verified"):
+        repair.install(
+            path,
+            tmp_path,
+            command=lambda args: None,
+            verify=repair.verify_native_execution,
+        )
+    assert path.read_bytes() == before
+
+
+def test_calculator_probe_matches_actual_tool_output():
+    from openjarvis.tools.calculator import CalculatorTool
+
+    case = repair.native_case(
+        "openjarvis-box.service", {"runtime": {"tool_names": ["calculator"]}}
+    )
+    result = CalculatorTool().execute(**case["arguments"])
+    assert result.success
+    assert case["expected"] == result.content.strip()

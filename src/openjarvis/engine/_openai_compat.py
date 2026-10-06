@@ -79,6 +79,25 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
     def _resolve_model_id(self, model: str) -> str:
         return resolve_model_id_for_engine(model, self.engine_id)
 
+    def _prepare_firbo_tool_payload(self, payload: Dict[str, Any]) -> None:
+        """Use gateway sampling defaults on the measured FIRBO tool route.
+
+        The owner's repeated A/B test returned tools only when temperature
+        was omitted. Keep this compatibility workaround endpoint/model scoped;
+        never remove tools or relax an explicit tool_choice.
+        """
+        from urllib.parse import urlsplit
+
+        endpoint = urlsplit(self._host)
+        if (
+            payload.get("tools")
+            and payload.get("model") == "firbo-quality"
+            and endpoint.scheme == "https"
+            and endpoint.hostname == "gateway.firboai.app"
+            and endpoint.port in (None, 443)
+        ):
+            payload.pop("temperature", None)
+
     def generate(
         self,
         messages: Sequence[Message],
@@ -99,6 +118,7 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
         # Default to tool_choice=auto when tools are provided
         if "tools" in payload and "tool_choice" not in payload:
             payload["tool_choice"] = "auto"
+        self._prepare_firbo_tool_payload(payload)
         try:
             url = f"{self._api_prefix}/chat/completions"
             resp = self._client.post(url, json=payload)
@@ -211,6 +231,7 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
         # Default to tool_choice=auto when tools are provided
         if "tools" in payload and "tool_choice" not in payload:
             payload["tool_choice"] = "auto"
+        self._prepare_firbo_tool_payload(payload)
         url = f"{self._api_prefix}/chat/completions"
         try:
             # ASYNC streaming: ``httpx.AsyncClient`` + ``aiter_lines`` never
@@ -274,6 +295,7 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
         }
         if "tools" in payload and "tool_choice" not in payload:
             payload["tool_choice"] = "auto"
+        self._prepare_firbo_tool_payload(payload)
         url = f"{self._api_prefix}/chat/completions"
         try:
             # ASYNC streaming (see ``stream``): non-blocking shared client so
