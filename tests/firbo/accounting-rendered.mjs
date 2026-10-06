@@ -27,7 +27,7 @@ try {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== origin) return route.abort();
-      if (url.pathname === '/accounting-test.html') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/accounting-harness.js"></script></body></html>` });
+      if (url.pathname === '/accounting-test.html') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;</script><script type="module" src="/accounting-harness.js"></script></body></html>` });
       if (url.pathname === '/accounting-harness.js') return route.fulfill({ contentType: 'application/javascript', body: `
         import React from '/node_modules/.vite/deps/react.js';
         import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
