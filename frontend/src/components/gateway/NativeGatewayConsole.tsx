@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
+import { ServiceAccessPanel } from './ServiceAccessPanel';
 import { useI18n } from '../../i18n/I18nProvider';
 import { gatewayGet, gatewayPost } from '../../lib/gateway';
 import { controlLabels } from './firboControlLabels';
@@ -19,10 +20,11 @@ export function useFirboSession() {
   return { ...state, reload: () => reload(v => v + 1) };
 }
 
-export function GatewayUnavailable({ loading = false, retry }: { loading?: boolean; retry: () => void }) {
+export function GatewayUnavailable({ loading = false, retry, adminServices = false }: { loading?: boolean; retry: () => void; adminServices?: boolean }) {
   const { lang } = useI18n();
   const l = controlLabels[lang];
   return <div className="fb-root h-full overflow-y-auto"><div className="mx-auto max-w-3xl space-y-4 px-4 pt-16">
+    {adminServices && <ServiceAccessPanel />}
     <h1 className="text-2xl font-semibold">{l.title}</h1>
     <p role={loading ? 'status' : 'alert'} className="fb-muted">{loading ? l.loading : l.unavailable}</p>
     {!loading && <button type="button" className="fb-btn fb-btn--ghost" onClick={retry}>{l.retry}</button>}
@@ -88,11 +90,12 @@ export function NativeGatewayConsole() {
     return () => { live = false; };
   }, [version]);
   const reload = () => setVersion(v => v + 1);
-  if (loading || !data) return <GatewayUnavailable loading={loading} retry={reload} />;
+  if (loading || !data) return <GatewayUnavailable loading={loading} retry={reload} adminServices />;
   const shown = data.models.filter(m => (m.id + ' ' + m.provider).toLowerCase().includes(query.toLowerCase())).slice(0, 100);
   return <div className="fb-root h-full overflow-y-auto"><div className="mx-auto max-w-[1300px] space-y-5 px-4 pb-8 pt-16 md:px-6 md:pt-6">
     <header className="flex flex-wrap items-start justify-between gap-4"><div><h1 className="text-2xl font-semibold">{l.title}</h1><p className="fb-muted mt-2 text-sm">{l.intro}</p></div>
       <div className="flex gap-2"><Link to="/admin?tab=overview" className="fb-btn fb-btn--ghost">{l.back}</Link><button type="button" className="fb-btn fb-btn--ghost" onClick={reload}>{l.retry}</button></div></header>
+    <ServiceAccessPanel />
     <div className="flex flex-wrap gap-3"><span className="fb-chip">{data.reachable ? l.connected : l.disconnected}</span><span className="fb-chip">{l.models}: {fmt.number(data.models.length)}</span></div>
     {!data.available && <div role="alert" className="fb-glass p-4"><p>{l.partial}</p><pre className="mt-2 overflow-x-auto text-xs">{Object.entries(data.errors).map(([name, error]) => `${name}: ${error}`).join('\n')}</pre></div>}
     {!data.writes_enabled && <p className="fb-muted" role="status">{l.readonly}</p>}
