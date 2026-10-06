@@ -2,7 +2,7 @@
 // The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { serverTaskResult } from '../_shared/server-execution.ts';
+import { serverInferenceUsage, serverTaskResult } from '../_shared/server-execution.ts';
 import { gatewayForAgent, gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
@@ -362,6 +362,19 @@ Deno.serve(async (req) => {
       && Number.isSafeInteger(maxCredits) && maxCredits >= 1 && maxCredits <= 100_000
       && perCreditUsd * maxCredits <= 1_000
       ? { perCreditUsd, maxCredits, reservedUsd: money(perCreditUsd * maxCredits) } : null;
+  };
+  const serverTaskPricing = () => {
+    const rawIn = Deno.env.get('FIRBO_SERVER_PRICE_IN_PER_M')?.trim();
+    const rawOut = Deno.env.get('FIRBO_SERVER_PRICE_OUT_PER_M')?.trim();
+    const rawMax = Deno.env.get('FIRBO_SERVER_MAX_OUTPUT_TOKENS')?.trim();
+    if (!rawIn || !rawOut || !rawMax) return null;
+    const priceIn = Number(rawIn);
+    const priceOut = Number(rawOut);
+    const maxOutputTokens = Number(rawMax);
+    return Number.isFinite(priceIn) && priceIn >= 0 && priceIn <= 1_000_000
+      && Number.isFinite(priceOut) && priceOut >= 0 && priceOut <= 1_000_000
+      && Number.isSafeInteger(maxOutputTokens) && maxOutputTokens >= 1 && maxOutputTokens <= 100_000
+      ? { priceIn, priceOut, maxOutputTokens } : null;
   };
   const formatGatewayResults = (body: any, maxResults: number) => {
     const hits = Array.isArray(body?.results) ? body.results.slice(0, maxResults) : [];
@@ -760,7 +773,8 @@ Deno.serve(async (req) => {
       : plans.includes(String(orgPlan?.plan ?? '')) ? { url: Deno.env.get('OPENJARVIS_SANDBOX_URL'), key: Deno.env.get('OPENJARVIS_SANDBOX_API_KEY') } : null;
     const serverUrl = (server?.url ?? '').replace(/\/+$/, '');
     const serverKey = server?.key ?? '';
-    if (/^https:\/\//.test(serverUrl) && serverKey) {
+    const pricing = serverTaskPricing();
+    if (/^https:\/\//.test(serverUrl) && serverKey && pricing) {
       if (!adminCompany) toolHelp = { server_task: '{"action": "server_task", "input": "the job, with the Python code or the data"} runs Python for you in a locked sandbox (no internet, nothing is kept) and returns the output: use it for data analysis, statistics, parsing and exact calculations. Put any data it needs inside the job.' };
       loopTools.server_task = async (job) => {
         // A draft-only employee must not bypass the local computer policy by
@@ -778,10 +792,20 @@ Deno.serve(async (req) => {
         const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
         // The server agent requires a model name: use the one it runs by default.
         const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-        const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers,
-          body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false, firbo_include_execution: true }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
-        if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
-        const out = await res.json();
+        const payload = { model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false, firbo_include_execution: true };
+        const reservedUsd = maximumInferenceCost(payload, [{ priceIn: pricing.priceIn, priceOut: pricing.priceOut, maxOutputTokens: pricing.maxOutputTokens }]);
+        const out = await accountedAttempt({ payload, route: `openjarvis:${adminCompany ? 'admin' : 'sandbox'}`,
+          outputTokenCap: pricing.maxOutputTokens, reservedUsd }, async ({ requestId }) => {
+          const started = Date.now();
+          const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST',
+            headers: { ...headers, 'x-firbo-request-id': requestId }, body: JSON.stringify(payload),
+            signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
+          if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
+          const value = await res.json();
+          const usage = serverInferenceUsage(value, pricing, Date.now() - started);
+          if (!usage) throw new Error('server_usage_missing');
+          return { value, usage };
+        });
         return serverTaskResult(out?.choices?.[0]?.message?.content, out?.execution);
       };
     }

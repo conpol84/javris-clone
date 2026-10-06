@@ -9,6 +9,38 @@ export interface ServerExecution {
 }
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const count = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1_000_000;
+const tokenCount = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0 && v <= 1_000_000_000;
+const modelName = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9][A-Za-z0-9:_./-]{0,119}$/.test(v);
+
+export type ServerInferencePricing = { priceIn: number; priceOut: number };
+export type ServerInferenceUsage = {
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  costUsd: number;
+  latencyMs: number;
+  ownKey: false;
+};
+
+/** Convert the server's aggregated OpenAI-compatible usage into a bounded ledger receipt. */
+export function serverInferenceUsage(value: unknown, pricing: ServerInferencePricing, latencyMs: number): ServerInferenceUsage | null {
+  if (!record(value) || !modelName(value.model) || !record(value.usage)
+    || !tokenCount(value.usage.prompt_tokens) || !tokenCount(value.usage.completion_tokens)
+    || !Number.isFinite(pricing.priceIn) || pricing.priceIn < 0 || pricing.priceIn > 1_000_000
+    || !Number.isFinite(pricing.priceOut) || pricing.priceOut < 0 || pricing.priceOut > 1_000_000
+    || !Number.isSafeInteger(latencyMs) || latencyMs < 0 || latencyMs > 3_600_000) return null;
+  const costUsd = Math.round(((value.usage.prompt_tokens * pricing.priceIn
+    + value.usage.completion_tokens * pricing.priceOut) / 1_000_000) * 1_000_000) / 1_000_000;
+  if (!Number.isFinite(costUsd) || costUsd < 0 || costUsd > 1_000) return null;
+  return {
+    model: `openjarvis:${value.model}`,
+    inputTokens: value.usage.prompt_tokens,
+    outputTokens: value.usage.completion_tokens,
+    costUsd,
+    latencyMs,
+    ownKey: false,
+  };
+}
 
 export function serverExecution(value: unknown): ServerExecution | null {
   if (!record(value) || value.contract !== 'openjarvis-execution/v1' || value.mode !== 'agent'

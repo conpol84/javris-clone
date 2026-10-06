@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { serverExecution, serverTaskResult } from '../../supabase/functions/_shared/server-execution.ts';
+import { serverExecution, serverInferenceUsage, serverTaskResult } from '../../supabase/functions/_shared/server-execution.ts';
 const receipt = (tools = []) => ({contract:'openjarvis-execution/v1',mode:'agent',tool_count:tools.length,failed_count:tools.filter(t=>!t.success).length,tools,truncated:false});
 const fail = {name:'file_write',success:false,output:'Permission denied',truncated:false};
 test('failure is retained even if answer claims success; arbitrary metadata is discarded',()=>{
@@ -25,4 +25,18 @@ test('bounds preserve failure totals beyond visible steps and unknown fields nev
  assert.ok(serverTaskResult('x'.repeat(9000),value).length<=3500);
  assert.match(serverTaskResult('Done',value),/omitted or truncated/);
  assert.equal(JSON.stringify(result).includes('hidden'),false);
+});
+test('aggregated server usage becomes a bounded configured-cost ledger receipt',()=>{
+ const usage=serverInferenceUsage({model:'firbo-quality',usage:{prompt_tokens:30,completion_tokens:5,total_tokens:35}},
+   {priceIn:2,priceOut:4},125);
+ assert.deepEqual(usage,{model:'openjarvis:firbo-quality',inputTokens:30,outputTokens:5,costUsd:0.00008,latencyMs:125,ownKey:false});
+});
+test('missing, malformed or unbounded server usage is never settled as zero',()=>{
+ const pricing={priceIn:2,priceOut:4};
+ for(const value of [{model:'firbo-quality'},{model:'bad model',usage:{prompt_tokens:1,completion_tokens:1}},
+   {model:'firbo-quality',usage:{prompt_tokens:-1,completion_tokens:1}},
+   {model:'firbo-quality',usage:{prompt_tokens:1,completion_tokens:Infinity}}]) {
+   assert.equal(serverInferenceUsage(value,pricing,10),null);
+ }
+ assert.equal(serverInferenceUsage({model:'firbo-quality',usage:{prompt_tokens:1,completion_tokens:1}},{priceIn:-1,priceOut:0},10),null);
 });

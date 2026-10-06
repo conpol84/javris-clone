@@ -107,6 +107,7 @@ function fixture(options={}) {
         if(options.budgetError)return{data:null,error:{message:'db unavailable'}};
         if(options.spent)return{data:{ok:false,reason:'budget_exceeded',spent:options.spent,budget:10},error:null};
         if((options.count??0)>=20)return{data:{ok:false,reason:'rate_limited',hourly:options.count,limit:20},error:null};
+        if(options.denyServerReservation&&String(args.p_route).startsWith('openjarvis:'))return{data:{ok:false,reason:'budget_exceeded'},error:null};
         const requestId=crypto.randomUUID();
         state.runnerRequests=[...(state.runnerRequests??[]),requestId];
         return{data:{ok:true,duplicate:false,request_id:requestId,status:'reserved',
@@ -173,7 +174,9 @@ function fixture(options={}) {
     });
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
-    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}],execution:options.serverExecution});
+    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({
+      model:'firbo-quality',choices:[{message:{content:'45'}}],execution:options.serverExecution,
+      ...(options.serverMissingUsage?{}:{usage:{prompt_tokens:30,completion_tokens:5,total_tokens:35}})});
     if(options.imageResponse&&String(url).endsWith('/images/generations')){
       if(options.imageGatewayFailure)return new Response('upstream error',{status:502});
       return Response.json({data:[{b64_json:Buffer.from(new Uint8Array(5000).fill(7)).toString('base64')}]});
@@ -665,7 +668,7 @@ test('agent-runner: the calculator power is offered and its exact result is fed 
   assert.match(JSON.parse(chats[0].init.body).messages[0].content,/"action": "calculator"/);
   assert.ok(JSON.parse(chats[1].init.body).messages.some(m=>/1200 \* 0\.24 = 288/.test(m.content)));
 });
-const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise'};
+const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise',FIRBO_SERVER_PRICE_IN_PER_M:'2',FIRBO_SERVER_PRICE_OUT_PER_M:'4',FIRBO_SERVER_MAX_OUTPUT_TOKENS:'8192'};
 const serverReplies=()=>['{"action":"server_task","input":"print(sum(range(10)))"}',JSON.stringify({summary:'45',report:'45',actions:[]})];
 test('suggest-only employees cannot execute through either OpenJarvis server', async () => {
   for (const extra of [{ autonomy: 'suggest' }, { freshAutonomy: 'suggest' }, { freshAgentEnabled: false }]) {
@@ -684,7 +687,33 @@ test('agent-runner: a customer company gets only the sandboxed server agent, nev
   assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')));
   const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
   assert.equal(box.init.headers.authorization,'Bearer box-key');
+  const usage=state.writes.find(w=>w.table==='usage_events'&&w.payload.model==='openjarvis:firbo-quality');
+  assert.ok(usage);assert.equal(usage.payload.input_tokens,30);assert.equal(usage.payload.output_tokens,5);assert.equal(usage.payload.cost_usd,0.00008);
+  assert.equal(box.init.headers['x-firbo-request-id'],usage.payload.inference_request_id);
+  const reservation=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='openjarvis:sandbox');
+  assert.ok(reservation);assert.ok(reservation.args.p_reserved_usd>=usage.payload.cost_usd);
   assert.match(JSON.parse(state.calls.find(c=>String(c.url).includes('gateway')).init.body).messages[0].content,/locked sandbox/);
+});
+test('agent-runner: missing server usage is ambiguous and blocks publication or another provider call', async () => {
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,serverMissingUsage:true});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.equal(state.calls.filter(c=>String(c.url).startsWith('https://box-jarvis.example')&&String(c.url).endsWith('/chat/completions')).length,1);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'));
+});
+test('agent-runner: denied server reservation makes no server inference request', async () => {
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,denyServerReservation:true});
+  assert.equal(response.status,402);assert.equal(body.error,'budget_exceeded');
+  assert.equal(state.calls.filter(c=>String(c.url).startsWith('https://box-jarvis.example')&&String(c.url).endsWith('/chat/completions')).length,0);
+  assert.ok(!state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'));
+});
+test('agent-runner: server execution is not offered without explicit pricing bounds', async () => {
+  const env={...serverEnv};delete env.FIRBO_SERVER_PRICE_IN_PER_M;
+  const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env});
+  assert.equal(response.status,200);assert.ok(!state.calls.some(c=>/jarvis/.test(String(c.url))));
 });
 test('agent-runner feeds actual server tool failures back to the employee', async () => {
   const execution={contract:'openjarvis-execution/v1',mode:'agent',tool_count:1,failed_count:1,
