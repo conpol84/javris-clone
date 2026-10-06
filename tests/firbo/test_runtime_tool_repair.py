@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 import threading
+import types
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -112,10 +113,19 @@ def test_rollback_recovers_file_and_attempts_both_services_on_restart_failure(tm
 
 
 @pytest.mark.parametrize("legacy", [False, True])
-def test_worker_uses_configured_vllm_route_and_never_drops_tools(tmp_path, legacy):
+@pytest.mark.parametrize("multi", [False, True])
+def test_worker_uses_configured_vllm_route_and_never_drops_tools(
+    tmp_path, legacy, multi
+):
     received = []
 
     class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"data":[{"id":"firbo-quality"}]}')
+
         def do_POST(self):
             payload = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             received.append((self.path, self.headers.get("Authorization"), payload))
@@ -168,9 +178,29 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(tmp_path, legac
         "PYTHONPATH": str(ROOT / "src"),
     }
     try:
+        worker = repair.WORKER
+        if multi:
+            # Real MultiEngine/HTTP adapter; isolate discovery from other ports.
+            worker = (
+                """
+from types import SimpleNamespace
+from openjarvis.engine import _discovery
+_discovery.get_engine = lambda cfg, key, model: (
+    "vllm", _discovery._make_engine("vllm", cfg))
+_discovery.discover_engines = lambda cfg: [
+    ("fixture", SimpleNamespace(list_models=lambda: [], close=lambda: None))]
+"""
+                + worker
+            )
         result = subprocess.run(
-            [sys.executable, "-B", "-c", repair.WORKER],
-            input=json.dumps({"env": env, "engine": "vllm", "model": "firbo-quality"}),
+            [sys.executable, "-B", "-c", worker],
+            input=json.dumps(
+                {
+                    "env": env,
+                    "engine": "multi" if multi else "vllm",
+                    "model": "firbo-quality",
+                }
+            ),
             capture_output=True,
             text=True,
             env=env,
@@ -182,6 +212,12 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(tmp_path, legac
         thread.join(timeout=2)
     assert result.returncode == 0, result.stderr
     report = json.loads(result.stdout)
+    assert report["selected_engine"] == "vllm"
+    if multi:
+        assert report["advertising_engines"] == ["vllm"]
+        assert (
+            report["route_source"] == "reconstructed_from_current_config_and_catalogue"
+        )
     assert report["endpoint"]["port"] == server.server_port
     assert report["probes"]["auto"] == {
         "http": 400,
@@ -225,3 +261,66 @@ def test_execution_needs_successful_matching_receipt(monkeypatch, tools, expecte
     result = repair.execution_probe({"OPENJARVIS_API_KEY": "test"}, {"model": "test"})
     assert result["shell_receipt_verified"] is expected
     assert result["artifact_verified"] is False
+
+
+def test_legacy_agent_patch_restores_tools_and_preserves_other_code(monkeypatch):
+    source = (ROOT / "src/openjarvis/agents/_stubs.py").read_text()
+    broken = source.replace(
+        "for key, value in self._engine_options.items()",
+        "for key, value in {**self._engine_options, **extra_kwargs}.items()",
+    ).replace("        gen_kwargs.update(extra_kwargs)\n", "")
+    before = types.ModuleType("firbo_agent_before")
+    after = types.ModuleType("firbo_agent_after")
+    monkeypatch.setitem(sys.modules, before.__name__, before)
+    monkeypatch.setitem(sys.modules, after.__name__, after)
+    exec(compile(broken, "before.py", "exec"), before.__dict__)
+    patched = repair.agent_candidate(broken.encode())
+    assert patched.decode().replace(repair.AGENT_FORWARDING, "", 1) == broken
+    assert repair.agent_candidate(patched) == patched
+    exec(compile(patched, "after.py", "exec"), after.__dict__)
+    for module, forwards in [(before, False), (after, True)]:
+        captured = {}
+
+        def capture(messages, **kwargs):
+            captured.update(kwargs)
+            return {"content": "fixture"}
+
+        agent = types.SimpleNamespace(
+            _bus=None,
+            _engine=types.SimpleNamespace(generate=capture),
+            _engine_options={"unknown_stored_option": "must_stay_filtered"},
+            _model="test",
+            _temperature=0,
+            _max_tokens=16,
+        )
+        tools = [{"type": "function", "function": {"name": "probe"}}]
+        module.BaseAgent._generate(agent, [], tools=tools, tool_choice="required")
+        assert (captured.get("tools") == tools) is forwards
+        assert (captured.get("tool_choice") == "required") is forwards
+        assert "unknown_stored_option" not in captured
+
+
+def test_unknown_agent_structure_is_not_changed():
+    with pytest.raises(repair.RepairError, match="unknown_agent_structure_preserved"):
+        repair.agent_candidate(b"class BaseAgent:\n    pass\n")
+
+
+def test_installed_agent_behavior_probe_has_no_tool_execution(tmp_path):
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(ROOT / "src"),
+        "OPENJARVIS_HOME": str(tmp_path),
+    }
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", repair.AGENT_CHECK],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=20,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {
+        "tools_forwarded": True,
+        "tool_choice_forwarded": True,
+        "tools_executed": False,
+    }

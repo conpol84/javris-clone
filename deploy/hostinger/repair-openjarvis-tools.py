@@ -2,7 +2,8 @@
 """Inspect the active FIRBO route; optionally install the bounded tool fix.
 
 No endpoint guessing, port publishing, config edits or provider switching.
---apply updates one known engine file, with backup and rollback on failed health.
+--apply updates a known engine file and repairs measured agent tool loss only
+at a recognized forwarding site, with backup and rollback on failed health.
 --verify-execution additionally asks the admin agent to printf a unique marker.
 """
 
@@ -24,6 +25,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 PYTHON = Path("/home/jarvis/.openjarvis/.venv/bin/python")
 PACKAGE = PYTHON.parent.parent / "lib/python3.13/site-packages/openjarvis"
 TARGET = PACKAGE / "engine/_openai_compat.py"
+AGENT_TARGET = PACKAGE / "agents/_stubs.py"
 SERVICES = {"openjarvis.service": 8765, "openjarvis-box.service": 8766}
 BASELINES = {
     "f8771c8c7defb8eb06b979d621edae364dd1a1d44736ed782a9ff3532c594b96",
@@ -98,6 +100,89 @@ def candidate(data):
     return result
 
 
+AGENT_FORWARDING = """        # FIRBO: retain runtime tools after option filtering.
+        for _firbo_key in ("tools", "tool_choice"):
+            if _firbo_key in extra_kwargs:
+                gen_kwargs[_firbo_key] = extra_kwargs[_firbo_key]
+"""
+
+
+def agent_candidate(data):
+    """Patch only the recognized forwarding site; preserve every other byte."""
+    source = data.decode()
+    if AGENT_FORWARDING in source:
+        return data
+    tree = ast.parse(source)
+    classes = [
+        n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == "BaseAgent"
+    ]
+    if len(classes) != 1:
+        raise RepairError("unknown_agent_structure_preserved")
+    methods = [
+        n
+        for n in classes[0].body
+        if isinstance(n, ast.FunctionDef) and n.name == "_generate"
+    ]
+    if len(methods) != 1 or not methods[0].args.kwarg:
+        raise RepairError("unknown_agent_structure_preserved")
+    method = methods[0]
+    if method.args.kwarg.arg != "extra_kwargs":
+        raise RepairError("unknown_agent_structure_preserved")
+    sites = [
+        n
+        for n in method.body
+        if isinstance(n, ast.Assign)
+        and isinstance(n.value, ast.Call)
+        and ast.unparse(n.value.func) == "self._engine.generate"
+        and any(
+            k.arg is None
+            and isinstance(k.value, ast.Name)
+            and k.value.id == "gen_kwargs"
+            for k in n.value.keywords
+        )
+    ]
+    if len(sites) != 1 or not any(
+        isinstance(n, ast.Assign)
+        and n.lineno < sites[0].lineno
+        and any(isinstance(t, ast.Name) and t.id == "gen_kwargs" for t in n.targets)
+        for n in method.body
+    ):
+        raise RepairError("unknown_agent_structure_preserved")
+    lines = source.splitlines(keepends=True)
+    index = sites[0].lineno - 1
+    if not lines[index].startswith("        result = self._engine.generate("):
+        raise RepairError("unknown_agent_structure_preserved")
+    result = "".join(lines[:index]) + AGENT_FORWARDING + "".join(lines[index:])
+    ast.parse(result)
+    if result.replace(AGENT_FORWARDING, "", 1) != source:
+        raise RepairError("agent_patch_not_isolated")
+    return result.encode()
+
+
+AGENT_CHECK = r"""
+import json
+from types import SimpleNamespace
+from openjarvis.agents._stubs import BaseAgent
+seen = {}
+def capture(messages, **kwargs):
+    seen.update(kwargs)
+    return {"content": "fixture", "usage": {}}
+tools = [{"type": "function", "function": {"name": "firbo_probe"}}]
+agent = SimpleNamespace(_bus=None, _engine=SimpleNamespace(generate=capture),
+    _engine_options={}, _model="firbo-quality", _temperature=0.0, _max_tokens=16)
+BaseAgent._generate(agent, [], tools=tools, tool_choice="required")
+print(json.dumps({"tools_forwarded": seen.get("tools") == tools,
+                 "tool_choice_forwarded": seen.get("tool_choice") == "required",
+                 "tools_executed": False}))
+"""
+
+
+def agent_forwarding_probe():
+    return json.loads(
+        run(["runuser", "-u", "jarvis", "--", str(PYTHON), "-B", "-c", AGENT_CHECK])
+    )
+
+
 def run(args, **kwargs):
     result = subprocess.run(
         args, capture_output=True, text=True, timeout=180, cwd="/tmp", **kwargs
@@ -146,7 +231,15 @@ def info(service):
     key = env.get("OPENJARVIS_API_KEY", "")
     if not key:
         raise RepairError("missing_active_api_key")
-    return env, local_request(SERVICES[service], key, "/v1/info")
+    runtime = local_request(SERVICES[service], key, "/v1/info")
+    pid = run(["systemctl", "show", service, "-p", "MainPID", "--value"])
+    args = Path("/proc", pid, "cmdline").read_bytes().decode().split("\0")
+    for index, argument in enumerate(args):
+        if argument in {"--engine", "-e"} and index + 1 < len(args):
+            runtime["engine_override"] = args[index + 1]
+        elif argument.startswith("--engine="):
+            runtime["engine_override"] = argument.split("=", 1)[1]
+    return env, runtime
 
 
 # Runs under the service user, with its active environment passed over stdin.
@@ -161,17 +254,40 @@ os.environ.clear()
 os.environ.update(job["env"])
 from openjarvis.core.credentials import inject_credentials
 from openjarvis.core.config import load_config
-from openjarvis.engine._discovery import _make_engine
+from openjarvis.engine._discovery import _make_engine, discover_engines, get_engine
 from openjarvis.engine._openai_compat import _OpenAICompatibleEngine
 inject_credentials()
-engine = _make_engine(job["engine"], load_config())
+config = load_config()
+owners = []
+route_source = "active_adapter_config"
+if job["engine"] == "multi":
+    from openjarvis.engine.multi import MultiEngine
+    primary = get_engine(config, job.get("engine_override"), model=job["model"])
+    if primary is None:
+        raise RuntimeError("no_primary_engine")
+    entries = [primary]
+    entries.extend((key, item) for key, item in discover_engines(config)
+                   if key != primary[0])
+    owner = MultiEngine(entries)
+    engine = owner._engine_for(job["model"])
+    selected = next((key for key, item in reversed(entries) if item is engine), None)
+    owners = [key for key, item in entries if job["model"] in item.list_models()]
+    route_source = "reconstructed_from_current_config_and_catalogue"
+else:
+    selected = job["engine"]
+    engine = _make_engine(selected, config)
+    owner = engine
 try:
     if not isinstance(engine, _OpenAICompatibleEngine):
-        raise RuntimeError("unsupported_adapter")
+        print(json.dumps({"selected_engine": selected,
+                          "blocked": "selected_adapter_is_not_openai_compatible"}))
+        raise SystemExit(0)
     target = urlsplit(engine._host)
     if target.scheme not in {"http", "https"} or not target.hostname:
         raise RuntimeError("invalid_configured_endpoint")
-    report = {"engine": job["engine"], "model": job["model"],
+    report = {"engine": job["engine"], "selected_engine": selected,
+              "route_source": route_source, "advertising_engines": owners,
+              "model": job["model"],
               "endpoint": {"scheme": target.scheme, "host": target.hostname,
                            "port": target.port or
                                (443 if target.scheme == "https" else 80)},
@@ -225,7 +341,7 @@ try:
                 "errno": number, "probe_call": False}
     print(json.dumps(report))
 finally:
-    engine.close()
+    owner.close()
 """
 
 
@@ -238,9 +354,14 @@ SAFE_WORKER = (
 
 
 def gateway_probe(env, runtime):
-    if runtime.get("engine") not in {"vllm", "omniroute"}:
+    if runtime.get("engine") not in {"vllm", "omniroute", "multi"}:
         return {"blocked": "unsupported_active_engine", "engine": runtime.get("engine")}
-    job = {"env": env, "engine": runtime["engine"], "model": runtime["model"]}
+    job = {
+        "env": env,
+        "engine": runtime["engine"],
+        "model": runtime["model"],
+        "engine_override": runtime.get("engine_override"),
+    }
     return json.loads(
         run(
             ["runuser", "-u", "jarvis", "--", str(PYTHON), "-B", "-c", SAFE_WORKER],
@@ -264,11 +385,13 @@ def atomic_write(path, data, metadata):
             os.unlink(temporary)
 
 
-def install(path, backup_root, command=run, verify=lambda: None):
+def install(
+    path, backup_root, command=run, verify=lambda: None, candidate_fn=candidate
+):
     if path.is_symlink() or path.resolve() != path or not path.is_file():
         raise RepairError("unexpected_engine_path")
     before = path.read_bytes()
-    after = candidate(before)
+    after = candidate_fn(before)
     if after == before:
         return {"already_installed": True}
     metadata = path.stat()
@@ -401,6 +524,45 @@ def main():
     if args.apply:
         print(
             json.dumps(install(TARGET, "/var/backups", verify=verify_health)),
+            flush=True,
+        )
+    try:
+        forwarding = agent_forwarding_probe()
+        print(json.dumps({"agent_forwarding": forwarding}), flush=True)
+        if args.apply and (
+            not forwarding["tools_forwarded"] or not forwarding["tool_choice_forwarded"]
+        ):
+
+            def verify_agent():
+                verify_health()
+                after = agent_forwarding_probe()
+                if not after["tools_forwarded"] or not after["tool_choice_forwarded"]:
+                    raise RepairError("agent_forwarding_verification_failed")
+
+            print(
+                json.dumps(
+                    {
+                        "agent_repair": install(
+                            AGENT_TARGET,
+                            "/var/backups",
+                            verify=verify_agent,
+                            candidate_fn=agent_candidate,
+                        )
+                    }
+                ),
+                flush=True,
+            )
+            print(
+                json.dumps({"agent_forwarding": agent_forwarding_probe()}), flush=True
+            )
+    except Exception as error:
+        print(
+            json.dumps(
+                {
+                    "agent_repair_error": type(error).__name__,
+                    "reason": str(error) if isinstance(error, RepairError) else None,
+                }
+            ),
             flush=True,
         )
     for service in SERVICES:

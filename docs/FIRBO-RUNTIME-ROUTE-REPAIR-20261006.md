@@ -1,5 +1,40 @@
 # Active runtime route and tool repair — 6 October 2026
 
+## Follow-up after owner ran the repair
+
+Owner output reports `engine: multi` for BOTH services, zero executed tools and
+no artifact. The previous script's unsupported_active_engine guard prevented
+its direct gateway probes; that was a diagnostic gap. MultiEngine forwards
+kwargs unchanged in repository source. Do not call it the proven live cause.
+
+The updated repair supports MultiEngine by using the installed discovery/model
+selection code, the service environment and its explicit CLI engine override.
+It prints the selected child, its configured endpoint and model advertisers.
+This is explicitly labelled reconstruction from the CURRENT configuration and
+catalogue, not inspection of the live process's cached private model map.
+No router policy or model selection is changed.
+
+Before inference, a local fixture measures the installed BaseAgent._generate
+tool/selector forwarding with a capture-only fake engine. It executes no tools
+and sends no inference request. If it actually drops tools, --apply adds only
+tools/tool_choice forwarding at an AST-validated existing gen_kwargs call site.
+It preserves every other source byte and the stored-option allowlist. An unknown
+structure is refused. The existing backup/atomic replacement/restart transaction
+is reused, with rollback if authenticated service health or forwarding fails.
+Already-correct agents are not rewritten. This is a conditional repair of a
+known historical behavior, NOT a claim that this VPS has that behavior.
+
+New tests: real MultiEngine plus disposable HTTP transport for nested/legacy
+vLLM config; broken installed-agent simulation before/after the bounded patch;
+unrelated code and stored-option filtering preservation; unknown-shape refusal;
+behavior-probe non-execution. All 18 repair cases passed, and full source/test
+Ruff check and format gate passed. Live execution remains unverified.
+
+The pinned source for this follow-up starts at PR30 head
+`99178ac94118ed1eaba5f19054f2b7fe635a7d7c`. No frontend, Edge, database, provider,
+permission, Mac or design deployment is part of this follow-up. Master-plan
+remaining items below still apply. Earlier observations below are historical.
+
 Continues PR30 at `9021ae53404148ec8920cd5f7492698bdd2f5d12`.
 Verified remote heads: Claude `f6442b754eb26019c16f4aa40c50a15d6e73c14b`,
 Codex parity `ce421e3121f49b0ba0aa6ea8cc0a2ad69a7a7a6a`; both are ancestors.
