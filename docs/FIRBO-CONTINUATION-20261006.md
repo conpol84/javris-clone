@@ -614,3 +614,14 @@ v28, runner v83, MCP v19 and mission-runner v26.
 
 References: https://github.com/conpol84/javris-clone/pull/24 ;
 https://github.com/conpol84/javris-clone/actions/runs/37438061534
+
+### Claude: test data removed (owner request)
+
+- Removed in production at the owner's request: the 7 "[Δοκιμή]" tasks of Trade Athletes (all finished,
+  no children or approvals), the 8 learned-memory notes saved from them, the 2 "[Δοκιμή]" CEO chat
+  messages and the 2 CEO replies to them. The owner's own conversation history was kept.
+- Verified: production frontend dpl_EKo9 (0d31c30) contains all Claude commits through 35a5184
+  (deliverables, slides/PowerPoint, meetings, CEO task/meeting buttons); agent-chat v38 keeps
+  ceoActions and adds the Codex APP line; 511/512 node and 490/490 frontend tests after the merge.
+- Remains for the owner: one signed-in meeting through the app, connecting work-source apps,
+  Mac Connector update, Telegram/WhatsApp, second customer account, OmniRoute key rotation.
