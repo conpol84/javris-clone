@@ -857,3 +857,35 @@ Failed / limitations / release gate:
 Remains:
 - Frontend release with the new Connector + updater hash (GPT/CI), then the owner updates the Mac and approves the job.
 - Search provider key (Tavily) as a Supabase secret + runner support, for real research.
+
+## Candidate — claim-bound runner attempt ledger (source only)
+
+Changed:
+- Combined current draft PR #30 (`1cfc4e3`) and final-green draft PR #31
+  (`58a4188`) as separate parents; neither active branch was rewritten.
+- Added private runner logical-run/attempt records, service-only atomic
+  admission and single-winner dispatch RPCs, settlement-state synchronization
+  and unresolved-attempt task publication/cancellation/deletion guards.
+- Added the non-live TypeScript adapter plus PostgreSQL assertions and
+  READ COMMITTED/SERIALIZABLE races. Exact details are in
+  `FIRBO-RUNNER-ATTEMPT-LEDGER-20261006.md`.
+
+Tested / passed:
+- Locally: 5 focused helper tests; 101 combined selected Edge/helper tests;
+  strict Edge TypeScript; Ruff 0.16.7 check/format; PostgreSQL static parsing
+  and Git diff check.
+- PR #31 exact head now has all nine workflows completed successfully. PR #30
+  current head was re-read before combination.
+
+Failed / limitations:
+- This workspace has no PostgreSQL server. The new real PostgreSQL 17.6 SQL and
+  race gates are added to CI but are not yet claimed passed.
+- No migration was applied and the live runner does not use the adapter. No
+  provider call, deployment, device job or permission change occurred.
+
+Remains:
+- Pass exact-head CI, then adapt the live runner one transport attempt at a
+  time and remove legacy aggregate accounting only for adapted calls. Vision,
+  image, server and search paths remain explicit separate accounting work.
+- Preserve every prior Mac, OAuth/channel, second-customer, backup, monitoring
+  and final-assessment gate. PR #13 remains CI-only and must never be merged.
