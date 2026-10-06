@@ -4,13 +4,20 @@ Status: SOURCE CANDIDATE ONLY, 6 October 2026. No migration was applied,
 no Edge Function was deployed, and no real provider, device, customer account,
 permission, or production state was changed.
 
+Published draft: https://github.com/conpol84/javris-clone/pull/35 on
+`codex/firbo-runner-accounting-stage2-20261006`. Initial remote implementation
+head `280b53d1df19f6237681af407e6639dc12198a95` has immutable tree
+`513f3fe26767ba3464a11e5fce088fd347c27e7c`, byte-identical to local
+implementation commit `d6bf5c74f3f5804781d90ac1a16929a2e1671085`.
+
 This stage continues the claim-bound ledger in draft PR #32 at exact head
 `fc5ae27f32b2198ac8cb5e782b8c674e2e678cc9`. It first merges the current
 OpenJarvis draft PR #30 head
 `37768a7a1bd6a333876aae9c014e59a1a39ab672`, including its pinned engine
-release evidence. The merge commit is
-`55497eb4f3b5df2a57dea3fa10b9d7d16a52b061`; neither parent branch was
-rewritten. PR #31 is already an ancestor through PR #32.
+release evidence. Local merge `55497eb4f3b5df2a57dea3fa10b9d7d16a52b061`
+and uploaded equivalent `b6af002f22038f5145e442556672f35e373e0214`
+have the identical tree `6553740f99616a485742b9d61bc223d90c247f93`;
+neither parent branch was rewritten. PR #31 is already an ancestor through PR #32.
 
 ## Changed
 
@@ -75,8 +82,8 @@ exact head independently has all nine workflows completed successfully.
 
 ## Remains
 
-1. Publish this isolated candidate without changing PR #30/#31/#32, require all
-   exact-head workflows, and inspect the PostgreSQL 17.6 accounting logs.
+1. Require all exact-head workflows for PR #35 and inspect the PostgreSQL 17.6
+   accounting logs without changing PR #30/#31/#32.
 2. Add claim-aware vision and image inference accounting. Define billed search
    (including Tavily) and server-execution receipt contracts before removing
    their named legacy or external lanes.

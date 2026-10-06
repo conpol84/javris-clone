@@ -918,7 +918,8 @@ Failed / limitations:
   monitoring remain incomplete; no full runner-spend claim is made.
 
 Remains:
-- Publish the isolated candidate, require exact-head PostgreSQL and full CI,
-  then continue route-by-route accounting before any migration or deployment.
+- Draft PR #35 now contains the isolated candidate. Require its exact-head
+  PostgreSQL and full CI, then continue route-by-route accounting before any
+  migration or deployment.
 - Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-STAGE2-20261006.md`. Preserve all
   prior real-account/device/customer/recovery gates and never merge PR #13.
