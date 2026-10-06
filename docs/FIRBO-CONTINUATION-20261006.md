@@ -953,6 +953,39 @@ Remains:
 - Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-VISION-20261006.md`. Re-read live
   dependencies and migration ledgers before any release; never merge PR #13.
 
+## Candidate — runner billed search uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #37 `efa20e42` and preserved current
+  exact-green PR #30 `44c51036` as a separate parent without rewriting either.
+- Configured gateway auto-search and direct Tavily search now reserve, durably
+  dispatch and settle one receipt per actual provider request. Exact payloads
+  and request IDs are correlated; Tavily settlement requires returned credits.
+- An ambiguous dispatched search stops without another provider call or task
+  publication. Settled empty results may continue to the next route. Initial
+  research and loop-requested searches use the same accounting path.
+
+Tested / passed:
+- 119 focused actual-handler/search/accounting fake-transport tests; 572
+  non-rendered FIRBO Node tests; strict isolated Edge TypeScript; diff checks.
+- Fresh parent read-back: PR #37 has 27/27 completed-success checks and PR #30
+  has 26/26 completed-success checks. PR #31's latest exact-head checks are also
+  complete/success; older cancelled runs are superseded duplicates.
+
+Failed / limitations:
+- The isolated worktree has no frontend dependencies, so local Vitest startup
+  could not resolve Vite. No frontend source changed; new exact-head CI remains
+  required for frontend, PostgreSQL, Python, security and rendered gates.
+- No migration, deployment, provider request, credential, permission or device
+  job changed. Zero-fee public-source HTTP fan-out is not billed-attempt
+  accounting, and server execution remains separate.
+
+Remains:
+- Publish the isolated draft and require exact-head CI. Then add server-execution
+  receipts and authorized read-only reconciliation monitoring separately.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-SEARCH-20261006.md`. Re-read live
+  dependencies and migration ledgers before release; never merge PR #13.
+
 ## Candidate — runner image generation uses claim-bound attempt receipts
 
 Changed:

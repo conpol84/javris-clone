@@ -165,7 +165,12 @@ function fixture(options={}) {
         firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
     }
     if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
+    if(options.gatewaySearchFailure && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return new Response('upstream error',{status:502});
     if(options.emptyGatewaySearch && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return Response.json({results:[]});
+    if(String(url)==='https://api.tavily.com/search')return Response.json({
+      results:[{title:'Sports market grows',url:'https://news.example/a',content:'Up 5%'}],
+      ...(options.tavilyMissingUsage?{}:{usage:{credits:1}}),
+    });
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
     if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}],execution:options.serverExecution});
@@ -437,15 +442,18 @@ test('agent-runner: the agent searches, reads a page, then reports; every model 
   const lastBody=JSON.parse(chats[2].init.body);
   assert.ok(lastBody.messages.some(m=>/Full article text/.test(m.content)));
   const usage=state.writes.filter(w=>w.table==='usage_events');
-  assert.equal(usage.length,3);
-  assert.ok(usage.every(row=>row.op==='rpc'&&row.payload.input_tokens===100&&row.payload.output_tokens===20));
+  assert.equal(usage.length,5);
+  const searches=usage.filter(row=>row.payload.model==='omniroute:search/duckduckgo-free');
+  assert.equal(searches.length,2);assert.ok(searches.every(row=>row.payload.cost_usd===0));
+  const inference=usage.filter(row=>row.payload.input_tokens===100&&row.payload.output_tokens===20);
+  assert.equal(inference.length,3);assert.ok(inference.every(row=>row.op==='rpc'));
   assert.ok(Math.abs(
     usage.reduce((sum,row)=>sum+row.payload.cost_usd,0)
       - 3*Math.round((100*1+20*2))/1e6,
   ) < 1e-12);
   const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
   assert.equal(result.summary,'Market up 5%');
-  assert.equal(result.accounting.attempts.length,3);
+  assert.equal(result.accounting.attempts.length,5);
   assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
 });
@@ -536,9 +544,49 @@ test('agent-runner: empty gateway search uses configured Tavily and feeds eviden
   assert.match(JSON.parse(calls[0].init.body).query,/Review test task/);
   assert.equal(JSON.parse(calls[1].init.body).query,'sports market');
   assert.ok(calls.every(c=>c.init.headers.authorization==='Bearer synthetic-tavily-key'));
+  assert.ok(calls.every(c=>JSON.parse(c.init.body).include_usage===true));
+  const tavilyReserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='tavily:basic/search');
+  assert.equal(tavilyReserves.length,2);assert.ok(tavilyReserves.every(r=>r.args.p_reserved_usd===0.016));
+  const tavilyUsage=state.writes.filter(w=>w.table==='usage_events'&&w.payload.model==='tavily:basic/search');
+  assert.equal(tavilyUsage.length,2);assert.ok(tavilyUsage.every(w=>w.payload.cost_usd===0.008));
   const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
   assert.ok(JSON.parse(chats.at(-1).init.body).messages.some(m=>m.content.includes('Sports market grows')));
   assert.ok(!JSON.stringify(state.writes).includes('synthetic-tavily-key'));
+});
+test('agent-runner: configured gateway search gets one paid receipt per dispatch', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"web_search","input":"sports market"}',JSON.stringify({summary:'Evidence retained',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,env:{
+    FIRBO_GATEWAY_SEARCH_COST_USD:'0.003',FIRBO_GATEWAY_SEARCH_MAX_COST_USD:'0.005',
+  }});
+  assert.equal(response.status,200);
+  const calls=state.calls.filter(c=>String(c.url).includes('gateway.firboai.app')&&String(c.url).endsWith('/search'));
+  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.init.headers['x-request-id']));
+  const reserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='omniroute:search/auto');
+  assert.equal(reserves.length,2);assert.ok(reserves.every(r=>r.args.p_reserved_usd===0.005));
+  const usage=state.writes.filter(w=>w.table==='usage_events'&&w.payload.model==='omniroute:search/auto');
+  assert.equal(usage.length,2);assert.ok(usage.every(w=>w.payload.cost_usd===0.003));
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.cost_usd,0.00628);assert.equal(result.accounting.attempts.length,4);
+});
+test('agent-runner: ambiguous paid gateway search cannot fall back or publish', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const {state,response,body}=await invoke('agent-runner',{tools,gatewaySearchFailure:true,env:{
+    FIRBO_GATEWAY_SEARCH_COST_USD:'0.003',FIRBO_GATEWAY_SEARCH_MAX_COST_USD:'0.005',TAVILY_API_KEY:'synthetic-tavily-key',
+  }});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='web_gateway_http_502'));
+  assert.equal(state.calls.filter(c=>String(c.url).endsWith('/search')).length,1);
+  assert.ok(!state.calls.some(c=>String(c.url)==='https://api.tavily.com/search'));
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: missing Tavily usage is ambiguous and cannot publish', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const {state,response,body}=await invoke('agent-runner',{tools,emptyGatewaySearch:true,tavilyMissingUsage:true,env:{TAVILY_API_KEY:'synthetic-tavily-key'}});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='tavily_usage_missing'));
+  assert.ok(!state.calls.some(c=>String(c.url).endsWith('/chat/completions')));
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
 });
 test('agent-runner: a gateway reply that is only the model thinking aloud is asked again', async () => {
   const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:FULL_REPORT,actions:[]})];
