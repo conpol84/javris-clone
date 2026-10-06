@@ -304,7 +304,7 @@ export function AgentChatPage() {
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && <p className="fb-dim text-center text-sm">{t('chat.say', { agent: nameOf(activeAgent) })}</p>}
               {messages.map((m) => {
-                const { text: body, ask, task, meet } = parseHandoff(m.content);
+                const { text: body, ask, task, meet, app } = parseHandoff(m.content);
                 const askTo = ask ? agentOf(ask.agentId) : null;
                 return (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -318,7 +318,7 @@ export function AgentChatPage() {
                         <MessageSquare size={14} /> {copy('aAsk', { name: nameOf(askTo) })}
                       </button>
                     )}
-                    {m.role === 'assistant' && (task || meet) && <CeoActions task={task} meet={meet} />}
+                    {m.role === 'assistant' && (task || meet || app) && <CeoActions task={task} meet={meet} app={app} />}
                   </div>
                 </div>
                 );

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resultParts, pickFocusTask, taskBriefing } from '../../supabase/functions/_shared/task-briefing.ts';
+import { resultParts, pickFocusTask, taskBriefing, appFrom, WORK_SOURCE_APPS } from '../../supabase/functions/_shared/task-briefing.ts';
 
 const names = new Map([['r', 'Research Agent'], ['d', 'Data Analyst']]);
 const greek = { title: 'Βρες τα 3 κύρια νέα για την αγορά των αθλητικών προϊόντων', status: 'completed', assigned_agent_id: 'r', completed_at: '2026-10-04T19:44:41Z',
@@ -120,6 +120,22 @@ test('the CEO can give a task and call a meeting in the same reply', () => {
   assert.equal(out, `Θα αναθέσω την παρουσίαση και θα καλέσω σύσκεψη.\n\n[[task:${A}]] Παρουσίαση: Δ΄ τρίμηνο\n10 διαφάνειες\n\n[[meet:${A}]] Τιμές Δ΄ τριμήνου`);
   assert.equal(ceoActions('Απλή απάντηση.', team, CEO), 'Απλή απάντηση.');
   assert.equal(ceoActions('Ok.\nTASK: Κανείς | Κάτι', team, CEO), 'Ok.');
+});
+
+test('the CEO can suggest only an available curated work source', () => {
+  const available = WORK_SOURCE_APPS.filter((app) => app.kind === 'gdrive_read');
+  assert.equal(
+    appFrom('Τα brief είναι στο Drive.\nAPP: gdrive_read | Σύνδεσέ το για να διαβάζει τα εγκεκριμένα brief.', available).text,
+    'Τα brief είναι στο Drive.\n\n[[app:gdrive_read]] Σύνδεσέ το για να διαβάζει τα εγκεκριμένα brief.',
+  );
+  assert.equal(appFrom('Ok.\nAPP: slack | Θα βοηθήσει.', available).text, 'Ok.');
+  assert.equal(appFrom('Ok.\nAPP: Gmail · read | Θα βοηθήσει.', available).text, 'Ok.');
+});
+
+test('task, meeting and app offers survive together in model order', () => {
+  const available = WORK_SOURCE_APPS.filter((app) => app.kind === 'gdrive_read');
+  const out = ceoActions('Θα αναθέσω την ανάλυση, θα καλέσω σύσκεψη και προτείνω το Drive.\nTASK: Research Agent | Ανάλυση brief | Σύνοψη με πηγές\nMEETING: Έγκριση brief | Research Agent\nAPP: gdrive_read | Για πρόσβαση στα εγκεκριμένα brief.', team, CEO, available);
+  assert.equal(out, `Θα αναθέσω την ανάλυση, θα καλέσω σύσκεψη και προτείνω το Drive.\n\n[[task:${A}]] Ανάλυση brief\nΣύνοψη με πηγές\n\n[[meet:${A}]] Έγκριση brief\n\n[[app:gdrive_read]] Για πρόσβαση στα εγκεκριμένα brief.`);
 });
 
 test('a TASK line is never read as an ASK line (the "T" left behind in a live reply)', () => {

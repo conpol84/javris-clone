@@ -40,7 +40,7 @@ function fixture(options={}) {
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
   const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
-  const agent={id:AGENT,name:'Test agent',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
+  const agent={id:AGENT,name:'Test agent',type:options.agentType??'custom',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
   const execute=(table,op,payload,filters,selection,single=false)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
@@ -77,6 +77,10 @@ function fixture(options={}) {
     if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
     if(table==='knowledge_chunks')return{data:null,count:options.knowledgeCount??0,error:null};
+    if(table==='integrations'){
+      assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'integration read must be bound to verified organization');
+      return{data:options.integrations??[],error:options.integrationsError?{message:'db unavailable'}:null};
+    }
     if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
@@ -170,6 +174,23 @@ for(const name of Object.keys(handlers)){
   });
 }
 test('chat cannot act on another user conversation',async()=>{const {state,response}=await invoke('agent-chat',{foreignConversation:true});assert.equal(response.status,403);assert.equal(state.calls.length,0);});
+test('agent-chat offers only work sources not already present in this company',async()=>{
+  const {state,response}=await invoke('agent-chat',{agentType:'ceo',integrations:[{kind:'gdrive_read',status:'active'}]});
+  assert.equal(response.status,200);
+  const request=JSON.parse(state.calls[0].init.body);
+  const system=request.messages.find(m=>m.role==='system').content;
+  assert.match(system,/Connected work sources: Google Drive · read/);
+  const proposal=system.split('\n').find(line=>line.includes("founder's work would materially benefit"));
+  assert.ok(proposal);assert.doesNotMatch(proposal,/gdrive_read \(/);assert.match(proposal,/gmail_read \(/);
+});
+test('agent-chat fails closed when integration state cannot be read',async()=>{
+  const {state,response}=await invoke('agent-chat',{agentType:'ceo',integrationsError:true});
+  assert.equal(response.status,200);
+  const request=JSON.parse(state.calls[0].init.body);
+  const system=request.messages.find(m=>m.role==='system').content;
+  assert.match(system,/Connected work sources: unavailable/);
+  assert.match(system,/propose exactly one from this list: none\./);
+});
 test('task retains human approval requirement',async()=>{const {state,body}=await invoke('agent-runner');const approvals=state.writes.find(w=>w.table==='approvals');assert.equal(approvals.payload[0].status,'pending');assert.equal(approvals.payload[0].organization_id,ORG);assert.equal(body.status,'awaiting_approval');});
 test('suggest-only task does not insert external approvals',async()=>{const {state,body}=await invoke('agent-runner',{autonomy:'suggest'});assert.equal(body.status,'completed');assert.ok(!state.writes.some(w=>w.table==='approvals'));});
 test('suggest-only employee cannot queue a computer write',async()=>{
