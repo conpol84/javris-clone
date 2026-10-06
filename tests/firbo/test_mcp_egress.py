@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import http.client
+import io
 import json
+import os
 import socket
 import ssl
 import subprocess
@@ -11,7 +13,7 @@ import tempfile
 import threading
 import time
 import unittest
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stdout
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -580,6 +582,89 @@ class ServiceTests(unittest.TestCase):
         ]:
             with self.assertRaises(ValueError):
                 service.make_handler(token, origins)
+
+    def test_bind_defaults_to_loopback_and_accepts_only_rfc1918(self):
+        base = {
+            "FIRBO_MCP_EGRESS_TOKEN": TOKEN,
+            "FIRBO_MCP_EGRESS_ALLOWED_ORIGINS": "https://mcp.example.com",
+        }
+        self.assertEqual(service.service_configuration(base)[2:], ("127.0.0.1", 8093))
+        for value in ["10.0.0.8", "172.17.0.1", "192.168.50.4", "127.10.0.2"]:
+            with self.subTest(value=value):
+                config = service.service_configuration(
+                    {**base, "FIRBO_MCP_EGRESS_BIND": value}
+                )
+                self.assertEqual(config[2], value)
+
+    def test_bind_and_port_reject_public_or_ambiguous_listeners(self):
+        base = {
+            "FIRBO_MCP_EGRESS_TOKEN": TOKEN,
+            "FIRBO_MCP_EGRESS_ALLOWED_ORIGINS": "https://mcp.example.com",
+        }
+        for value in [
+            "0.0.0.0",
+            "::",
+            "::1",
+            "8.8.8.8",
+            "169.254.1.1",
+            "172.15.0.1",
+            "192.0.2.1",
+            "mcp.internal",
+        ]:
+            with self.subTest(bind=value), self.assertRaises(ValueError):
+                service.service_configuration({**base, "FIRBO_MCP_EGRESS_BIND": value})
+        for value in ["0", "443", "65536", " 8093", "8093x"]:
+            with self.subTest(port=value), self.assertRaises(ValueError):
+                service.service_configuration({**base, "FIRBO_MCP_EGRESS_PORT": value})
+
+    def test_check_config_does_not_start_or_disclose_credentials(self):
+        environment = {
+            "FIRBO_MCP_EGRESS_TOKEN": TOKEN,
+            "FIRBO_MCP_EGRESS_ALLOWED_ORIGINS": "https://mcp.example.com",
+            "FIRBO_MCP_EGRESS_BIND": "172.17.0.1",
+            "FIRBO_MCP_EGRESS_PORT": "18093",
+        }
+        output = io.StringIO()
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(service, "HTTPServer") as server,
+            redirect_stdout(output),
+        ):
+            service.main(["--check-config"])
+        report = json.loads(output.getvalue())
+        self.assertEqual(
+            report,
+            {
+                "contract": "firbo-mcp-egress-config/v1",
+                "configuration_valid": True,
+                "bind_scope": "private",
+                "bind_address": "172.17.0.1",
+                "port": 18093,
+                "allowed_origin_count": 1,
+                "contains_secrets": False,
+                "listener_started": False,
+            },
+        )
+        self.assertNotIn(TOKEN, output.getvalue())
+        self.assertNotIn("mcp.example.com", output.getvalue())
+        server.assert_not_called()
+
+    def test_main_uses_the_validated_private_listener(self):
+        environment = {
+            "FIRBO_MCP_EGRESS_TOKEN": TOKEN,
+            "FIRBO_MCP_EGRESS_ALLOWED_ORIGINS": "https://mcp.example.com",
+            "FIRBO_MCP_EGRESS_BIND": "172.17.0.1",
+            "FIRBO_MCP_EGRESS_PORT": "18093",
+        }
+        server = MagicMock()
+        with (
+            patch.dict(os.environ, environment, clear=True),
+            patch.object(service, "HTTPServer", return_value=server) as server_type,
+        ):
+            service.main([])
+        server_type.assert_called_once()
+        self.assertEqual(server_type.call_args.args[0], ("172.17.0.1", 18093))
+        server.serve_forever.assert_called_once_with()
 
     def test_actual_service_auth_and_envelope_forwarding(self):
         server = HTTPServer(("127.0.0.1", 0), service.make_handler(TOKEN, ORIGINS))
