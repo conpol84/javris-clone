@@ -58,7 +58,7 @@ def wait_lock(proc: subprocess.Popen, app: str) -> None:
     raise AssertionError("second reservation did not contend on the organization lock")
 
 
-def race(isolation: str) -> None:
+def race(isolation: str, source: str = "agent-chat") -> None:
     suffix = uuid.uuid4().hex
     org = str(uuid.uuid4())
     agent = str(uuid.uuid4())
@@ -70,14 +70,14 @@ def race(isolation: str) -> None:
     )
     app = "accounting_" + suffix
     a, b = start(app + "_a"), start(app + "_b")
-    call = lambda key: (
-        f"select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat',"
+    call = lambda key, route: (
+        f"select public.firbo_reserve_inference('{org}','{USER}','{agent}','{route}',"
         f"'{key}',0.750000,60,100)"
     )
     try:
-        send(a, f"begin isolation level {isolation}; {SERVICE} {call(first_key)}; select 'reservation_ready';")
+        send(a, f"begin isolation level {isolation}; {SERVICE} {call(first_key, "agent-chat")}; select 'reservation_ready';")
         wait_ready(a)
-        send(b, f"begin isolation level {isolation}; {SERVICE} {call(second_key)}; commit;")
+        send(b, f"begin isolation level {isolation}; {SERVICE} {call(second_key, source)}; commit;")
         b.stdin.close()
         wait_lock(b, app + "_b")
         send(a, "commit;\n\\q")
@@ -97,7 +97,7 @@ def race(isolation: str) -> None:
                 raise AssertionError(result)
         if sql(f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'") != "1":
             raise AssertionError("more than one reservation crossed the budget boundary")
-        print(f"PASS {isolation}: one winner for concurrent budget reservations", flush=True)
+        print(f"PASS {isolation}: one winner for concurrent chat/{source} budget reservations", flush=True)
     finally:
         for proc in (a, b):
             if proc.poll() is None:
@@ -157,4 +157,5 @@ def settlement_handoff(isolation: str) -> None:
 
 for level in ("read committed", "serializable"):
     race(level)
+    race(level, "mission-runner")
     settlement_handoff(level)

@@ -28,6 +28,7 @@ jobs:
           tests/firbo/legacy-integrations-persistence.test.mjs
           tests/firbo/workflow-lifecycle.test.mjs
           tests/firbo/company-skills.test.mjs
+          tests/firbo/mission-meeting.test.mjs
   postgres:
     name: PostgreSQL ${{ matrix.target }} lifecycle
     runs-on: ubuntu-latest
@@ -116,7 +117,9 @@ jobs:
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-fixture.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006081517_inference_request_ledger_stage1.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006084130_inference_request_ledger_indexes.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006092215_inference_mission_accounting.sql
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/mission-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               python3 tests/firbo/accounting/postgres-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
           esac

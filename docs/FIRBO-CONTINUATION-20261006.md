@@ -614,3 +614,39 @@ v28, runner v83, MCP v19 and mission-runner v26.
 
 References: https://github.com/conpol84/javris-clone/pull/24 ;
 https://github.com/conpol84/javris-clone/actions/runs/37438061534
+
+
+### Candidate — mission/meeting inference ledger (6 October, source only)
+
+Changed:
+- Continued Claude checkpoint `a823bcbd0f54e4ef1d29ad15905ef29991289b1b`, which
+  already includes merged PRs #17 through #24 and both contributors' history.
+- Each mission plan, synthesis, meeting speaker and CEO minutes model attempt
+  uses the chat ledger's private company lock and current employee budget.
+  Fallbacks reserve separately; ambiguous earlier results retain their cost
+  reservation. Lost settlement responses cannot trigger another provider call.
+- Mission results contain accounting request IDs and review state. Previously
+  ambiguous missions cannot be re-executed automatically. Free/BYOK remains
+  zero Firbo cost while still consuming per-call rate quota. Existing daily
+  plan limits now apply atomically across chat and meeting model calls.
+- Added source allowlist migration, mixed-route PostgreSQL assertions/races
+  and actual handler tests. No frontend, connector or task-runner changes.
+
+Tested / passed:
+- 103 actual chat/task/mission handler tests with mocked transport; 519
+  non-rendered top-level Node tests; strict Edge TypeScript and diff checks.
+- Real PostgreSQL migration and six race checks remain an exact-head CI gate.
+
+Failed / limitations:
+- Source-only candidate: no production migration, Edge deployment, provider
+  request, user permission, integration or device job was changed.
+- Existing mission task publication/claim semantics are preserved; this does
+  not claim synthesis idempotency or repair every mission lifecycle issue.
+- Agent-runner, speech and other inference routes still need ledger adapters.
+
+Remains:
+- Require exact-head CI, re-check concurrent branches/live dependencies, merge
+  preserving history, apply only the new migration and deploy mission-runner.
+  Never replay `20261006083523` or `20261006084808`.
+- Keep real Mac, real customer sandbox, OAuth/channel acceptance, reconciliation
+  monitoring and all other remaining master-plan gates open.

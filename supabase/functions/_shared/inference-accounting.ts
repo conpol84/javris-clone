@@ -1,7 +1,7 @@
 /**
  * Server-owned inference admission and settlement.
  *
- * Stage 1 is intentionally wired only to agent-chat.  The database RPC owns
+ * Chat and mission calls share the same admission boundary. The database RPC owns
  * concurrency; this module owns bounded request estimates and fail-closed RPC
  * parsing.  Never turn an RPC error into an unmetered provider call.
  */
@@ -43,6 +43,7 @@ export async function reserveInference(db: any, args: {
   userId: string;
   agentId: string;
   requestKey: string;
+  source?: 'agent-chat' | 'mission-runner';
   reservedUsd: number;
   hourlyLimit: number;
   dailyLimit: number;
@@ -52,7 +53,7 @@ export async function reserveInference(db: any, args: {
     p_org: args.organizationId,
     p_user: args.userId,
     p_agent: args.agentId,
-    p_source: 'agent-chat',
+    p_source: args.source ?? 'agent-chat',
     p_request_key: args.requestKey,
     p_reserved_usd: args.reservedUsd,
     p_hourly_limit: args.hourlyLimit,
