@@ -1155,3 +1155,29 @@ No migration/deployment at authoring. Remains: exact-head CI, fresh live guards,
 read-back, real database caller/denial tests, accepted frontend deployment and all
 previous real VPS/Mac/account/customer/backup/design gates. Details and final LIVE
 entry are in FIRBO-ACCOUNTING-UI-20261006.md. Never merge CI-only PR13.
+
+
+## Native artifact acceptance candidate — 7 October 2026
+
+Changed: PR48 adds an ordinary-agent write/read acceptance command with two
+structured request receipts and independent exact-byte/hash verification. It
+preserves approvals and refuses symlinks/FIFOs/hardlinks, incomplete receipts
+and replayed IDs. No installation, restart, retry or website-delivery claim.
+Read docs/FIRBO-ARTIFACT-ACCEPTANCE-20261007.md for operation and remaining gates.
+
+Tested/passed: 16 local tests use actual shell/file tools and the server receipt
+handler with disposable files; Ruff and diff checks pass. Initial PR48 source
+a006b2c2 passed server receipts, pinned MCP, lifecycle, voice, security and
+frontend workflows at the last read; final combined CI belongs in PR48.
+
+Preserved newer shared 9f38ff5f, including PR46 Billing and PR47 ingress, as a
+separate parent. Billing's active continuation owns its frontend rollout; do
+not deploy an older frontend or repeat its applied 20261006213545 migration.
+Public firboai.app, backend health and Supabase password-auth CORS preflight
+returned HTTP200. This does not prove authenticated login or task completion.
+
+Failed/limits: no callable VPS/SSH channel; no actual verifier execution or Mac
+browser_task. No provider connection rows existed at the live read. Retain all
+pricing/runner/MCP, FreeLLMAPI remote-access, OAuth/customer, business-workflow,
+voice/mobile, signed desktop and off-host restore/operations acceptance gates.
+No master-plan completion. PR13 remains CI-only; no user permissions changed.
