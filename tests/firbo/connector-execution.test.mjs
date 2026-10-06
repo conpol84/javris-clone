@@ -123,7 +123,7 @@ test('missing file reports a code rather than an absolute path', async () => {
   assert.deepEqual(report,{ok:false,error:'file_enoent'});assert.ok(!JSON.stringify(report).includes(root));
 });
 test('invalid job inputs fail before local execution', () => {
-  for(const invalid of [null,[],{},job('browser',{}),job('browser_open',{}),job('read',[]),job('read',{}),job('read',{path:32}),job('exec',{command:''}),job('exec',{command:'x'.repeat(501)}),job('write',{path:'x',content:42}),job('write',{path:'x',content:'a'.repeat(100001)}),job('write',{path:'x',content:'ok',overwrite:'true'}),job('list',{path:'bad\0path'})]) assert.throws(()=>validateJob(invalid));
+  for(const invalid of [null,[],{},job('browser',{}),job('browser_open',{}),job('read',[]),job('read',{}),job('read',{path:32}),job('exec',{command:''}),job('exec',{command:'x'.repeat(4001)}),job('write',{path:'x',content:42}),job('write',{path:'x',content:'a'.repeat(100001)}),job('write',{path:'x',content:'ok',overwrite:'true'}),job('list',{path:'bad\0path'})]) assert.throws(()=>validateJob(invalid));
 });
 test('empty allowed-folder option fails explicitly', () => {
   assert.throws(()=>parseArgs(['pair','CODE','--allow']),/missing_allowed_folder/);

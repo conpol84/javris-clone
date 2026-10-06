@@ -58,7 +58,7 @@ export function validateJob(job) {
   if (!validPath(p.path) || !validPath(p.cwd)) throw new Error('bad_job_params');
   if (['read', 'write'].includes(job.kind) && (typeof p.path !== 'string' || !p.path.trim())) throw new Error('bad_job_params');
   if (job.kind === 'write' && (typeof p.content !== 'string' || p.content.length > MAX_CONTENT || (p.overwrite !== undefined && typeof p.overwrite !== 'boolean'))) throw new Error('bad_job_params');
-  if (job.kind === 'exec' && (typeof p.command !== 'string' || !p.command.trim() || p.command.length > 500 || p.command.includes('\0'))) throw new Error('bad_job_params');
+  if (job.kind === 'exec' && (typeof p.command !== 'string' || !p.command.trim() || p.command.length > 4000 || p.command.includes('\0'))) throw new Error('bad_job_params');
   if (job.kind === 'browser_open' && (typeof p.url !== 'string' || !p.url.trim() || p.url.length > 2048 || /[\r\n\0]/.test(p.url))) throw new Error('bad_job_params');
   if (job.kind === 'open_app' && !APP_NAME.test(typeof p.app === 'string' ? p.app : '')) throw new Error('invalid_app_name');
   if (job.kind === 'shortcut' && !APP_NAME.test(typeof p.name === 'string' ? p.name : '')) throw new Error('invalid_app_name');

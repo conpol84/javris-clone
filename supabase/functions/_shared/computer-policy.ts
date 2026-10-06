@@ -55,7 +55,9 @@ export function withinHours(policy: ComputerPolicy, now = new Date()): boolean {
 }
 
 // Never, whatever the settings: passwords and the keychain, admin rights, system settings, disks, power, piping downloads into a shell.
-const FORBIDDEN = /\bsudo\b|\bsu\s|\bsecurity\b|keychain|\bpasswd\b|\bcsrutil\b|\bspctl\b|\bnvram\b|\blaunchctl\b|\bdefaults\s+write\b|\bdiskutil\b|\bmkfs|\bdd\s+if=|\bshutdown\b|\breboot\b|\bhalt\b|\bkillall\b|\bosascript\b|rm\s+-[a-z]*r[a-z]*\s+(\/|~\/?)(\s|$)|:\(\)\s*\{|\|\s*(ba|z|da)?sh\b|\bchmod\s+-r|\bchown\b|\.ssh\b|\.aws\b|\.gnupg\b|id_rsa|\.env\b/i;
+// AppleScript (osascript) is not on this list: it is how an employee works inside Excel, Mail or Keynote, and it always
+// waits for the owner's approval (it is never a safe read-only command), unless it touches one of the words below.
+const FORBIDDEN = /\bsudo\b|\bsu\s|\bsecurity\b|keychain|\bpasswd\b|\bcsrutil\b|\bspctl\b|\bnvram\b|\blaunchctl\b|\bdefaults\s+write\b|\bdiskutil\b|\bmkfs|\bdd\s+if=|\bshutdown\b|\breboot\b|\bhalt\b|\bkillall\b|rm\s+-[a-z]*r[a-z]*\s+(\/|~\/?)(\s|$)|:\(\)\s*\{|\|\s*(ba|z|da)?sh\b|\bchmod\s+-r|\bchown\b|\.ssh\b|\.aws\b|\.gnupg\b|id_rsa|\.env\b/i;
 // Read-only commands that run without asking. No shell features at all: one plain command, its options and simple words.
 const SAFE_COMMANDS: Record<string, RegExp> = {
   ls: /^ls(\s+-[a-zA-Z]+)*(\s+[\w./~-]+)?$/,
@@ -177,7 +179,8 @@ export function parseComputerRequest(input: string): { kind: ComputerKind; param
     const content = at < 0 ? '' : rest.slice(at + 2).trim();
     return path && content ? { kind: 'write', params: { path, content: content.slice(0, 100_000), overwrite: false } } : { error: 'write_needs_path_and_content' };
   }
-  if (['run', 'exec', 'command', 'shell'].includes(verb)) return rest ? { kind: 'exec', params: { command: rest.slice(0, 500) } } : { error: 'command_required' };
+  // Room for a whole AppleScript job (open Excel, fill a sheet, save it, draft the email) in one approval.
+  if (['run', 'exec', 'command', 'shell'].includes(verb)) return rest ? { kind: 'exec', params: { command: rest.slice(0, 4000) } } : { error: 'command_required' };
   if (['browse', 'browser_task'].includes(verb)) {
     let plan: unknown = null;
     try { plan = JSON.parse(rest); } catch { /* not JSON */ }

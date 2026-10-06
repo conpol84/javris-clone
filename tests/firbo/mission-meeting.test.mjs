@@ -209,3 +209,9 @@ test('mission own-key calls reserve zero Firbo cost but still consume rate quota
     assert.equal(usage.cost_usd,0);assert.equal(usage.own_key,true);
   } finally {CEO.model=oldModel;}
 });
+
+test('the daily cap follows the company plan: no fixed default of 100 runs a day', async () => {
+  const src = await readFile(new URL('supabase/functions/mission-runner/index.ts', root), 'utf8');
+  assert.match(src, /Deno\.env\.get\('ORG_DAILY_RUN_LIMIT'\) \?\? Infinity\), 100000\)/);
+  assert.doesNotMatch(src, /ORG_DAILY_RUN_LIMIT'\) \?\? 100\)/);
+});

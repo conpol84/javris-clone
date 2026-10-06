@@ -63,7 +63,7 @@ export function executionForApproval(action: string, payload: Record<string, unk
   if (name==='file_read'||name==='computer_read') return path?{kind:'read',params:{path}}:null;
   if (name==='file_write'||name==='computer_write') return path?{kind:'write',params:{path,content:str(payload.content,100_000),overwrite:payload.overwrite===true}}:null;
   if (name==='shell_exec'||name==='computer_exec') {
-    const command=str(payload.command,500); return command?{kind:'exec',params:{command,cwd:str(payload.cwd,500)}}:null;
+    const command=str(payload.command,4000); return command?{kind:'exec',params:{command,cwd:str(payload.cwd,500)}}:null;
   }
   if (name==='browser_open'||name==='computer_browser_open') {
     const url=browserUrl(payload.url); return url?{kind:'browser_open',params:{url}}:null;
@@ -320,7 +320,7 @@ Deno.serve(async (req) => {
       if (!params.path) return json(400, { error: 'bad_request' });
     } else if (kind === 'exec') {
       if (body.confirm !== true) return json(400, { error: 'confirm_required' });
-      params = { command: str(p.command, 500), cwd: str(p.cwd, 500) };
+      params = { command: str(p.command, 4000), cwd: str(p.cwd, 500) };
       if (!params.command) return json(400, { error: 'bad_request' });
     } else if (kind === 'browser_open') {
       const url = browserUrl(p.url);

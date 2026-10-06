@@ -190,7 +190,9 @@ Deno.serve(async (req) => {
 
   // Each speaker/model attempt reserves against the same company ledger as chat.
   const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: mission.organization_id, p_key: 'daily_runs' });
-  const dailyLimit = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? 100));
+  // The company's plan sets the daily cap, as in agent-runner and agent-chat; ORG_DAILY_RUN_LIMIT only lowers it when set.
+  // (A fixed default of 100 here stopped Enterprise meetings after 100 runs a day.) The ledger accepts at most 100000.
+  const dailyLimit = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity), 100000);
   if (planError || !Number.isSafeInteger(dailyLimit) || dailyLimit < 0 || dailyLimit > 100000) return json(503, { error: 'budget_unavailable' });
   if (dailyLimit === 0) return json(429, { error: 'plan_limit' });
   let accountingError: string | null = null;

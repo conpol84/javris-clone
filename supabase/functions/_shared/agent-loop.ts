@@ -90,7 +90,7 @@ export function parseToolRequest(text: string, allowed: ToolName[]): { action: T
     if (m) { action = m[1].toLowerCase() as ToolName; input = m[3]; }
   }
   // A server job may carry code: give it room; search words and links stay short.
-  input = input.trim().slice(0, action === 'server_task' || action === 'computer' ? 3000 : action === 'generate_image' ? 800 : 500);
+  input = input.trim().slice(0, action === 'computer' ? 4200 : action === 'server_task' ? 3000 : action === 'generate_image' ? 800 : 500);
   return action && allowed.includes(action) && input ? { action, input } : null;
 }
 
