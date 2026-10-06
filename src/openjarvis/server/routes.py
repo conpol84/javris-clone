@@ -668,7 +668,43 @@ def _handle_agent(
         ],
         usage=usage,
         complexity=complexity_info,
+        execution=(
+            _execution_receipt(result.tool_results)
+            if req.firbo_include_execution
+            else None
+        ),
     )
+
+
+def _execution_receipt(results) -> dict:
+    """Bounded runtime evidence; exclude arguments and internal metadata.
+
+    A successful tool result is the tool's report, not independent verification
+    of a saved artifact or external side effect. Keep failures visible even when
+    the final model answer claims success. This does not persist a job ledger.
+    """
+    tools = []
+    remaining = 24000
+    for result in results[:24]:
+        content = result.content if isinstance(result.content, str) else ""
+        output = content[: min(2000, remaining)]
+        remaining -= len(output)
+        tools.append(
+            {
+                "name": str(result.tool_name)[:120],
+                "success": result.success is True,
+                "output": output,
+                "truncated": len(output) < len(content),
+            }
+        )
+    return {
+        "contract": "openjarvis-execution/v1",
+        "mode": "agent",
+        "tool_count": len(results),
+        "failed_count": sum(result.success is not True for result in results),
+        "tools": tools,
+        "truncated": len(results) > len(tools) or any(t["truncated"] for t in tools),
+    }
 
 
 async def _handle_agent_stream(

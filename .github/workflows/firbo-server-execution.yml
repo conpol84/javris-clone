@@ -1,0 +1,36 @@
+name: Firbo server execution receipts
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths: ['src/openjarvis/server/**', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-server-execution.yml']
+permissions:
+  contents: read
+jobs:
+  python-receipts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Isolated runtime contract tests
+        run: |
+          python3 -m venv /tmp/firbo-receipts
+          /tmp/firbo-receipts/bin/pip install -r tests/firbo/requirements.txt
+          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py
+  bridge-and-panel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Actual handlers with synthetic transports
+        run: node --experimental-strip-types --test tests/firbo/server-execution.test.mjs tests/firbo/server-jarvis-entrypoint.test.mjs tests/firbo/edge-entrypoints.test.mjs
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend
+      - name: Panel and strict types
+        run: |
+          npm --prefix frontend test -- --run src/components/admin/ServerExecutionReceipt.test.tsx src/components/admin/ServerJarvisPanel.test.tsx
+          frontend/node_modules/.bin/tsc --noEmit -p tests/firbo/tsconfig.edge.json
+          npm --prefix frontend run build

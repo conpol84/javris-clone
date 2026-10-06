@@ -151,7 +151,7 @@ function fixture(options={}) {
     if(options.emptyGatewaySearch && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return Response.json({results:[]});
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
-    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}]});
+    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}],execution:options.serverExecution});
     if(options.chatReplies&&String(url).endsWith('/chat/completions'))return Response.json({model:'provider/resolved',choices:[{message:{content:options.chatReplies.shift()}}],usage:{prompt_tokens:100,completion_tokens:20}});
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:options.shortReport?'Result':FULL_REPORT,actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
@@ -517,6 +517,18 @@ test('agent-runner: a customer company gets only the sandboxed server agent, nev
   const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
   assert.equal(box.init.headers.authorization,'Bearer box-key');
   assert.match(JSON.parse(state.calls.find(c=>String(c.url).includes('gateway')).init.body).messages[0].content,/locked sandbox/);
+});
+test('agent-runner feeds actual server tool failures back to the employee', async () => {
+  const execution={contract:'openjarvis-execution/v1',mode:'agent',tool_count:1,failed_count:1,
+    tools:[{name:'code_interpreter',success:false,output:'Sandbox execution failed',truncated:false}],truncated:false};
+  const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,serverExecution:execution});
+  assert.equal(response.status,200);
+  const server=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
+  assert.equal(JSON.parse(server.init.body).firbo_include_execution,true);
+  const final=state.calls.filter(c=>String(c.url).includes('gateway')&&String(c.url).endsWith('/chat/completions')).at(-1);
+  assert.match(JSON.stringify(JSON.parse(final.init.body).messages),/Sandbox execution failed/);
+  assert.match(JSON.stringify(JSON.parse(final.init.body).messages),/1 failed/);
 });
 test('agent-runner: the platform admin company uses the full server agent; a plan without the power gets none', async () => {
   const tools=[{tool_name:'code_interpreter',enabled:true,policy:'allow'}];

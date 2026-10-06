@@ -2,6 +2,7 @@
 // The shared gateway route is opt-in (legacy / selected-agent canary / gateway).
 // See docs/FIRBO-PRODUCTION-PLAN.md. No settings or existing agent models are changed here.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { serverTaskResult } from '../_shared/server-execution.ts';
 import { gatewayForAgent, gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
@@ -532,10 +533,10 @@ Deno.serve(async (req) => {
         // The server agent requires a model name: use the one it runs by default.
         const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
         const res = await fetch(`${serverUrl}/v1/chat/completions`, { method: 'POST', headers,
-          body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
+          body: JSON.stringify({ model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false, firbo_include_execution: true }), signal: AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]) });
         if (!res.ok) throw new Error(`server_agent_http_${res.status}`);
         const out = await res.json();
-        return flat(out?.choices?.[0]?.message?.content, 3500) || 'The server agent returned nothing.';
+        return serverTaskResult(out?.choices?.[0]?.message?.content, out?.execution);
       };
     }
   }
