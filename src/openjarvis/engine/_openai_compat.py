@@ -103,6 +103,12 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
             url = f"{self._api_prefix}/chat/completions"
             resp = self._client.post(url, json=payload)
             if resp.status_code == 400 and "tools" in payload:
+                if self.engine_id == "omniroute":
+                    raise EngineConnectionError(
+                        "OmniRoute rejected a request containing tools (HTTP 400). "
+                        "No text-only retry was performed; "
+                        "verify provider tool support."
+                    )
                 payload.pop("tools", None)
                 payload.pop("tool_choice", None)
                 resp = self._client.post(url, json=payload)
