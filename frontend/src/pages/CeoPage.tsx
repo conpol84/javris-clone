@@ -1,6 +1,6 @@
 import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { AskButton } from '../components/company/AskButton';
+import { CeoActions } from '../components/company/CeoActions';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import type { Satellite } from '../components/scenes/HologramScene';
 import { CeoStage } from '../components/scenes/CeoStage';
@@ -169,7 +169,7 @@ export function CeoPage() {
                 <li key={i} className="fb-row p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                   <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : name}</div>
                   {l.text}
-                  {l.ask && <AskButton ask={l.ask} />}
+                  <CeoActions ask={l.ask} task={l.task} meet={l.meet} />
                 </li>
               ))}
             </ul>

@@ -65,7 +65,13 @@ export interface TaskResult {
   /** Why the run moved to the quality route ('feedback' after 👎, 'invalid_reply' when the economy model failed). */
   routed_up?: string;
   /** The work product the employee wrote: a report, a slide presentation or a message ready to send. */
-  format?: 'report' | 'presentation' | 'memo';
+  format?: 'report' | 'presentation' | 'memo' | 'meeting';
+  /** A meeting: what each employee said, in order (the minutes are in `report`). */
+  transcript?: { agent_id: string; name: string; text: string }[];
+  /** A meeting's decisions, one line each. */
+  decisions?: string[];
+  /** How many action items of a meeting became tasks. */
+  actions_created?: number;
   /** True when the draft got the quality pass before it was saved. */
   polished?: boolean;
   actions?: { action: string; risk: string; payload: Record<string, unknown> }[];

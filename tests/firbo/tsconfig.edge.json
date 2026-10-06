@@ -18,6 +18,7 @@
     "edge-typecheck.d.ts",
     "../../supabase/functions/_shared/gateway-routing.ts",
     "../../supabase/functions/agent-chat/index.ts",
+    "../../supabase/functions/mission-runner/index.ts",
     "../../supabase/functions/agent-runner/index.ts",
     "../../supabase/functions/_shared/own-keys.ts",
     "../../supabase/functions/_shared/task-briefing.ts",

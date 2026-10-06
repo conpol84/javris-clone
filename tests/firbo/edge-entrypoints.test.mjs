@@ -272,7 +272,9 @@ test('mission-runner moves only free-plan companies to the free combo and report
   assert.match(source,/if \(!own && orgPlan\?\.plan === 'free'/);
   assert.match(source,/cost: target\.own \? 0 :/);
   assert.match(source,/reason: 'no_model_for_agent'/);
-  assert.equal((source.match(/await ask\(targets, gateway,/g)||[]).length,2);
+  // plan, synthesize, each meeting turn and the meeting minutes: every model call goes through the same routed ask().
+  assert.equal((source.match(/await ask\(targets, gateway,/g)||[]).length,4);
+  assert.equal((source.match(/fetch\(/g)||[]).length,1);
 });
 
 const OWN='sk-own-company-key-1234567890';

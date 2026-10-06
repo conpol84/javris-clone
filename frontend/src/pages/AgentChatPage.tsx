@@ -10,6 +10,7 @@ import { createConversation, deleteConversation, listAgents, listConversations, 
 import { agentLabel } from '../lib/company/labels';
 import { RunError, runErrorText, sendChat, type ChatMessage } from '../lib/company/runner';
 import { parseHandoff } from '../lib/company/handoff';
+import { CeoActions } from '../components/company/CeoActions';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
@@ -303,7 +304,7 @@ export function AgentChatPage() {
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && <p className="fb-dim text-center text-sm">{t('chat.say', { agent: nameOf(activeAgent) })}</p>}
               {messages.map((m) => {
-                const { text: body, ask } = parseHandoff(m.content);
+                const { text: body, ask, task, meet } = parseHandoff(m.content);
                 const askTo = ask ? agentOf(ask.agentId) : null;
                 return (
                 <div key={m.id} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -317,6 +318,7 @@ export function AgentChatPage() {
                         <MessageSquare size={14} /> {copy('aAsk', { name: nameOf(askTo) })}
                       </button>
                     )}
+                    {m.role === 'assistant' && (task || meet) && <CeoActions task={task} meet={meet} />}
                   </div>
                 </div>
                 );

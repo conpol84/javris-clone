@@ -132,6 +132,44 @@ export function handoffFrom(reply: string, agents: { id: string; name: string }[
   return { text: `${text}\n\n[[ask:${agent.id}]] ${question}`, agentId: agent.id, question };
 }
 
+/**
+ * Turns the CEO's last line "MEETING: <topic> | <employee>, <employee>" into the stored marker
+ * "[[meet:<id>,<id>]] <topic>", with this company's employees only (unknown names are dropped; none left: the CEO
+ * invites people when the meeting starts). The app shows it as a button that opens the meeting ready to start.
+ */
+export function meetingFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; topic: string; ids: string[] } {
+  const m = /\n?[ \t*_]*MEETING:\s*([^|\n]{3,160}?)\s*(?:\|\s*([^\n]{0,400}))?\s*$/i.exec(reply.trimEnd());
+  if (!m) return { text: reply, topic: '', ids: [] };
+  const text = reply.trimEnd().slice(0, m.index).trimEnd();
+  const topic = m[1].replace(/[*_"«»\[\]]/g, '').trim();
+  const ids: string[] = [];
+  for (const raw of (m[2] ?? '').split(/[,;]| και | and /)) {
+    const want = fold(raw.replace(/[*_"«»]/g, '').trim());
+    if (want.length < 3) continue;
+    const agent = agents.find(a => a.id !== selfId && fold(a.name) === want) ?? agents.find(a => a.id !== selfId && (fold(a.name).includes(want) || want.includes(fold(a.name))));
+    if (agent && !ids.includes(agent.id) && ids.length < 5) ids.push(agent.id);
+  }
+  if (!topic) return { text, topic: '', ids: [] };
+  return { text: `${text}\n\n[[meet:${ids.join(',')}]] ${topic}`, topic, ids };
+}
+
+/**
+ * Turns the CEO's last line "TASK: <employee> | <title> | <what exactly to deliver>" into the stored marker
+ * "[[task:<id>]] <title>\n<details>", for an employee of this company (never the CEO itself). The app shows it as a
+ * button that gives the task to that employee; nothing starts until the owner presses it.
+ */
+export function taskFrom(reply: string, agents: { id: string; name: string }[], selfId: string): { text: string; agentId: string | null; title: string } {
+  const m = /\n?[ \t*_]*TASK:\s*([^|\n]{1,80}?)\s*\|\s*([^|\n]{3,140}?)\s*(?:\|\s*([^\n]{0,900}))?\s*$/i.exec(reply.trimEnd());
+  if (!m) return { text: reply, agentId: null, title: '' };
+  const text = reply.trimEnd().slice(0, m.index).trimEnd();
+  const want = fold(m[1].replace(/[*_"«»]/g, '').trim());
+  const agent = agents.find(a => a.id !== selfId && fold(a.name) === want) ?? agents.find(a => a.id !== selfId && (fold(a.name).includes(want) || want.includes(fold(a.name))) && want.length >= 3);
+  const title = m[2].replace(/[*_"«»\[\]]/g, '').trim();
+  if (!agent || !title) return { text, agentId: null, title: '' };
+  const details = (m[3] ?? '').replace(/[*_]+$/g, '').trim();
+  return { text: `${text}\n\n[[task:${agent.id}]] ${title}${details ? `\n${details}` : ''}`, agentId: agent.id, title };
+}
+
 /** The record of the task the owner is asking about (result + work log), to put right next to the question:
  * smaller models follow the latest user message far better than a long system prompt. Empty when no task matches. */
 export function focusBriefing(tasks: BriefTask[], names: Map<string, string>, userText: string, chars = 2500): string {

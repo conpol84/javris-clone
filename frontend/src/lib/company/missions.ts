@@ -11,6 +11,8 @@ export interface MissionRow {
   status: TaskStatus;
   created_at: string;
   result: TaskResult | null;
+  /** `{ meeting: true, participants }` for a meeting the CEO chairs. */
+  metadata?: Record<string, unknown> | null;
 }
 
 export interface StepRow {
@@ -23,7 +25,7 @@ export interface StepRow {
   result: TaskResult | null;
 }
 
-const MISSION_COLS = 'id, title, description, status, created_at, result';
+const MISSION_COLS = 'id, title, description, status, created_at, result, metadata';
 
 export async function listMissions(orgId: string): Promise<MissionRow[]> {
   const { data, error } = await requireClient()
@@ -47,6 +49,21 @@ export async function createMission(orgId: string, userId: string, goal: string,
   return data as unknown as MissionRow;
 }
 
+/** True for a meeting (a mission the CEO chairs with invited employees) rather than a step-by-step mission. */
+export const isMeeting = (m: Pick<MissionRow, 'metadata'> | null | undefined) => m?.metadata?.meeting === true;
+
+/** A meeting: the topic, the agenda and up to five invited employees (none: the CEO invites the right ones). */
+export async function createMeeting(orgId: string, userId: string, topic: string, agenda: string, participants: string[]): Promise<MissionRow> {
+  const { data, error } = await requireClient()
+    .from('tasks')
+    .insert({ organization_id: orgId, created_by: userId, kind: 'mission', title: topic.trim().slice(0, 160), description: agenda.trim() || null, priority: 'high',
+      metadata: { meeting: true, participants: participants.slice(0, 5) } })
+    .select(MISSION_COLS)
+    .single();
+  if (error) throw new Error(error.message);
+  return data as unknown as MissionRow;
+}
+
 export async function listSteps(missionId: string): Promise<StepRow[]> {
   const { data, error } = await requireClient()
     .from('tasks')
@@ -63,7 +80,7 @@ export async function getMission(id: string): Promise<MissionRow | null> {
   return data as unknown as MissionRow | null;
 }
 
-async function call(action: 'plan' | 'synthesize', missionId: string, lang: string): Promise<void> {
+async function call(action: 'plan' | 'synthesize' | 'meet', missionId: string, lang: string): Promise<void> {
   const { error } = await requireClient().functions.invoke('mission-runner', { body: { action, mission_id: missionId, lang } });
   if (error) {
     let code: RunError['code'] = 'unknown';
@@ -81,6 +98,8 @@ async function call(action: 'plan' | 'synthesize', missionId: string, lang: stri
 
 export const planMission = (id: string, lang: string) => call('plan', id, lang);
 export const synthesizeMission = (id: string, lang: string) => call('synthesize', id, lang);
+/** Holds the meeting on the server: every invited employee speaks, the CEO writes the minutes and turns the action items into tasks. */
+export const holdMeeting = (id: string, lang: string) => call('meet', id, lang);
 
 /** What the team has produced so far, handed to the next employee as context (it is wrapped as untrusted data by the runner). */
 function teamContext(done: StepRow[]): string {
@@ -91,7 +110,7 @@ function teamContext(done: StepRow[]): string {
 }
 
 export interface MissionProgress {
-  phase: 'planning' | 'working' | 'reporting' | 'done';
+  phase: 'planning' | 'working' | 'reporting' | 'meeting' | 'done';
   steps: StepRow[];
 }
 
@@ -106,6 +125,12 @@ export async function runMission(
   shouldStop: () => boolean,
 ): Promise<void> {
   const db = requireClient();
+  if (isMeeting(mission)) {
+    onProgress({ phase: 'meeting', steps: [] });
+    if (mission.status === 'pending') await holdMeeting(mission.id, lang);
+    onProgress({ phase: 'done', steps: await listSteps(mission.id) });
+    return;
+  }
   if (mission.status === 'pending') {
     onProgress({ phase: 'planning', steps: [] });
     await planMission(mission.id, lang);

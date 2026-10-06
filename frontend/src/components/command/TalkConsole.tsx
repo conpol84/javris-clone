@@ -1,6 +1,6 @@
 import { VoiceProfileControl } from '../voice/VoiceProfileControl';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { AskButton } from '../company/AskButton';
+import { CeoActions } from '../company/CeoActions';
 import { useNavigate } from 'react-router';
 import { Mic, Send, Square, Volume2, VolumeX, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -251,7 +251,7 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
                       <li key={i} className="fb-row p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                         <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : ceoName}</div>
                         {l.text}
-                        {l.ask && <AskButton ask={l.ask} />}
+                        <CeoActions ask={l.ask} task={l.task} meet={l.meet} />
                       </li>
                     ))}
                   </ul>

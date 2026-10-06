@@ -95,3 +95,21 @@ test('the focused record carries the result and the work log, or nothing', () =>
   assert.match(f, /WORK LOG[\s\S]*searched the web for "αγορά" -> found: βρέθηκαν 3 άρθρα/);
   assert.equal(focusBriefing([t], names, 'καλημέρα'), '');
 });
+
+import { meetingFrom } from '../../supabase/functions/_shared/task-briefing.ts';
+test('a meeting the CEO calls becomes a marker with this company\'s employees only', () => {
+  const out = meetingFrom('Καλή ιδέα, ας το συζητήσουμε.\nMEETING: Πλάνο Δ΄ τριμήνου | Research Agent, Άγνωστος, CEO', team, CEO);
+  assert.equal(out.text, `Καλή ιδέα, ας το συζητήσουμε.\n\n[[meet:${A}]] Πλάνο Δ΄ τριμήνου`);
+  assert.deepEqual(out.ids, [A]);
+  assert.equal(meetingFrom('Χωρίς σύσκεψη.', team, CEO).text, 'Χωρίς σύσκεψη.');
+  assert.equal(meetingFrom('Ναι.\nMEETING: Τιμές', team, CEO).text, 'Ναι.\n\n[[meet:]] Τιμές');
+});
+
+import { taskFrom } from '../../supabase/functions/_shared/task-briefing.ts';
+test('a task the CEO gives becomes a marker for a real employee only', () => {
+  const out = taskFrom('Θα το αναθέσω.\nTASK: Research Agent | Παρουσίαση: αγορά 2026 | 10 διαφάνειες για τη διοίκηση', team, CEO);
+  assert.equal(out.text, `Θα το αναθέσω.\n\n[[task:${A}]] Παρουσίαση: αγορά 2026\n10 διαφάνειες για τη διοίκηση`);
+  assert.equal(taskFrom('Ok.\nTASK: CEO | Κάτι', team, CEO).agentId, null);
+  assert.equal(taskFrom('Ok.\nTASK: Κανείς | Κάτι', team, CEO).text, 'Ok.');
+  assert.equal(taskFrom('Απλή απάντηση.', team, CEO).text, 'Απλή απάντηση.');
+});
