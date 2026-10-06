@@ -826,3 +826,34 @@ Remains:
 - Provider registrations/secrets, account consent, signed-in meeting acceptance,
   second-customer isolation, reconciliation monitoring and previous master-plan
   gates remain open. PR #13 remains CI-only; do not merge it into main.
+
+### Claude: meeting fix, real computer work with approval (runner v87–v88, mission-runner v28, connector v29)
+
+Changed:
+- mission-runner v28: the daily cap follows the company plan like agent-runner/agent-chat. The fixed default of 100
+  runs/24h (no ORG_DAILY_RUN_LIMIT secret is set) failed the owner's meeting 3fcee086 with plan_limit at 117 runs on an
+  Enterprise plan (cap 50000). The failed meeting (no spend, reconcile_required false) was put back to pending.
+- computer-policy: osascript is no longer refused; it always waits for approval (keychain/security/sudo etc. stay
+  forbidden). Commands up to 4000 characters in the policy, connector function v29 (approvals + manual jobs),
+  agent-loop (4200 for computer input) and the Mac Connector source (frontend/public/firbo-connector.mjs).
+- runner v87/v88: employees are told to do work inside Excel/Numbers/Word/Keynote/Mail as ONE AppleScript computer step
+  (saved with a full path, Mail as draft only) and never as a made-up final action.
+- Data: Operations Agent computer_use enabled with policy approval (owner asked for full capability, always approved).
+
+Tested / passed:
+- 534/535 node (browser-control-rendered = Playwright download), 516/516 frontend vitest, edge tsc.
+- Live: task 15f58681 (Operations Agent) produced a real computer_exec approval (risk high, Polis1984) with a 1802-char
+  AppleScript that creates Weekly-plan.xlsx in ~/Documents. The first v87 attempt put the script in a made-up action
+  (not executable); fixed in v88 and its two approvals were removed.
+
+Failed / limitations / release gate:
+- The Mac Connector on Polis1984 is the old build: it accepts commands only up to 500 characters and has no apps
+  (open_app) enabled, so this approval will fail on the Mac until the Connector is updated.
+- frontend/public/firbo-connector.mjs changed: new sha256 84b40bfd71bf4b4a0b28baf4737e72dc99613fcc290997781ce464d56e626c92
+  (was 55c429a7…). tools/mac/FIRBO-Mac-Browser-Update.command pins the old hash and was left unchanged (it matches what
+  production serves today); the next frontend release must update that pinned hash together with the new file.
+- Employees still do not see the output of approved computer jobs inside the same task.
+
+Remains:
+- Frontend release with the new Connector + updater hash (GPT/CI), then the owner updates the Mac and approves the job.
+- Search provider key (Tavily) as a Supabase secret + runner support, for real research.
