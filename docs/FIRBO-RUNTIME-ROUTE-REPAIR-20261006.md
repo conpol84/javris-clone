@@ -1,5 +1,41 @@
 # Active runtime route and tool repair — 6 October 2026
 
+## Native-tool follow-up after b0715ef was run
+
+Changed:
+- Owner ran `b0715ef9513401ff756f77992de45101499f21e9`. Both services
+  reconstructed the vLLM route to `https://gateway.firboai.app:443`. All six
+  direct synthetic probes returned HTTP200 and the requested function call.
+  Installed BaseAgent forwarded both tools and tool_choice; no agent edit was
+  needed. The normal agent request still returned zero executed tools.
+- The old shell smoke test cannot establish general execution readiness:
+  shell_exec requires confirmation, and serve does not supply an interactive
+  confirmation callback. This explains why shell execution would be refused,
+  but does NOT explain zero tool calls. The live cause remains unresolved.
+- Added standalone `--diagnose-native`: real installed code_interpreter schema
+  on admin and calculator schema on sandbox; capture-only Orchestrator fixture;
+  configured gateway requests; server direct calls; then normal agent requests
+  for fresh arithmetic. It requires the safe tool in each runtime inventory,
+  never falls back to shell and never changes installed files or configuration.
+- Receipt verification requires the actual tool name, successful execution and
+  exact arithmetic output. Model prose, failed tools and wrong numbers fail.
+  Direct model tool calls and a fixture are explicitly not actual execution.
+
+Tested / passed:
+- 48 runtime/update/receipt cases, including 33 repair cases and real disposable
+  HTTP transports through the configured vLLM/MultiEngine adapters.
+- Full Ruff check and formatting gate passed across 1,442 source/test/script
+  files. Prior contributors' heads remain unchanged and preserved.
+
+Failed / remains:
+- Live native-tool execution, artifact acceptance and approval continuation
+  are not yet verified. Run the pinned script with `--diagnose-native` alone;
+  do not repeat --apply or treat its diagnostics as a deployment.
+- No frontend, Mac, database, provider or permissions release in this update.
+  The wider master-plan items below remain open.
+
+Earlier entries below are historical observations and instructions.
+
 ## Follow-up after owner ran the repair
 
 Owner output reports `engine: multi` for BOTH services, zero executed tools and

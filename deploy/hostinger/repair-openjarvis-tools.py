@@ -5,6 +5,7 @@ No endpoint guessing, port publishing, config edits or provider switching.
 --apply updates a known engine file and repairs measured agent tool loss only
 at a recognized forwarding site, with backup and rollback on failed health.
 --verify-execution additionally asks the admin agent to printf a unique marker.
+--diagnose-native tests safe native tools without modifying installed files.
 """
 
 import argparse
@@ -300,7 +301,47 @@ try:
                 "name": "firbo_probe", "description": "A harmless test marker.",
                 "parameters": {"type": "object", "properties": {
                     "marker": {"type": "string"}}, "required": ["marker"]}}}]}
-    for choice in ("auto", "required", "omitted"):
+    expected_name, expected_args = "firbo_probe", {"marker": marker}
+    choices_to_test = ("auto", "required", "omitted")
+    if job.get("native"):
+        from types import SimpleNamespace
+        from openjarvis.agents.orchestrator import OrchestratorAgent
+        from openjarvis.tools.code_interpreter import CodeInterpreterTool
+        from openjarvis.tools.calculator import CalculatorTool
+        from openjarvis.tools.shell_exec import ShellExecTool
+        expected_name = job["native"]["tool"]
+        tool_class = {"code_interpreter": CodeInterpreterTool,
+                      "calculator": CalculatorTool}[expected_name]
+        tool = tool_class()
+        if tool.spec.requires_confirmation:
+            raise RuntimeError("native_probe_requires_confirmation")
+        native_schema = tool.to_openai_function()
+        expected_args = job["native"]["arguments"]
+        body["tools"] = [native_schema]
+        body["messages"] = [{"role": "user", "content": job["native"]["prompt"]}]
+        captured = []
+        def capture(messages, **kwargs):
+            captured.append(kwargs)
+            return {"content": "fixture complete", "usage": {}}
+        fixture = OrchestratorAgent(
+            SimpleNamespace(generate=capture), job["model"], tools=[tool],
+            max_turns=1, temperature=0.0, max_tokens=256,
+        )
+        fixture.run(job["native"]["prompt"])
+        report["native_schema"] = native_schema
+        report["orchestrator_fixture"] = {
+            "mode": getattr(fixture, "_mode", None),
+            "generation_count": len(captured),
+            "native_schema_forwarded": bool(captured) and
+                captured[0].get("tools") == [native_schema],
+            "tools_executed": False,
+        }
+        report["shell_requires_confirmation"] = (
+            ShellExecTool().spec.requires_confirmation
+        )
+        report["probe_tool"] = expected_name
+        choices_to_test = ("auto", "required")
+    for choice in choices_to_test:
         payload = dict(body)
         if choice != "omitted":
             payload["tool_choice"] = choice
@@ -320,8 +361,10 @@ try:
                         args = json.loads(function.get("arguments", "{}"))
                     except (TypeError, ValueError):
                         continue
-                    if (function.get("name") == "firbo_probe"
-                            and args == {"marker": marker}):
+                    if (function.get("name") == expected_name
+                            and isinstance(args, dict)
+                            and all(args.get(k) == v
+                                    for k, v in expected_args.items())):
                         entry["probe_call"] = True
             else:
                 # Classify only; upstream error bodies may contain credentials.
@@ -353,7 +396,7 @@ SAFE_WORKER = (
 )
 
 
-def gateway_probe(env, runtime):
+def gateway_probe(env, runtime, native=None):
     if runtime.get("engine") not in {"vllm", "omniroute", "multi"}:
         return {"blocked": "unsupported_active_engine", "engine": runtime.get("engine")}
     job = {
@@ -361,6 +404,7 @@ def gateway_probe(env, runtime):
         "engine": runtime["engine"],
         "model": runtime["model"],
         "engine_override": runtime.get("engine_override"),
+        "native": native,
     }
     return json.loads(
         run(
@@ -486,11 +530,125 @@ def execution_probe(env, runtime):
     }
 
 
+def native_case(service, runtime):
+    name = "code_interpreter" if service == "openjarvis.service" else "calculator"
+    names = (runtime.get("runtime") or {}).get("tool_names") or []
+    if name not in names:
+        raise RepairError("safe_probe_tool_not_loaded:" + name)
+    seed = int(uuid.uuid4().hex[:8], 16)
+    left, right = 10000 + seed % 90000, 100 + (seed // 90000) % 900
+    expression = f"{left} * {right} + 7"
+    arguments = (
+        {"code": "print(" + expression + ")"}
+        if name == "code_interpreter"
+        else {"expression": expression}
+    )
+    return {
+        "tool": name,
+        "arguments": arguments,
+        "expected": str(left * right + 7),
+        "prompt": "Use the "
+        + name
+        + " tool with exactly these arguments: "
+        + json.dumps(arguments)
+        + ". Execute the tool and report its result. "
+        "Do not just acknowledge the request. Do not use other tools, "
+        "read or change files, use the network, or bypass an approval.",
+    }
+
+
+def native_receipt(result, case):
+    receipt = result.get("execution") or {}
+    tools = receipt.get("tools") or []
+    verified = receipt.get("contract") == "openjarvis-execution/v1" and any(
+        t.get("name") == case["tool"]
+        and t.get("success") is True
+        and str(t.get("output", "")).strip() == case["expected"]
+        for t in tools
+    )
+    return {
+        "tool": case["tool"],
+        "native_receipt_verified": verified,
+        "tool_count": receipt.get("tool_count"),
+        "failed_count": receipt.get("failed_count"),
+        "approval_blocked": any(
+            "confirmation" in str(t.get("output", "")).lower()
+            and t.get("success") is False
+            for t in tools
+        ),
+        "artifact_verified": False,
+    }
+
+
+def native_diagnostics(service, env, runtime):
+    case = native_case(service, runtime)
+    gateway = gateway_probe(env, runtime, native=case)
+    schema = gateway.pop("native_schema", None)
+    print(json.dumps({"service": service, "native_gateway": gateway}), flush=True)
+    body = {
+        "model": runtime["model"],
+        "stream": False,
+        "firbo_include_execution": True,
+        "messages": [{"role": "user", "content": case["prompt"]}],
+    }
+    if schema:
+        try:
+            raw = local_request(
+                SERVICES[service],
+                env["OPENJARVIS_API_KEY"],
+                "/v1/chat/completions",
+                {**body, "tools": [schema]},
+                timeout=145,
+            )
+            choices = raw.get("choices") or []
+            message = choices[0].get("message", {}) if choices else {}
+            calls = message.get("tool_calls") or []
+            print(
+                json.dumps(
+                    {
+                        "service": service,
+                        "server_direct": {
+                            "tool_calls": len(calls),
+                            "native_tool_call": any(
+                                c.get("function", {}).get("name") == case["tool"]
+                                for c in calls
+                            ),
+                            "tools_executed": False,
+                        },
+                    }
+                ),
+                flush=True,
+            )
+        except Exception as error:
+            print(
+                json.dumps(
+                    {"service": service, "server_direct_error": type(error).__name__}
+                ),
+                flush=True,
+            )
+    result = local_request(
+        SERVICES[service],
+        env["OPENJARVIS_API_KEY"],
+        "/v1/chat/completions",
+        body,
+        timeout=145,
+    )
+    print(
+        json.dumps(
+            {"service": service, "native_execution": native_receipt(result, case)}
+        ),
+        flush=True,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--verify-execution", action="store_true")
+    parser.add_argument("--diagnose-native", action="store_true")
     args = parser.parse_args()
+    if args.diagnose_native and (args.apply or args.verify_execution):
+        parser.error("--diagnose-native runs alone and does not install code")
     if os.geteuid() != 0 or socket.gethostname() != "srv2027143":
         raise RepairError("run_as_root_on_srv2027143")
     if Path("/home/jarvis/.openjarvis-box/.venv").resolve() != PYTHON.parent.parent:
@@ -509,6 +667,34 @@ def main():
     )
     if Path(installed).resolve().parent != PACKAGE:
         raise RepairError("unexpected_installed_package")
+    if args.diagnose_native:
+        for service in SERVICES:
+            try:
+                env, runtime = info(service)
+                native_diagnostics(service, env, runtime)
+            except Exception as error:
+                print(
+                    json.dumps(
+                        {
+                            "service": service,
+                            "native_error": type(error).__name__,
+                            "reason": str(error)
+                            if isinstance(error, RepairError)
+                            else None,
+                        }
+                    ),
+                    flush=True,
+                )
+        print(
+            json.dumps(
+                {
+                    "installed_files_changed": False,
+                    "configuration_changed": False,
+                    "full_parity_complete": False,
+                }
+            )
+        )
+        return
     for service in SERVICES:
         _, runtime = info(service)
         print(

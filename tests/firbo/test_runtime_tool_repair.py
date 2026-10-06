@@ -114,10 +114,16 @@ def test_rollback_recovers_file_and_attempts_both_services_on_restart_failure(tm
 
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("multi", [False, True])
+@pytest.mark.parametrize("native_tool", [None, "code_interpreter", "calculator"])
 def test_worker_uses_configured_vllm_route_and_never_drops_tools(
-    tmp_path, legacy, multi
+    tmp_path, legacy, multi, native_tool
 ):
     received = []
+    native_args = (
+        {"code": "print(7)"}
+        if native_tool == "code_interpreter"
+        else {"expression": "3 + 4"}
+    )
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -141,8 +147,10 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(
                                 "tool_calls": [
                                     {
                                         "function": {
-                                            "name": "firbo_probe",
-                                            "arguments": '{"marker":"FIRBO_TOOL_PROBE_OK"}',
+                                            "name": native_tool or "firbo_probe",
+                                            "arguments": json.dumps(native_args)
+                                            if native_tool
+                                            else '{"marker":"FIRBO_TOOL_PROBE_OK"}',
                                         }
                                     }
                                 ]
@@ -199,6 +207,13 @@ _discovery.discover_engines = lambda cfg: [
                     "env": env,
                     "engine": "multi" if multi else "vllm",
                     "model": "firbo-quality",
+                    "native": {
+                        "tool": native_tool,
+                        "arguments": native_args,
+                        "prompt": "Use the tool with the given arguments.",
+                    }
+                    if native_tool
+                    else None,
                 }
             ),
             capture_output=True,
@@ -225,8 +240,14 @@ _discovery.discover_engines = lambda cfg: [
         "mentions": ["tool_choice"],
     }
     assert report["probes"]["required"]["probe_call"] is True
-    assert report["probes"]["omitted"]["probe_call"] is True
-    assert len(received) == 3
+    if native_tool:
+        assert len(received) == 2
+        assert report["orchestrator_fixture"]["native_schema_forwarded"] is True
+        assert report["orchestrator_fixture"]["tools_executed"] is False
+        assert report["shell_requires_confirmation"] is True
+    else:
+        assert report["probes"]["omitted"]["probe_call"] is True
+        assert len(received) == 3
     assert all(path == "/v1/chat/completions" for path, _, _ in received)
     assert all(auth == "Bearer private-test-key" for _, auth, _ in received)
     assert all(body["tools"] for _, _, body in received)
@@ -324,3 +345,88 @@ def test_installed_agent_behavior_probe_has_no_tool_execution(tmp_path):
         "tool_choice_forwarded": True,
         "tools_executed": False,
     }
+
+
+@pytest.mark.parametrize(
+    "service,tool",
+    [
+        ("openjarvis.service", "code_interpreter"),
+        ("openjarvis-box.service", "calculator"),
+    ],
+)
+def test_native_diagnostic_uses_existing_safe_tool_and_actual_receipt(
+    monkeypatch, capsys, service, tool
+):
+    runtime = {"model": "firbo-quality", "runtime": {"tool_names": [tool]}}
+    captured = []
+    cases = []
+
+    def gateway(env, runtime, native=None):
+        cases.append(native)
+        return {"native_schema": {"type": "function", "function": {"name": tool}}}
+
+    def local(port, key, path, body, timeout):
+        captured.append((port, body))
+        if "tools" in body:
+            return {
+                "choices": [{"message": {"tool_calls": [{"function": {"name": tool}}]}}]
+            }
+        return {
+            "execution": {
+                "contract": "openjarvis-execution/v1",
+                "tools": [
+                    {
+                        "name": tool,
+                        "success": True,
+                        "output": cases[0]["expected"] + "\n",
+                    }
+                ],
+            }
+        }
+
+    monkeypatch.setattr(repair, "gateway_probe", gateway)
+    monkeypatch.setattr(repair, "local_request", local)
+    repair.native_diagnostics(service, {"OPENJARVIS_API_KEY": "secret"}, runtime)
+    report = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    assert report[-1]["native_execution"]["native_receipt_verified"] is True
+    assert report[-1]["native_execution"]["artifact_verified"] is False
+    assert all(port == repair.SERVICES[service] for port, _ in captured)
+    assert "tools" in captured[0][1] and "tools" not in captured[1][1]
+    assert "shell_exec" not in json.dumps(captured)
+    assert "native_schema" not in json.dumps(report)
+    assert "secret" not in json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    "receipt",
+    [
+        {},
+        {"contract": "openjarvis-execution/v1", "tools": []},
+        {
+            "contract": "openjarvis-execution/v1",
+            "tools": [{"name": "calculator", "success": False, "output": "42"}],
+        },
+        {
+            "contract": "openjarvis-execution/v1",
+            "tools": [{"name": "calculator", "success": True, "output": "142"}],
+        },
+    ],
+)
+def test_native_verification_never_accepts_prose_failure_or_wrong_number(receipt):
+    result = {
+        "execution": receipt,
+        "choices": [{"message": {"content": "Executed calculator, answer 42"}}],
+    }
+    assert (
+        repair.native_receipt(result, {"tool": "calculator", "expected": "42"})[
+            "native_receipt_verified"
+        ]
+        is False
+    )
+
+
+def test_missing_safe_tool_does_not_fall_back_to_shell():
+    with pytest.raises(repair.RepairError, match="safe_probe_tool_not_loaded"):
+        repair.native_case(
+            "openjarvis.service", {"runtime": {"tool_names": ["shell_exec"]}}
+        )
