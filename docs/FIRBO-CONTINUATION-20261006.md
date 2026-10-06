@@ -249,3 +249,22 @@ Not done / remains:
   frontend tests and actual PPTX ZIP generation with text and embedded PNG
   passed. Production remains pinned to the accepted PR #17 runtime until the
   follow-up relevant CI completes. No edge implementation changed afterward.
+
+### Claude: deliverables live (agent-runner v83)
+
+- Changed: agent-runner v81 (repair prompt keeps the deliverable standard), v82 (merged Codex
+  run-protocol runner from PR #17: claim-bound computer jobs with policy/capability snapshots,
+  suggest-only server guard; plus presentations/messages start on the quality route), v83
+  (presentations/messages are written in one request of up to 85 s from the gathered web
+  material; reports keep the research loop). v82+ is a superset of the Codex runner v80, so
+  "preserve runner v80" is satisfied by v83; connector v27 untouched.
+- Why: live presentation runs failed twice (economy combo 30 s cut-off, then the quality combo's
+  writing step exceeded the 45 s loop step limit) and fell back to the sources-only report.
+- Tested: 482/483 node tests (only the Playwright-download browser test fails, environment),
+  468/468 frontend tests, edge typecheck; new edge test: a presentation starts on quality,
+  carries the slide standard and has no tool loop; Free plan stays off quality.
+- Passed live (Trade Athletes, Research Agent): report task 2417f882 completed on quality,
+  polished, 6 sections; presentation task b1f05020 completed, format presentation, 10 slides,
+  sourced figures, table and presenter notes, 1 model call.
+- Remains: plan steps 2-4 (meetings with minutes/decisions/tasks; CEO brings employees into the
+  chat; CEO proposes apps to connect as work sources). Test rows titled "[Δοκιμή]" remain.
