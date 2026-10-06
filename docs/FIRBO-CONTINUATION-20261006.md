@@ -1,7 +1,7 @@
 # Firbo continuation — combined Claude/Codex release
 
-**Latest release is the PR #17 entry at the end of this file. Earlier versions
-and remaining-item lists below are historical checkpoints.**
+**Read the last entry in this file for the latest release and remaining gates.
+Earlier release identities and remaining-item lists are historical checkpoints.**
 
 This checkpoint continues the master plan and the earlier 20261005 handoff.
 Read the final release entry below before deploying anything.
@@ -306,3 +306,58 @@ Not done / remains:
   meeting/delegation controls and these fixes still need publication/acceptance.
 - Mac, OAuth, messaging, real customer isolation and all other master-plan gates
   remain open. No permissions, device jobs or external messages were changed.
+
+### PR #19 — combined CEO actions release (6 October 2026)
+
+Changed:
+- PR #19 merged into Claude with preserved histories at
+  `500d5df7336d84af63c897f6a58e8c52b8ca8538`. Accepted runtime source
+  `e250eeb43a4348902168508a5afb0565dba6139f`, tree
+  `067aefc818c4860183c2eee53dd6ee074909de51`, includes Claude `35a5184`
+  and PR #18. Meetings/CEO delegation frontend is now published together with
+  the combined-offer, task outcome, duplicate-click and company-state fixes.
+- No backend deployment or SQL replay. Preserve connector v27, runner v83,
+  chat v36 and mission-runner v26, including all prior protocol/briefing work.
+
+Tested / passed:
+- All six new exact-head PR workflows passed, including operational pages,
+  security, frontend and PostgreSQL workspace lifecycle. The parent separately
+  had 14 successful workflow runs; these are not one combined test count.
+- Local build/TypeScript and 482 frontend tests pass (11 new controls/outcome
+  tests); 22 existing meeting/briefing node tests pass. The task+meeting
+  rendered regression failed on the original parent as expected and passed
+  with the fix. No real account/device acceptance is implied.
+- READY preview `dpl_8vC38k3ozQHbBSo3axCnAqZC8VLe` was redeployed with
+  `withLatestCommit:false`. Production `dpl_2YoUFySmGW3MCgwVyPNCTx52LHBN`
+  is READY; independent `firboai.app` lookup returns the same exact e250eeb.
+- Live home and CeoActions-DTBpU8lT.js returned 200, with the new controls,
+  awaiting-approval handling and company-scoped stored-result query.
+- Live downloadable connector/browser returned 200 and match repository text
+  exactly. Their unchanged SHA256 values are
+  `55c429a7dcb61a1e5a6b19fcc7ffbeda5c24fb62edad13bfeae755b87b9c295b` and
+  `2748e17b59cbea0c7638eb6dea8c185ac132700b0189699349292ed21c4d4621`.
+- Rollback frontend: `dpl_7BjPjgmuseFTEFgTRTtBoJpnqcVX` at ce421e3.
+  Do not roll backend back to schema-incompatible pre-protocol versions.
+
+Failed / limitations:
+- CLI push had no credential helper; authorized GitHub Git-object API created
+  the same verified tree with parent 35a5184. No force-push/history discard.
+- Build's existing chunk-size/analytics dynamic-import warnings remain.
+- Active-job and device/provider observations are bounded read-only evidence:
+  zero queued/running connector jobs, one paired/online device, zero browser_task
+  devices and zero integrations. No account, permission or job was changed.
+
+Remains:
+- Signed-in meeting/CEO task acceptance, and Claude's work-source app proposals.
+- Existing Mac Connector/browser update without re-pairing; real approved
+  browser/Stop/offline task and useful saved/read-back artifact.
+- OpenJarvis company adapters, real OAuth refresh/revoke and approved channel
+  messages, second customer sandbox isolation, Knowledge/Skills/Workflows,
+  global accounting/Free budgets, signed Desktop/OS/voice/mobile/eight languages,
+  encrypted offhost restore, monitoring/load and final master-plan assessment.
+- Source/automated/static-rendered/real-device/live distinctions remain in force.
+  PR #13 is untouched. No full-plan completion.
+
+References: https://github.com/conpol84/javris-clone/pull/19 ;
+https://github.com/conpol84/javris-clone/actions/runs/37412639429 ;
+https://firboai.app
