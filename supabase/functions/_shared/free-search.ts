@@ -90,7 +90,13 @@ const BING_MARKET: Record<string, string> = {
  * do from Supabase's edge network); Bing News RSS and Wikipedia answer there.
  * Throws (with the reason per source) when nothing was found.
  */
-export async function freeWebSearch(query: string, lang: string, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
+export async function freeWebSearch(query: string, lang: string, fetcher: Fetcher = fetch, signal?: AbortSignal, o: { tavilyKey?: string } = {}): Promise<string> {
+  // A search key set by the platform owner (Supabase secret TAVILY_API_KEY) gives real web results from the cloud,
+  // where the keyless sources are often blocked; without it, or when it finds nothing, the keyless sources are used.
+  if (o.tavilyKey) {
+    const found = await tavilySearch(query, o.tavilyKey, fetcher, signal).catch(() => '');
+    if (found) return found;
+  }
   try {
     return await searchOnce(query, lang, fetcher, signal);
   } catch (error) {
@@ -99,6 +105,22 @@ export async function freeWebSearch(query: string, lang: string, fetcher: Fetche
     if (!short || short === query.trim()) throw error;
     return await searchOnce(short, lang, fetcher, signal);
   }
+}
+
+/** Web results from Tavily's search API, in the same "1. Title - link" shape as the other sources ('' when none). */
+export async function tavilySearch(query: string, key: string, fetcher: Fetcher = fetch, signal?: AbortSignal, max = 6): Promise<string> {
+  if (!/^[\w-]{10,200}$/.test(key)) return '';
+  const res = await fetcher('https://api.tavily.com/search', {
+    method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+    body: JSON.stringify({ query: query.slice(0, 400), max_results: max, search_depth: 'basic', include_answer: false }),
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`tavily_http_${res.status}`);
+  const rows = (await res.json())?.results;
+  if (!Array.isArray(rows)) return '';
+  return rows.filter((r: any) => typeof r?.url === 'string' && /^https?:\/\//.test(r.url) && typeof r?.title === 'string').slice(0, max)
+    .map((r: any, i: number) => `${i + 1}. ${text(r.title).slice(0, 160)} - ${readableUrl(String(r.url).slice(0, 400))}${r.content ? `\n   ${text(String(r.content)).slice(0, 300)}` : ''}`)
+    .join('\n');
 }
 
 /** The first few meaningful words of a query (no years or numbers), or '' when it is already short. */

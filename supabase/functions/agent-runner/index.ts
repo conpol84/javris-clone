@@ -109,7 +109,7 @@ async function gatherWeb(tools: { tool_name: string; enabled: boolean; policy: s
       } catch { /* Preserve existing best-effort web behavior. */ }
     }
     // No search provider in the gateway (or nothing found): keyless web + news search.
-    if (!results) results = await freeWebSearch(query, lang, fetch, signal).catch(() => '');
+    if (!results) results = await freeWebSearch(query, lang, fetch, signal, { tavilyKey: Deno.env.get('TAVILY_API_KEY')?.trim() }).catch(() => '');
     if (!results) return;
     parts.push(`WEB SEARCH for "${query}":\n${results}`);
     mark('web_search');
@@ -450,7 +450,7 @@ Deno.serve(async (req) => {
       } catch (error) { toolFailed('web_search', error); }
     }
     // The gateway has no search provider (or found nothing): keyless web + news search.
-    const found = await freeWebSearch(q, lang, fetch, req.signal).catch((error) => { toolFailed('web_search_free', error); return ''; });
+    const found = await freeWebSearch(q, lang, fetch, req.signal, { tavilyKey: Deno.env.get('TAVILY_API_KEY')?.trim() }).catch((error) => { toolFailed('web_search_free', error); return ''; });
     if (found) return found;
     toolFailed('web_search', new Error('no_results'));
     return 'No results.';

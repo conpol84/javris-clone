@@ -148,6 +148,7 @@ function fixture(options={}) {
         firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
     }
     if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
+    if(options.emptyGatewaySearch && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return Response.json({results:[]});
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
     if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}]});
@@ -403,6 +404,21 @@ test('agent-runner: the agent searches, reads a page, then reports; usage and st
   assert.equal(result.summary,'Market up 5%');
   assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
+});
+test('agent-runner: empty gateway search uses configured Tavily and feeds evidence to the model', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"web_search","input":"sports market"}',JSON.stringify({summary:'Evidence retained',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,emptyGatewaySearch:true,env:{TAVILY_API_KEY:'synthetic-tavily-key'}});
+  assert.equal(response.status,200);
+  const calls=state.calls.filter(c=>c.url==='https://api.tavily.com/search');
+  // The existing runner gathers task research before the model's explicit search step.
+  assert.equal(calls.length,2);
+  assert.match(JSON.parse(calls[0].init.body).query,/Review test task/);
+  assert.equal(JSON.parse(calls[1].init.body).query,'sports market');
+  assert.ok(calls.every(c=>c.init.headers.authorization==='Bearer synthetic-tavily-key'));
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
+  assert.ok(JSON.parse(chats.at(-1).init.body).messages.some(m=>m.content.includes('Sports market grows')));
+  assert.ok(!JSON.stringify(state.writes).includes('synthetic-tavily-key'));
 });
 test('agent-runner: a gateway reply that is only the model thinking aloud is asked again', async () => {
   const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:FULL_REPORT,actions:[]})];
