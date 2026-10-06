@@ -627,10 +627,13 @@ Deno.serve(async (req) => {
   // writing step of a slow quality model runs past the 45 s step limit and the whole deliverable is lost.
   // Without any material the employee researches first with its tools: slides written from nothing would be made up.
   const writeOnly = !free && deliverable !== 'report' && !!web.block;
+  // Tool steps (a slow search can take 13 s) stop early enough to leave about a minute for writing the report:
+  // a report started with 15 s left times out and all the research is lost.
+  const loopBudget = Math.max(20_000, Math.min(70_000, requestStarted + WALL_CLOCK_MS - Date.now() - 60_000));
   try {
     const out = await runAgentLoop({ evidence,
       call: callLoop, system, user: userMsg, tools: free || writeOnly ? {} : loopTools, allowThink: !free && !writeOnly && usable('think'),
-      maxSteps: Math.min(8, Math.max(5, Number(agent.max_steps) || 6)), budgetMs: 70_000, finalTimeoutMs: writeOnly ? 85_000 : 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
+      maxSteps: Math.min(8, Math.max(5, Number(agent.max_steps) || 6)), budgetMs: loopBudget, finalTimeoutMs: writeOnly ? 85_000 : 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
       repairSystem: `${REPAIR_SYSTEM}${standard ? ` Ignore "Keep it concise": the report must meet this standard.\n${standard}\n` : ' '}Write the summary and the report in ${LANG_NAME[lang]}.`, toolHelp,
     });
     text = out.text; steps = out.steps; calls = out.calls;
