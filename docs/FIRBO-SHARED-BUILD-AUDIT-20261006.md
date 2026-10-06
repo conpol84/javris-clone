@@ -1,111 +1,119 @@
-# FIRBO — κοινός έλεγχος builds και διατήρησης εργασιών
-Ημερομηνία: 6 Οκτωβρίου 2026
+# FIRBO — έλεγχος και δημοσίευση κοινής έκδοσης
+6 Οκτωβρίου 2026, ενημέρωση μετά τη δημοσίευση
 
-## Αποτέλεσμα
-Ελέγχθηκαν η πρόσφατη κοινή ιστορία Claude/Codex, τα παλιότερα αποτυχημένα builds, το τρέχον frontend deployment και τα live backend bundles. Δεν εντοπίστηκε χαμένη υλοποίηση στα ελεγμένα πρόσφατα PR. Βρέθηκαν δύο ομάδες αλλαγών που έμειναν τοπικά λόγω απόρριψης upload, μία ενεργή αποτυχία lint στο γενικό CI και δύο παλιές ρυθμίσεις CI που δεν κάλυπταν το σημερινό branch.
+Το App Connections readiness και το mission/meeting accounting δημοσιεύτηκαν.
+Το PR #25 συγχωνεύτηκε στο κοινό branch του Claude, διατηρώντας τις εργασίες
+Claude και Codex. Το Mac παραμένει online· η πραγματική αναβάθμιση και δοκιμή
+browser control εκκρεμούν λόγω αποτυχίας σύνδεσης από τον cloud browser.
 
-Η νέα κοινή έκδοση είναι τοπική. Δεν έγινε push, άνοιγμα νέου PR, merge στον remote, νέα migration ή deployment σε αυτή τη συνέχεια.
-
-## Κώδικας και κοινή ιστορία
-- Repository: https://github.com/conpol84/javris-clone
-- Τοπικό branch: codex/firbo-mission-accounting-20261006
-- Νεότερο επαληθευμένο Claude head: 0ae3150f50dd0a803612075daa4fe76493e5dbdb.
-- Merge που διατηρεί και τους δύο γονείς: 8cfd610.
-- Νέα διόρθωση ελέγχων: c9b963fe48ebbcd33efe682b927ce408567596b0.
-- Tree της διορθωμένης υλοποίησης: 5213178a7815746a738b5bdb954fb89c1697cb1f.
-- Workspace: /workspace/scratch/7d8f6acd7b26/firbo-mission-accounting-20261006.
-- Η μοναδική σύγκρουση ήταν στο checkpoint. Κρατήθηκαν και οι δύο καταγραφές.
-- Το αρχικό fetch του ονόματος branch επέστρεψε παλιότερο head. Η ταυτότητα ελέγχθηκε από το GitHub και έγινε fetch του συγκεκριμένου νεότερου commit πριν από merge.
-- Δεν έγινε force-push, επαναφορά άλλης δουλειάς ή συγχώνευση του PR #13.
-
-| Έλεγχος ιστορίας | Αποτέλεσμα |
+## Κατάσταση
+| Εργασία | Αποτέλεσμα |
 | --- | --- |
-| PR #15–#24 | Όλα merged και όλα τα accepted heads είναι πρόγονοι του κοινού candidate |
-| PR #8, παλιό OmniRoute branch | Το head 41d56da περιλαμβάνεται στην κοινή ιστορία |
-| PR #9, παλιό unified gateway | Το head 4b00f41 περιλαμβάνεται, παρότι το παλιό PR παραμένει open |
-| PR #10, connectivity hotfix | Το head 36b7af9 περιλαμβάνεται |
-| PR #11 προς main | Παραμένει open· δεν έγινε ξεχωριστό merge σε αυτή τη συνέχεια |
-| PR #13 | CI-only· παραμένει εκτός main |
-| PR #7 και Dependabot PR | Ξεχωριστό demo/αναβαθμίσεις· δεν συγχωνεύτηκαν αυτόματα |
+| Εγκεκριμένο upload και PR | Ολοκληρώθηκαν: https://github.com/conpol84/javris-clone/pull/25 |
+| App Connections readiness / errors / deep links | Live, integrations v30 και νέο frontend |
+| Κοινό accounting αποστολών, συσκέψεων και chat | Live, mission-runner v27 και νέο migration |
+| Τελικό CI | Και τα 9 workflows success |
+| Mac Polis1984 | Paired και online, χωρίς browser_task |
+| Πραγματικές συνδέσεις παρόχων | 0 στην τελευταία ανάγνωση· registrations, secrets και consent εκκρεμούν |
+| Πραγματικό meeting / δεύτερος πελάτης | Παραμένουν ανοικτές δοκιμές αποδοχής |
 
-Ο έλεγχος git cherry των τοπικών branches εντόπισε και παλιότερα, ανακατασκευασμένα commits με διαφορετικές ταυτότητες. Τα αντίστοιχα accepted PR και οι μεταγενέστερες κοινές εκδόσεις περιλαμβάνονται. Δεν αντιγράφηκαν παλιότερα αρχεία πάνω από νεότερα.
+## Ακριβής κοινή έκδοση
+- Repository: conpol84/javris-clone, δημόσιο.
+- Εγκεκριμένο αρχικό τοπικό commit: d2a0a56ddec819374c112160af5c5ef8a93de8e5.
+- Αρχικό immutable tree: 9ac944b69736453d99648b8d1641649a31c6d619.
+- Το Git push εγκρίθηκε, αλλά το Git CLI δεν είχε credentials. Η συνδεδεμένη
+  GitHub εφαρμογή μετέφερε εννέα commits με ίδια trees και αντίστοιχους
+  διατεταγμένους parents. Τα αρχικά SHAs καταγράφηκαν στα μηνύματα των commits.
+  Ισοδύναμο uploaded head: 8f4d1db61545586377e8bc8ed5585e6c98712d53.
+- Οι επόμενες διορθώσεις αφορούν μόνο τρία αρχεία δοκιμών.
+- Τελικό ελεγμένο head: 57f0e87b8ddb7323f438fe6a5ca39485bc194845.
+- Τελικό tree: c456ed7aa7fec889b663c6e770d28dfbaeb12ac0.
+- Merge στο claude/gifted-dijkstra-rph5j8:
+  46f6bbca7a5f8dd4f928f9689159ce330eab1448, με ακριβώς το ίδιο tree.
+- Διατηρούνται ως πρόγονοι τα Claude 0ae3150 και Codex parity ce421e3.
+- Κοινό checkpoint, μόνο τεκμηρίωση: 1f2e3a51103ee8223a518b04fea776898f955cdf.
+- Δεν έγινε force-push. Το PR #13 παραμένει CI-only, εκτός main.
 
-## Τι είχε μείνει μπλοκαρισμένο
-| Εργασία | Κατάσταση |
+## Προβλήματα builds που διορθώθηκαν
+1. Ruff E731 στη δοκιμή PostgreSQL concurrency: lambda σε def και μορφοποίηση.
+2. Connections και mobile CI στόχευαν μόνο το παλιό branch· καλύπτουν πλέον
+   το σημερινό κοινό branch. Προστέθηκε και ανεξάρτητος Ruff έλεγχος.
+3. Η SQL δοκιμή χρησιμοποιούσε ίδιο request key για CEO και διαφορετικό speaker.
+   Η βάση σωστά επέστρεφε request_key_conflict. Ο speaker έχει πλέον δικό του key.
+4. Η νέα καρτέλα Jarvis είχε μετακινήσει την κονσόλα. Ελέγχονται και οι πέντε
+   καρτέλες, διατηρώντας τα readonly και layout assertions.
+5. Το συνθετικό fixture θεωρούσε το Jarvis status εκτέλεση. Επιτρέπεται μόνο
+   το status read· chat, execution, write tracking και network guards διατηρούνται.
+6. Τα παλιά Vercel TS2367 και PWA asset-limit failures είναι ιστορικά και
+   έχουν ξεπεραστεί από τα επιτυχημένα builds της σημερινής έκδοσης.
+
+## Αποδείξεις ελέγχων
+Τοπικά πέρασαν 516 frontend tests, 532 μη rendered Node tests, strict
+frontend/Edge TypeScript, production/tauri/world/page builds και Ruff.
+
+| Τελικό CI στο 57f0e87 | Αποτέλεσμα |
 | --- | --- |
-| Καταγραφή κόστους αποστολών/συσκέψεων | Υλοποιημένη τοπικά, μη δημοσιευμένη |
-| App Connections readiness, ασφαλή errors και deep links | Υλοποιημένα τοπικά, μη δημοσιευμένα |
-| Migration 20261006092215_inference_mission_accounting.sql | Δεν έχει εφαρμοστεί live |
-| Πραγματικό PostgreSQL CI της νέας κοινής έκδοσης | Εκκρεμεί upload/PR |
-| Rendered έλεγχοι της νέας σελίδας connections | Εκκρεμούν· προηγούμενη λήψη Chromium απέτυχε |
-| Πραγματικές συνδέσεις παρόχων | Απαιτούν credentials, registrations και εξουσιοδότηση λογαριασμού |
+| Lifecycle 37454511256 | PostgreSQL, handlers και Ruff success |
+| Accounting στο ίδιο lifecycle | 6 πραγματικές reservation/settlement races success σε READ COMMITTED και SERIALIZABLE |
+| Mobile/pages 37454511226 | Συνοπτικά 36, 42 και 19 cases, μηδέν failures |
+| Connections 37454511357 | 41 cases, μηδέν failures |
+| Computer Manager 37454511248 | 84 και 19 cases, μηδέν failures |
+| Frontend, security, ownership και δύο voice workflows | Success |
 
-Ο αυτόματος έλεγχος απέρριψε το push και σε αυτή τη συνέχεια, αναφέροντας πιθανή μεταφορά ιδιωτικού κώδικα σε μη επαληθευμένο GitHub προορισμό και ανεπαρκή συγκεκριμένη εξουσιοδότηση προορισμού/περιεχομένου. Το αρχικό αίτημα του χρήστη και η προηγούμενη επιβεβαίωση υπάρχουν, αλλά η απόρριψη παρέμεινε. Δεν χρησιμοποιήθηκε άλλος δρόμος για παράκαμψη.
+Τα rendered counts επικαλύπτονται και δεν πρέπει να αθροίζονται.
+Χρησιμοποιούν συνθετικούς λογαριασμούς και αποκλεισμένες εξωτερικές κλήσεις.
+Δεν αποτελούν πραγματική δοκιμή του Mac ή συναίνεση λογαριασμού παρόχου.
 
-## Πραγματικά προβλήματα builds που βρέθηκαν
-1. Το νεότερο γενικό CI run 37449181351 στο Claude head 0ae3150 είχε αποτυχία μόνο στο lint: Ruff E731 στη tests/firbo/accounting/postgres-concurrency.py. Python tests, Rust και Windows jobs πέρασαν.
-2. Μετατράπηκε η lambda σε def με την ίδια παραγόμενη SQL. Διορθώθηκε επίσης η συμβατότητα των εισαγωγικών f-string και μορφοποιήθηκαν οι δύο επηρεασμένες δοκιμές.
-3. Τα workflows firbo-connected-world και firbo-m2-pages στόχευαν μόνο το παλιό claude/omniroute-engine. Καλύπτουν πλέον και claude/gifted-dijkstra-rph5j8 και main.
-4. Προστέθηκε ανεξάρτητος έλεγχος Ruff 0.16.7 στο workflow lifecycle, ώστε η συγκεκριμένη αποτυχία να φαίνεται και στο PR προς το σημερινό κοινό branch.
-5. Παλιό Vercel ERROR dpl_3BiZjKRs5c6iFzzmpRHqXac1qFT3, commit 1fe2884: TypeScript TS2367 στο DeviceFabric για homeassistant_devices/traccar.
-6. Παλιό Vercel ERROR dpl_5kAtSgBRtxVSy3i3HifjHEAHQEdf, commit 89df123: το PWA service-worker build απέρριπτε asset 2.12 MB πάνω από το τότε όριο 2 MiB.
-7. Και τα δύο παλιά commits είναι πρόγονοι του κοινού candidate. Τα σημερινά production και build:tauri builds πέρασαν. Τα παλιά ERROR deployments παραμένουν ως ιστορικά αποτελέσματα.
+## Δημοσίευση και live επαλήθευση
+- Migration: εφαρμόστηκε μόνο το νέο inference_mission_accounting.
+  Live version 20261006111315, από το αρχείο 20261006092215.
+  Τα παλιά ledger migrations δεν επαναλήφθηκαν.
+- mission-runner v27 και integrations v30: και τα οκτώ αρχεία που ανακτήθηκαν
+  από το live backend είναι ακριβώς ίδια με την ελεγμένη έκδοση.
+- agent-runner v86 και agent-chat v38 διατηρήθηκαν χωρίς νέα δημοσίευση.
+- Frontend: dpl_HYgV2kcn7f1QDXAAEJ81SdX2uJYe, READY, production environment,
+  source 57f0e87. Το firboai.app αντιστοιχεί σε αυτό το deployment και επιστρέφει 200.
+- Rollback frontend: dpl_DSsDLS5qqSsaMeHvEkw86FqJLikD.
+- Unsigned και invalid-token κλήσεις στα integrations και mission-runner
+  επιστρέφουν 401.
+- Το ledger δέχεται μόνο agent-chat και mission-runner. Execute επιτρέπεται
+  μόνο στο service_role, όχι σε anon/authenticated. Private RLS και κενό
+  search_path διατηρούνται. Invalid input απορρίπτεται χωρίς εγγραφές.
+- Οι έλεγχοι security advisor έχουν ίδια ευρήματα πριν και μετά. Οι υπάρχουσες
+  συστάσεις για authenticated SECURITY DEFINER RPCs και leaked-password protection
+  παραμένουν ξεχωριστές εργασίες:
+  https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+  https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+- Τα δύο δημοσιευμένα Mac αρχεία επιστρέφουν 200 και έχουν ίδιο SHA256 με τον κώδικα:
+  connector 55c429a7dcb61a1e5a6b19fcc7ffbeda5c24fb62edad13bfeae755b87b9c295b,
+  browser 2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3.
 
-Στο νεότερο Claude head τα 13 από τα 14 ανακτημένα workflows ήταν success· το γενικό CI ήταν failure λόγω του παραπάνω lint. Αυτή είναι remote ένδειξη για το Claude head, όχι CI απόδειξη για τη νέα κοινή τοπική έκδοση.
+## Mac — συγκεκριμένο επόμενο βήμα
+Η ασφαλής φόρμα σύνδεσης υποβλήθηκε, αλλά η εφαρμογή επέστρεψε Failed to fetch.
+Δεν υποβλήθηκε device job, δεν έγινε νέο pairing και δεν άλλαξαν δικαιώματα
+ή capability flags της συσκευής.
 
-## Changed / Tested / Passed / Failed / Remains
-### Changed
-- Διατηρήθηκαν τα Claude runner v85/v86: χρόνος για τελικό report και μεγαλύτερο τελικό timeout.
-- Διατηρήθηκαν τα mission accounting και app connection readiness changes.
-- Διορθώθηκε το lint και τα CI triggers/έλεγχοι του σημερινού κοινού branch.
-- Προστέθηκε κανόνας επαλήθευσης του fetched head με την τρέχουσα ταυτότητα GitHub.
+Το FIRBO-Mac-Browser-Update.command είναι έτοιμο. Ελέγχθηκε η σύνταξή του
+και τα hashes των ληφθέντων αρχείων· δεν εκτελέστηκε στο Mac.
 
-### Tested / Passed
-- 516 frontend tests, σε 53 test files.
-- 532 μη rendered top-level Node backend/contract tests.
-- 74 handler tests στο ξεχωριστό lifecycle subset· περιλαμβάνονται στα 532, δεν προστίθενται ως νέο σύνολο.
-- Strict Edge TypeScript και frontend TypeScript.
-- Production build και το ίδιο build:tauri που χρησιμοποιείται από Vercel.
-- Builds απομονωμένων connections/world και pages workbenches.
-- Ruff check σε src/ και tests/: πέρασε.
-- Ruff format --check: 1.434 Python αρχεία ήδη σωστά μορφοποιημένα.
-- YAML parsing, νέοι branch triggers και διατήρηση migration/race gates.
-- git diff --check.
-- Ανάγνωση παραγωγικών migrations: η νέα mission migration δεν εμφανίζεται.
-- Σύγκριση και των 31 αρχείων σε επτά live backend bundles με τον κώδικα. Όλα ταιριάζουν με το νεότερο Claude baseline. Οι τέσσερις αποκλίσεις από τον candidate είναι οι αναμενόμενες τοπικές αλλαγές integrations/index.ts, connected-service.ts, mission-runner/index.ts και inference-accounting.ts.
+1. Αποθήκευσέ το στο Downloads του Mac.
+2. Σταμάτησε τον παλιό Connector με Ctrl+C στο δικό του terminal.
+3. Εκτέλεσε:
+   bash "$HOME/Downloads/FIRBO-Mac-Browser-Update.command"
+4. Επίλεξε y στο τοπικό prompt και κράτησε ανοιχτό το terminal.
 
-### Failed / limitations
-- Το push απορρίφθηκε από automatic approval review.
-- Δεν υπάρχει exact-head remote CI για τον candidate.
-- Δεν εκτελέστηκε νέο πραγματικό PostgreSQL ή rendered Chromium στην παρούσα συνέχεια. Δεν είναι διαθέσιμα τα αντίστοιχα runtimes τοπικά.
-- Οι συνθετικές δοκιμές δεν αποδεικνύουν σύνδεση πραγματικού παρόχου, πραγματική χρήση Mac ή δεύτερο customer account.
+Απαιτεί Node.js 22.13 ή νεότερο. Διατηρεί το υφιστάμενο pairing και journal,
+κρατά backup των παλιών δύο αρχείων, ελέγχει SHA256 και εγκαθιστά
+playwright 1.63.0 / Chromium. Το προεπιλεγμένο επιτρεπόμενο site είναι
+https://firboai.app. Μπορείς να δώσεις ένα άλλο συγκεκριμένο HTTPS origin
+ως πρώτο argument. Δεν παρέχει γενική άδεια για όλα τα sites.
+Κάθε browser plan και ευαίσθητη ενέργεια διατηρεί την τοπική έγκριση.
 
-### Remains
-- Εξουσιοδοτημένο upload του ακριβούς τελικού branch, νέο PR προς claude/gifted-dijkstra-rph5j8 και exact-head CI, ιδίως PostgreSQL και rendered connections/pages.
-- Νέος έλεγχος τυχόν concurrent head drift και merge με διατήρηση ιστορίας.
-- Εφαρμογή μόνο της νέας migration μία φορά, κατόπιν deployment των matching mission-runner, integrations και frontend bundles.
-- Δεν απαιτείται redeploy του ίδιου agent-runner v86. Το υπάρχον agent-chat entrypoint είναι ίδιο· το shared accounting default παραμένει agent-chat.
-- Read-back κώδικα, domain/source identity, served connector assets και authentication boundary.
-- Πραγματικά OAuth accounts/channels, ενημερωμένος Mac Connector χωρίς νέο pairing, real deliverable, δεύτερος πελάτης για isolation.
-- Ledger στις υπόλοιπες inference διαδρομές, reconciliation/monitoring και οι υπόλοιπες απαιτήσεις master plan.
-- Ο Claude καταγράφει έλλειψη working search provider στο OmniRoute· χρειάζεται πραγματική ρύθμιση για τεκμηριωμένη έρευνα. Αυτό δεν διορθώνεται από τα readiness μηνύματα.
+Μετά χρειάζονται νέο heartbeat με browser_task και πραγματικό επιτυχές
+browser job με acknowledged αποτέλεσμα. Αυτό δεν έχει ακόμη επαληθευτεί.
 
-## Επαληθευμένη παραγωγή
-| Τμήμα | Κατάσταση |
-| --- | --- |
-| https://firboai.app | READY, dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp |
-| Production frontend source | 0d31c30683870a325eabe3b33bf76e8f45ad0ca2 |
-| Νεότερο Claude preview | READY, dpl_H7qZdoekVChdfo5iuugQk6dtNUpf, source 0ae3150 |
-| agent-runner | ACTIVE v86, 12/12 αρχεία ίδια με τον κοινό κώδικα |
-| agent-chat | ACTIVE v38 |
-| integrations | ACTIVE v29 |
-| mission-runner | ACTIVE v26 |
-| connector | ACTIVE v28 |
-| MCP | ACTIVE v19 |
-| channel-inbound | ACTIVE v9 |
-
-Δεν στάλθηκε πραγματικό μήνυμα, δεν συνδέθηκε λογαριασμός, δεν άλλαξαν δικαιώματα ή δεδομένα πελατών.
-
-## Επόμενη συγκεκριμένη ενέργεια
-Push του codex/firbo-mission-accounting-20261006 στο https://github.com/conpol84/javris-clone.git και άνοιγμα PR προς claude/gifted-dijkstra-rph5j8. Το upload περιλαμβάνει τις ήδη ελεγμένες αλλαγές mission accounting/App Connections, το merge του Claude 0ae3150, τις διορθώσεις CI και τα checkpoints. Δεν περιλαμβάνει περιβάλλοντα/credentials ή τα προσωρινά test artifacts.
-
+## Υπόλοιπα
+Provider registrations/secrets και λογαριασμοί με πραγματικό consent,
+signed-in meeting acceptance, δεύτερος πελάτης, reconciliation monitoring
+και οι προηγούμενες ανοικτές εργασίες του master plan παραμένουν.
+Η δημοσίευση readiness δεν δημιουργεί αυτόματα συνδεδεμένους λογαριασμούς.

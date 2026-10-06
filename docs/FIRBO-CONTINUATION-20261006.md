@@ -771,3 +771,58 @@ Remains:
 - Keep all provider/device/second-customer/master-plan gates open.
 
 Detailed evidence: `FIRBO-SHARED-BUILD-AUDIT-20261006.md`.
+
+### Published — App Connections and shared mission accounting
+
+Changed:
+- Owner explicitly approved the public repository upload. Git push approval
+  passed, but the Git CLI lacked credentials. The connected GitHub API uploaded
+  nine commits with identical trees and ordered mapped parents, recording their
+  original identities. Original head `d2a0a56`, uploaded equivalent `8f4d1db`.
+- Exact-head CI found stale acceptance fixtures: distinct employee calls require
+  distinct request keys; the new Jarvis tab moves the console; Jarvis status is
+  a read, while chat/execution remain blocked in the synthetic page fixture.
+  These three fixture repairs do not change the approved runtime source.
+- PR #25 merged with both parents at `46f6bbca7a5f8dd4f928f9689159ce330eab1448`.
+  Accepted CI/runtime head `57f0e87b8ddb7323f438fe6a5ca39485bc194845`, tree
+  `c456ed7aa7fec889b663c6e770d28dfbaeb12ac0`; merge tree is identical.
+- Applied only `inference_mission_accounting`, live version `20261006111315`,
+  from `20261006092215_inference_mission_accounting.sql`. Do not replay it.
+- Published mission-runner v27 and integrations v30, four matching files each.
+  Retained JWT settings and custom integration callback/user authorization.
+- Production frontend: `dpl_HYgV2kcn7f1QDXAAEJ81SdX2uJYe`, READY, production
+  environment, exact accepted head `57f0e87`; `firboai.app` points to it.
+  Rollback frontend: `dpl_DSsDLS5qqSsaMeHvEkw86FqJLikD`.
+- Existing agent-runner v86 and agent-chat v38 were preserved and not redeployed.
+
+Tested / passed:
+- All nine final-head PR workflows succeeded. Lifecycle run `37454511256`
+  includes actual PostgreSQL migration/assertions and six reservation/settlement
+  races under READ COMMITTED and SERIALIZABLE, plus Ruff and handler guards.
+- Mobile/page run `37454511226`: 36, 42 and 19 cases, zero failures.
+  Connections run `37454511357`: 41 cases, zero failures. Computer Manager run
+  `37454511248`: 84 and 19 cases, zero failures. These are isolated rendered
+  fixtures, not real provider, account or Mac acceptance; counts overlap.
+- Earlier local validation: 516 frontend tests, 532 non-rendered Node tests,
+  strict frontend/Edge TypeScript, production/tauri/world/page builds and Ruff.
+- Read back all eight deployed Edge files and matched their complete contents.
+  Live ledger allows only agent-chat/mission-runner; service_role may execute,
+  anon/authenticated may not, private RLS and empty search_path are retained.
+  Invalid reservation input is rejected without writes.
+- Existing security advisor findings did not increase after the migration.
+
+Failed / limitations:
+- Secure FIRBO cloud-browser sign-in submitted but the site returned
+  `Failed to fetch`. No authenticated device job was submitted or local
+  credential extracted. The paired Mac remains online without browser_task.
+- No live provider consent, integration credential, device permission, customer
+  data or real inference request was created for acceptance.
+
+Remains:
+- Run the prepared Mac update locally after stopping the old Connector; keep
+  its existing pairing/journal, install the pinned Chromium runtime and start
+  with explicit --browser-site origins. Browser plans retain local approval.
+  Then require a new browser_task heartbeat and a real acknowledged browser job.
+- Provider registrations/secrets, account consent, signed-in meeting acceptance,
+  second-customer isolation, reconciliation monitoring and previous master-plan
+  gates remain open. PR #13 remains CI-only; do not merge it into main.
