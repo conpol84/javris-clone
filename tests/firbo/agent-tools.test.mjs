@@ -70,10 +70,14 @@ test('analyze image: needs a https link and reports token usage', async () => {
   assert.match((await analyzeImage('what is this', { gateway: { base: 'https://g/v1', key: 'k', model: 'm' } })).text, /https link/);
   let sent;
   const out = await analyzeImage('https://x.example/a.png what color?', { gateway: { base: 'https://g/v1', key: 'k', model: 'firbo-quality' },
-    fetcher: async (_url, init) => { sent = JSON.parse(init.body); return reply({ choices: [{ message: { content: 'Blue.' } }], usage: { prompt_tokens: 100, completion_tokens: 5 } }); } });
+    requestId: '77777777-7777-4777-8777-777777777777',
+    fetcher: async (_url, init) => { sent = { body: JSON.parse(init.body), headers: init.headers }; return reply({ choices: [{ message: { content: 'Blue.' } }], usage: { prompt_tokens: 100, completion_tokens: 5 } }); } });
   assert.equal(out.text, 'Blue.');
   assert.equal(out.inTok, 100);
-  assert.equal(sent.messages[0].content[1].image_url.url, 'https://x.example/a.png');
+  assert.equal(sent.body.messages[0].content[1].image_url.url, 'https://x.example/a.png');
+  assert.equal(sent.headers['x-request-id'], '77777777-7777-4777-8777-777777777777');
+  await assert.rejects(analyzeImage('https://x.example/a.png', { gateway: { base: 'https://g/v1', key: 'k', model: 'm' },
+    fetcher: async () => reply({ choices: [{ message: { content: 'Blue.' } }] }) }), /vision_usage_missing/);
 });
 
 test('knowledge search: company-scoped hybrid search call and readable hits', async () => {

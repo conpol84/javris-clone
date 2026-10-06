@@ -9,11 +9,11 @@ import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
-import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
+import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage, visionRequestPayload } from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
 import { detectDeliverable, deliverableInstructions, needsPolish, polishSystem } from '../_shared/deliverables.ts';
 import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
-import { maximumInferenceCost } from '../_shared/inference-accounting.ts';
+import { maximumInferenceCost, maximumTokenBoundCost } from '../_shared/inference-accounting.ts';
 import {
   executeRunnerInferenceAttempt,
   RunnerAttemptError,
@@ -33,6 +33,7 @@ const WRITERS = ['owner', 'admin', 'manager', 'member'];
 const HOURLY_RUN_LIMIT = 20;
 const RUNNABLE = ['pending', 'blocked', 'failed'];
 const MAX_ACTIONS = 5;
+const VISION_INPUT_TOKEN_CAP = 100_000;
 const LANG_NAME: Record<string, string> = {
   en: 'English', el: 'Greek', es: 'Spanish', 'pt-BR': 'Brazilian Portuguese',
   de: 'German', fr: 'French', 'zh-CN': 'Simplified Chinese', ar: 'Arabic',
@@ -343,10 +344,6 @@ Deno.serve(async (req) => {
   let inTok = 0;
   let outTok = 0;
   let routedCost = 0;
-  let unadaptedInTok = 0;
-  let unadaptedOutTok = 0;
-  let unadaptedCost = 0;
-  let unadaptedModel = 'unadapted:unknown';
   let attemptOrdinal = 0;
   let inferenceReconcileRequired = false;
   let inferenceReconcileReason: string | null = null;
@@ -601,12 +598,36 @@ Deno.serve(async (req) => {
     });
     if ((usable('image_analyze') || usable('vision')) && gw) loopTools.analyze_image = async (q) => {
       const visionModel = Deno.env.get('FIRBO_VISION_MODEL') ?? 'firbo-quality';
-      const out = await analyzeImage(q, { gateway: { base: gwV1, key: gw.key, model: visionModel }, signal: req.signal });
+      const payload = visionRequestPayload(q, visionModel);
+      if (!payload) return 'Give the image as a full https link, then the question.';
+      const reservedUsd = maximumTokenBoundCost(VISION_INPUT_TOKEN_CAP, [{
+        priceIn: priceOf('omniroute', 'IN'),
+        priceOut: priceOf('omniroute', 'OUT'),
+        maxOutputTokens: payload.max_tokens,
+      }]);
+      const out = await accountedAttempt({
+        payload,
+        route: `omniroute:${visionModel}/vision`,
+        outputTokenCap: payload.max_tokens,
+        reservedUsd,
+      }, async ({ requestId }) => {
+        const started = Date.now();
+        const result = await analyzeImage(q, {
+          gateway: { base: gwV1, key: gw.key, model: visionModel }, requestId, signal: req.signal,
+        });
+        const costUsd = Math.round(((result.inTok * priceOf('omniroute', 'IN') + result.outTok * priceOf('omniroute', 'OUT')) / 1e6) * 1e6) / 1e6;
+        return { value: result, usage: {
+          model: `omniroute:${visionModel}/vision`,
+          inputTokens: result.inTok,
+          outputTokens: result.outTok,
+          costUsd,
+          latencyMs: Date.now() - started,
+          ownKey: false,
+        } };
+      });
       inTok += out.inTok; outTok += out.outTok;
       const visionCost = Math.round(((out.inTok * priceOf('omniroute', 'IN') + out.outTok * priceOf('omniroute', 'OUT')) / 1e6) * 1e6) / 1e6;
       routedCost += visionCost;
-      unadaptedInTok += out.inTok; unadaptedOutTok += out.outTok; unadaptedCost += visionCost;
-      unadaptedModel = `omniroute:${visionModel}`;
       return out.text;
     };
   }
@@ -778,13 +799,6 @@ Deno.serve(async (req) => {
       retry_safe: false, accounting: { attempts: inferenceReceipts }, routing });
   }
   if (!text || !used) {
-    // Main model calls were settled separately. Keep only usage from an
-    // explicitly unadapted vision call in the legacy aggregate lane.
-    if (unadaptedInTok + unadaptedOutTok > 0) await admin.from('usage_events').insert({
-      organization_id: task.organization_id, user_id: user.id, agent_id: agent.id,
-      model: unadaptedModel, input_tokens: unadaptedInTok, output_tokens: unadaptedOutTok,
-      cost_usd: Math.round(unadaptedCost * 1e6) / 1e6, latency_ms: Date.now() - t0,
-    });
     const saved = await publish('failed', { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) });
     if (!saved) return json(503, { error: 'result_save_failed', retry_safe: false, routing });
     const failureStatus = lastError === 'budget_exceeded' ? 402
@@ -811,16 +825,7 @@ Deno.serve(async (req) => {
     return true;
   }).map(a => ({ ...a, payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] } }));
   const queue = free || agent.autonomy === 'suggest' ? [] : marked;
-  let usageError: unknown = null;
-  if (unadaptedInTok + unadaptedOutTok > 0) {
-    const savedUsage = await admin.from('usage_events').insert({
-      organization_id: task.organization_id, user_id: user.id, agent_id: agent.id,
-      model: unadaptedModel, input_tokens: unadaptedInTok, output_tokens: unadaptedOutTok,
-      cost_usd: Math.round(unadaptedCost * 1e6) / 1e6, latency_ms: latency,
-    });
-    usageError = savedUsage.error;
-  }
-  let reconcile = !!usageError;
+  let reconcile = false;
   // Computer steps that need the owner come first; the database accepts at most five approvals per run.
   const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
@@ -847,7 +852,7 @@ Deno.serve(async (req) => {
       metadata: { source: 'learned', task_id: task.id }, expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString() })));
   }
   if (reconcile || resultError) {
-    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner', organization_id: task.organization_id, task_id: task.id, request_id: routing?.request_id, usage_saved: !usageError, result_saved: !resultError }));
+    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner', organization_id: task.organization_id, task_id: task.id, request_id: routing?.request_id, result_saved: !resultError }));
     return json(503, { error: 'result_save_failed', retry_safe: false, routing });
   }
   return json(200, { status: finalStatus, queued: approvalsOut.length, dropped: dropped.length, routing });

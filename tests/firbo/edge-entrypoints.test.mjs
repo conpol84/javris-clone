@@ -8,7 +8,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { maximumInferenceCost } from '../../supabase/functions/_shared/inference-accounting.ts';
+import { maximumInferenceCost, maximumTokenBoundCost } from '../../supabase/functions/_shared/inference-accounting.ts';
 
 const USER='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ORG='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -165,6 +165,11 @@ function fixture(options={}) {
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
     if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}],execution:options.serverExecution});
+    if(options.visionResponse&&String(url).endsWith('/chat/completions')){
+      const request=JSON.parse(init.body);
+      if(Array.isArray(request?.messages?.[0]?.content))return Response.json({model:'vision/resolved',choices:[{message:{content:'Blue image.'}}],
+        ...(options.visionMissingUsage?{}:{usage:{prompt_tokens:250,completion_tokens:15}})});
+    }
     if(options.chatReplies&&String(url).endsWith('/chat/completions')){
       const reply=options.chatReplies.shift();
       if(reply!==undefined)return Response.json({model:'provider/resolved',choices:[{message:{content:reply}}],usage:{prompt_tokens:100,completion_tokens:20}});
@@ -250,6 +255,11 @@ test('reservation estimate is conservative, additive across fallbacks and reject
   const two=maximumInferenceCost({messages:[{role:'user',content:'hello'}]},[{priceIn:1,priceOut:2,maxOutputTokens:100},{priceIn:3,priceOut:4,maxOutputTokens:200}]);
   assert.ok(one>0);assert.ok(two>one);
   assert.throws(()=>maximumInferenceCost({},[{priceIn:-1,priceOut:1,maxOutputTokens:1}]),/invalid_cost_rate/);
+});
+test('non-text token caps reserve conservatively and reject unbounded input',()=>{
+  assert.equal(maximumTokenBoundCost(100_000,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),0.3105);
+  assert.throws(()=>maximumTokenBoundCost(-1,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),/invalid_input_token_cap/);
+  assert.throws(()=>maximumTokenBoundCost(1_000_000_001,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),/invalid_input_token_cap/);
 });
 test('agent-chat offers only work sources not already present in this company',async()=>{
   const {state,response}=await invoke('agent-chat',{agentType:'ceo',integrations:[{kind:'gdrive_read',status:'active'}]});
@@ -427,6 +437,35 @@ test('agent-runner: the agent searches, reads a page, then reports; every model 
   assert.equal(result.accounting.attempts.length,3);
   assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
+});
+test('agent-runner: vision uses its own claim-bound receipt and exact dispatch identity', async () => {
+  const tools=[{tool_name:'image_analyze',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"analyze_image","input":"https://images.example/blue.png what color?"}',JSON.stringify({summary:'Image checked',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,visionResponse:true,env:{FIRBO_VISION_MODEL:'firbo-vision'}});
+  assert.equal(response.status,200);
+  const visionCall=state.calls.find(c=>{
+    if(!String(c.url).endsWith('/chat/completions'))return false;
+    return Array.isArray(JSON.parse(c.init.body)?.messages?.[0]?.content);
+  });
+  assert.ok(visionCall);
+  const reserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference');
+  const visionReserve=reserves.find(r=>r.args.p_route==='omniroute:firbo-vision/vision');
+  assert.ok(visionReserve);assert.equal(visionReserve.args.p_output_token_cap,700);assert.ok(visionReserve.args.p_reserved_usd>0);
+  assert.equal(visionCall.init.headers['x-request-id'],state.runnerRequests[1]);
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,3);assert.equal(usage[1].payload.model,'omniroute:firbo-vision/vision');
+  assert.equal(usage[1].payload.input_tokens,250);assert.equal(usage[1].payload.output_tokens,15);
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.accounting.attempts.length,3);
+});
+test('agent-runner: missing vision usage is ambiguous and cannot publish or continue', async () => {
+  const tools=[{tool_name:'image_analyze',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"analyze_image","input":"https://images.example/blue.png what color?"}',JSON.stringify({summary:'Must not publish',report:FULL_REPORT,actions:[]})];
+  const {state,response,body}=await invoke('agent-runner',{tools,chatReplies,visionResponse:true,visionMissingUsage:true,env:{FIRBO_VISION_MODEL:'firbo-vision'}});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='vision_usage_missing'));
+  assert.equal(state.rpcs.filter(r=>r.fn==='firbo_settle_inference').length,1);
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
 });
 test('agent-runner: empty gateway search uses configured Tavily and feeds evidence to the model', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];

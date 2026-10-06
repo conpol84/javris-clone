@@ -23,13 +23,25 @@ const finiteRate = (value: number) => Number.isFinite(value) && value >= 0 && va
 export function maximumInferenceCost(payload: unknown, routes: CostRoute[]): number {
   if (!routes.length) return 0;
   const inputTokens = enc.encode(JSON.stringify(payload)).byteLength;
+  return maximumTokenBoundCost(inputTokens, routes);
+}
+
+/**
+ * Conservative reservation for a route whose provider meters non-text input
+ * (for example image tokens) that cannot be derived from the JSON byte size.
+ */
+export function maximumTokenBoundCost(inputTokenCap: number, routes: CostRoute[]): number {
+  if (!Number.isSafeInteger(inputTokenCap) || inputTokenCap < 0 || inputTokenCap > 1_000_000_000) {
+    throw new Error('invalid_input_token_cap');
+  }
+  if (!routes.length) return 0;
   let total = 0;
   for (const route of routes) {
     if (!finiteRate(route.priceIn) || !finiteRate(route.priceOut)
       || !Number.isSafeInteger(route.maxOutputTokens) || route.maxOutputTokens < 1 || route.maxOutputTokens > 100_000) {
       throw new Error('invalid_cost_rate');
     }
-    total += (inputTokens * route.priceIn + route.maxOutputTokens * route.priceOut) / 1_000_000;
+    total += (inputTokenCap * route.priceIn + route.maxOutputTokens * route.priceOut) / 1_000_000;
   }
   const rounded = Math.ceil(total * 1_000_000) / 1_000_000;
   if (!Number.isFinite(rounded) || rounded < 0 || rounded > MAX_COST_USD) throw new Error('invalid_cost_reservation');

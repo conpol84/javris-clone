@@ -205,14 +205,36 @@ export async function generateImage(prompt: string, o: { organizationId: string;
   return `Image created: ${link}\nShow it in the report as ![${text.slice(0, 60).replace(/[[\]]/g, '')}](${link}).`;
 }
 
-/** Describes or answers a question about an image at a public https link, with the gateway's vision-capable combo. */
-export async function analyzeImage(input: string, o: { gateway: { base: string; key: string; model: string }; fetcher?: Fetcher; signal?: AbortSignal }): Promise<{ text: string; inTok: number; outTok: number }> {
+export type VisionRequestPayload = {
+  model: string;
+  max_tokens: number;
+  messages: [{ role: 'user'; content: [{ type: 'text'; text: string }, { type: 'image_url'; image_url: { url: string } }] }];
+};
+
+/** Exact bounded provider payload, shared by accounting fingerprinting and dispatch. */
+export function visionRequestPayload(input: string, model: string): VisionRequestPayload | null {
   const url = /https:\/\/[^\s<>"')]+/.exec(input)?.[0];
-  if (!url) return { text: 'Give the image as a full https link, then the question.', inTok: 0, outTok: 0 };
+  if (!url) return null;
   const question = input.replace(url, '').trim() || 'Describe this image in detail: what it shows, any text in it, and anything notable for a business.';
-  const r = await (o.fetcher ?? fetch)(`${o.gateway.base}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${o.gateway.key}` },
-    body: JSON.stringify({ model: o.gateway.model, max_tokens: 700, messages: [{ role: 'user', content: [{ type: 'text', text: question.slice(0, 600) }, { type: 'image_url', image_url: { url } }] }] }), signal: sig(o.signal, 60_000) });
+  return { model, max_tokens: 700, messages: [{ role: 'user', content: [
+    { type: 'text', text: question.slice(0, 600) },
+    { type: 'image_url', image_url: { url } },
+  ] }] };
+}
+
+/** Describes or answers a question about an image at a public https link, with the gateway's vision-capable combo. */
+export async function analyzeImage(input: string, o: { gateway: { base: string; key: string; model: string }; requestId?: string; fetcher?: Fetcher; signal?: AbortSignal }): Promise<{ text: string; inTok: number; outTok: number }> {
+  const payload = visionRequestPayload(input, o.gateway.model);
+  if (!payload) return { text: 'Give the image as a full https link, then the question.', inTok: 0, outTok: 0 };
+  const headers: Record<string, string> = { 'content-type': 'application/json', authorization: `Bearer ${o.gateway.key}` };
+  if (o.requestId) headers['x-request-id'] = o.requestId;
+  const r = await (o.fetcher ?? fetch)(`${o.gateway.base}/chat/completions`, {
+    method: 'POST', headers, body: JSON.stringify(payload), signal: sig(o.signal, 60_000),
+  });
   if (!r.ok) throw new Error(`vision_http_${r.status}`);
   const j = await r.json();
-  return { text: String(j?.choices?.[0]?.message?.content ?? '').slice(0, 3000) || 'The model returned no description.', inTok: Number(j?.usage?.prompt_tokens ?? 0), outTok: Number(j?.usage?.completion_tokens ?? 0) };
+  const inTok = j?.usage?.prompt_tokens;
+  const outTok = j?.usage?.completion_tokens;
+  if (![inTok, outTok].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000_000)) throw new Error('vision_usage_missing');
+  return { text: String(j?.choices?.[0]?.message?.content ?? '').slice(0, 3000) || 'The model returned no description.', inTok, outTok };
 }
