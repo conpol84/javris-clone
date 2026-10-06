@@ -146,6 +146,8 @@ jobs:
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/rollover-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/runner-attempt-assertions.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               python3 tests/firbo/accounting/postgres-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
+              python3 tests/firbo/accounting/test_reconciliation_monitor.py
+              python3 tests/firbo/accounting/monitor-postgres.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
           esac
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
