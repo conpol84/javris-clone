@@ -405,3 +405,38 @@ Remains:
 References: https://github.com/conpol84/javris-clone/pull/20 ;
 https://github.com/conpol84/javris-clone/actions/runs/37416789387 ;
 https://firboai.app
+
+### Candidate — bounded browser accessibility and screenshot adapter
+
+Changed:
+- Continued exact shared checkpoint `5c6a0bc` without concurrent branch drift.
+  Added `snapshot` and `screenshot` inside the existing `browser_task` contract;
+  no new job kind, migration, pairing, permission, SQL or external action.
+- Accessibility output is bounded, marked untrusted and returned in the durable
+  receipt. Visible-viewport PNG bytes are capped, signature-checked and retained
+  only in an existing allowed local folder; the company receives a verified
+  path/hash receipt, not the image. Both captures ask again locally and `--auto`
+  cannot approve them. Server and Connector validate the same closed plan.
+- Computers exposes both actions in all eight languages. See
+  `FIRBO-BROWSER-EVIDENCE-20261006.md`.
+
+Tested / passed:
+- 91/91 focused browser/policy/approval/Connector tests, all 546 non-rendered
+  FIRBO Node tests, 487/487 frontend tests, frontend TypeScript and production
+  build passed. Final exact-head CI is required after the candidate commit.
+
+Failed / limitations:
+- Local rendered Chromium is blocked because this workspace lacks the pinned
+  browser executable and Xvfb. Do not count it as passed; the exact-head GitHub
+  workflow must install Chromium and run the updated real-DOM fixture.
+- No Mac, account, credential, integration row, permission, job or message was
+  changed. This is source/automated evidence only, not real-device acceptance.
+
+Remains:
+- Commit/publish the candidate branch, require exact-head CI, preserve any newer
+  Claude work, then decide merge/release. Only the frontend and matching
+  connector validator are in scope; preserve runner v83, chat v37,
+  mission-runner v26 and all migrations.
+- Real already-paired Mac update and approved snapshot/screenshot/Stop/offline
+  useful-artifact read-back; signed-in CEO acceptance, OAuth, approved channels,
+  second customer and all remaining master-plan gates.

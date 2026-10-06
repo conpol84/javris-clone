@@ -2,10 +2,10 @@ import {useState, type FormEvent} from 'react';
 import {useI18n} from '../../i18n/I18nProvider';
 import {browserTaskLabels} from '../../lib/company/browser-task-labels';
 
-type Action='open'|'read'|'click'|'fill'|'scroll'|'upload'|'download';
+type Action='open'|'read'|'snapshot'|'screenshot'|'click'|'fill'|'scroll'|'upload'|'download';
 type Step={action:Action;url?:string;selector?:string;text?:string;pixels?:number;path?:string};
-const actions:Action[]=['open','read','click','fill','scroll','upload','download'];
-const initial=(action:Action):Step=>action==='open'?{action,url:'https://example.com'}:action==='read'?{action}:action==='scroll'?{action,pixels:400}:action==='fill'?{action,selector:'',text:''}:action==='upload'?{action,selector:'',path:''}:action==='download'?{action,url:'https://example.com',path:''}:{action,selector:''};
+const actions:Action[]=['open','read','snapshot','screenshot','click','fill','scroll','upload','download'];
+const initial=(action:Action):Step=>action==='open'?{action,url:'https://example.com'}:['read','snapshot'].includes(action)?{action}:action==='screenshot'?{action,path:''}:action==='scroll'?{action,pixels:400}:action==='fill'?{action,selector:'',text:''}:action==='upload'?{action,selector:'',path:''}:action==='download'?{action,url:'https://example.com',path:''}:{action,selector:''};
 
 export function BrowserTaskComposer({disabled,onSubmit}:{disabled:boolean;onSubmit:(plan:{steps:Step[];timeout_ms:number})=>Promise<void>}){
  const {lang}=useI18n(),l=browserTaskLabels(lang);

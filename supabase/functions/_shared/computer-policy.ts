@@ -120,14 +120,14 @@ const httpsUrl = (raw: string) => {
   } catch { return null; }
 };
 
-/** A scoped browser plan (open, read, click, fill, scroll, upload, download); null when anything is off. The computer reviews it again locally. */
+/** A scoped browser plan (open, read, snapshot, screenshot, click, fill, scroll, upload, download); null when anything is off. The computer reviews it again locally. */
 export function browserTaskParams(raw: unknown): Record<string, unknown> | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
   const p=raw as Record<string, unknown>;
   if(Object.keys(p).some(k=>!['steps','timeout_ms'].includes(k)))return null;
   const timeout=p.timeout_ms??120_000;
   if(!Number.isInteger(timeout)||Number(timeout)<1000||Number(timeout)>300_000||!Array.isArray(p.steps)||!p.steps.length||p.steps.length>20)return null;
-  const fields:Record<string,string[]>={open:['url'],read:[],click:['selector'],fill:['selector','text'],scroll:['pixels'],upload:['selector','path'],download:['url','path']};
+  const fields:Record<string,string[]>={open:['url'],read:[],snapshot:[],screenshot:['path'],click:['selector'],fill:['selector','text'],scroll:['pixels'],upload:['selector','path'],download:['url','path']};
   for(const s of p.steps){
     if(!s||typeof s!=='object'||Array.isArray(s)||!Object.hasOwn(fields,s.action))return null;
     const keys=fields[s.action];
@@ -135,6 +135,7 @@ export function browserTaskParams(raw: unknown): Record<string, unknown> | null 
     if(keys.includes('url')&&(typeof s.url!=='string'||s.url.length>2048||!httpsUrl(s.url)))return null;
     if(keys.includes('selector')&&(typeof s.selector!=='string'||!s.selector||s.selector.length>200||/[\u0000-\u001f\u007f]/.test(s.selector)||/>>|(?:^|\s)(?:text|xpath|id|data-testid)=/i.test(s.selector)))return null;
     if(keys.includes('path')&&(typeof s.path!=='string'||!s.path||s.path.length>500||/[\u0000-\u001f\u007f]/.test(s.path)))return null;
+    if(s.action==='screenshot'&&!/\.png$/i.test(s.path))return null;
     if(s.action==='fill'&&(typeof s.text!=='string'||s.text.length>4000||/[\u0000-\u0008\u000b-\u001f\u007f]/.test(s.text)))return null;
     if(s.action==='scroll'&&(!Number.isInteger(s.pixels)||Math.abs(s.pixels)>4000))return null;
   }
@@ -201,7 +202,7 @@ export function describeComputerResult(kind: ComputerKind, result: unknown, max 
   if (kind === 'shortcut') return `Ran the shortcut ${String(r.name ?? '')}.`;
   if (kind === 'browser_open') return `Opened ${String(r.url ?? 'the page')} in the browser.`;
   if (kind === 'browser_task' && Array.isArray(r.steps)) {
-    return (r.steps as Record<string, unknown>[]).map(st => `${String(st.step ?? '')}. ${String(st.action ?? '')}${st.url ? ` ${String(st.url)}` : ''}${typeof st.text === 'string' ? `\n${st.text}` : ''}`).join('\n').slice(0, max);
+    return (r.steps as Record<string, unknown>[]).map(st => `${String(st.step ?? '')}. ${String(st.action ?? '')}${st.url ? ` ${String(st.url)}` : ''}${typeof st.text === 'string' ? `\n${st.text}` : ''}${typeof st.accessibility === 'string' ? `\n${st.accessibility}` : ''}${st.path ? ` ${String(st.path)}${st.sha256 ? ` sha256:${String(st.sha256)}` : ''}` : ''}`).join('\n').slice(0, max);
   }
   return JSON.stringify(r).slice(0, max);
 }

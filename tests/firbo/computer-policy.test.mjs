@@ -71,6 +71,10 @@ test('a browser plan for an employee: validated here, reviewed again on the comp
   assert.ok('error' in parseComputerRequest('browse [{"action":"read"}]'));
   assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'http://plain.example' }] }), null);
   assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'fill', selector: 'xpath=//input', text: 'x' }] }), null);
+  assert.deepEqual(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'snapshot' }, { action: 'screenshot', path: 'evidence.png' }] }),
+    { steps: [{ action: 'open', url: 'https://a.example' }, { action: 'snapshot' }, { action: 'screenshot', path: 'evidence.png' }], timeout_ms: 120_000 });
+  assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'screenshot', path: 'x.png', full_page: true }] }), null);
+  assert.equal(browserTaskParams({ steps: [{ action: 'open', url: 'https://a.example' }, { action: 'screenshot', path: 'x.txt' }] }), null);
 });
 
 test('an employee set to suggest only may look, and everything else becomes a suggestion', () => {

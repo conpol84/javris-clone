@@ -7,9 +7,11 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import os from 'node:os';
 
-export const BROWSER_ACTIONS = ['open', 'read', 'click', 'fill', 'scroll', 'upload', 'download'];
+export const BROWSER_ACTIONS = ['open', 'read', 'snapshot', 'screenshot', 'click', 'fill', 'scroll', 'upload', 'download'];
 const MUTATIONS = new Set(['click', 'fill', 'upload']);
+const CAPTURES = new Set(['snapshot', 'screenshot']);
 const MAX_BYTES = 4 * 1024 * 1024;
+const PNG_SIGNATURE = Buffer.from([137,80,78,71,13,10,26,10]);
 const check = signal => { if (signal?.aborted) throw new Error('operation_stopped'); };
 const hash = data => createHash('sha256').update(data).digest('hex');
 const byteClip = (value, limit) => Buffer.from(String(value)).subarray(0, Math.max(0, limit)).toString('utf8');
@@ -34,12 +36,13 @@ export function validateBrowserPlan(raw, localSites) {
   if (!Number.isInteger(timeout) || timeout < 1000 || timeout > 300_000 || !Array.isArray(raw.steps) || !raw.steps.length || raw.steps.length > 20) fail();
   const steps = raw.steps.map(s => {
     if (!s || typeof s !== 'object' || Array.isArray(s) || !BROWSER_ACTIONS.includes(s.action)) fail();
-    const keys = {open:['url'], read:[], click:['selector'], fill:['selector','text'], scroll:['pixels'], upload:['selector','path'], download:['url','path']}[s.action];
+    const keys = {open:['url'], read:[], snapshot:[], screenshot:['path'], click:['selector'], fill:['selector','text'], scroll:['pixels'], upload:['selector','path'], download:['url','path']}[s.action];
     if (Object.keys(s).some(k => k !== 'action' && !keys.includes(k)) || keys.some(k => !Object.hasOwn(s, k))) fail();
     if (keys.includes('url') && !sites.has(browserOrigin(s.url))) throw new Error('browser_site_denied');
     // Only CSS locators; no arbitrary Playwright selector engine or frame traversal.
     if (keys.includes('selector') && (!bounded(s.selector, 200) || />>|(?:^|\s)(?:text|xpath|id|data-testid)=/i.test(s.selector))) fail();
     if (keys.includes('path') && !bounded(s.path, 500)) fail();
+    if (s.action === 'screenshot' && !/\.png$/i.test(s.path)) fail();
     if (s.action === 'fill' && (typeof s.text !== 'string' || s.text.length > 4000 || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(s.text))) fail();
     if (s.action === 'scroll' && (!Number.isInteger(s.pixels) || Math.abs(s.pixels) > 4000)) fail();
     return Object.freeze({ ...s });
@@ -118,10 +121,10 @@ export async function executeBrowserPlan(raw, cfg, {
   if (cfg.allowBrowser !== true || cfg.allowBrowserControl !== true) throw new Error('browser_control_disabled');
   const plan = validateBrowserPlan(raw, cfg.browserSites);
   if (plan.steps.some(s=>s.action==='upload') && (!cfg.roots?.length || !readFile)) throw new Error('browser_file_denied');
-  if (plan.steps.some(s=>s.action==='download') && (!cfg.allowWrite || !cfg.roots?.length || !writeFile)) throw new Error('browser_file_denied');
+  if (plan.steps.some(s=>s.action==='download'||s.action==='screenshot') && (!cfg.allowWrite || !cfg.roots?.length || !writeFile)) throw new Error('browser_file_denied');
   check(signal);
   if (!await confirm('browser_plan', {steps:plan.steps, sites:plan.sites, timeout_ms:plan.timeout_ms, max_cost:0,
-    disclosure:'Read-page text and artifact receipts return to your Firbo company. No screenshots or credentials are captured.'}, signal)) throw new Error('declined_on_this_computer');
+    disclosure:'Page text and accessibility snapshots return to your Firbo company. A screenshot can contain sensitive visible content and is saved only to the locally selected allowed path. Capture steps ask again. Credentials are never filled or exported.'}, signal)) throw new Error('declined_on_this_computer');
   check(signal);
   const stop = new AbortController(), abort = ()=>stop.abort();
   signal?.addEventListener('abort', abort, {once:true});
@@ -178,6 +181,10 @@ export async function executeBrowserPlan(raw, cfg, {
       if (s.action!=='open' && !plan.sites.includes(browserOrigin(page.url()))) throw new Error('browser_site_denied');
       activeAction=s.action;
       if (MUTATIONS.has(s.action) && !await confirm('browser_action', {url:page.url(),step:s},stop.signal)) throw new Error('declined_on_this_computer');
+      if (CAPTURES.has(s.action) && !await confirm('browser_capture', {
+        url:page.url(),step:s,scope:s.action==='screenshot'?'visible_viewport':'accessibility_tree',
+        retention:s.action==='screenshot'?'local_file_only':'company_job_receipt',max_bytes:s.action==='screenshot'?MAX_BYTES:20_000,
+      },stop.signal)) throw new Error('declined_on_this_computer');
       ensure();
       onProgress({step:index+1,total:plan.steps.length,action:s.action,status:'running'});
       let result={};
@@ -186,6 +193,18 @@ export async function executeBrowserPlan(raw, cfg, {
         const raw=await page.locator('body').innerText(),text=byteClip(raw,Math.min(4000,textBudget));
         textBudget=Math.max(0,textBudget-Buffer.byteLength(text));
         result={untrusted_page_data:true,url:byteClip(page.url(),2048),title:byteClip(await page.title(),500),text,truncated:text!==raw};
+      }
+      if (s.action==='snapshot') {
+        const raw=await page.locator('body').ariaSnapshot({depth:12}),accessibility=byteClip(raw,Math.min(6000,textBudget));
+        textBudget=Math.max(0,textBudget-Buffer.byteLength(accessibility));
+        result={untrusted_page_data:true,url:byteClip(page.url(),2048),title:byteClip(await page.title(),500),accessibility,truncated:accessibility!==raw};
+      }
+      if (s.action==='screenshot') {
+        const bytes=await page.screenshot({type:'png',fullPage:false});
+        if(!Buffer.isBuffer(bytes)||bytes.length>MAX_BYTES)throw new Error('browser_transfer_too_large');
+        if(bytes.length<PNG_SIGNATURE.length||!bytes.subarray(0,PNG_SIGNATURE.length).equals(PNG_SIGNATURE))throw new Error('browser_capture_failed');
+        ensure();
+        result={...await writeFile(s.path,bytes),local_only:true,capture:'visible_viewport_png'};
       }
       if (s.action==='scroll') await page.mouse.wheel(0,s.pixels);
       if (['click','fill','upload'].includes(s.action)) {
@@ -220,7 +239,9 @@ export async function executeBrowserPlan(raw, cfg, {
       activeAction='';
     }
     finished=true;
-    return {completed:true,steps:results,cost:0,profile:'isolated-temporary',capture:'text-only',transferred_bytes:transferred};
+    const hasText=plan.steps.some(s=>s.action==='read'),hasAccessibility=plan.steps.some(s=>s.action==='snapshot'),hasScreenshot=plan.steps.some(s=>s.action==='screenshot');
+    const capture=hasScreenshot?`${hasText?'text-':''}${hasAccessibility?'accessibility-':''}local-screenshot`:hasAccessibility?(hasText?'text-accessibility':'accessibility'):'text-only';
+    return {completed:true,steps:results,cost:0,profile:'isolated-temporary',capture,transferred_bytes:transferred};
   } finally {
     clearTimeout(timer);signal?.removeEventListener('abort',abort);stop.signal.removeEventListener('abort',close);
     await browser?.close().catch(()=>{});
