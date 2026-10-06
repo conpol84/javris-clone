@@ -6,7 +6,8 @@ begin;
 alter table public.connector_jobs
   add column if not exists agent_run_claim uuid,
   add column if not exists agent_policy_snapshot jsonb,
-  add column if not exists agent_capabilities_snapshot jsonb;
+  add column if not exists agent_capabilities_snapshot jsonb,
+  add column if not exists started_at timestamptz;
 
 -- Jobs created before this protocol have no capability token.  Do not guess
 -- about an already-running OS effect: an operator must reconcile it before
@@ -48,7 +49,7 @@ begin
     from_hour := (h->>'from')::integer;
     to_hour := (h->>'to')::integer;
     zone := h->>'tz';
-    if from_hour not between 0 and 24 or to_hour not between 0 and 24
+    if from_hour is null or to_hour is null or from_hour not between 0 and 24 or to_hour not between 0 and 24
       or from_hour = to_hour or zone is null then return false; end if;
     local_hour := extract(hour from timezone(zone, statement_timestamp()))::integer;
   exception when others then
@@ -75,13 +76,13 @@ begin
   select * into t from public.tasks where id = new.agent_task_id for update;
   select * into d from public.connector_devices where id = new.device_id for update;
   select enabled, autonomy into agent_enabled, agent_autonomy from public.agents
-    where id = new.agent_id and organization_id = new.organization_id;
+    where id = new.agent_id and organization_id = new.organization_id for share;
   select enabled, policy into tool_enabled, tool_policy from public.agent_tools
-    where agent_id = new.agent_id and organization_id = new.organization_id and tool_name = 'computer_use';
+    where agent_id = new.agent_id and organization_id = new.organization_id and tool_name = 'computer_use' for share;
 
   if t.id is null or d.id is null or agent_enabled is distinct from true
     or tool_enabled is distinct from true or tool_policy is distinct from 'allow'
-    or agent_autonomy = 'suggest'
+    or (agent_autonomy = 'suggest' and new.kind not in ('list','read'))
     or t.organization_id <> new.organization_id or t.assigned_agent_id is distinct from new.agent_id
     or t.status <> 'running' or t.run_claim is distinct from new.agent_run_claim
     or t.result->>'reconcile_required' = 'true'
@@ -149,10 +150,10 @@ create trigger tasks_agent_job_update_guard before update of status on public.ta
 create or replace function public.connector_claim_next_job(
   p_org uuid, p_device uuid, p_min_created timestamptz
 ) returns jsonb language plpgsql security invoker set search_path = '' as $$
-declare d public.connector_devices%rowtype; j public.connector_jobs%rowtype;
+declare d public.connector_devices%rowtype; j public.connector_jobs%rowtype; candidate uuid;
 begin
   select * into d from public.connector_devices
-    where id = p_device and organization_id = p_org for update;
+    where id = p_device and organization_id = p_org;
   if not found or d.paired is distinct from true or d.revoked_at is not null then
     raise exception 'device_not_ready' using errcode = 'P0002';
   end if;
@@ -160,10 +161,26 @@ begin
     select * into j from public.connector_jobs
       where organization_id = p_org and device_id = p_device and status = 'queued'
         and created_at >= p_min_created
-      order by created_at,id for update skip locked limit 1;
+      order by created_at,id limit 1;
+    if not found then return null; end if;
+    candidate := j.id;
+    -- Match enqueue/publication lock order: parent before device before job.
+    -- Holding the device while waiting on the parent deadlocks with an enqueue
+    -- holding that parent and waiting on this same device.
+    if coalesce(j.agent_task_id,j.task_id) is not null then
+      perform 1 from public.tasks where id=coalesce(j.agent_task_id,j.task_id) for update;
+    end if;
+    select * into d from public.connector_devices
+      where id = p_device and organization_id = p_org for update;
+    if not found or d.paired is distinct from true or d.revoked_at is not null then
+      raise exception 'device_not_ready' using errcode = 'P0002';
+    end if;
+    select * into j from public.connector_jobs
+      where id=candidate and device_id=p_device and organization_id=p_org and status='queued'
+      for update skip locked;
     if not found then return null; end if;
     begin
-      update public.connector_jobs set status = 'running'
+      update public.connector_jobs set status = 'running', started_at = statement_timestamp()
         where id = j.id and status = 'queued' returning * into j;
       if found then
         return jsonb_build_object('id',j.id,'kind',j.kind,'params',j.params);
