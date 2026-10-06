@@ -30,6 +30,7 @@ reports = []
 CASES = [("computer-actions", w, "loaded", "owner") for w in (320, 390, 768, 1440)]
 CASES += [("computer-mac-setup", w, "loaded", "owner") for w in (320, 1440)]
 CASES += [("computer-browser-plan", w, "loaded", "owner") for w in (320, 1440)]
+CASES += [("computer-mac-update", w, "loaded", "owner") for w in (320, 1440)]
 CASES += [
     ("computer-state", 320, state, "owner") for state in ("loading", "empty", "error")
 ]
@@ -88,11 +89,28 @@ with sync_playwright() as pw:
                 v.BASE
                 + path
                 + f"?lang=en&state={state}&role={role}&computer_actions=1&device_delay=900&browser_control={1 if kind == 'computer-browser-plan' else 0}&pair_delay="
-                + ("900" if kind == "computer-user-switch" else "0"),
+                + ("900" if kind == "computer-user-switch" else "0")
+                + f"&mac_update={1 if kind == 'computer-mac-update' else 0}",
                 wait_until="networkidle",
             )
             expect(page.locator("main h1")).to_be_visible()
-            if kind == "computer-browser-plan":
+            if kind == "computer-mac-update":
+                page.get_by_test_id("select-device-d1").click()
+                notice = page.get_by_test_id("mac-browser-update")
+                expect(notice).to_be_visible()
+                expect(
+                    notice.get_by_role("link", name="Download Mac updater")
+                ).to_have_attribute("href", "/FIRBO-Mac-Browser-Update.command")
+                expect(notice).to_contain_text("local approval")
+                assert not page.evaluate(v.GEOMETRY)["bad"]
+                page.get_by_test_id("select-device-d2").click()
+                expect(notice).to_have_count(0)
+                page.get_by_test_id("select-device-d1").click()
+                expect(notice).to_be_visible()
+                page.evaluate("window.__firboM2.switchUser()")
+                expect(notice).to_have_count(0)
+                expect(page.get_by_test_id("select-device-d1")).to_have_count(0)
+            elif kind == "computer-browser-plan":
                 page.get_by_test_id("select-device-d1").click()
                 composer = page.get_by_test_id("browser-task-composer")
                 expect(composer).to_be_visible()

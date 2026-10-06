@@ -18,6 +18,7 @@ import { connectorCommands, suggestedComputerPlatform, type ComputerAccess, type
 import { computerSetupLabels } from '../lib/company/computer-setup-labels';
 import { BrowserTaskComposer } from '../components/devices/BrowserTaskComposer';
 import { browserTaskLabels } from '../lib/company/browser-task-labels';
+import { MacBrowserUpdate } from '../components/devices/MacBrowserUpdate';
 
 type Kind = JobRow['kind'];
 const KINDS: Kind[] = ['list', 'read', 'write', 'exec', 'browser_open'];
@@ -302,6 +303,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
             {chosen && (
               <section key={chosen.id} data-testid="computer-workspace" className="fb-glass fb-col gap-3 p-5">
                 <h2 className="text-base font-semibold">{t('comp.workOn', { name: chosen.name })}</h2>
+                <MacBrowserUpdate device={chosen} lang={lang} />
                 <AgentAccessPanel key={`policy-${chosen.id}`} device={chosen} platform={platform} onSaved={() => void load()} />
                 {!isOnline(chosen, now) && <div className="fb-col gap-2" style={{ color: 'var(--fb-warn)' }}>
                   <p className="text-sm">{setup.offline}</p>
