@@ -127,6 +127,7 @@ jobs:
             accounting)
               python3 tests/firbo/workspace-postgres-loader.py tasks --output /tmp/firbo-lifecycle-evidence/base.sql
               psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/postgres-fixture.sql
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-fixture.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005222500_task_run_protocol.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006081517_inference_request_ledger_stage1.sql
