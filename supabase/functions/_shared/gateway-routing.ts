@@ -153,7 +153,7 @@ const record = (value: unknown): value is Record<string, unknown> => !!value && 
 const tokens = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000_000;
 
 export async function completeViaGateway(plan: GatewayPlan, messages: Message[], temperature: number,
-  options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number } = {}): Promise<GatewayCompletion> {
+  options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number; requestId?: string } = {}): Promise<GatewayCompletion> {
   try {
     return await completeOnce(plan, messages, temperature, options);
   } catch (error) {
@@ -166,10 +166,12 @@ export async function completeViaGateway(plan: GatewayPlan, messages: Message[],
 }
 
 async function completeOnce(plan: GatewayPlan, messages: Message[], temperature: number,
-  options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number } = {}): Promise<GatewayCompletion> {
+  options: { fetcher?: typeof fetch; signal?: AbortSignal; timeoutMs?: number; maxTokens?: number; requestId?: string } = {}): Promise<GatewayCompletion> {
   const started = Date.now();
+  const requestId = options.requestId ?? crypto.randomUUID();
+  if (!UUID.test(requestId)) throw new GatewayError('invalid_gateway_request_id');
   const trace: GatewayTrace = {
-    request_id: crypto.randomUUID(), mode: plan.mode, route: 'omniroute', requested_model: plan.model,
+    request_id: requestId, mode: plan.mode, route: 'omniroute', requested_model: plan.model,
     reported_model: null, status: 'failed', error: null, elapsed_ms: 0, application_attempts: 0,
     gateway_fallback: 'unverified', usage_reported: false, cost_basis: 'configured_estimate',
   };

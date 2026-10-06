@@ -889,3 +889,36 @@ Remains:
   image, server and search paths remain explicit separate accounting work.
 - Preserve every prior Mac, OAuth/channel, second-customer, backup, monitoring
   and final-assessment gate. PR #13 remains CI-only and must never be merged.
+
+## Candidate — runner text transports use claim-bound attempt receipts
+
+Changed:
+- Continued exact PR #32 head `fc5ae27f` and merged current PR #30 head
+  `37768a7a` as separate parents without rewriting either active branch.
+- Adapted Free, gateway, direct-provider and BYOK runner text calls to one
+  reserve/dispatch/settle receipt per actual attempt. Retry, repair, route-up,
+  continuation and polish now receive separate admission and receipts.
+- Post-dispatch ambiguity stops fail-closed without automatic fallback or task
+  publication. Removed duplicate legacy aggregate usage for adapted text calls;
+  kept vision explicitly on its legacy lane.
+
+Tested / passed:
+- 7 focused fake-transport helper tests; 157 combined gateway/Edge/helper tests;
+  190 combined handler/server/runner tests; 524 frontend tests; isolated Edge
+  TypeScript and full frontend TypeScript. All selections passed locally.
+- PR #32 exact head has all ten workflows successful, including PostgreSQL 17.6
+  accounting and 18 READ COMMITTED/SERIALIZABLE concurrency checks. PR #31 has
+  all nine exact-head workflows successful.
+
+Failed / limitations:
+- This new combined source has not yet run exact-head CI. No migration was
+  applied and no runner/backend/frontend was deployed. No real provider or
+  device request occurred.
+- Vision/image/server/search accounting and authorized read-only reconciliation
+  monitoring remain incomplete; no full runner-spend claim is made.
+
+Remains:
+- Publish the isolated candidate, require exact-head PostgreSQL and full CI,
+  then continue route-by-route accounting before any migration or deployment.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-STAGE2-20261006.md`. Preserve all
+  prior real-account/device/customer/recovery gates and never merge PR #13.

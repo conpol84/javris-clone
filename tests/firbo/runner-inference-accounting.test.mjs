@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {
   beginRunnerDispatch,
+  executeRunnerInferenceAttempt,
   fingerprintRunnerPayload,
   markRunnerInferenceAmbiguous,
   releaseRunnerInference,
@@ -103,9 +104,72 @@ test('durable dispatch transition gives exactly one caller permission to invoke 
     { data: { ok: true, duplicate: true, request_id: requestId, dispatch_allowed: false, dispatch_state: 'dispatching' }, error: null },
   ]);
   const dispatchArgs = { requestId, taskId: ids.taskId, runClaim: ids.runClaim, payloadSha256 };
-  assert.equal(await beginRunnerDispatch(db, dispatchArgs), true);
-  assert.equal(await beginRunnerDispatch(db, dispatchArgs), false);
+  assert.deepEqual(await beginRunnerDispatch(db, dispatchArgs), { allowed: true, dispatchState: 'dispatching' });
+  assert.deepEqual(await beginRunnerDispatch(db, dispatchArgs), { allowed: false, dispatchState: 'dispatching' });
   assert.equal(db.calls[0].name, 'firbo_begin_runner_dispatch');
+});
+
+test('one accounted fake transport reserves, dispatches and settles one receipt', async () => {
+  const requestId = '77777777-7777-4777-8777-777777777777';
+  const db = fakeDb([
+    { data: { ok: true, duplicate: false, request_id: requestId, attempt_ordinal: 1, dispatch_state: 'admitted' }, error: null },
+    { data: { ok: true, duplicate: false, request_id: requestId, dispatch_allowed: true, dispatch_state: 'dispatching' }, error: null },
+    { data: { ok: true, request_id: requestId, status: 'settled' }, error: null },
+  ]);
+  let dispatches = 0;
+  const completed = await executeRunnerInferenceAttempt(db, {
+    ...args,
+    requestKey: ids.requestKey,
+    payload: { messages: [{ role: 'user', content: 'bounded synthetic request' }] },
+  }, async ({ requestId: dispatchedId }) => {
+    dispatches += 1;
+    assert.equal(dispatchedId, requestId);
+    return { value: 'answer', usage: {
+      model: 'omniroute:quality', inputTokens: 10, outputTokens: 5,
+      costUsd: 0.01, latencyMs: 100, ownKey: false,
+    } };
+  });
+  assert.equal(dispatches, 1);
+  assert.equal(completed.value, 'answer');
+  assert.deepEqual(completed.receipt, {
+    requestId, attemptOrdinal: 1, route: args.route, status: 'settled',
+  });
+  assert.deepEqual(db.calls.map(call => call.name), [
+    'firbo_reserve_runner_inference',
+    'firbo_begin_runner_dispatch',
+    'firbo_settle_inference',
+  ]);
+});
+
+test('failed admission dispatches zero times and ambiguous transport never settles or releases', async () => {
+  const requestId = '77777777-7777-4777-8777-777777777777';
+  let dispatches = 0;
+  const denied = fakeDb([{ data: { ok: false, reason: 'budget_exceeded' }, error: null }]);
+  await assert.rejects(executeRunnerInferenceAttempt(denied, {
+    ...args, requestKey: ids.requestKey, payload: { messages: [] },
+  }, async () => {
+    dispatches += 1;
+    throw new Error('must_not_run');
+  }), /budget_exceeded/);
+  assert.equal(dispatches, 0);
+
+  const ambiguous = fakeDb([
+    { data: { ok: true, duplicate: false, request_id: requestId, attempt_ordinal: 1, dispatch_state: 'admitted' }, error: null },
+    { data: { ok: true, duplicate: false, request_id: requestId, dispatch_allowed: true, dispatch_state: 'dispatching' }, error: null },
+    { data: { ok: true, request_id: requestId, status: 'reconcile_required' }, error: null },
+  ]);
+  await assert.rejects(executeRunnerInferenceAttempt(ambiguous, {
+    ...args, requestKey: ids.requestKey, payload: { messages: [] },
+  }, async () => {
+    dispatches += 1;
+    throw new Error('gateway_timeout_or_cancelled');
+  }), error => error?.reconciliationRequired === true && error?.message === 'gateway_timeout_or_cancelled');
+  assert.equal(dispatches, 1);
+  assert.deepEqual(ambiguous.calls.map(call => call.name), [
+    'firbo_reserve_runner_inference',
+    'firbo_begin_runner_dispatch',
+    'firbo_mark_inference_ambiguous',
+  ]);
 });
 
 test('settlement, ambiguity and proven pre-dispatch release keep the shared RPC contract', async () => {

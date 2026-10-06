@@ -13,6 +13,12 @@ import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generat
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
 import { detectDeliverable, deliverableInstructions, needsPolish, polishSystem } from '../_shared/deliverables.ts';
 import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
+import { maximumInferenceCost } from '../_shared/inference-accounting.ts';
+import {
+  executeRunnerInferenceAttempt,
+  RunnerAttemptError,
+  type RunnerAttemptReceipt,
+} from '../_shared/runner-inference-accounting.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 
@@ -238,20 +244,10 @@ Deno.serve(async (req) => {
   const directQuality = () => (!own && !gateway && targets[0]?.provider === 'omniroute' && targets[0].model !== qualityName ? resolveTarget(`omniroute:${qualityName}`) : null);
   if (wantsUpgrade && !upgraded) { const q = directQuality(); if (q) { targets = [q]; upgraded = true; } }
   if (!free && !gateway && !targets.length) return json(503, { error: 'not_configured' });
-  const monthStart = new Date(); monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
-  if (spendError) return json(503, { error: 'budget_unavailable' });
-  const spent = (spendRows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd ?? 0), 0);
-  if (!free && agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
-  const { count: lastHour, error: hourError } = await admin.from('usage_events').select('id', { count: 'exact', head: true }).eq('agent_id', agent.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
-  if (hourError) return json(503, { error: 'budget_unavailable' });
-  if ((lastHour ?? 0) >= HOURLY_RUN_LIMIT) return json(429, { error: 'rate_limited' });
-  const { count: orgDay, error: dayError } = await admin.from('usage_events').select('id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
   const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: task.organization_id, p_key: 'daily_runs' });
-  if (dayError || planError) return json(503, { error: 'budget_unavailable' });
+  if (planError) return json(503, { error: 'budget_unavailable' });
   const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
-  if (Number.isNaN(cap) || cap < 0) return json(503, { error: 'budget_unavailable' });
-  if ((orgDay ?? 0) >= cap) return json(429, { error: 'plan_limit' });
+  if (!Number.isSafeInteger(cap) || cap < 0 || cap > 100_000) return json(503, { error: 'budget_unavailable' });
   const { data: installedSkills, error: skillsError } = await admin.from('skills').select('id, slug, name, description, instructions, agent_id').eq('organization_id', task.organization_id).eq('enabled', true)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).order('created_at').limit(1000);
   if (skillsError) return json(503, { error: 'skills_unavailable' });
@@ -347,6 +343,63 @@ Deno.serve(async (req) => {
   let inTok = 0;
   let outTok = 0;
   let routedCost = 0;
+  let unadaptedInTok = 0;
+  let unadaptedOutTok = 0;
+  let unadaptedCost = 0;
+  let unadaptedModel = 'unadapted:unknown';
+  let attemptOrdinal = 0;
+  let inferenceReconcileRequired = false;
+  let inferenceReconcileReason: string | null = null;
+  let inferenceAdmissionError: string | null = null;
+  const inferenceReceipts: RunnerAttemptReceipt[] = [];
+  const accountedAttempt = async <T>(args: {
+    payload: unknown;
+    route: string;
+    outputTokenCap: number;
+    reservedUsd: number;
+  }, transport: (context: { requestId: string; payloadSha256: string }) => Promise<{
+    value: T;
+    usage: {
+      model: string;
+      inputTokens: number;
+      outputTokens: number;
+      costUsd: number;
+      latencyMs: number;
+      ownKey: boolean;
+    };
+  }>): Promise<T> => {
+    if (inferenceReconcileRequired) throw new RunnerAttemptError('accounting_reconciliation_required', true);
+    if (inferenceAdmissionError) throw new RunnerAttemptError(inferenceAdmissionError);
+    attemptOrdinal += 1;
+    try {
+      const completed = await executeRunnerInferenceAttempt(admin, {
+        organizationId: task.organization_id,
+        userId: user.id,
+        agentId: agent.id,
+        taskId: task.id,
+        runClaim: claimed.run_claim,
+        attemptOrdinal,
+        payload: args.payload,
+        route: args.route,
+        outputTokenCap: args.outputTokenCap,
+        reservedUsd: args.reservedUsd,
+        hourlyAttemptLimit: HOURLY_RUN_LIMIT,
+        dailyRunLimit: cap,
+      }, transport);
+      inferenceReceipts.push(completed.receipt);
+      return completed.value;
+    } catch (error) {
+      if (error instanceof RunnerAttemptError) {
+        inferenceReconcileRequired ||= error.reconciliationRequired;
+        if (error.reconciliationRequired && !inferenceReconcileReason) inferenceReconcileReason = error.message;
+        if (!error.reconciliationRequired && !inferenceAdmissionError) inferenceAdmissionError = error.message;
+        lastError = error.reconciliationRequired ? 'accounting_reconciliation_required' : error.message;
+      } else {
+        lastError = 'accounting_unavailable';
+      }
+      throw error;
+    }
+  };
   // One model request on the company's route (free pilot, gateway, or direct/own key). Throws with lastError set.
   // Some models in a gateway combo answer with their reasoning only (cut off, no answer) or a made-up function call: ask again, which the
   // combo usually sends to another model, while there is time.
@@ -391,34 +444,89 @@ Deno.serve(async (req) => {
   const callModel = async (messages: { role: string; content: string }[], timeoutMs: number): Promise<string> => {
     let completion: any = null;
     if (free) {
-      try {
-        routed = await completeViaFree(task.organization_id, auth, task.id, messages, { signal: req.signal });
-        completion = routed.completion; routing = routed.trace;
-        used = { provider: 'firbo-free', model: routed.trace.reported_model };
-      } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
+      const payload = { model: 'firbo-free', messages };
+      routed = await accountedAttempt({ payload, route: 'firbo-free:text', outputTokenCap: 4000, reservedUsd: 0 }, async ({ requestId }) => {
+        const started = Date.now();
+        const result = await completeViaFree(task.organization_id, auth, requestId, messages, { signal: req.signal, timeoutMs: Math.min(90_000, timeoutMs) });
+        return { value: result, usage: {
+          model: `firbo-free:${result.trace.reported_model}`,
+          inputTokens: result.completion.usage.prompt_tokens,
+          outputTokens: result.completion.usage.completion_tokens,
+          costUsd: 0,
+          latencyMs: Date.now() - started,
+          ownKey: false,
+        } };
+      });
+      completion = routed.completion; routing = routed.trace;
+      used = { provider: 'firbo-free', model: routed.trace.reported_model };
     } else if (gateway) {
-      try {
-        routed = await completeViaGateway(gateway, messages, Number(agent.temperature ?? 0.4), { signal: req.signal, timeoutMs: Math.min(90_000, timeoutMs), maxTokens: 4000 });
-        completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
-      } catch (error) { lastError = error instanceof GatewayError ? error.code : 'gateway_error'; routing = error instanceof GatewayError ? error.trace : undefined; }
+      const temperature = Number(agent.temperature ?? 0.4);
+      const payload = { model: gateway.model, messages, max_tokens: 4000, temperature, stream: false };
+      const reservedUsd = maximumInferenceCost(payload, [{ priceIn: gateway.priceIn, priceOut: gateway.priceOut, maxOutputTokens: 4000 }]);
+      routed = await accountedAttempt({ payload, route: `omniroute:${gateway.model}`, outputTokenCap: 4000, reservedUsd }, async ({ requestId }) => {
+        const started = Date.now();
+        try {
+          const result = await completeViaGateway(gateway!, messages, temperature, {
+            signal: req.signal,
+            timeoutMs: Math.min(90_000, timeoutMs),
+            maxTokens: 4000,
+            requestId,
+          });
+          return { value: result, usage: {
+            model: `omniroute:${result.trace.reported_model ?? gateway!.model}`,
+            inputTokens: result.completion.usage.prompt_tokens,
+            outputTokens: result.completion.usage.completion_tokens,
+            costUsd: result.cost,
+            latencyMs: Date.now() - started,
+            ownKey: false,
+          } };
+        } catch (error) {
+          routing = error instanceof GatewayError ? error.trace : undefined;
+          throw new Error(error instanceof GatewayError ? error.code : 'gateway_error');
+        }
+      });
+      completion = routed.completion; routing = routed.trace; used = { provider: 'omniroute', model: gateway.model };
       console.info(JSON.stringify({ event: 'firbo_gateway_inference', source: 'agent-runner', organization_id: task.organization_id, agent_id: agent.id, task_id: task.id, routing }));
     }
     for (const target of targets) {
-      try {
-        const openai = target.provider === 'openai';
-        const res = await fetch(`${target.base}/chat/completions`, { method: 'POST',
-          headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}` },
-          body: JSON.stringify({ model: target.model, ...(openai ? { max_completion_tokens: 8000 } : { max_tokens: 4000, temperature: Number(agent.temperature ?? 0.4) }),
-            messages }), signal: AbortSignal.timeout(Math.min(90_000, timeoutMs)) });
-        if (!res.ok) throw new Error(`${target.provider}_http_${res.status}`);
-        completion = await res.json();
-        if (!completion?.choices?.[0]?.message?.content) throw new Error(`${target.provider}_empty`);
-        used = target; routed = null; break;
-      } catch (error) {
-        completion = null;
-        // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
-        lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : error instanceof Error && error.name === 'TimeoutError' ? 'model_timeout' : 'model_error';
-      }
+      const openai = target.provider === 'openai';
+      const outputTokenCap = openai ? 8000 : 4000;
+      const payload = { model: target.model, ...(openai ? { max_completion_tokens: outputTokenCap } : { max_tokens: outputTokenCap, temperature: Number(agent.temperature ?? 0.4) }), messages };
+      const ownTarget = !!own && target === own;
+      const reservedUsd = ownTarget ? 0 : maximumInferenceCost(payload, [{
+        priceIn: priceOf(target.provider, 'IN'),
+        priceOut: priceOf(target.provider, 'OUT'),
+        maxOutputTokens: outputTokenCap,
+      }]);
+      completion = await accountedAttempt({ payload, route: `${target.provider}:${target.model}`, outputTokenCap, reservedUsd }, async ({ requestId }) => {
+        const started = Date.now();
+        let res: Response;
+        try {
+          res = await fetch(`${target.base}/chat/completions`, { method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: `Bearer ${target.key}`, 'x-request-id': requestId },
+            body: JSON.stringify(payload), signal: AbortSignal.timeout(Math.min(90_000, timeoutMs)) });
+        } catch (error) {
+          throw new Error(error instanceof Error && error.name === 'TimeoutError' ? 'model_timeout' : 'model_transport_error');
+        }
+        if (!res.ok) throw new Error(`${ownTarget ? 'own_key_' : ''}${target.provider}_http_${res.status}`);
+        const result = await res.json();
+        if (!result?.choices?.[0]?.message?.content) throw new Error(`${ownTarget ? 'own_key_' : ''}${target.provider}_empty`);
+        const inputTokens = result?.usage?.prompt_tokens;
+        const outputTokens = result?.usage?.completion_tokens;
+        if (![inputTokens, outputTokens].every(n => Number.isSafeInteger(n) && n >= 0 && n <= 1_000_000_000)) {
+          throw new Error(`${ownTarget ? 'own_key_' : ''}${target.provider}_usage_missing`);
+        }
+        const costUsd = ownTarget ? 0 : Math.round(((inputTokens * priceOf(target.provider, 'IN') + outputTokens * priceOf(target.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
+        return { value: result, usage: {
+          model: `${target.provider}:${target.model}`,
+          inputTokens,
+          outputTokens,
+          costUsd,
+          latencyMs: Date.now() - started,
+          ownKey: ownTarget,
+        } };
+      });
+      used = target; routed = null; break;
     }
     if (!completion || !used) throw new Error(lastError);
     const i = Number(completion?.usage?.prompt_tokens ?? 0);
@@ -492,9 +600,13 @@ Deno.serve(async (req) => {
       } },
     });
     if ((usable('image_analyze') || usable('vision')) && gw) loopTools.analyze_image = async (q) => {
-      const out = await analyzeImage(q, { gateway: { base: gwV1, key: gw.key, model: Deno.env.get('FIRBO_VISION_MODEL') ?? 'firbo-quality' }, signal: req.signal });
+      const visionModel = Deno.env.get('FIRBO_VISION_MODEL') ?? 'firbo-quality';
+      const out = await analyzeImage(q, { gateway: { base: gwV1, key: gw.key, model: visionModel }, signal: req.signal });
       inTok += out.inTok; outTok += out.outTok;
-      routedCost += Math.round(((out.inTok * priceOf('omniroute', 'IN') + out.outTok * priceOf('omniroute', 'OUT')) / 1e6) * 1e6) / 1e6;
+      const visionCost = Math.round(((out.inTok * priceOf('omniroute', 'IN') + out.outTok * priceOf('omniroute', 'OUT')) / 1e6) * 1e6) / 1e6;
+      routedCost += visionCost;
+      unadaptedInTok += out.inTok; unadaptedOutTok += out.outTok; unadaptedCost += visionCost;
+      unadaptedModel = `omniroute:${visionModel}`;
       return out.text;
     };
   }
@@ -658,12 +770,28 @@ Deno.serve(async (req) => {
     // The model failed or timed out at the end, but the research is not lost: hand over the sources that were found.
     if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }
   }
+  if (inferenceReconcileRequired) {
+    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner',
+      organization_id: task.organization_id, task_id: task.id,
+      reason: inferenceReconcileReason ?? 'provider_result_unknown', attempts: attemptOrdinal }));
+    return json(503, { error: 'reconciliation_required', reason: inferenceReconcileReason ?? 'provider_result_unknown',
+      retry_safe: false, accounting: { attempts: inferenceReceipts }, routing });
+  }
   if (!text || !used) {
-    // Earlier successful steps were real model calls: keep their usage so budgets stay honest.
-    if (inTok + outTok > 0 && used) await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model: `${(used as any).provider}:${(used as any).model}`, input_tokens: inTok, output_tokens: outTok, cost_usd: routedCost, latency_ms: Date.now() - t0, ...(own && used === own ? { own_key: true } : {}) });
+    // Main model calls were settled separately. Keep only usage from an
+    // explicitly unadapted vision call in the legacy aggregate lane.
+    if (unadaptedInTok + unadaptedOutTok > 0) await admin.from('usage_events').insert({
+      organization_id: task.organization_id, user_id: user.id, agent_id: agent.id,
+      model: unadaptedModel, input_tokens: unadaptedInTok, output_tokens: unadaptedOutTok,
+      cost_usd: Math.round(unadaptedCost * 1e6) / 1e6, latency_ms: Date.now() - t0,
+    });
     const saved = await publish('failed', { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) });
     if (!saved) return json(503, { error: 'result_save_failed', retry_safe: false, routing });
-    return json(502, { error: 'model_error', reason: lastError, routing, ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
+    const failureStatus = lastError === 'budget_exceeded' ? 402
+      : ['rate_limited','plan_limit'].includes(lastError) ? 429
+      : ['budget_unavailable','accounting_unavailable'].includes(lastError) ? 503 : 502;
+    return json(failureStatus, { error: failureStatus === 502 ? 'model_error' : lastError, reason: lastError, routing,
+      ...((free || (gateway && !planFree)) ? { retry_safe: false } : {}) });
   }
   const usedNow = used as { provider: string; model: string };
   const model = `${usedNow.provider}:${usedNow.model}`;
@@ -683,13 +811,22 @@ Deno.serve(async (req) => {
     return true;
   }).map(a => ({ ...a, payload: { ...a.payload, ai_generated: true, disclosure: DISCLOSURE[lang] } }));
   const queue = free || agent.autonomy === 'suggest' ? [] : marked;
-  const { error: usageError } = await admin.from('usage_events').insert({ organization_id: task.organization_id, user_id: user.id, agent_id: agent.id, model, input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
+  let usageError: unknown = null;
+  if (unadaptedInTok + unadaptedOutTok > 0) {
+    const savedUsage = await admin.from('usage_events').insert({
+      organization_id: task.organization_id, user_id: user.id, agent_id: agent.id,
+      model: unadaptedModel, input_tokens: unadaptedInTok, output_tokens: unadaptedOutTok,
+      cost_usd: Math.round(unadaptedCost * 1e6) / 1e6, latency_ms: latency,
+    });
+    usageError = savedUsage.error;
+  }
   let reconcile = !!usageError;
   // Computer steps that need the owner come first; the database accepts at most five approvals per run.
   const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
     queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang, format: deliverable, ...(polished ? { polished: true } : {}),
+    accounting: { attempts: inferenceReceipts },
     ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: feedback.filter(f => f.rating < 0).length >= 2 ? 'feedback' : 'deliverable' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
   let saved = await publish(finalStatus, result, reconcile ? [] : approvalsOut);
   if (!saved && !reconcile) {

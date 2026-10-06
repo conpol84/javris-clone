@@ -26,6 +26,30 @@ export type RunnerReservation = {
   dispatchState: string;
 };
 
+export type RunnerDispatch = {
+  allowed: boolean;
+  dispatchState: string;
+};
+
+export type RunnerAttemptReceipt = {
+  requestId: string;
+  attemptOrdinal: number;
+  route: string;
+  status: 'settled' | 'settled_overrun';
+};
+
+export class RunnerAttemptError extends Error {
+  readonly reconciliationRequired: boolean;
+  readonly requestId?: string;
+
+  constructor(code: string, reconciliationRequired = false, requestId?: string) {
+    super(code);
+    this.name = 'RunnerAttemptError';
+    this.reconciliationRequired = reconciliationRequired;
+    this.requestId = requestId;
+  }
+}
+
 function canonicalJson(value: unknown): string {
   if (value === null) return 'null';
   if (typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
@@ -114,7 +138,7 @@ export async function beginRunnerDispatch(db: any, args: {
   taskId: string;
   runClaim: string;
   payloadSha256: string;
-}): Promise<boolean> {
+}): Promise<RunnerDispatch> {
   if (![args.requestId, args.taskId, args.runClaim].every(id => UUID.test(id)) || !SHA256.test(args.payloadSha256)) {
     throw new Error('invalid_runner_dispatch');
   }
@@ -125,10 +149,96 @@ export async function beginRunnerDispatch(db: any, args: {
     p_payload_sha256: args.payloadSha256,
   });
   if (error || !object(data) || data.ok !== true || data.request_id !== args.requestId
-    || typeof data.dispatch_allowed !== 'boolean') {
+    || typeof data.dispatch_allowed !== 'boolean' || typeof data.dispatch_state !== 'string') {
     throw new Error('dispatch_unavailable');
   }
-  return data.dispatch_allowed;
+  return { allowed: data.dispatch_allowed, dispatchState: data.dispatch_state };
+}
+
+/**
+ * Reserve, durably authorize one dispatch and settle one transport attempt.
+ *
+ * The transport receives the ledger request id so a route that supports an
+ * idempotency/correlation key can use the same server-owned identity. Once the
+ * dispatch transition succeeds, every unknown transport or settlement outcome
+ * is reconciliation-required; this helper never releases after dispatch.
+ */
+export async function executeRunnerInferenceAttempt<T>(db: any, args: {
+  organizationId: string;
+  userId: string;
+  agentId: string;
+  taskId: string;
+  runClaim: string;
+  attemptOrdinal: number;
+  requestKey?: string;
+  payload: unknown;
+  route: string;
+  outputTokenCap: number;
+  reservedUsd: number;
+  hourlyAttemptLimit: number;
+  dailyRunLimit: number;
+}, transport: (context: { requestId: string; payloadSha256: string }) => Promise<{
+  value: T;
+  usage: {
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    latencyMs: number;
+    ownKey: boolean;
+  };
+}>): Promise<{ value: T; receipt: RunnerAttemptReceipt }> {
+  const requestKey = args.requestKey ?? crypto.randomUUID();
+  const payloadSha256 = await fingerprintRunnerPayload(args.payload);
+  let reservation: RunnerReservation;
+  try {
+    reservation = await reserveRunnerInference(db, { ...args, requestKey, payloadSha256 });
+  } catch (error) {
+    throw new RunnerAttemptError(error instanceof Error ? error.message : 'budget_unavailable');
+  }
+
+  let dispatch: RunnerDispatch;
+  try {
+    dispatch = await beginRunnerDispatch(db, {
+      requestId: reservation.requestId,
+      taskId: args.taskId,
+      runClaim: args.runClaim,
+      payloadSha256,
+    });
+  } catch {
+    throw new RunnerAttemptError('dispatch_unavailable', true, reservation.requestId);
+  }
+  if (!dispatch.allowed) {
+    throw new RunnerAttemptError('request_in_progress', true, reservation.requestId);
+  }
+
+  let completed: Awaited<ReturnType<typeof transport>>;
+  try {
+    completed = await transport({ requestId: reservation.requestId, payloadSha256 });
+  } catch (error) {
+    const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message)
+      ? error.message
+      : 'provider_result_unknown';
+    await markInferenceAmbiguous(db, reservation.requestId, reason);
+    throw new RunnerAttemptError(reason, true, reservation.requestId);
+  }
+
+  let status: 'settled' | 'settled_overrun';
+  try {
+    status = await settleInference(db, reservation.requestId, completed.usage);
+  } catch {
+    await markInferenceAmbiguous(db, reservation.requestId, 'settlement_result_unknown');
+    throw new RunnerAttemptError('usage_save_failed', true, reservation.requestId);
+  }
+  return {
+    value: completed.value,
+    receipt: {
+      requestId: reservation.requestId,
+      attemptOrdinal: args.attemptOrdinal,
+      route: args.route,
+      status,
+    },
+  };
 }
 
 export const settleRunnerInference = settleInference;
