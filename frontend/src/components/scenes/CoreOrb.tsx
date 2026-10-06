@@ -164,7 +164,7 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
   return (
     <div className={className} data-voice-phase={voice.phase} data-core-mode={presentation.static ? 'static' : lightweight ? 'lightweight' : 'full'}>
       <CoreControls paused={paused} reduced={reduced} lightweight={lightweight} phase={voice.phase} onPause={() => setPaused(v => !v)} onLightweight={() => setLightweight(v => !v)} />
-      <div aria-hidden="true">
+      <div aria-hidden="true" className="absolute inset-0">
       {presentation.static || failed || !supportsWebGL() ? <Fallback still={presentation.static} /> : <SceneFallbackBoundary fallback={<Fallback />}>
         <Canvas
           key={lightweight ? 'lightweight' : 'full'}

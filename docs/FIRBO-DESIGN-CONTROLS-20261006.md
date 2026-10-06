@@ -42,6 +42,10 @@
   z-index utilities were absent. Added the real application stylesheet, retained
   normal Playwright clicks and every assertion, and added screenshot artifacts.
   Require the follow-up exact-head rendered result before claiming acceptance.
+- Screenshot inspection and a full-size Canvas assertion exposed a zero-height
+  aria-hidden graphics wrapper. Positioned that wrapper over the existing core
+  bounds; controls retain their separate z-index. The gate must prove visible
+  graphics at desktop and mobile widths before release.
 
 ## Reusable components decision
 
