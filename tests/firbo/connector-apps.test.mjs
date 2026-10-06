@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { runJob, launchMac, localCapabilities, validateJob } from '../../frontend/public/firbo-connector.mjs';
+import { runJob, launchMac, executeJobForReport, localCapabilities, validateJob } from '../../frontend/public/firbo-connector.mjs';
 
 const fakeSpawn = (calls, code = 0) => (cmd, args) => { calls.push([cmd, ...args]); const c = new EventEmitter(); setTimeout(() => c.emit('close', code), 1); return c; };
 
@@ -52,4 +52,44 @@ test('Stop on the computer ends a running Shortcut at once', async () => {
   await assert.rejects(running, /operation_stopped/);
   assert.deepEqual(killed, ['SIGTERM']);
   await assert.rejects(launchMac('shortcut', 'Slow job', { spawnImpl: hangingSpawn([]), platform: 'darwin', signal: stop.signal }), /operation_stopped/);
+});
+
+test('Shortcut Stop waits for close and a late zero exit never becomes success', async () => {
+  const stop = new AbortController();
+  const child = new EventEmitter(); const kills = [];
+  child.kill = sig => { kills.push(sig); return true; };
+  let done = false;
+  const pending = executeJobForReport({ kind: 'shortcut', params: { name: 'Synthetic task' } },
+    { roots: [], allowApps: true, auto: true }, { signal: stop.signal,
+      macLauncher: (kind, name, options) => launchMac(kind, name, { ...options, platform: 'darwin', spawnImpl: () => child })
+    }).then(result => { done = true; return result; });
+  await new Promise(resolve => setTimeout(resolve, 1));
+  stop.abort();
+  await new Promise(resolve => setTimeout(resolve, 1));
+  assert.equal(done, false);
+  child.emit('close', 0);
+  assert.deepEqual(await pending, { ok: false, error: 'operation_stopped' });
+  assert.deepEqual(kills, ['SIGTERM']);
+});
+
+test('unconfirmed Shortcut termination escalates then requires review', async () => {
+  const child = new EventEmitter(); const kills = [];
+  child.kill = sig => { kills.push(sig); return true; };
+  const result = await executeJobForReport({ kind: 'shortcut', params: { name: 'Synthetic task' } },
+    { roots: [], allowApps: true, auto: true }, {
+      macLauncher: (kind, name, options) => launchMac(kind, name, { ...options, platform: 'darwin',
+        spawnImpl: () => child, timeoutMs: 5, stopGraceMs: 5 })
+    });
+  assert.deepEqual(kills, ['SIGTERM', 'SIGKILL']);
+  assert.deepEqual(result, { ok: false, error: 'stop_unconfirmed_needs_review' });
+  child.emit('close', 0);
+});
+
+test('confirmed Shortcut timeout keeps its useful error code in the receipt', async () => {
+  const result = await executeJobForReport({ kind: 'shortcut', params: { name: 'Synthetic task' } },
+    { roots: [], allowApps: true, auto: true }, {
+      macLauncher: (kind, name, options) => launchMac(kind, name, { ...options, platform: 'darwin',
+        spawnImpl: hangingSpawn([]), timeoutMs: 5 })
+    });
+  assert.deepEqual(result, { ok: false, error: 'shortcut_timeout' });
 });

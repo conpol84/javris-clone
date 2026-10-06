@@ -229,6 +229,11 @@ begin
   perform pg_temp.assert_run('duplicate real receipt stays idempotent',(public.connector_finish_execution(j,'77777777-0601-4601-8601-777777777777','11111111-0601-4601-8601-111111111111',true,'{"content":"synthetic-only"}',null,repeat('a',64))->>'duplicate')='true');
 end $$;
 
+-- A dedicated device keeps FIFO claims independent of older lifecycle fixtures.
+insert into public.connector_devices(id,organization_id,created_by,name,paired,agent_policy,capabilities)
+select '77777777-0616-4616-8616-777777777777',organization_id,created_by,'Synthetic inline protocol device',paired,agent_policy,capabilities
+from public.connector_devices where id='77777777-0601-4601-8601-777777777777';
+
 -- Inline employee jobs belong to the exact run claim.  Their receipts stay on
 -- the job and never complete the parent model task.
 do $$
@@ -237,30 +242,30 @@ begin
   insert into public.tasks(organization_id,assigned_agent_id,title,status,result)
     values('11111111-0601-4601-8601-111111111111','33333333-0601-4601-8601-333333333333','Synthetic inline employee job','pending','{}') returning id into t;
   c := (public.claim_task_run('11111111-0601-4601-8601-111111111111',t,'aaaaaaaa-0601-4601-8601-aaaaaaaaaaaa')->>'run_claim')::uuid;
-  select agent_policy,capabilities into policy,caps from public.connector_devices where id='77777777-0601-4601-8601-777777777777';
+  select agent_policy,capabilities into policy,caps from public.connector_devices where id='77777777-0616-4616-8616-777777777777';
   perform pg_temp.expect_run_error('agent job requires the current model claim','agent_job_not_authorized',format(
     'insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot) values(%L,%L,%L,%L::jsonb,%L,%L,%L,%L,%L,%L::jsonb,%L::jsonb)',
-    '11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333','99999999-9999-4999-8999-999999999999',policy,caps));
+    '11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333','99999999-9999-4999-8999-999999999999',policy,caps));
   insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-    values('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
+    values('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
   perform pg_temp.expect_run_error('active agent job blocks report publication','task_active_jobs',format(
     'select public.publish_task_run(%L,%L,%L,%L::jsonb,%L::jsonb,%L)','11111111-0601-4601-8601-111111111111',t,c,'{"report":"too early"}','[]','completed'));
-  claimed := public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777',now()-interval '10 minutes');
+  claimed := public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777',now()-interval '10 minutes');
   perform pg_temp.assert_run('atomic claim returns the authorised inline job',(claimed->>'id')::uuid=j and claimed->>'kind'='list');
-  perform public.connector_finish_execution(j,'77777777-0601-4601-8601-777777777777','11111111-0601-4601-8601-111111111111',true,'{"entries":[]}',null,repeat('b',64));
+  perform public.connector_finish_execution(j,'77777777-0616-4616-8616-777777777777','11111111-0601-4601-8601-111111111111',true,'{"entries":[]}',null,repeat('b',64));
   perform pg_temp.assert_run('inline receipt cannot complete its parent',(select status='running' and run_claim=c from public.tasks where id=t));
   perform pg_temp.assert_run('parent publishes only after inline job is terminal',(public.publish_task_run('11111111-0601-4601-8601-111111111111',t,c,'{"report":"complete"}','[]','completed')->>'status')='completed');
 
   insert into public.tasks(organization_id,assigned_agent_id,title,status,result)
     values('11111111-0601-4601-8601-111111111111','33333333-0601-4601-8601-333333333333','Synthetic revoked dispatch','pending','{}') returning id into t;
   c := (public.claim_task_run('11111111-0601-4601-8601-111111111111',t,'aaaaaaaa-0601-4601-8601-aaaaaaaaaaaa')->>'run_claim')::uuid;
-  select agent_policy,capabilities into policy,caps from public.connector_devices where id='77777777-0601-4601-8601-777777777777';
+  select agent_policy,capabilities into policy,caps from public.connector_devices where id='77777777-0616-4616-8616-777777777777';
   insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-    values('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','read','{"path":"synthetic"}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
-  update public.connector_devices set agent_policy=jsonb_set(agent_policy,'{enabled}','false') where id='77777777-0601-4601-8601-777777777777';
-  claimed := public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777',now()-interval '10 minutes');
+    values('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','read','{"path":"synthetic"}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
+  update public.connector_devices set agent_policy=jsonb_set(agent_policy,'{enabled}','false') where id='77777777-0616-4616-8616-777777777777';
+  claimed := public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777',now()-interval '10 minutes');
   perform pg_temp.assert_run('policy revoked before dispatch cancels the stale job',claimed is null and (select status='cancelled' and error='authorization_changed' from public.connector_jobs where id=j));
-  update public.connector_devices set agent_policy=policy where id='77777777-0601-4601-8601-777777777777';
+  update public.connector_devices set agent_policy=policy where id='77777777-0616-4616-8616-777777777777';
   perform pg_temp.assert_run('revoked job leaves parent claim intact',(select status='running' and run_claim=c from public.tasks where id=t));
   perform public.publish_task_run('11111111-0601-4601-8601-111111111111',t,c,'{"report":"revoked safely"}','[]','completed');
 
@@ -268,7 +273,7 @@ begin
     values('11111111-0601-4601-8601-111111111111','33333333-0601-4601-8601-333333333333','Synthetic queued cancellation','pending','{}') returning id into t;
   c := (public.claim_task_run('11111111-0601-4601-8601-111111111111',t,'aaaaaaaa-0601-4601-8601-aaaaaaaaaaaa')->>'run_claim')::uuid;
   insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-    values('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
+    values('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
   update public.tasks set status='cancelled' where id=t;
   perform pg_temp.assert_run('task cancellation withdraws a queued inline job',(select status='cancelled' and error='task_cancelled' from public.connector_jobs where id=j));
 
@@ -276,7 +281,7 @@ begin
     values('11111111-0601-4601-8601-111111111111','33333333-0601-4601-8601-333333333333','Synthetic queued deletion','pending','{}') returning id into t;
   c := (public.claim_task_run('11111111-0601-4601-8601-111111111111',t,'aaaaaaaa-0601-4601-8601-aaaaaaaaaaaa')->>'run_claim')::uuid;
   insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-    values('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
+    values('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
   update public.tasks set status='cancelled' where id=t;
   delete from public.tasks where id=t;
   perform pg_temp.assert_run('task deletion preserves and detaches a withdrawn inline job',(select status='cancelled' and error='task_cancelled' and agent_task_id is null from public.connector_jobs where id=j));
@@ -285,11 +290,11 @@ begin
     values('11111111-0601-4601-8601-111111111111','33333333-0601-4601-8601-333333333333','Synthetic running cancellation','pending','{}') returning id into t;
   c := (public.claim_task_run('11111111-0601-4601-8601-111111111111',t,'aaaaaaaa-0601-4601-8601-aaaaaaaaaaaa')->>'run_claim')::uuid;
   insert into public.connector_jobs(organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-    values('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
-  perform public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0601-4601-8601-777777777777',now()-interval '10 minutes');
+    values('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777','list','{}','queued','agent',t,'33333333-0601-4601-8601-333333333333',c,policy,caps) returning id into j;
+  perform public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777',now()-interval '10 minutes');
   perform pg_temp.expect_run_error('running inline job blocks task cancellation','task_in_progress',format('update public.tasks set status=%L where id=%L','cancelled',t));
   perform pg_temp.expect_run_error('running inline job blocks task deletion','task_in_progress',format('delete from public.tasks where id=%L',t));
-  perform public.connector_finish_execution(j,'77777777-0601-4601-8601-777777777777','11111111-0601-4601-8601-111111111111',true,'{"entries":[]}',null,repeat('c',64));
+  perform public.connector_finish_execution(j,'77777777-0616-4616-8616-777777777777','11111111-0601-4601-8601-111111111111',true,'{"entries":[]}',null,repeat('c',64));
   perform public.publish_task_run('11111111-0601-4601-8601-111111111111',t,c,'{"report":"running job reconciled"}','[]','completed');
 end $$;
 reset role;

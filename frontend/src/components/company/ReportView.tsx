@@ -4,6 +4,8 @@ import { ExternalLink, Globe, BookOpen, Brain, Search, Calculator, CloudSun, Coi
 import { useI18n } from '../../i18n/I18nProvider';
 import type { TaskResult } from '../../lib/company/types';
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
+import { isPresentation, parseSlides } from '../../lib/company/slides';
+import { SlideDeck } from './SlideDeck';
 
 const STEP_ICON = { web_search: Search, read_page: Globe, memory_search: BookOpen, think: Brain, calculator: Calculator, weather: CloudSun, exchange_rate: Coins,
   knowledge_search: Library, generate_image: ImagePlus, analyze_image: ScanEye, server_task: Server } as const;
@@ -53,7 +55,8 @@ export function ReportView({ result, compact = false }: { result: TaskResult; co
           </ol>
         </div>
       )}
-      {report && (
+      {report && isPresentation(result.format, report) && <SlideDeck slides={parseSlides(report)} title={parseSlides(report)[0]?.title ?? result.summary ?? 'presentation'} />}
+      {report && !isPresentation(result.format, report) && (
         <div className={`fb-report break-words text-[13px] leading-relaxed ${compact ? 'max-h-72 overflow-y-auto pr-1' : ''}`}>
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
