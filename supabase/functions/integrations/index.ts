@@ -39,9 +39,16 @@ const str = (v: unknown, max = 500) => (typeof v === 'string' ? v.trim().slice(0
 const hostIs = (u: URL, ...hosts: string[]) => hosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`));
 const J = { 'content-type': 'application/json' };
 const sig = () => AbortSignal.timeout(TIMEOUT);
+class ProviderHttpFailure extends Error {
+  status: number;
+  constructor(status: number) { super(`http_${status}`); this.status = status; }
+}
 const ok = async (res: Response) => {
-  if (!res.ok) throw new Error(`http_${res.status}`);
+  if (!res.ok) throw new ProviderHttpFailure(res.status);
 };
+const providerFailure = (err: unknown, fallback: string) => err instanceof ProviderHttpFailure
+  ? err.status === 401 || err.status === 403 ? 'credentials_rejected' : err.status === 429 ? 'rate_limited' : 'provider_failed'
+  : fallback;
 const b64 = (s: string) => btoa(s);
 
 type Parsed = { secret: Record<string, string>; config: Record<string, unknown> };
@@ -1015,6 +1022,21 @@ Deno.serve(async (req) => {
     return !!data && MANAGERS.includes(data.role);
   };
 
+  // Configuration metadata only: never return credentials or contact a provider.
+  // Keep this independent of the separately gated read-only adapters.
+  if (body.action === 'integration_manifest') {
+    const orgId = typeof body.organization_id === 'string' ? body.organization_id : '';
+    if (!orgId) return json(400, { error: 'bad_request' });
+    if (!(await isManager(orgId))) return json(403, { error: 'forbidden' });
+    return json(200, {
+      contract: 'firbo-integrations/v1', redirect_uri: REDIRECT(),
+      oauth: Object.entries(OAUTH).map(([kind, cfg]) => {
+        const client = clientOf(cfg.group);
+        return { kind, provider: cfg.group, configured: !!client.id.trim() && !!client.secret.trim() };
+      }),
+    });
+  }
+
   if (isConnectionAction(body.action)) {
     try {return json(200,await connectionAction(body,req,user,admin,key=>Deno.env.get(key)));}
     catch(e){const code=e instanceof ConnectionFailure?e.code:'connection_failed';
@@ -1071,8 +1093,8 @@ Deno.serve(async (req) => {
     try {
       if (provider.messaging) await provider.send(parsed.secret, parsed.config, `✅ ${name}: Firbo AI is connected.`);
       else await provider.verify!(parsed.secret, parsed.config);
-    } catch {
-      return json(502, { error: 'test_failed' });
+    } catch (err) {
+      return json(502, { error: providerFailure(err, 'test_failed') });
     }
     const saved = await saveLegacyIntegration(admin, { organizationId: orgId, userId: user.id, kind, name, config: parsed.config, secret: parsed.secret });
     if (saved.error) return json(saved.error === 'forbidden' ? 403 : saved.error === 'plan_limit' ? 429 : 503, { error: saved.error });
@@ -1109,7 +1131,7 @@ Deno.serve(async (req) => {
       return json(200, { text: text.slice(0, 1500) });
     } catch (err) {
       await admin.from('integrations').update({ status: 'error', last_error: (err instanceof Error ? err.message : 'error').slice(0, 120) }).eq('id', id);
-      return json(502, { error: 'send_failed' });
+      return json(502, { error: providerFailure(err, 'send_failed') });
     }
   }
 
@@ -1133,7 +1155,7 @@ Deno.serve(async (req) => {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'error';
       await admin.from('integrations').update({ status: 'error', last_error: msg.slice(0, 120) }).eq('id', id);
-      return json(502, { error: 'send_failed' });
+      return json(502, { error: providerFailure(err, 'send_failed') });
     }
   }
   return json(400, { error: 'bad_request' });

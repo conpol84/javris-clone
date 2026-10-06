@@ -137,7 +137,7 @@ export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'product
 /** Compatibility export: new providers now have explicit setup/read-only flows. */
 export const PLANNED_APPS: {id:string;name:string;color:string;reason:string}[] = [];
 
-export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'unknown';
+export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'save_failed' | 'not_found' | 'reauth' | 'unauthorized' | 'bad_request' | 'credentials_rejected' | 'rate_limited' | 'provider_failed' | 'invalid_response' | 'unknown';
 
 export class IntegrationError extends Error {
   constructor(public code: IntegrationErrorCode, public detail?: { provider?: string; redirect_uri?: string }) {
@@ -145,7 +145,7 @@ export class IntegrationError extends Error {
   }
 }
 
-const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured'];
+const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured', 'save_failed', 'not_found', 'reauth', 'unauthorized', 'bad_request', 'credentials_rejected', 'rate_limited', 'provider_failed', 'invalid_response'];
 
 const call = <T,>(body: Record<string, unknown>): Promise<T> => callFn<T>('integrations', body);
 
@@ -199,9 +199,33 @@ export const sendIntegration = (id: string, text: string) => call<{ ok: true }>(
 export const snapshotIntegration = (id: string) => call<{ text: string }>({ action: 'snapshot', id });
 export const disconnectIntegration = (id: string) => call<{ ok: true }>({ action: 'disconnect', id });
 
-/** Starts the provider's sign-in; the browser is sent to the returned address and comes back to /integrations. */
-export const startOAuth = (organization_id: string, kind: IntegrationKind, name: string, fields: Record<string, string>) =>
-  call<{ url: string }>({ action: 'oauth_start', organization_id, kind, name, fields });
+export const LEGACY_OAUTH_KINDS = ['gmail', 'gcal', 'gdrive', 'sheets', 'gdrive_read', 'gmail_read', 'gcal_read', 'outlook', 'outlook_read', 'linkedin', 'dropbox'] as const;
+export interface IntegrationManifest {
+  contract: 'firbo-integrations/v1';
+  redirect_uri: string;
+  oauth: { kind: typeof LEGACY_OAUTH_KINDS[number]; provider: OAuthGroup; configured: boolean }[];
+}
+export async function integrationManifest(organization_id: string): Promise<IntegrationManifest> {
+  const data = await call<IntegrationManifest>({ action: 'integration_manifest', organization_id });
+  if (!data || data.contract !== 'firbo-integrations/v1' || typeof data.redirect_uri !== 'string' || !Array.isArray(data.oauth)
+    || data.oauth.length !== LEGACY_OAUTH_KINDS.length || new Set(data.oauth.map(p => p?.kind)).size !== LEGACY_OAUTH_KINDS.length
+    || data.oauth.some(p => !p || !LEGACY_OAUTH_KINDS.includes(p.kind) || typeof p.configured !== 'boolean' || LIVE_APPS.find(a => a.kind === p.kind)?.oauth !== p.provider)) {
+    throw new IntegrationError('invalid_response');
+  }
+  return data;
+}
+
+/** Starts sign-in only at the expected provider's HTTPS origin. */
+export async function startOAuth(organization_id: string, kind: IntegrationKind, name: string, fields: Record<string, string>): Promise<{ url: string }> {
+  const data = await call<{ url: string }>({ action: 'oauth_start', organization_id, kind, name, fields });
+  const group = LIVE_APPS.find(a => a.kind === kind)?.oauth;
+  const host = { GOOGLE: 'accounts.google.com', MICROSOFT: 'login.microsoftonline.com', LINKEDIN: 'www.linkedin.com', DROPBOX: 'www.dropbox.com' }[group as 'GOOGLE' | 'MICROSOFT' | 'LINKEDIN' | 'DROPBOX'];
+  try {
+    const url = new URL(data.url);
+    if (!host || url.protocol !== 'https:' || url.hostname !== host || url.username || url.password || url.port) throw new Error();
+  } catch { throw new IntegrationError('invalid_response'); }
+  return data;
+}
 
 export const OAUTH_CONSOLE: Record<OAuthGroup, { label: string; url: string; secrets: string }> = {
   TIKTOK: {label:'TikTok Developers',url:'https://developers.tiktok.com/',secrets:'TIKTOK_CLIENT_ID, TIKTOK_CLIENT_SECRET'},

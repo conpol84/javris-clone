@@ -71,7 +71,7 @@ export async function connectionAction(body:Record<string,any>,req:Request,user:
     const enabled=env('FIRBO_CONNECTIONS_ENABLED')==='true'&&!error;
     return{contract:'firbo-connections/v1',enabled,redirect_uri:config.redirect,
       providers:CONNECTED_KINDS.map(kind=>{try{return {...publicSettings(kind,env),enabled};}catch{return{kind,enabled:false,configured:false,read_only:true,environment:'unknown',secret_names:[]};}}),
-      bridges:BRIDGE_KINDS.map(kind=>({kind,enabled,configured:!!env('FIRBO_DEVICE_ALLOWED_ORIGINS'),read_only:true})),server_error:error?'schema_required':null};
+      bridges:BRIDGE_KINDS.map(kind=>({kind,enabled,configured:!!env('FIRBO_DEVICE_ALLOWED_ORIGINS')?.trim(),read_only:true})),server_error:error?'schema_required':!enabled?'runtime_disabled':null};
   }
   ensureRuntime(env);
   if(action==='connection_start'){

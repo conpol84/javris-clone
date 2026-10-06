@@ -31,6 +31,7 @@ function fixture(options = {}) {
     SUPABASE_URL: 'https://synthetic.invalid', SUPABASE_ANON_KEY: 'synthetic-public',
     SUPABASE_SERVICE_ROLE_KEY: 'synthetic-service', OAUTH_STATE_SECRET: 'synthetic-state-secret',
     APP_URL: 'https://firbo.example.test', GOOGLE_CLIENT_ID: 'synthetic-client', GOOGLE_CLIENT_SECRET: 'synthetic-secret',
+    ...options.env,
   };
   const existing = { id: ID, organization_id: ORG, kind: 'github', name: 'Synthetic GitHub', config: {} };
   const sdk = {
@@ -82,7 +83,7 @@ function fixture(options = {}) {
   };
   const http = async (url, init = {}) => {
     const target = String(url); state.http.push({ url: target, method: init.method ?? 'GET' });
-    if (options.providerFails) return Response.json({ error: 'synthetic provider failure' }, { status: 401 });
+    if (options.providerFails) return Response.json({ error: 'synthetic private provider failure' }, { status: options.providerStatus ?? 401 });
     if (target === 'https://api.github.com/repos/synthetic-org/synthetic-repo') return Response.json({ id: 1 });
     if (target === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'synthetic-access-token', refresh_token: 'synthetic-refresh-token', expires_in: 3600 });
     if (target === 'https://openidconnect.googleapis.com/v1/userinfo') return Response.json({ email: 'synthetic@example.test' });
@@ -111,6 +112,39 @@ function fixture(options = {}) {
 
 const connect = { action: 'connect', organization_id: ORG, kind: 'github', name: 'Synthetic GitHub',
   fields: { repo: 'synthetic-org/synthetic-repo', token: 'ghp_' + 'synthetic'.repeat(5) } };
+
+test('legacy readiness reports each OAuth adapter without secrets, provider traffic or persistence', async () => {
+  const f = fixture(); const response = await f.post({ action: 'integration_manifest', organization_id: ORG });
+  const body = await response.json();
+  assert.equal(response.status, 200); assert.equal(body.contract, 'firbo-integrations/v1');
+  assert.equal(body.redirect_uri, 'https://synthetic.invalid/functions/v1/integrations');
+  assert.equal(body.oauth.length, 11);
+  assert.equal(new Set(body.oauth.map(p => p.kind)).size, 11);
+  assert.ok(body.oauth.every(p => p.configured === (p.provider === 'GOOGLE')));
+  assert.ok(!JSON.stringify(body).includes('synthetic-client'));
+  assert.ok(!JSON.stringify(body).includes('synthetic-secret'));
+  assert.equal(f.state.http.length, 0); assert.equal(f.state.rpcs.length, 0); assert.equal(f.state.integrations.length, 0);
+});
+
+for (const env of [{ GOOGLE_CLIENT_ID: '' }, { GOOGLE_CLIENT_SECRET: '' }, { GOOGLE_CLIENT_SECRET: '   ' }]) test('legacy readiness requires both nonempty provider credentials', async () => {
+  const f = fixture({ env }); const body = await (await f.post({ action: 'integration_manifest', organization_id: ORG })).json();
+  assert.ok(body.oauth.filter(p => p.provider === 'GOOGLE').every(p => p.configured === false));
+  assert.equal(f.state.http.length, 0);
+});
+
+for (const options of [{ role: 'viewer' }, { denied: true }, { unsigned: true }]) test('readiness rejects unauthorized actors before exposing configuration', async () => {
+  const f = fixture(options); const response = await f.post({ action: 'integration_manifest', organization_id: ORG });
+  assert.equal(response.status, options.unsigned ? 401 : 403);
+  assert.ok(!('oauth' in await response.json()));
+  assert.equal(f.state.http.length, 0); assert.equal(f.state.rpcs.length, 0);
+});
+
+for (const [providerStatus, error] of [[401, 'credentials_rejected'], [403, 'credentials_rejected'], [429, 'rate_limited'], [503, 'provider_failed']]) test(`connection failure explains upstream ${providerStatus} without echoing provider data`, async () => {
+  const f = fixture({ providerFails: true, providerStatus }); const response = await f.post(connect);
+  assert.equal(response.status, 502); assert.deepEqual(await response.json(), { error });
+  assert.equal(f.state.integrations.length, 0);
+  assert.ok(!f.state.rpcs.some(p => p.name === 'firbo_save_legacy_integration'));
+});
 
 for (const [name, options, status, error] of [
   ['secret write failure', { rpcError: 'synthetic secret insertion rejected' }, 503, 'save_failed'],

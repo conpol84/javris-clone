@@ -8,14 +8,15 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import {
-  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, mcpCall, mcpTools, snapshotIntegration, startOAuth, testIntegration,
-  type IntegrationKind, type IntegrationRow, type McpTool,
+  CATEGORIES, connectIntegration, disconnectIntegration, IntegrationError, integrationManifest, LIVE_APPS, listIntegrations, OAUTH_CONSOLE, mcpCall, mcpTools, snapshotIntegration, startOAuth, testIntegration,
+  type IntegrationKind, type IntegrationManifest, type IntegrationRow, type McpTool,
 } from '../lib/company/integrations';
 import { MANAGER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 import '../styles/connected-world.css';
-import {beginConnection,connectionManifest,finishConnection,connectBridge,readConnection,disconnectConnection,isConnectedApp,type ConnectionManifest,type ConnectionSnapshot} from '../lib/company/connected-apps';
+import {beginConnection,connectionManifest,finishConnection,connectBridge,readConnection,disconnectConnection,isConnectedApp,ConnectedAppError,type ConnectionManifest,type ConnectionSnapshot} from '../lib/company/connected-apps';
 import {deviceMessages} from '../lib/company/device-messages';
+import {connectionSetupReason,integrationDiagnostic,integrationMessages} from '../lib/company/integration-readiness';
 import { TwoWayChannel } from '../components/company/TwoWayChannel';
 
 const BRAND = Object.fromEntries(LIVE_APPS.map((a) => [a.kind, a.name])) as Record<IntegrationKind, string>;
@@ -26,6 +27,7 @@ export function IntegrationsPage(){const {current,user}=useCompanyAuth();return 
 function IntegrationWorkspace() {
   const { t, fmt, lang } = useI18n();
   const l=deviceMessages(lang);
+  const diagnostics=integrationMessages(lang);
   const { current } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canManage = MANAGER_ROLES.includes(current?.role ?? 'viewer');
@@ -44,28 +46,47 @@ function IntegrationWorkspace() {
   const [mcpOut, setMcpOut] = useState('');
   const [manifest,setManifest]=useState<ConnectionManifest|null>(null);
   const [manifestError,setManifestError]=useState(false);
+  const [legacyManifest,setLegacyManifest]=useState<IntegrationManifest|null>(null);
+  const [legacyManifestError,setLegacyManifestError]=useState(false);
+  const [formError,setFormError]=useState<string|null>(null);
   const [proof,setProof]=useState<ConnectionSnapshot|null>(null);
   const alive=useRef(true);
+  const readinessAttempt=useRef(0);
   const callback=useRef(new URLSearchParams(window.location.hash.slice(1)));
   const complete=useRef<Promise<unknown>|null>(null);
   useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
-  useEffect(()=>{let active=true;if(!canManage||!orgId)return;
-    connectionManifest(orgId).then(m=>{if(active)setManifest(m);}).catch(()=>{if(active)setManifestError(true);});
-    const selected=params.get('connect');if(selected&&isConnectedApp(selected))open(selected);
-    return()=>{active=false;};
+  const refreshReadiness=useCallback(async()=>{
+    if(!canManage||!orgId)return;
+    const attempt=++readinessAttempt.current;
+    const currentAttempt=()=>alive.current&&readinessAttempt.current===attempt;
+    setManifestError(false);setLegacyManifestError(false);
+    await Promise.allSettled([
+      connectionManifest(orgId).then(m=>{if(currentAttempt())setManifest(m);}).catch(()=>{if(currentAttempt()){setManifest(null);setManifestError(true);}}),
+      integrationManifest(orgId).then(m=>{if(currentAttempt())setLegacyManifest(m);}).catch(()=>{if(currentAttempt()){setLegacyManifest(null);setLegacyManifestError(true);}}),
+    ]);
   },[orgId,canManage]);
+  useEffect(()=>{void refreshReadiness();},[refreshReadiness]);
+  useEffect(()=>{
+    if(!canManage||!orgId)return;
+    const selected=LIVE_APPS.find(a=>a.kind===params.get('connect'));
+    if(selected)open(selected.kind);
+  },[orgId,canManage,params]);
   useEffect(()=>{
     if(!canManage||!orgId||callback.current.get('firbo_connection')!=='1')return;
     const q=callback.current;
     window.history.replaceState(window.history.state,'',window.location.pathname+window.location.search);
-    if(q.get('error')){setBusy(null);return void toast.error(l.oauthFailed);}
+    if(q.get('error')){setBusy(null);return void toast.error(errText(new ConnectedAppError(q.get('error')!)));}
     const state=q.get('state'),code=q.get('code');if(!state||!code)return;
     if(!complete.current)complete.current=finishConnection(state,code,q.get('realm_id')??undefined);
     let active=true;setBusy('connect');
-    complete.current.then(()=>{if(active){toast.success(t('int.connectedOk',{app:'Account'}));void reload();}}).catch(()=>{if(active)toast.error(l.oauthFailed);}).finally(()=>{if(active)setBusy(null);});
+    complete.current.then(()=>{if(active){toast.success(t('int.connectedOk',{app:'Account'}));void reload();}}).catch(err=>{if(active)toast.error(errText(err));}).finally(()=>{if(active)setBusy(null);});
     return()=>{active=false;};
   },[orgId,canManage]);
-  const newStatus=(kind:string)=>[...(manifest?.providers??[]),...(manifest?.bridges??[])].find(p=>p.kind===kind);
+  const readiness=(kind:IntegrationKind)=>{
+    if(isConnectedApp(kind))return !manifest?(manifestError?diagnostics.checkFailed:t('common.loading')):connectionSetupReason(manifest,kind)?l.needsSetup:l.configured;
+    if(LIVE_APPS.find(a=>a.kind===kind)?.oauth)return !legacyManifest?(legacyManifestError?diagnostics.checkFailed:t('common.loading')):legacyManifest.oauth.find(p=>p.kind===kind)?.configured?l.configured:l.needsSetup;
+    return diagnostics.manual;
+  };
 
 
   const reload = useCallback(async () => {
@@ -91,16 +112,18 @@ function IntegrationWorkspace() {
     const bad = params.get('oauth_error');
     if (!ok && !bad) return;
     if (ok && !isConnectedApp(ok)) toast.success(t('int.oauth.done', { app: BRAND[ok as IntegrationKind] ?? ok }));
-    else toast.error(bad === 'plan_limit' ? t('int.err.limit') : t('int.oauth.failed', { code: String(bad).slice(0, 40) }));
+    else toast.error(errText(new IntegrationError(bad as IntegrationError['code'])));
     setParams({}, { replace: true });
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const errText = (err: unknown) => {
-    if(err instanceof Error && !(err instanceof IntegrationError))return l.oauthFailed;
-    const code = err instanceof IntegrationError ? err.code : 'unknown';
-    return t(`int.err.${code === 'too_many' ? 'limit' : code}` as TKey);
+    const code = err instanceof IntegrationError || err instanceof ConnectedAppError ? err.code : 'unknown';
+    const diagnostic=integrationDiagnostic(code);
+    if(diagnostic)return diagnostics[diagnostic];
+    const key=code==='too_many'?'limit':['read_only','invalid_fields','test_failed','send_failed','forbidden','plan_limit'].includes(code)?code:'unknown';
+    return t(`int.err.${key}` as TKey);
   };
 
   const open = (kind: IntegrationKind) => {
@@ -108,18 +131,23 @@ function IntegrationWorkspace() {
     setName(BRAND[kind]);
     setValues({});
     setSetup(null);
+    setFormError(null);
   };
 
   const signIn = async (e: FormEvent) => {
     e.preventDefault();
     if (!adding || busy) return;
     setBusy('connect');
+    setFormError(null);
     try {
       const {url}=isConnectedApp(adding)?await beginConnection(orgId,adding,name):await startOAuth(orgId,adding,name,values);
       if(alive.current)window.location.assign(url);
     } catch (err) {
+      if(!alive.current)return;
+      setFormError(errText(err));
       if (err instanceof IntegrationError && err.code === 'not_configured' && err.detail?.redirect_uri) setSetup({ provider: err.detail.provider ?? '', redirect: err.detail.redirect_uri });
       else toast.error(errText(err));
+      void refreshReadiness();
       setBusy(null);
     }
   };
@@ -128,6 +156,7 @@ function IntegrationWorkspace() {
     e.preventDefault();
     if (!adding || busy) return;
     setBusy('connect');
+    setFormError(null);
     try {
       if(isConnectedApp(adding))await connectBridge(orgId,adding,name,values);else await connectIntegration(orgId,adding,name,values);
       if(!alive.current)return;
@@ -135,6 +164,8 @@ function IntegrationWorkspace() {
       setAdding(null);
       await reload();
     } catch (err) {
+      if(!alive.current)return;
+      setFormError(errText(err));
       toast.error(errText(err));
     } finally {
       setBusy(null);
@@ -227,6 +258,8 @@ function IntegrationWorkspace() {
   const about = (a: (typeof LIVE_APPS)[number]) => a.about ?? t(`int.about.${a.kind}` as TKey);
   const help = (a: (typeof LIVE_APPS)[number]) => a.help ?? t(`int.help.${a.kind}` as TKey);
   const oauthInfo = def?.oauth ? OAUTH_CONSOLE[def.oauth] : null;
+  const setupReason=adding&&isConnectedApp(adding)?connectionSetupReason(manifest,adding):adding&&legacyManifest?.oauth.find(p=>p.kind===adding)?.configured===false?'credentials':null;
+  const redirect=adding&&isConnectedApp(adding)?manifest?.redirect_uri:legacyManifest?.redirect_uri;
 
   return (
     <div className="fb-root h-full overflow-y-auto">
@@ -247,12 +280,13 @@ function IntegrationWorkspace() {
               <ul className="cw-app-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {LIVE_APPS.filter(a=>isConnectedApp(a.kind)).map(a=><li key={a.kind}><button className="fb-row fb-glass--hover h-full w-full !flex-col !items-start gap-2 !text-start" onClick={()=>open(a.kind)} data-connection-kind={a.kind}>
                   <span className="fb-chip" style={{color:a.color}}>{a.name}</span><strong className="text-sm">{about(a)}</strong>
-                  <span className="fb-dim text-xs">{l.readOnly} · {newStatus(a.kind)?.configured&&newStatus(a.kind)?.enabled?l.configured:l.needsSetup}</span>
+                  <span className="fb-dim text-xs">{l.readOnly} · {readiness(a.kind)}</span>
                   <span className="text-xs" style={{color:'var(--fb-accent)'}}>{l.setup} →</span>
                 </button></li>)}
               </ul>
               <p className="fb-dim mt-4 text-xs">{l.providerPolicy}</p>
-              {manifestError&&<p role="status" className="cw-readiness">{l.operatorSetup}</p>}
+              {manifestError&&<p role="status" className="cw-readiness">{diagnostics.checkFailed}</p>}
+              {(manifestError||legacyManifestError)&&<button className="fb-btn fb-btn--ghost" onClick={()=>void refreshReadiness()}>{l.retry}</button>}
             </Panel>
             {proof&&<section className="cw-proof" role="region" aria-label={l.snapshot}><div className="flex items-center justify-between gap-3"><strong>{l.snapshot} · {proof.account}</strong><button className="fb-btn fb-btn--ghost" onClick={()=>setProof(null)}>{l.close}</button></div><p className="fb-dim text-xs">{fmt.dateTime(proof.observed_at)} · {l.readOnly}</p>{proof.sampled&&<p className="text-xs">{l.sample}</p>}<ul>{proof.rows.map(r=><li key={r.id}><strong>{r.label}</strong><pre>{r.detail??r.state??''}</pre></li>)}</ul></section>}
             <Panel title={t('int.connected')}>
@@ -322,13 +356,15 @@ function IntegrationWorkspace() {
                       <li key={a.kind}>
                         <button
                           onClick={() => open(a.kind)}
+                          data-connection-kind={a.kind}
                           className="fb-row fb-glass--hover h-full w-full cursor-pointer !flex-col !items-start gap-1.5 !text-start"
                           style={adding === a.kind ? { borderColor: a.color } : undefined}
                         >
                           <span className="grid h-9 w-9 place-items-center rounded-xl text-sm font-bold" style={{ background: `${a.color}22`, border: `1px solid ${a.color}55`, color: a.color }}>{a.name.replace(/[^A-Za-z0-9]/g, '').slice(0, 1).toUpperCase()}</span>
                           <span className="text-sm font-semibold">{a.name}</span>
                           <span className="fb-dim text-xs">{about(a)}</span>
-                          <span className="mt-auto inline-flex items-center gap-1 pt-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {t('int.connect')}</span>
+                          <span className="fb-dim text-xs">{readiness(a.kind)}</span>
+                          <span className="mt-auto inline-flex items-center gap-1 pt-1 text-xs font-medium" style={{ color: 'var(--fb-accent)' }}><Plug size={12} /> {a.oauth&&legacyManifest?.oauth.find(p=>p.kind===a.kind)?.configured===false?l.setup:t('int.connect')}</span>
                         </button>
                       </li>
                     ))}
@@ -342,13 +378,16 @@ function IntegrationWorkspace() {
                 <form onSubmit={def.oauth ? signIn : connect} className="rounded-xl p-2" id="connection-setup" style={{ background: 'rgba(255,255,255,.03)', border: '1px solid var(--fb-border)' }}>
                   <DialogTitle>{t('int.connectTitle', { app: BRAND[adding] })}</DialogTitle>
                   <DialogDescription className="fb-muted mt-2 text-sm">{help(def)}</DialogDescription>
-                  {isConnectedApp(adding)&&<div className="cw-readiness" role="status">
-                    <strong>{newStatus(adding)?.configured&&newStatus(adding)?.enabled?l.configured:l.needsSetup}</strong>
-                    {(!newStatus(adding)?.configured||!newStatus(adding)?.enabled)&&<p>{l.operatorSetup}</p>}
+                  {(isConnectedApp(adding)||def.oauth)&&<div className="cw-readiness" role="status">
+                    <strong>{readiness(adding)}</strong>
+                    {setupReason&&<p>{diagnostics[setupReason]}</p>}
                     {manifest?.providers.find(x=>x.kind===adding)?.broad_provider_scope&&<p>{l.broadScope}</p>}
-                    {manifest?.redirect_uri&&def.oauth&&<><span>{t('int.oauth.redirect')}</span><code dir="ltr">{manifest.redirect_uri}</code></>}
-                    {oauthInfo&&<><code dir="ltr">{oauthInfo.secrets}</code><a href={oauthInfo.url} target="_blank" rel="noreferrer" className="fb-btn fb-btn--ghost">{oauthInfo.label} →</a></>}
+                    {manifest?.providers.find(x=>x.kind===adding)?.environment==='sandbox'&&<p>{diagnostics.sandbox}</p>}
+                    {setupReason&&oauthInfo&&<details><summary>{diagnostics.settings}</summary><p>{t('int.oauth.redirect')}</p><code dir="ltr">{redirect}</code><code dir="ltr">{oauthInfo.secrets}</code><a href={oauthInfo.url} target="_blank" rel="noreferrer" className="fb-btn fb-btn--ghost">{oauthInfo.label} →</a></details>}
+                    {(isConnectedApp(adding)?manifestError:legacyManifestError)&&<button type="button" className="fb-btn fb-btn--ghost" onClick={()=>void refreshReadiness()}>{l.retry}</button>}
                   </div>}
+                  {!def.oauth&&!isConnectedApp(adding)&&<p className="fb-muted mt-2 text-sm">{diagnostics.manual}</p>}
+                  {formError&&<p className="cw-readiness" role="alert">{formError}</p>}
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
                     <label className="block text-xs">
                       <span className="fb-dim">{t('int.name')}</span>
@@ -381,7 +420,7 @@ function IntegrationWorkspace() {
                     </div>
                   )}
                   <div className="mt-3 flex gap-2">
-                    <button className="fb-btn fb-btn--primary" disabled={busy !== null || (isConnectedApp(adding) && (!newStatus(adding)?.configured || !newStatus(adding)?.enabled))}>{busy === 'connect' ? t('int.connecting') : def.oauth ? t('int.signIn', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.connectAndTest')}</button>
+                    <button className="fb-btn fb-btn--primary" disabled={busy !== null || !!setupReason || (isConnectedApp(adding)&&!manifest)}>{busy === 'connect' ? t('int.connecting') : def.oauth ? t('int.signIn', { provider: oauthInfo?.label.split(' ')[0] ?? '' }) : t('int.connectAndTest')}</button>
                     <button type="button" className="fb-btn fb-btn--ghost" onClick={() => setAdding(null)}>{t('common.close')}</button>
                   </div>
                 </form></div></DialogContent>
