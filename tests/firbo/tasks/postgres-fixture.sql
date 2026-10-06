@@ -9,6 +9,7 @@ create table public.connector_devices (
   created_by uuid references auth.users(id) on delete set null,
   name text not null,
   paired boolean not null default false,
+  capabilities jsonb not null default '{"job_kinds":[]}'::jsonb,
   created_at timestamptz not null default now()
 );
 create table public.connector_jobs (

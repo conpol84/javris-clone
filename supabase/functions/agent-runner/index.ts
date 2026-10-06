@@ -523,7 +523,6 @@ Deno.serve(async (req) => {
     const machines: Machine[] = (devRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy) })).filter((d: Machine) => d.policy.enabled);
     if (machines.length) {
       // The power set to "approval" (the Studio default) means: every computer step waits for the owner in the Inbox.
-      const askFirst = (agent.agent_tools ?? []).some((t: any) => t.tool_name === 'computer_use' && (t.policy === 'approval' || t.policy === 'approve'));
       const online = (d: Machine) => !!d.last_seen_at && Date.now() - Date.parse(d.last_seen_at) < 90_000;
       const kindsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.job_kinds) ? d.capabilities.job_kinds : []);
       const rootsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.roots) ? d.capabilities.roots : []);
@@ -535,12 +534,26 @@ Deno.serve(async (req) => {
         const picked = machines.find(d => online(d) && kindsOf(d).includes(asked.kind)) ?? machines.find(d => kindsOf(d).includes(asked.kind));
         if (!picked) return `No company computer can "${asked.kind}" right now: the owner has to allow it in the Connector on that computer. Do not try again.`;
         // The owner may change the rules or remove the computer while the employee works: read them again before every step.
-        const { data: fresh } = await admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy, paired, revoked_at')
-          .eq('id', picked.id).eq('organization_id', task.organization_id).maybeSingle();
+        const [{ data: fresh }, { data: freshAgent }, { data: freshTool }, { data: freshTask }] = await Promise.all([
+          admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy, paired, revoked_at')
+            .eq('id', picked.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('agents').select('id, enabled, autonomy').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('agent_tools').select('enabled, policy').eq('agent_id', agent.id).eq('organization_id', task.organization_id).eq('tool_name', 'computer_use').maybeSingle(),
+          admin.from('tasks').select('id, status, run_claim, assigned_agent_id, result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
+        ]);
+        if (!freshTask || freshTask.status !== 'running' || freshTask.run_claim !== claimed.run_claim
+          || freshTask.assigned_agent_id !== agent.id || freshTask.result?.reconcile_required === true) {
+          return 'This task is no longer authorised to use a company computer. Stop and finish the report without another computer step.';
+        }
+        if (!freshAgent?.enabled || !freshTool?.enabled || freshTool.policy === 'block') {
+          return 'The owner turned this employee computer power off. Do not try again; say so in the report.';
+        }
         if (!fresh || !fresh.paired || fresh.revoked_at) return `"${picked.name}" is no longer connected to the company. Do not try again.`;
         const machine: Machine = { ...fresh, policy: cleanPolicy(fresh.agent_policy) };
         if (!kindsOf(machine).includes(asked.kind)) return `"${machine.name}" cannot "${asked.kind}" any more. Do not try again.`;
-        const { verdict, reason } = decideForEmployee(asked.kind, asked.params, machine.policy, { askFirst, suggestOnly: agent.autonomy === 'suggest' });
+        const askFirst = freshTool.policy === 'approval' || freshTool.policy === 'approve';
+        const { verdict, reason } = decideForEmployee(asked.kind, asked.params, machine.policy,
+          { askFirst, suggestOnly: freshAgent.autonomy === 'suggest' });
         if (verdict === 'deny') return `Not allowed on "${machine.name}" (${reason}). Do not try again; say in the report what you could not do.`;
         if (verdict === 'suggest') return `You may only suggest this step (${reason}): describe it in your report for the owner.`;
         if (verdict === 'approve') {
@@ -551,7 +564,9 @@ Deno.serve(async (req) => {
         }
         if (!online(machine)) return `"${machine.name}" is offline right now (asleep or the Connector is not running). Say so in your report.`;
         const { data: job, error } = await admin.from('connector_jobs').insert({ organization_id: task.organization_id, device_id: machine.id, created_by: user.id,
-          kind: asked.kind, params: asked.params, agent_task_id: task.id, agent_id: agent.id, origin: 'agent' }).select('id').single();
+          kind: asked.kind, params: asked.params, agent_task_id: task.id, agent_id: agent.id, origin: 'agent',
+          agent_run_claim: claimed.run_claim, agent_policy_snapshot: fresh.agent_policy ?? {},
+          agent_capabilities_snapshot: fresh.capabilities ?? {} }).select('id').single();
         if (error || !job) throw new Error('computer_job_not_saved');
         // Wait for the result, leaving time for the final answer.
         const until = Math.min(Date.now() + 45_000, requestStarted + WALL_CLOCK_MS - 60_000);

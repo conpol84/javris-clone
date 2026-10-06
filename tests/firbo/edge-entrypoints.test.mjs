@@ -41,7 +41,7 @@ function fixture(options={}) {
   const user={id:USER,email:'owner@example.test'};
   const task={id:TASK,organization_id:ORG,title:'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
   const agent={id:AGENT,name:'Test agent',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
-  const execute=(table,op,payload,filters,selection)=>{
+  const execute=(table,op,payload,filters,selection,single=false)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
       state.writes.push(info);
@@ -49,6 +49,11 @@ function fixture(options={}) {
       if(table==='tasks'&&op==='update')return{data:options.claimLost&&payload.status==='running'?null:{id:TASK},error:options.resultError&&payload.result?{message:'db failure'}:null};
       if(table==='usage_events')return{data:null,error:options.usageError?{message:'db failure'}:null};
       if(table==='approvals')return{data:null,error:options.approvalError?{message:'db failure'}:null};
+      if(table==='connector_jobs'){
+        const row={id:'12121212-1212-4212-8212-121212121212',...payload};
+        state.computerJobs=[...(state.computerJobs??[]),row];
+        return{data:{id:row.id},error:null};
+      }
       return{data:null,error:null};
     }
     state.reads.push(info);
@@ -56,9 +61,18 @@ function fixture(options={}) {
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
-      return{data:options.foreignAgent?null:agent,error:null};
+      return{data:options.foreignAgent?null:{...agent,...(selection?.includes('autonomy')&&state.rpcs?.some(r=>r.fn==='claim_task_run')?{autonomy:options.freshAutonomy??agent.autonomy,enabled:options.freshAgentEnabled??agent.enabled}:{})},error:null};
     }
-    if(table==='tasks')return{data:options.missingTask?null:task,error:null};
+    if(table==='tasks')return{data:options.missingTask?null:{...task,...(selection?.includes('run_claim')?{status:'running',run_claim:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
+    if(table==='connector_devices'){
+      const initialPolicy={enabled:true,apps:['Safari'],shortcuts:[],writes:'auto',commands:'safe',hours:null};
+      const device={id:'13131313-1313-4313-8313-131313131313',name:'Synthetic Mac',last_seen_at:new Date().toISOString(),
+        paired:true,revoked_at:null,capabilities:{job_kinds:['list','read','write','browser_task'],roots:['Documents']},
+        agent_policy:single?(options.freshDevicePolicy??initialPolicy):initialPolicy};
+      return{data:single?device:[device],error:null};
+    }
+    if(table==='agent_tools')return{data:{enabled:options.freshToolEnabled??true,policy:options.freshToolPolicy??'allow'},error:null};
+    if(table==='connector_jobs')return{data:{status:'done',result:{entries:[{name:'report.md',type:'file'}]},error:null},error:null};
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
@@ -95,9 +109,9 @@ function fixture(options={}) {
       let op='select',payload,selection;const filters=[];
       const b={
         select(s){selection=s;return b;},insert(p){op='insert';payload=p;return b;},update(p){op='update';payload=p;return b;},
-        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},gte(){return b;},or(){return b;},order(){return b;},limit(){return b;},
-        maybeSingle(){return Promise.resolve(execute(table,op,payload,filters,selection));},single(){return b.maybeSingle();},
-        then(resolve,reject){return Promise.resolve(execute(table,op,payload,filters,selection)).then(resolve,reject);},
+        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},gte(){return b;},or(){return b;},order(){return b;},limit(){return b;},
+        maybeSingle(){return Promise.resolve(execute(table,op,payload,filters,selection,true));},single(){return b.maybeSingle();},
+        then(resolve,reject){return Promise.resolve(execute(table,op,payload,filters,selection,false)).then(resolve,reject);},
       };return b;
     },
   });
@@ -156,6 +170,30 @@ for(const name of Object.keys(handlers)){
 test('chat cannot act on another user conversation',async()=>{const {state,response}=await invoke('agent-chat',{foreignConversation:true});assert.equal(response.status,403);assert.equal(state.calls.length,0);});
 test('task retains human approval requirement',async()=>{const {state,body}=await invoke('agent-runner');const approvals=state.writes.find(w=>w.table==='approvals');assert.equal(approvals.payload[0].status,'pending');assert.equal(approvals.payload[0].organization_id,ORG);assert.equal(body.status,'awaiting_approval');});
 test('suggest-only task does not insert external approvals',async()=>{const {state,body}=await invoke('agent-runner',{autonomy:'suggest'});assert.equal(body.status,'completed');assert.ok(!state.writes.some(w=>w.table==='approvals'));});
+test('suggest-only employee cannot queue a computer write',async()=>{
+  const tools=[{tool_name:'computer_use',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"computer","input":"write report.md :: synthetic"}',JSON.stringify({summary:'Suggested only',report:'I suggested the write.',actions:[]})];
+  const {state,response}=await invoke('agent-runner',{autonomy:'suggest',tools,chatReplies});
+  assert.equal(response.status,200);assert.equal(state.computerJobs?.length??0,0);
+  assert.ok(JSON.parse(state.calls.filter(c=>String(c.url).endsWith('/chat/completions'))[1].init.body).messages.some(m=>/only suggest/i.test(m.content)));
+});
+test('computer action re-reads current employee power and device policy before enqueue',async()=>{
+  const tools=[{tool_name:'computer_use',enabled:true,policy:'allow'}];
+  const replies=()=>['{"action":"computer","input":"list Documents"}',JSON.stringify({summary:'Stopped',report:'Access was disabled.',actions:[]})];
+  for(const options of [{freshToolEnabled:false},{freshDevicePolicy:{enabled:false,apps:[],shortcuts:[],writes:'off',commands:'off',hours:null}}]){
+    const {state,response}=await invoke('agent-runner',{...options,tools,chatReplies:replies()});
+    assert.equal(response.status,200);assert.equal(state.computerJobs?.length??0,0);
+  }
+});
+test('auto computer job carries the exact task claim and authorization snapshots',async()=>{
+  const tools=[{tool_name:'computer_use',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"computer","input":"list Documents"}',JSON.stringify({summary:'Listed',report:'report.md',actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies});
+  assert.equal(response.status,200);assert.equal(state.computerJobs.length,1);
+  assert.equal(state.computerJobs[0].agent_run_claim,CLAIM);assert.equal(state.computerJobs[0].agent_task_id,TASK);
+  assert.equal(state.computerJobs[0].agent_policy_snapshot.enabled,true);
+  assert.ok(state.computerJobs[0].agent_capabilities_snapshot.job_kinds.includes('list'));
+});
 test('blocked tool proposals are dropped',async()=>{const {state,body}=await invoke('agent-runner',{tools:[{tool_name:'send_email',enabled:false,policy:'block'}]});assert.equal(body.dropped,1);assert.ok(!state.writes.some(w=>w.table==='approvals'));});
 test('lost task claim stops duplicate execution',async()=>{const {state,response}=await invoke('agent-runner',{claimLost:true});assert.equal(response.status,409);assert.equal(state.calls.length,0);});
 test('active previous computer execution prevents a new model request',async()=>{const {state,response,body}=await invoke('agent-runner',{taskStatus:'failed',activeExecution:true});assert.equal(response.status,409);assert.equal(body.error,'task_active_jobs');assert.equal(state.calls.length,0);});

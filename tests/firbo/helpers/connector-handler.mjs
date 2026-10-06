@@ -34,6 +34,15 @@ export async function makeHandler() {
  }
  const sdk={from:builder,auth:{getUser:async()=>({data:{user:state.user},error:null})},
   rpc:async(name,args)=>{
+    if(name==='connector_claim_next_job'){
+      state.claims=[...(state.claims??[]),args];
+      const row=state.rows.connector_jobs
+        .filter(r=>r.organization_id===args.p_org&&r.device_id===args.p_device&&r.status==='queued'&&r.created_at>=args.p_min_created)
+        .sort((a,b)=>String(a.created_at).localeCompare(String(b.created_at)))[0];
+      if(!row)return{data:null,error:null};
+      row.status='running';row.started_at=new Date().toISOString();
+      return{data:{id:row.id,kind:row.kind,params:structuredClone(row.params)},error:null};
+    }
     if(name==='connector_finish_execution'){
       const row=state.rows.connector_jobs.find(r=>r.id===args.p_job&&r.device_id===args.p_device&&r.organization_id===args.p_org);
       if(!row)return{data:null,error:{message:'job_not_found'}};

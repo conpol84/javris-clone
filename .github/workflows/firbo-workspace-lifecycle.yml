@@ -91,6 +91,10 @@ jobs:
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261004032400_connector_execution_receipts.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005215417_firbo_task_lifecycle.sql
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261005222500_task_run_protocol.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006000000_computer_agent_policy.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006010000_agent_computer_job_guards.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006020000_computer_use_power_rows.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006030000_agent_computer_run_protocol.sql
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/tasks/run-protocol-regressions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
               python3 tests/firbo/tasks/run-protocol-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
