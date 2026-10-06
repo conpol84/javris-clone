@@ -2,12 +2,17 @@ import { useCallback, useEffect, useState } from 'react';
 import { Panel } from '../command/Panel';
 import { useI18n } from '../../i18n/I18nProvider';
 import { requireClient } from '../../lib/company/client';
+import { ServerExecutionReceipt } from './ServerExecutionReceipt';
+import { ServerRuntimeInventory } from './ServerRuntimeInventory';
+import { ServiceAccessPanel } from '../gateway/ServiceAccessPanel';
+import { ServerToolCheck } from './ServerToolCheck';
+import { serverExecution } from '../../../../supabase/functions/_shared/server-execution';
 
 // The server agent's own dashboard (behind a Caddy password on the VPS).
 const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://jarvis.firboai.app';
 
-interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string }
-interface Turn { q: string; a: string; meta: string; error?: boolean }
+interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string; runtime?: unknown }
+interface Turn { q: string; a: string; meta: string; error?: boolean; execution?: unknown }
 
 /** The OpenJarvis server on the VPS: live status and a direct line to it (platform admins only, checked by the server). */
 export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: boolean } = {}) {
@@ -23,9 +28,11 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
 
   const refresh = useCallback(async () => {
     setFailed(false);
-    const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'status' } });
-    if (error || !data) { setFailed(true); return; }
-    setStatus(data as Status);
+    try {
+      const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'status' } });
+      if (error || !data) { setFailed(true); setStatus(null); return; }
+      setStatus(data as Status);
+    } catch { setFailed(true); setStatus(null); }
   }, []);
   useEffect(() => { void refresh(); }, [refresh]);
 
@@ -35,16 +42,22 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
     if (!q || busy) return;
     setBusy(true);
     setMessage('');
-    const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'chat', message: q, ...(model ? { model } : {}), ...(coding ? { mode: 'code', history: turns.filter(x => !x.error).slice(-4).flatMap(x => [{ role: 'user', content: x.q }, { role: 'assistant', content: x.a.slice(0, 4000) }]) } : {}) } });
-    const reply = data as { reply?: string; model?: string; ms?: number } | null;
-    setTurns(prev => [...prev, error || !reply?.reply
-      ? { q, a: t('jv.error'), meta: '', error: true }
-      : { q, a: reply.reply, meta: `${reply.model ?? ''} · ${Math.round((reply.ms ?? 0) / 1000)} s` }]);
-    setBusy(false);
+    try {
+      const { data, error } = await requireClient().functions.invoke('server-jarvis', { body: { action: 'chat', message: q, ...(model ? { model } : {}), ...(coding ? { mode: 'code', history: turns.filter(x => !x.error).slice(-4).flatMap(x => [{ role: 'user', content: x.q }, { role: 'assistant', content: x.a.slice(0, 4000) }]) } : {}) } });
+      const reply = data as { reply?: string; model?: string; ms?: number; execution?: unknown } | null;
+      setTurns(prev => [...prev, error || (!reply?.reply && !serverExecution(reply?.execution))
+        ? { q, a: t('jv.error'), meta: '', error: true }
+        : { q, a: reply?.reply || t('jv.emptyReply'), meta: `${reply?.model ?? ''} · ${Math.round((reply?.ms ?? 0) / 1000)} s`, execution: reply?.execution }]);
+    } catch {
+      setTurns(prev => [...prev, { q, a: t('jv.error'), meta: '', error: true }]);
+    } finally {
+      setBusy(false);
+    }
   };
 
   const state = failed ? t('jv.error') : !status ? t('common.loading') : !status.configured ? t('jv.notConfigured') : status.online ? t('jv.online') : t('jv.offline');
   return <div className="space-y-4">
+    <ServiceAccessPanel />
     <Panel title={t('jv.title')}>
       <p className="fb-muted text-sm">{t('jv.sub')}</p>
       <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
@@ -58,6 +71,8 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
         <a className="fb-btn fb-btn--primary" href={DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
       </div>
       {status && !status.configured && <p className="fb-dim mt-2 text-xs">{t('jv.setup')}</p>}
+      {status?.online && <ServerRuntimeInventory value={status.runtime} />}
+      {status?.online && <ServerToolCheck runtime={status.runtime} disabled={busy} />}
     </Panel>
     {status?.online && <Panel title={t('jv.ask')}>
       <form onSubmit={send} className="flex flex-col gap-2">
@@ -76,6 +91,7 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
         <div className="fb-dim text-xs">{turn.q}</div>
         <div className="mt-1 whitespace-pre-wrap" role={turn.error ? 'alert' : undefined}>{turn.a}</div>
         {turn.meta && <div className="fb-dim mt-1 text-xs">{turn.meta}</div>}
+        {!turn.error && <ServerExecutionReceipt value={turn.execution} />}
       </li>)}</ol>
     </Panel>}
   </div>;

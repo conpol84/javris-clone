@@ -1,5 +1,34 @@
 # Firbo continuation — combined Claude/Codex release
 
+## Latest source checkpoint — MCP pinned egress, after exact-green PR41
+
+Changed:
+- New isolated branch continues PR41 exact head `0b956a4f` and preserves current
+  Claude `f6442b75` / Codex parity `ce421e31`; both are already ancestors.
+- MCP now requires a separately configured pinned HTTPS egress transport,
+  without direct target fallback. The service resolves once, rejects mixed or
+  non-public DNS, pins the numeric socket and verifies TLS for the original host.
+- Company checks, confirmation, atomic persistence and durable receipts remain.
+
+Tested / passed:
+- 15 Python tests including actual synthetic local TLS; 134 combined focused
+  Node cases; 633 distinct non-rendered Node cases; 528 frontend cases; isolated
+  Edge TypeScript, Ruff and diff checks. No real provider or production call.
+
+Failed / limitations:
+- New exact-head CI is pending. The service and configuration are not deployed;
+  runtime ingress/secret provisioning and real MCP acceptance remain required.
+- This closes only the source candidate for tenant MCP transport. Other HTTP
+  routes and live production networking acceptance are still separate gates.
+
+Remains:
+- Publish draft and require exact-head CI; then live dependency/migration/source
+  reconciliation and separately reviewed egress provisioning before MCP release.
+- Preserve PR39 design, PR40 monitor, PR41 accounting and every prior real VPS,
+  Mac, account/customer, useful artifact/read-back/receipt, voice/design/mobile,
+  restore/monitoring and production-assessment gate. FreeLLMAPI remains installed;
+  PR13 remains CI-only. Details: `FIRBO-MCP-PINNED-EGRESS-20261006.md`.
+
 **Read the last entry in this file for the latest release and remaining gates.
 Earlier release identities and remaining-item lists are historical checkpoints.**
 
@@ -857,3 +886,163 @@ Failed / limitations / release gate:
 Remains:
 - Frontend release with the new Connector + updater hash (GPT/CI), then the owner updates the Mac and approves the job.
 - Search provider key (Tavily) as a Supabase secret + runner support, for real research.
+
+## Candidate — claim-bound runner attempt ledger (source only)
+
+Changed:
+- Combined current draft PR #30 (`1cfc4e3`) and final-green draft PR #31
+  (`58a4188`) as separate parents; neither active branch was rewritten.
+- Added private runner logical-run/attempt records, service-only atomic
+  admission and single-winner dispatch RPCs, settlement-state synchronization
+  and unresolved-attempt task publication/cancellation/deletion guards.
+- Added the non-live TypeScript adapter plus PostgreSQL assertions and
+  READ COMMITTED/SERIALIZABLE races. Exact details are in
+  `FIRBO-RUNNER-ATTEMPT-LEDGER-20261006.md`.
+
+Tested / passed:
+- Locally: 5 focused helper tests; 101 combined selected Edge/helper tests;
+  strict Edge TypeScript; Ruff 0.16.7 check/format; PostgreSQL static parsing
+  and Git diff check.
+- PR #31 exact head now has all nine workflows completed successfully. PR #30
+  current head was re-read before combination.
+
+Failed / limitations:
+- This workspace has no PostgreSQL server. The new real PostgreSQL 17.6 SQL and
+  race gates are added to CI but are not yet claimed passed.
+- No migration was applied and the live runner does not use the adapter. No
+  provider call, deployment, device job or permission change occurred.
+
+Remains:
+- Pass exact-head CI, then adapt the live runner one transport attempt at a
+  time and remove legacy aggregate accounting only for adapted calls. Vision,
+  image, server and search paths remain explicit separate accounting work.
+- Preserve every prior Mac, OAuth/channel, second-customer, backup, monitoring
+  and final-assessment gate. PR #13 remains CI-only and must never be merged.
+
+## Candidate — runner text transports use claim-bound attempt receipts
+
+Changed:
+- Continued exact PR #32 head `fc5ae27f` and merged current PR #30 head
+  `37768a7a` as separate parents without rewriting either active branch.
+- Adapted Free, gateway, direct-provider and BYOK runner text calls to one
+  reserve/dispatch/settle receipt per actual attempt. Retry, repair, route-up,
+  continuation and polish now receive separate admission and receipts.
+- Post-dispatch ambiguity stops fail-closed without automatic fallback or task
+  publication. Removed duplicate legacy aggregate usage for adapted text calls;
+  kept vision explicitly on its legacy lane.
+
+Tested / passed:
+- 7 focused fake-transport helper tests; 157 combined gateway/Edge/helper tests;
+  190 combined handler/server/runner tests; 524 frontend tests; isolated Edge
+  TypeScript and full frontend TypeScript. All selections passed locally.
+- PR #32 exact head has all ten workflows successful, including PostgreSQL 17.6
+  accounting and 18 READ COMMITTED/SERIALIZABLE concurrency checks. PR #31 has
+  all nine exact-head workflows successful.
+
+Failed / limitations:
+- This new combined source has not yet run exact-head CI. No migration was
+  applied and no runner/backend/frontend was deployed. No real provider or
+  device request occurred.
+- Vision/image/server/search accounting and authorized read-only reconciliation
+  monitoring remain incomplete; no full runner-spend claim is made.
+
+Remains:
+- Draft PR #35 now contains the isolated candidate. Require its exact-head
+  PostgreSQL and full CI, then continue route-by-route accounting before any
+  migration or deployment.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-STAGE2-20261006.md`. Preserve all
+  prior real-account/device/customer/recovery gates and never merge PR #13.
+
+## Candidate — runner vision uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #35 `e4514580` and preserved current active
+  PR #30 `9021ae53` as a separate merge parent. Neither branch was rewritten.
+- Adapted `analyze_image` to exact-payload fingerprinting, conservative
+  non-text reservation, durable dispatch, required provider usage and atomic
+  settlement. Vision now has an independent attempt receipt and request ID.
+- Missing usage after dispatch stops with reconciliation required and cannot
+  publish. Removed only the now-duplicate vision legacy aggregate insert.
+
+Tested / passed:
+- 113 focused Edge/helper/fake-transport tests; 563 non-rendered FIRBO Node
+  tests; 524 frontend tests; frontend production build; strict Edge/full
+  frontend TypeScript; two newer PR #30 engine contract tests; Ruff and diff
+  checks. No real provider transport was used.
+
+Failed / limits:
+- The rendered browser test cannot import the absent isolated Playwright
+  package in this workspace; the remaining 563 Node tests pass. Exact-head
+  remote CI and PostgreSQL remain required for this new source.
+- No migration, deployment, provider/device call or production change.
+
+Remains:
+- Image generation, billed gateway/Tavily search, server execution and
+  authorized reconciliation monitoring remain separate accounting stages.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-VISION-20261006.md`. Re-read live
+  dependencies and migration ledgers before any release; never merge PR #13.
+
+## Candidate — runner billed search uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #37 `efa20e42` and preserved current
+  exact-green PR #30 `44c51036` as a separate parent without rewriting either.
+- Configured gateway auto-search and direct Tavily search now reserve, durably
+  dispatch and settle one receipt per actual provider request. Exact payloads
+  and request IDs are correlated; Tavily settlement requires returned credits.
+- An ambiguous dispatched search stops without another provider call or task
+  publication. Settled empty results may continue to the next route. Initial
+  research and loop-requested searches use the same accounting path.
+
+Tested / passed:
+- 119 focused actual-handler/search/accounting fake-transport tests; 572
+  non-rendered FIRBO Node tests; strict isolated Edge TypeScript; diff checks.
+- Fresh parent read-back: PR #37 has 27/27 completed-success checks and PR #30
+  has 26/26 completed-success checks. PR #31's latest exact-head checks are also
+  complete/success; older cancelled runs are superseded duplicates.
+
+Failed / limitations:
+- The isolated worktree has no frontend dependencies, so local Vitest startup
+  could not resolve Vite. No frontend source changed; new exact-head CI remains
+  required for frontend, PostgreSQL, Python, security and rendered gates.
+- No migration, deployment, provider request, credential, permission or device
+  job changed. Zero-fee public-source HTTP fan-out is not billed-attempt
+  accounting, and server execution remains separate.
+
+Remains:
+- Publish the isolated draft and require exact-head CI. Then add server-execution
+  receipts and authorized read-only reconciliation monitoring separately.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-SEARCH-20261006.md`. Re-read live
+  dependencies and migration ledgers before release; never merge PR #13.
+
+## Candidate — runner image generation uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #36 `0d4844aa` and preserved newer exact-green
+  PR #30 `d9c07eb9` as a separate merge parent. Neither branch was rewritten.
+- Paid gateway image generation now uses exact-payload reserve, durable dispatch,
+  configured conservative cost reservation and atomic settlement. The ledger
+  request ID is sent to the gateway and ambiguous dispatch never falls back to
+  a second image provider.
+- Pollinations image generation uses a preselected seed in its exact payload and
+  records a zero-cost attempt receipt. Artifact storage occurs after settlement.
+
+Tested / passed:
+- 117 focused agent-tool/accounting/actual-entrypoint tests and all 567
+  non-rendered FIRBO Node tests.
+- Isolated Edge TypeScript and Git diff validation.
+- Only synthetic database and image transports were used; no provider spend.
+
+Failed / limitations:
+- This worktree lacks frontend dependencies and the runtime lacks pytest, so
+  those combined-tree checks remain exact-head CI gates. Both parent heads are
+  independently green, but that does not certify the new combined head.
+- No migration, deployment, provider call, image generation, device job or
+  permission change occurred.
+
+Remains:
+- Publish an isolated draft and require all exact-head CI. Then continue billed
+  search, server execution and authorized reconciliation monitoring route by
+  route before any release.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-IMAGE-20261006.md`. Preserve all
+  prior real-device/account/customer/recovery gates and never merge PR #13.

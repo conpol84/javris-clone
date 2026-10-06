@@ -15,11 +15,12 @@ const REQUEST_RECEIPT='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const RESULT_RECEIPT='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const originalDeno=globalThis.Deno,originalFetch=globalThis.fetch;
 let state,handler;
-globalThis.Deno={env:{get:key=>({SUPABASE_URL:'https://db.example.test',SUPABASE_ANON_KEY:'anon-test',SUPABASE_SERVICE_ROLE_KEY:'service-test'})[key]},serve:fn=>{handler=fn;}};
+globalThis.Deno={env:{get:key=>({SUPABASE_URL:'https://db.example.test',SUPABASE_ANON_KEY:'anon-test',SUPABASE_SERVICE_ROLE_KEY:'service-test',FIRBO_MCP_EGRESS_URL:state?.options.noEgress?'':'https://egress.example.test/v1/mcp',FIRBO_MCP_EGRESS_TOKEN:'synthetic-egress-service-token-32-characters'})[key]},serve:fn=>{handler=fn;}};
 globalThis.__mcpClient=(...args)=>state.client(...args);
 const temp=await mkdtemp(join(tmpdir(),'firbo-mcp-test-'));
 const source=await readFile(new URL('../../supabase/functions/mcp/index.ts',import.meta.url),'utf8');
-const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",'const createClient = (...args: any[]) => (globalThis as any).__mcpClient(...args);');
+const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",'const createClient = (...args: any[]) => (globalThis as any).__mcpClient(...args);')
+  .replace("'../_shared/mcp-egress.ts'",JSON.stringify(new URL('../../supabase/functions/_shared/mcp-egress.ts',import.meta.url).href));
 const entry=join(temp,'mcp.ts');await writeFile(entry,code);await import(pathToFileURL(entry).href);
 after(async()=>{globalThis.Deno=originalDeno;globalThis.fetch=originalFetch;delete globalThis.__mcpClient;await rm(temp,{recursive:true,force:true});});
 
@@ -72,7 +73,14 @@ function fixture(options={}){
   });
   const json=(body,headers={})=>new Response(JSON.stringify(body),{status:200,headers:{'content-type':'application/json',...headers}});
   globalThis.fetch=async(url,init)=>{
-    const request=JSON.parse(init.body);current.fetches.push({url:String(url),request,headers:init.headers});
+    assert.equal(String(url),'https://egress.example.test/v1/mcp');
+    assert.equal(init.redirect,'error');
+    assert.equal(init.headers.authorization,'Bearer synthetic-egress-service-token-32-characters');
+    const envelope=JSON.parse(init.body);assert.equal(envelope.url,'https://mcp.example.test/mcp');
+    assert.equal(envelope.headers.authorization,options.remoteToken?'Bearer '+options.remoteToken:undefined);
+    const request=JSON.parse(envelope.body);current.fetches.push({url:envelope.url,request,headers:envelope.headers});
+    if(options.egressDenied)return new Response('{"error":"egress_denied"}',{status:502,headers:{'content-type':'application/json'}});
+    if(options.egressDeniedCall&&request.method==='tools/call')return new Response('{"error":"egress_denied"}',{status:502,headers:{'content-type':'application/json'}});
     if(request.method==='initialize')return json({jsonrpc:'2.0',id:request.id,result:{protocolVersion:'2025-03-26'}},{'mcp-session-id':options.badSession?'bad\nsession':'session-1'});
     if(request.method==='notifications/initialized')return new Response(null,{status:202});
     if(request.method==='tools/list'){
@@ -93,7 +101,7 @@ function fixture(options={}){
 }
 
 async function invoke(options={},body={action:'call',id:INTEGRATION,tool:'weather.read',arguments:{city:'Larnaca'},confirm:true}){
-  const current=fixture(options);
+  const current=fixture({...options,remoteToken:body.action==='connect'?body.token:'synthetic-token'});
   const response=await handler(new Request('https://db.example.test/functions/v1/mcp',{method:'POST',headers:{authorization:'Bearer synthetic','content-type':'application/json'},body:JSON.stringify(body)}));
   return{current,response,body:await response.json()};
 }
@@ -102,6 +110,23 @@ test('authentication and manager scope stop before an MCP server is contacted',a
   for(const options of [{unsigned:true},{role:'viewer'},{noMembership:true}]){
     const {current,response}=await invoke(options);assert.ok([401,403,404].includes(response.status));assert.equal(current.fetches.length,0);
   }
+});
+
+test('missing egress configuration fails closed with zero network requests',async()=>{
+  const {current,response}=await invoke({noEgress:true});assert.equal(response.status,502);
+  assert.equal(current.fetches.length,0);assert.equal(current.toolCalls.length,0);
+});
+
+test('denied pinned egress never retries directly or publishes a tool receipt',async()=>{
+  const {current,response}=await invoke({egressDenied:true});assert.equal(response.status,502);
+  assert.equal(current.fetches.length,1);assert.equal(current.toolCalls.length,0);assert.equal(current.audits.length,0);
+});
+
+test('post-receipt egress failure remains ambiguous without retry or false success',async()=>{
+  const {current,response,body}=await invoke({egressDeniedCall:true});assert.equal(response.status,502);
+  assert.equal(body.reconciliation_required,true);assert.equal(current.fetches.filter(x=>x.request.method==='tools/call').length,1);
+  assert.equal(current.audits[0].action,'mcp.tool_requested');assert.equal(current.audits.length,2);
+  assert.equal(current.audits[1].action,'mcp.tool_result_unknown');
 });
 
 test('integration, credential and plan reads fail closed before an MCP server is contacted',async()=>{

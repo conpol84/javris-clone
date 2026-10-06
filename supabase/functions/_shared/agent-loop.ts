@@ -35,6 +35,8 @@ export function loopInstructions(tools: ToolName[], maxSteps: number, help: Part
   return [
     `You can use tools before you answer, at most ${maxSteps} times. To use one, reply with ONLY one JSON object:`,
     ...tools.map(t => `- ${help[t] ?? TOOL_HELP[t]}`),
+    ...(tools.includes('server_task') || tools.includes('computer') ? ['Execution location matters: server_task runs remotely on the server; it cannot show work in the owner\'s local windows. When the user asks to watch work on their computer, use an authorised computer action with a visible browser or application. If that device/tool is unavailable or awaits approval, report that blocker; do not silently substitute remote work or claim it happened on their screen.'] : []),
+    'Opening an app alone is not completing the task. Shell/file operations may run without visible windows; only describe work as visible when the selected browser/application action actually shows it. Do not claim that the physical mouse pointer moved from an API or browser automation result.',
     'You will receive the result and can use another tool. Research properly: search, then read the most relevant pages, then answer.',
     'When you have enough, reply with the final JSON object described above. In the report, cite the source URLs you used.',
     'Only state facts, names, dates and links that appear in tool results or in what you were given. If the tools found nothing useful, say so plainly in the report instead of inventing an answer.',

@@ -2,6 +2,8 @@
 // Secrets: OPENJARVIS_URL (https, e.g. https://api.firboai.app/jarvis) and OPENJARVIS_API_KEY (the key in serve.env).
 // The key never reaches the browser; every call is checked against public.platform_admins.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { serverExecution } from '../_shared/server-execution.ts';
+import { serverRuntime } from '../_shared/server-runtime.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -55,10 +57,11 @@ Deno.serve(async (req) => {
       const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
         .filter(m => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string').map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
       const res = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers, signal: AbortSignal.timeout(140_000),
-        body: JSON.stringify({ model, messages: [...coding, ...history, { role: 'user', content: message }], stream: false }) });
+        body: JSON.stringify({ model, messages: [...coding, ...history, { role: 'user', content: message }], stream: false, firbo_include_execution: true }) });
       if (!res.ok) return json(502, { error: `jarvis_http_${res.status}` });
       const out = await res.json();
-      return json(200, { reply: String(out?.choices?.[0]?.message?.content ?? ''), model: out?.model ?? null, ms: Date.now() - started });
+      return json(200, { reply: String(out?.choices?.[0]?.message?.content ?? ''), model: out?.model ?? null, ms: Date.now() - started,
+        execution: serverExecution(out?.execution) });
     } catch (error) {
       return json(504, { error: error instanceof Error && error.name === 'TimeoutError' ? 'jarvis_timeout' : 'jarvis_unreachable' });
     }
@@ -68,7 +71,8 @@ Deno.serve(async (req) => {
   try {
     const [info, models] = await Promise.all([get('/v1/info'), get('/v1/models').catch(() => ({ data: [] }))]);
     return json(200, { configured: true, online: true, model: info?.model ?? '', agent: info?.agent ?? '', engine: info?.engine ?? '',
-      models: (Array.isArray(models?.data) ? models.data : []).map((m: any) => String(m?.id ?? '')).filter(Boolean).slice(0, 50) });
+      models: (Array.isArray(models?.data) ? models.data : []).map((m: any) => String(m?.id ?? '')).filter(Boolean).slice(0, 50),
+      runtime: serverRuntime(info?.runtime) });
   } catch (error) {
     return json(200, { configured: true, online: false, reason: error instanceof Error ? error.message.slice(0, 40) : 'error' });
   }

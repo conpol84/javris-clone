@@ -1,7 +1,7 @@
 import { LocalComputePanel } from '../components/gateway/LocalComputePanel';
-import { useState } from 'react';
+import { ServiceAccessPanel } from '../components/gateway/ServiceAccessPanel';
 import { RefreshCw } from 'lucide-react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import { usePlatformAdmin } from '../lib/company/admin';
 import { CallsTab, FreeModelsTab, HealthTab, KeysTab, PlaygroundTab, QuotaTab, RoutingTab, SavingsTab, UsageTab } from '../components/gateway/GatewayExtras';
 import { Panel, StatusDot } from '../components/command/Panel';
@@ -31,7 +31,10 @@ export function GatewayPage() {
   const gw = useGateway();
   const navigate = useNavigate();
   const isAdmin = usePlatformAdmin();
-  const [tab, setTab] = useState<'overview' | 'health' | 'routing' | 'savings' | 'usage' | 'quota' | 'keys' | 'calls' | 'free' | 'playground'>('overview');
+  const [params, setParams] = useSearchParams();
+  const requestedTab = params.get('tab');
+  const tab = requestedTab && ['overview', 'health', 'routing', 'savings', 'usage', 'quota', 'keys', 'calls', 'free', 'playground'].includes(requestedTab) ? requestedTab : 'overview';
+  const setTab = (value: string) => setParams(previous => { const next = new URLSearchParams(previous); next.set('tab', value); return next; });
   const data = gw.status === 'ready' ? gw.data : null;
   const online = !!data?.connected;
 
@@ -60,6 +63,7 @@ export function GatewayPage() {
         </header>
 
 
+        {isAdmin && <ServiceAccessPanel />}
         <div className="flex flex-wrap gap-2" role="tablist">
           {(['overview', 'health', 'routing', 'savings', 'usage', 'quota', 'keys', 'calls', 'free', 'playground'] as const).map((k) => (
             <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)} className="fb-chip cursor-pointer"

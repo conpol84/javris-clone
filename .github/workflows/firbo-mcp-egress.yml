@@ -1,0 +1,27 @@
+name: Firbo pinned MCP egress
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths: ['src/openjarvis/security/mcp_egress.py', 'src/openjarvis/server/firbo_mcp_egress.py', 'supabase/functions/mcp/**', 'supabase/functions/_shared/mcp-egress.ts', 'tests/firbo/**', '.github/workflows/firbo-mcp-egress.yml']
+permissions:
+  contents: read
+jobs:
+  offline-and-local-tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Pinned sockets, actual synthetic TLS and private service auth
+        run: PYTHONPATH=src python3 -m unittest discover -s tests/firbo -p test_mcp_egress.py -v
+      - name: Actual MCP entrypoint, durable receipts and fail-closed routing
+        run: node --experimental-strip-types --test tests/firbo/mcp-entrypoint.test.mjs tests/firbo/mcp-egress.test.mjs
+      - run: python3 -m pip install ruff==0.16.7
+      - name: Lint and format changed Python
+        run: |
+          ruff check src/openjarvis/security/mcp_egress.py src/openjarvis/server/firbo_mcp_egress.py tests/firbo/test_mcp_egress.py
+          ruff format --check src/openjarvis/security/mcp_egress.py src/openjarvis/server/firbo_mcp_egress.py tests/firbo/test_mcp_egress.py

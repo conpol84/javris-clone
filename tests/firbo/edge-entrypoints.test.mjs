@@ -8,7 +8,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { maximumInferenceCost } from '../../supabase/functions/_shared/inference-accounting.ts';
+import { maximumInferenceCost, maximumTokenBoundCost } from '../../supabase/functions/_shared/inference-accounting.ts';
 
 const USER='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ORG='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -36,7 +36,7 @@ for (const name of ['agent-chat','agent-runner']) {
 after(async()=>{globalThis.fetch=originalFetch;globalThis.Deno=originalDeno;delete globalThis.__firboTestCreateClient;await rm(temp,{recursive:true,force:true});});
 
 function fixture(options={}) {
-  const state={calls:[],writes:[],reads:[],env:{
+  const state={calls:[],writes:[],reads:[],stored:[],env:{
     SUPABASE_URL:'https://db.example.test',SUPABASE_ANON_KEY:'public-test',SUPABASE_SERVICE_ROLE_KEY:'service-test',
     FIRBO_TEXT_ROUTING_MODE:'gateway',OMNIROUTE_BASE_URL:'https://gateway.firboai.app/v1',OMNIROUTE_API_KEY:'inference-test',
     OMNIROUTE_PRICE_IN_PER_M:'1',OMNIROUTE_PRICE_OUT_PER_M:'2',
@@ -90,6 +90,10 @@ function fixture(options={}) {
   };
   const client=(_url,key)=>({
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
+    storage:{from:()=>({
+      upload:async(path,bytes,config)=>{state.stored.push({path,size:bytes.length,config});return{error:options.imageStoreError?{message:'storage unavailable'}:null};},
+      getPublicUrl:path=>({data:{publicUrl:`https://cdn.example/${path}`}}),
+    })},
     rpc:async(fn,args)=>{
       state.rpcs=[...(state.rpcs??[]),{fn,args}];
       if(fn==='firbo_reserve_inference') {
@@ -98,6 +102,20 @@ function fixture(options={}) {
         if((options.count??0)>=60)return{data:{ok:false,reason:'rate_limited',hourly:options.count,limit:60},error:null};
         if(options.reservationDuplicate)return{data:{ok:true,duplicate:true,request_id:ACCOUNTING,status:'reserved'},error:null};
         return{data:{ok:true,duplicate:false,request_id:ACCOUNTING,status:'reserved',spent:0,reserved:0,budget:10},error:null};
+      }
+      if(fn==='firbo_reserve_runner_inference') {
+        if(options.budgetError)return{data:null,error:{message:'db unavailable'}};
+        if(options.spent)return{data:{ok:false,reason:'budget_exceeded',spent:options.spent,budget:10},error:null};
+        if((options.count??0)>=20)return{data:{ok:false,reason:'rate_limited',hourly:options.count,limit:20},error:null};
+        if(options.denyServerReservation&&String(args.p_route).startsWith('openjarvis:'))return{data:{ok:false,reason:'budget_exceeded'},error:null};
+        const requestId=crypto.randomUUID();
+        state.runnerRequests=[...(state.runnerRequests??[]),requestId];
+        return{data:{ok:true,duplicate:false,request_id:requestId,status:'reserved',
+          attempt_ordinal:args.p_attempt_ordinal,dispatch_state:'admitted',spent:0,reserved:0,budget:10},error:null};
+      }
+      if(fn==='firbo_begin_runner_dispatch') {
+        return{data:{ok:true,duplicate:false,request_id:args.p_request,
+          dispatch_allowed:!options.runnerDispatchDenied,dispatch_state:'dispatching'},error:null};
       }
       if(fn==='firbo_settle_inference') {
         if(options.usageError)return{data:null,error:{message:'db unavailable'}};
@@ -148,10 +166,33 @@ function fixture(options={}) {
         firbo:{contract:'firbo-free-text/v1',request_id:request.request_id,policy:'no-paid-fallback',provider_fee_usd:options.badFreeCost?1:0,cost_basis:'self_hosted_no_metered_fee',infrastructure_cost_excluded:true}});
     }
     if(options.ownFailure&&String(url).startsWith('https://api.openai.com/'))return Response.json({error:{message:'invalid'}},{status:401});
+    if(options.gatewaySearchFailure && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return new Response('upstream error',{status:502});
+    if(options.emptyGatewaySearch && String(url).includes('gateway.firboai.app') && String(url).endsWith('/search'))return Response.json({results:[]});
+    if(String(url)==='https://api.tavily.com/search')return Response.json({
+      results:[{title:'Sports market grows',url:'https://news.example/a',content:'Up 5%'}],
+      ...(options.tavilyMissingUsage?{}:{usage:{credits:1}}),
+    });
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
-    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}]});
-    if(options.chatReplies&&String(url).endsWith('/chat/completions'))return Response.json({model:'provider/resolved',choices:[{message:{content:options.chatReplies.shift()}}],usage:{prompt_tokens:100,completion_tokens:20}});
+    if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({
+      model:'firbo-quality',choices:[{message:{content:'45'}}],execution:options.serverExecution,
+      ...(options.serverMissingUsage?{}:{usage:{prompt_tokens:30,completion_tokens:5,total_tokens:35}})});
+    if(options.imageResponse&&String(url).endsWith('/images/generations')){
+      if(options.imageGatewayFailure)return new Response('upstream error',{status:502});
+      return Response.json({data:[{b64_json:Buffer.from(new Uint8Array(5000).fill(7)).toString('base64')}]});
+    }
+    if(options.pollinationsResponse&&String(url).startsWith('https://image.pollinations.ai/')){
+      return new Response(new Uint8Array(5000).fill(8),{status:200,headers:{'content-type':'image/jpeg'}});
+    }
+    if(options.visionResponse&&String(url).endsWith('/chat/completions')){
+      const request=JSON.parse(init.body);
+      if(Array.isArray(request?.messages?.[0]?.content))return Response.json({model:'vision/resolved',choices:[{message:{content:'Blue image.'}}],
+        ...(options.visionMissingUsage?{}:{usage:{prompt_tokens:250,completion_tokens:15}})});
+    }
+    if(options.chatReplies&&String(url).endsWith('/chat/completions')){
+      const reply=options.chatReplies.shift();
+      if(reply!==undefined)return Response.json({model:'provider/resolved',choices:[{message:{content:reply}}],usage:{prompt_tokens:100,completion_tokens:20}});
+    }
     if(options.gatewayFailure&&String(url).includes('gateway.firboai.app'))return new Response('upstream private error',{status:502});
     return Response.json({model:'provider/resolved',choices:[{message:{content:JSON.stringify({summary:'Test result',report:options.shortReport?'Result':FULL_REPORT,actions:options.noActions?[]:[{action:'send_email',risk:'medium',payload:{to:'test@example.test'}}]})}}],usage:{prompt_tokens:100,completion_tokens:20}});
   };
@@ -171,12 +212,14 @@ for(const name of Object.keys(handlers)){
   test(`${name}: selected gateway route uses one request and keeps company accounting`,async()=>{
     const {state,response,body}=await invoke(name);
     assert.equal(response.status,200);assert.equal(state.calls.length,1);assert.ok(state.calls[0].url.startsWith('https://gateway.firboai.app/v1/'));
-    const usage=state.writes.find(w=>w.table==='usage_events');assert.equal(usage.payload.organization_id,ORG);assert.equal(usage.payload.model,'omniroute:firbo-economy');
+    const usage=state.writes.find(w=>w.table==='usage_events');assert.equal(usage.payload.organization_id,ORG);
+    assert.equal(usage.payload.model,name==='agent-runner'?'omniroute:provider/resolved':'omniroute:firbo-economy');
     assert.equal(body.routing.reported_model,'provider/resolved');assert.equal(body.routing.cost_basis,'configured_estimate');
     assert.ok(!JSON.stringify(body).includes('inference-test'));
   });
   test(`${name}: gateway failure cannot use direct-provider fallback`,async()=>{
-    const {state,response,body}=await invoke(name,{gatewayFailure:true});assert.equal(response.status,502);assert.equal(state.calls.length,1);assert.equal(body.routing.status,'failed');
+    const {state,response,body}=await invoke(name,{gatewayFailure:true});assert.equal(response.status,name==='agent-runner'?503:502);assert.equal(state.calls.length,1);assert.equal(body.routing.status,'failed');
+    if(name==='agent-runner'){assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);}
     assert.ok(!state.calls.some(c=>c.url.includes('api.openai.com')));
   });
   test(`${name}: legacy default preserves old route`,async()=>{
@@ -189,7 +232,8 @@ for(const name of Object.keys(handlers)){
     test(`${name}: ${label} stops before inference`,async()=>{const {state,response}=await invoke(name,options);assert.equal(response.status,status);assert.equal(state.calls.length,0);assert.ok(!state.writes.some(w=>w.table==='approvals'));});
   }
   test(`${name}: usage persistence failure is not reported as success`,async()=>{
-    const {response,body}=await invoke(name,{usageError:true});assert.equal(response.status,503);assert.equal(body.error,'result_save_failed');assert.equal(body.retry_safe,false);
+    const {response,body}=await invoke(name,{usageError:true});assert.equal(response.status,503);
+    assert.equal(body.error,name==='agent-runner'?'reconciliation_required':'result_save_failed');assert.equal(body.retry_safe,false);
   });
 }
 test('chat cannot act on another user conversation',async()=>{const {state,response}=await invoke('agent-chat',{foreignConversation:true});assert.equal(response.status,403);assert.equal(state.calls.length,0);});
@@ -230,6 +274,11 @@ test('reservation estimate is conservative, additive across fallbacks and reject
   const two=maximumInferenceCost({messages:[{role:'user',content:'hello'}]},[{priceIn:1,priceOut:2,maxOutputTokens:100},{priceIn:3,priceOut:4,maxOutputTokens:200}]);
   assert.ok(one>0);assert.ok(two>one);
   assert.throws(()=>maximumInferenceCost({},[{priceIn:-1,priceOut:1,maxOutputTokens:1}]),/invalid_cost_rate/);
+});
+test('non-text token caps reserve conservatively and reject unbounded input',()=>{
+  assert.equal(maximumTokenBoundCost(100_000,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),0.3105);
+  assert.throws(()=>maximumTokenBoundCost(-1,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),/invalid_input_token_cap/);
+  assert.throws(()=>maximumTokenBoundCost(1_000_000_001,[{priceIn:3,priceOut:15,maxOutputTokens:700}]),/invalid_input_token_cap/);
 });
 test('agent-chat offers only work sources not already present in this company',async()=>{
   const {state,response}=await invoke('agent-chat',{agentType:'ceo',integrations:[{kind:'gdrive_read',status:'active'}]});
@@ -310,11 +359,11 @@ for(const handler of ['agent-chat','agent-runner']){
  });
  test(handler+' free outage cannot fall back to paid gateway or legacy',async()=>{
   const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG},freeFailure:true});
-  assert.equal(response.status,502);assert.equal(state.calls.length,1);
+  assert.equal(response.status,handler==='agent-runner'?503:502);assert.equal(state.calls.length,1);
  });
  test(handler+' nonzero free report is refused',async()=>{
   const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG},badFreeCost:true});
-  assert.equal(response.status,502);assert.equal(state.calls.length,1);assert.equal(state.writes.filter(x=>x.table==='usage_events').length,0);
+  assert.equal(response.status,handler==='agent-runner'?503:502);assert.equal(state.calls.length,1);assert.equal(state.writes.filter(x=>x.table==='usage_events').length,0);
  });
  test(handler+' malformed free entitlement fails closed',async()=>{
   const {state,response}=await invoke(handler,{env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:'not-a-company'}});
@@ -371,7 +420,7 @@ for (const name of ['agent-chat','agent-runner']) {
   });
   test(`${name}: a failing own key says why and never falls back to Firbo's models`, async () => {
     const {state,response,body}=await invoke(name,{model:'openai:gpt-5-mini',ownKey:OWN,ownFailure:true});
-    assert.equal(response.status,502);
+    assert.equal(response.status,name==='agent-runner'?503:502);
     assert.equal(body.reason,'own_key_openai_http_401');
     assert.equal(state.calls.length,1);
     assert.ok(!state.calls.some(c=>String(c.url).includes('gateway.firboai.app')));
@@ -386,7 +435,7 @@ for (const name of ['agent-chat','agent-runner']) {
   });
 }
 
-test('agent-runner: the agent searches, reads a page, then reports; usage and steps are recorded once', async () => {
+test('agent-runner: the agent searches, reads a page, then reports; every model attempt has one receipt', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'allow'},{tool_name:'browser_extract',enabled:true,policy:'allow'}];
   const chatReplies=['{"action":"web_search","input":"sports market 2026"}','{"action":"read_page","input":"https://news.example/a"}',JSON.stringify({summary:'Market up 5%',report:FULL_REPORT+'\n## Sources\n- https://news.example/a',actions:[]})];
   const {state,response}=await invoke('agent-runner',{tools,chatReplies});
@@ -396,13 +445,151 @@ test('agent-runner: the agent searches, reads a page, then reports; usage and st
   const lastBody=JSON.parse(chats[2].init.body);
   assert.ok(lastBody.messages.some(m=>/Full article text/.test(m.content)));
   const usage=state.writes.filter(w=>w.table==='usage_events');
-  assert.equal(usage.length,1);
-  assert.equal(usage[0].payload.input_tokens,300);
-  assert.equal(usage[0].payload.cost_usd,Math.round((300*1+60*2))/1e6);
+  assert.equal(usage.length,5);
+  const searches=usage.filter(row=>row.payload.model==='omniroute:search/duckduckgo-free');
+  assert.equal(searches.length,2);assert.ok(searches.every(row=>row.payload.cost_usd===0));
+  const inference=usage.filter(row=>row.payload.input_tokens===100&&row.payload.output_tokens===20);
+  assert.equal(inference.length,3);assert.ok(inference.every(row=>row.op==='rpc'));
+  assert.ok(Math.abs(
+    usage.reduce((sum,row)=>sum+row.payload.cost_usd,0)
+      - 3*Math.round((100*1+20*2))/1e6,
+  ) < 1e-12);
   const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
   assert.equal(result.summary,'Market up 5%');
+  assert.equal(result.accounting.attempts.length,5);
   assert.deepEqual(result.steps.map(s=>s.action),['web_search','read_page']);
   assert.ok(result.powers_used.includes('web_search')&&result.powers_used.includes('browser_extract'));
+});
+test('agent-runner: vision uses its own claim-bound receipt and exact dispatch identity', async () => {
+  const tools=[{tool_name:'image_analyze',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"analyze_image","input":"https://images.example/blue.png what color?"}',JSON.stringify({summary:'Image checked',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,visionResponse:true,env:{FIRBO_VISION_MODEL:'firbo-vision'}});
+  assert.equal(response.status,200);
+  const visionCall=state.calls.find(c=>{
+    if(!String(c.url).endsWith('/chat/completions'))return false;
+    return Array.isArray(JSON.parse(c.init.body)?.messages?.[0]?.content);
+  });
+  assert.ok(visionCall);
+  const reserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference');
+  const visionReserve=reserves.find(r=>r.args.p_route==='omniroute:firbo-vision/vision');
+  assert.ok(visionReserve);assert.equal(visionReserve.args.p_output_token_cap,700);assert.ok(visionReserve.args.p_reserved_usd>0);
+  assert.equal(visionCall.init.headers['x-request-id'],state.runnerRequests[1]);
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,3);assert.equal(usage[1].payload.model,'omniroute:firbo-vision/vision');
+  assert.equal(usage[1].payload.input_tokens,250);assert.equal(usage[1].payload.output_tokens,15);
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.accounting.attempts.length,3);
+});
+test('agent-runner: missing vision usage is ambiguous and cannot publish or continue', async () => {
+  const tools=[{tool_name:'image_analyze',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"analyze_image","input":"https://images.example/blue.png what color?"}',JSON.stringify({summary:'Must not publish',report:FULL_REPORT,actions:[]})];
+  const {state,response,body}=await invoke('agent-runner',{tools,chatReplies,visionResponse:true,visionMissingUsage:true,env:{FIRBO_VISION_MODEL:'firbo-vision'}});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='vision_usage_missing'));
+  assert.equal(state.rpcs.filter(r=>r.fn==='firbo_settle_inference').length,1);
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: paid image generation has its own exact claim-bound receipt', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a blue launch poster"}',JSON.stringify({summary:'Poster created',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,imageResponse:true,env:{
+    FIRBO_IMAGE_MODEL:'firbo-image',FIRBO_IMAGE_COST_USD:'0.04',FIRBO_IMAGE_MAX_COST_USD:'0.06',
+  }});
+  assert.equal(response.status,200);
+  const imageCall=state.calls.find(c=>String(c.url).endsWith('/images/generations'));
+  assert.ok(imageCall);
+  assert.deepEqual(JSON.parse(imageCall.init.body),{
+    model:'firbo-image',prompt:'a blue launch poster',n:1,size:'1024x1024',response_format:'b64_json',
+  });
+  const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='omniroute:firbo-image/image');
+  assert.ok(reserve);assert.equal(reserve.args.p_output_token_cap,1);assert.equal(reserve.args.p_reserved_usd,0.06);
+  assert.equal(imageCall.init.headers['x-request-id'],state.runnerRequests[1]);
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,3);assert.equal(usage[1].payload.model,'omniroute:firbo-image/image');assert.equal(usage[1].payload.cost_usd,0.04);
+  assert.equal(state.stored.length,1);assert.match(state.stored[0].path,new RegExp(`^${ORG}/[0-9a-f-]+\\.png$`));
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.accounting.attempts.length,3);assert.equal(result.cost_usd,0.04028);
+});
+test('agent-runner: failed paid image dispatch is ambiguous and never falls back', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a blue launch poster"}',JSON.stringify({summary:'Must not publish',report:FULL_REPORT,actions:[]})];
+  const {state,response,body}=await invoke('agent-runner',{tools,chatReplies,imageResponse:true,imageGatewayFailure:true,env:{
+    FIRBO_IMAGE_MODEL:'firbo-image',FIRBO_IMAGE_COST_USD:'0.04',FIRBO_IMAGE_MAX_COST_USD:'0.06',
+  }});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='image_gateway_http_502'));
+  assert.equal(state.calls.filter(c=>String(c.url).endsWith('/images/generations')).length,1);
+  assert.ok(!state.calls.some(c=>String(c.url).includes('pollinations.ai')));
+  assert.equal(state.rpcs.filter(r=>r.fn==='firbo_settle_inference').length,1);
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: free image generation still gets a zero-cost attempt receipt', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a green match poster"}',JSON.stringify({summary:'Poster created',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,pollinationsResponse:true});
+  assert.equal(response.status,200);
+  const call=state.calls.find(c=>String(c.url).startsWith('https://image.pollinations.ai/'));
+  assert.ok(call);assert.match(String(call.url),/seed=\d+$/);
+  const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='pollinations:free/image');
+  assert.ok(reserve);assert.equal(reserve.args.p_reserved_usd,0);
+  const usage=state.writes.find(w=>w.table==='usage_events'&&w.payload.model==='pollinations:free/image');
+  assert.equal(usage.payload.cost_usd,0);assert.equal(usage.payload.input_tokens,0);assert.equal(usage.payload.output_tokens,0);
+  assert.equal(state.stored.length,1);assert.match(state.stored[0].path,/\.jpg$/);
+});
+test('agent-runner: empty gateway search uses configured Tavily and feeds evidence to the model', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"web_search","input":"sports market"}',JSON.stringify({summary:'Evidence retained',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,emptyGatewaySearch:true,env:{TAVILY_API_KEY:'synthetic-tavily-key'}});
+  assert.equal(response.status,200);
+  const calls=state.calls.filter(c=>c.url==='https://api.tavily.com/search');
+  // The existing runner gathers task research before the model's explicit search step.
+  assert.equal(calls.length,2);
+  assert.match(JSON.parse(calls[0].init.body).query,/Review test task/);
+  assert.equal(JSON.parse(calls[1].init.body).query,'sports market');
+  assert.ok(calls.every(c=>c.init.headers.authorization==='Bearer synthetic-tavily-key'));
+  assert.ok(calls.every(c=>JSON.parse(c.init.body).include_usage===true));
+  const tavilyReserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='tavily:basic/search');
+  assert.equal(tavilyReserves.length,2);assert.ok(tavilyReserves.every(r=>r.args.p_reserved_usd===0.016));
+  const tavilyUsage=state.writes.filter(w=>w.table==='usage_events'&&w.payload.model==='tavily:basic/search');
+  assert.equal(tavilyUsage.length,2);assert.ok(tavilyUsage.every(w=>w.payload.cost_usd===0.008));
+  const chats=state.calls.filter(c=>String(c.url).endsWith('/chat/completions'));
+  assert.ok(JSON.parse(chats.at(-1).init.body).messages.some(m=>m.content.includes('Sports market grows')));
+  assert.ok(!JSON.stringify(state.writes).includes('synthetic-tavily-key'));
+});
+test('agent-runner: configured gateway search gets one paid receipt per dispatch', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"web_search","input":"sports market"}',JSON.stringify({summary:'Evidence retained',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,env:{
+    FIRBO_GATEWAY_SEARCH_COST_USD:'0.003',FIRBO_GATEWAY_SEARCH_MAX_COST_USD:'0.005',
+  }});
+  assert.equal(response.status,200);
+  const calls=state.calls.filter(c=>String(c.url).includes('gateway.firboai.app')&&String(c.url).endsWith('/search'));
+  assert.equal(calls.length,2);assert.ok(calls.every(c=>c.init.headers['x-request-id']));
+  const reserves=state.rpcs.filter(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='omniroute:search/auto');
+  assert.equal(reserves.length,2);assert.ok(reserves.every(r=>r.args.p_reserved_usd===0.005));
+  const usage=state.writes.filter(w=>w.table==='usage_events'&&w.payload.model==='omniroute:search/auto');
+  assert.equal(usage.length,2);assert.ok(usage.every(w=>w.payload.cost_usd===0.003));
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.cost_usd,0.00628);assert.equal(result.accounting.attempts.length,4);
+});
+test('agent-runner: ambiguous paid gateway search cannot fall back or publish', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const {state,response,body}=await invoke('agent-runner',{tools,gatewaySearchFailure:true,env:{
+    FIRBO_GATEWAY_SEARCH_COST_USD:'0.003',FIRBO_GATEWAY_SEARCH_MAX_COST_USD:'0.005',TAVILY_API_KEY:'synthetic-tavily-key',
+  }});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='web_gateway_http_502'));
+  assert.equal(state.calls.filter(c=>String(c.url).endsWith('/search')).length,1);
+  assert.ok(!state.calls.some(c=>String(c.url)==='https://api.tavily.com/search'));
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: missing Tavily usage is ambiguous and cannot publish', async () => {
+  const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
+  const {state,response,body}=await invoke('agent-runner',{tools,emptyGatewaySearch:true,tavilyMissingUsage:true,env:{TAVILY_API_KEY:'synthetic-tavily-key'}});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='tavily_usage_missing'));
+  assert.ok(!state.calls.some(c=>String(c.url).endsWith('/chat/completions')));
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
 });
 test('agent-runner: a gateway reply that is only the model thinking aloud is asked again', async () => {
   const chatReplies=["Okay, let's see. The user wants a report about the market. I need to",JSON.stringify({summary:'Market up 5%',report:FULL_REPORT,actions:[]})];
@@ -423,7 +610,7 @@ test('agent-runner: a draft below the professional standard gets exactly one qua
   const first=JSON.parse(chats[0].init.body).messages[0].content;
   assert.match(first,/DELIVERABLE: a professional report/);
   const usage=state.writes.filter(w=>w.table==='usage_events');
-  assert.equal(usage.length,1);assert.equal(usage[0].payload.input_tokens,200);
+  assert.equal(usage.length,2);assert.ok(usage.every(row=>row.payload.input_tokens===100));
   const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
   assert.equal(result.format,'report');assert.equal(result.calls,2);
 });
@@ -481,7 +668,7 @@ test('agent-runner: the calculator power is offered and its exact result is fed 
   assert.match(JSON.parse(chats[0].init.body).messages[0].content,/"action": "calculator"/);
   assert.ok(JSON.parse(chats[1].init.body).messages.some(m=>/1200 \* 0\.24 = 288/.test(m.content)));
 });
-const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise'};
+const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise',FIRBO_SERVER_PRICE_IN_PER_M:'2',FIRBO_SERVER_PRICE_OUT_PER_M:'4',FIRBO_SERVER_MAX_OUTPUT_TOKENS:'8192'};
 const serverReplies=()=>['{"action":"server_task","input":"print(sum(range(10)))"}',JSON.stringify({summary:'45',report:'45',actions:[]})];
 test('suggest-only employees cannot execute through either OpenJarvis server', async () => {
   for (const extra of [{ autonomy: 'suggest' }, { freshAutonomy: 'suggest' }, { freshAgentEnabled: false }]) {
@@ -500,7 +687,45 @@ test('agent-runner: a customer company gets only the sandboxed server agent, nev
   assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')));
   const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
   assert.equal(box.init.headers.authorization,'Bearer box-key');
+  const usage=state.writes.find(w=>w.table==='usage_events'&&w.payload.model==='openjarvis:firbo-quality');
+  assert.ok(usage);assert.equal(usage.payload.input_tokens,30);assert.equal(usage.payload.output_tokens,5);assert.equal(usage.payload.cost_usd,0.00008);
+  assert.equal(box.init.headers['x-firbo-request-id'],usage.payload.inference_request_id);
+  const reservation=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='openjarvis:sandbox');
+  assert.ok(reservation);assert.ok(reservation.args.p_reserved_usd>=usage.payload.cost_usd);
   assert.match(JSON.parse(state.calls.find(c=>String(c.url).includes('gateway')).init.body).messages[0].content,/locked sandbox/);
+});
+test('agent-runner: missing server usage is ambiguous and blocks publication or another provider call', async () => {
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,serverMissingUsage:true});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.equal(state.calls.filter(c=>String(c.url).startsWith('https://box-jarvis.example')&&String(c.url).endsWith('/chat/completions')).length,1);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'));
+});
+test('agent-runner: denied server reservation makes no server inference request', async () => {
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,denyServerReservation:true});
+  assert.equal(response.status,402);assert.equal(body.error,'budget_exceeded');
+  assert.equal(state.calls.filter(c=>String(c.url).startsWith('https://box-jarvis.example')&&String(c.url).endsWith('/chat/completions')).length,0);
+  assert.ok(!state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'));
+});
+test('agent-runner: server execution is not offered without explicit pricing bounds', async () => {
+  const env={...serverEnv};delete env.FIRBO_SERVER_PRICE_IN_PER_M;
+  const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env});
+  assert.equal(response.status,200);assert.ok(!state.calls.some(c=>/jarvis/.test(String(c.url))));
+});
+test('agent-runner feeds actual server tool failures back to the employee', async () => {
+  const execution={contract:'openjarvis-execution/v1',mode:'agent',tool_count:1,failed_count:1,
+    tools:[{name:'code_interpreter',success:false,output:'Sandbox execution failed',truncated:false}],truncated:false};
+  const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+    chatReplies:serverReplies(),plan:'pro',env:serverEnv,serverExecution:execution});
+  assert.equal(response.status,200);
+  const server=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
+  assert.equal(JSON.parse(server.init.body).firbo_include_execution,true);
+  const final=state.calls.filter(c=>String(c.url).includes('gateway')&&String(c.url).endsWith('/chat/completions')).at(-1);
+  assert.match(JSON.stringify(JSON.parse(final.init.body).messages),/Sandbox execution failed/);
+  assert.match(JSON.stringify(JSON.parse(final.init.body).messages),/1 failed/);
 });
 test('agent-runner: the platform admin company uses the full server agent; a plan without the power gets none', async () => {
   const tools=[{tool_name:'code_interpreter',enabled:true,policy:'allow'}];
