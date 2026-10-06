@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { CheckCircle2, Loader2, Play, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,22 +17,24 @@ import { ReportView } from './ReportView';
 
 /** What the CEO offers under its reply: talk to an employee, give an employee a task, or call a meeting. */
 export function CeoActions({ ask, task, meet }: { ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null }) {
-  if (ask) return <AskButton ask={ask} />;
-  if (task) return <TaskButton offer={task} />;
-  if (meet) return <MeetButton offer={meet} />;
-  return null;
+  const { current } = useCompanyAuth();
+  return <>
+    {ask && <AskButton ask={ask} />}
+    {task && <TaskButton key={`${current?.organization.id}:${task.agentId}:${task.title}:${task.details}`} offer={task} />}
+    {meet && <MeetButton offer={meet} />}
+  </>;
 }
 
 function useAgent(id: string) {
   const { current } = useCompanyAuth();
-  const [agent, setAgent] = useState<AgentRow | null>(null);
+  const [loaded, setLoaded] = useState<{ orgId: string; id: string; agent: AgentRow | null } | null>(null);
   const orgId = current?.organization.id ?? '';
   useEffect(() => {
     let live = true;
-    if (orgId) listAgents(orgId).then((all) => live && setAgent(all.find((a) => a.id === id) ?? null)).catch(() => undefined);
+    if (orgId) listAgents(orgId).then((all) => live && setLoaded({ orgId, id, agent: all.find((a) => a.id === id) ?? null })).catch(() => undefined);
     return () => { live = false; };
   }, [orgId, id]);
-  return agent;
+  return loaded?.orgId === orgId && loaded.id === id ? loaded.agent : null;
 }
 
 /** "Give it to <employee>": creates the task, runs it here and shows the finished work (slides, report or message). */
@@ -42,22 +44,43 @@ function TaskButton({ offer }: { offer: TaskOffer }) {
   const copy = useWorkspaceCopy();
   const { current, user } = useCompanyAuth();
   const agent = useAgent(offer.agentId);
-  const [phase, setPhase] = useState<'idle' | 'working' | 'done'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'working' | 'done' | 'awaiting_approval' | 'failed'>('idle');
   const [result, setResult] = useState<TaskResult | null>(null);
+  const submitting = useRef(false);
   if (!agent || !current || !user || !WRITER_ROLES.includes(current.role)) return null;
   const name = agentLabel(agent, i18n).name;
   const give = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
+    let created = false;
     setPhase('working');
     try {
       const id = await createTask({ orgId: current.organization.id, userId: user.id, title: offer.title, description: offer.details, priority: 'normal', agentId: agent.id });
-      try { await runTask(id, lang); } catch (err) { toast.error(runErrorText(t, err)); }
-      const { data } = await requireClient().from('tasks').select('result').eq('id', id).maybeSingle();
+      created = true;
+      let outcome;
+      try { outcome = await runTask(id, lang); } catch (err) {
+        toast.error(runErrorText(t, err));
+        setPhase('failed');
+        return;
+      }
+      if (outcome.status === 'awaiting_approval') {
+        setPhase('awaiting_approval');
+        return;
+      }
+      const { data, error } = await requireClient().from('tasks').select('status,result').eq('id', id).eq('organization_id', current.organization.id).maybeSingle();
+      if (error || data?.status !== 'completed' || !data.result) {
+        toast.error(runErrorText(t, error));
+        setPhase('failed');
+        return;
+      }
       setResult(data?.result ? cleanTaskResult(data.result as TaskResult) : null);
       setPhase('done');
     } catch (err) {
       console.error(err);
       toast.error(t('mis.createError'));
-      setPhase('idle');
+      setPhase(created ? 'failed' : 'idle');
+    } finally {
+      submitting.current = false;
     }
   };
   return (
@@ -69,6 +92,7 @@ function TaskButton({ offer }: { offer: TaskOffer }) {
         </button>
       )}
       {phase === 'working' && <span className="fb-dim inline-flex items-center gap-1.5 text-[12px]" aria-live="polite"><Loader2 size={14} className="animate-spin" /> {copy('ctWorking', { name })}</span>}
+      {(phase === 'failed' || phase === 'awaiting_approval') && <span className="fb-dim text-[12px]" aria-live="polite">{t(`audit.taskstate.${phase}`)} <Link className="underline" to="/tasks">{copy('ctInTasks')}</Link></span>}
       {phase === 'done' && (
         <>
           <span className="inline-flex items-center gap-1.5 text-[12px]"><CheckCircle2 size={14} style={{ color: 'var(--fb-ok, #34d399)' }} /> {copy('ctDone')} <Link className="underline" to="/tasks">{copy('ctInTasks')}</Link></span>

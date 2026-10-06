@@ -292,3 +292,17 @@ Not done / remains:
   (verify_jwt): live acceptance through the app after the frontend release.
 - Remains: frontend release from this branch; live meeting through the app; plan step 4 (CEO
   proposes apps to connect as work sources; Trade Athletes has no integrations connected).
+
+### Codex: CEO frontend acceptance follow-up
+
+- Continued Claude `35a5184`, retaining PR #18 and the newer v83/v36/v26 backend.
+- Fixed combined offers (task/meeting/handover), false Done on failed or approval
+  runs, persisted company-scoped completion, double-click duplicate creation and
+  stale employee state across company changes. No backend or SQL replay.
+- Local production build, TypeScript and all 482 frontend tests pass, including
+  11 new action/control tests. Parent 35a5184 has 14 green workflows; run relevant
+  CI for the new source before publishing. See FIRBO-CEO-ACTIONS-20261006.md.
+- Fresh production remains ce421e3 / dpl_7BjPjgmuseFTEFgTRTtBoJpnqcVX. New
+  meeting/delegation controls and these fixes still need publication/acceptance.
+- Mac, OAuth, messaging, real customer isolation and all other master-plan gates
+  remain open. No permissions, device jobs or external messages were changed.
