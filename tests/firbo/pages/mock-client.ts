@@ -16,6 +16,7 @@ const messages = [
 ];
 const device = (id:string,paired:boolean,last_seen_at:string|null) => ({id,name:`${SAMPLE_NAME}-${id}`,organization_id:'org-1',platform:'Windows 11 x64',paired,last_seen_at,capabilities:{job_kinds:paired?['list','read','browser_open']:[]},revoked_at:null,created_at:date});
 const devices = [device('d1',true,new Date().toISOString()),device('d2',true,new Date().toISOString()),device('offline',true,date),device('unpaired',false,null)];
+if(params.get('mac_update')==='1')devices[0].platform='darwin x64';
 if(params.get('browser_control')==='1')devices[0].capabilities.job_kinds.push('browser_task');
 const jobs = (id:string) => [
  {id:`${id}-j1`,device_id:id,organization_id:'org-1',kind:'list',params:{path:'C:/Demo/'+'selected-folder-'.repeat(16)},status:'done',result:{entries:[{name:`${id}-result-`+'long-file-name-'.repeat(12),type:'file',size:12345}]},error:null,created_at:date,finished_at:date},

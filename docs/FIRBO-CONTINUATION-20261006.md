@@ -1101,9 +1101,49 @@ Remains:
 - Preserve FreeLLMAPI and both contributors. No permissions auto-enabled, Mac
   re-pairing, fabricated provider connection or master-plan completion claim.
 
+
+## PR45 — live Mac browser updater access (6 October, latest)
+
+Changed: preserved concurrent PR44 and Claude 7e7555d5, then added a download-only
+updater notice to the selected paired/non-revoked Mac without browser_task. Eight
+languages, existing pairing/permissions, initial FIRBO origin and local consent
+remain. No automatic device job/install or backend/database/VPS cutover.
+
+Tested/passed: implementation head abef6ba1 and final head
+4ef4f2766ad10cc25a5f0629bdd5b61e1713f5c4 each passed all ten triggered workflow
+families. Final merge 672154322a2c3d2a0d3a546a5c6be0edc99bf1d4 has the same tree
+b3e207842ef9bb42054ef7ff65a526c6ecab4416. Actual Chromium 320/1440 Mac-update
+cases passed device/user switching with zero synthetic writes. Asset regression
+checks reviewed updater equality and runtime hashes. Frontend types/build pass;
+Node-only integrity imports were moved out of frontend TS after its initial error.
+
+Production: dpl_4J9dKh45q2cKVcowbuvpFo1uBywR READY, production target, pinned
+4ef4f276 source rebuilt from accepted preview dpl_9Qe9VPC69C5mQSueMpZ3DoDJLK6A
+with withLatestCommit:false. Independent firboai.app lookup agrees. Home and all
+three download assets HTTP200 and byte-identical to reviewed source. Served
+ComputersPage-CwaRbMEv.js contains both the notice and updater link.
+Updater SHA256 c48c01baf01c843646ca6d10de12992bdfc42a06aaa4c144fd4e17a1b8904a42.
+Rollback: dpl_EgkUQpS3G5qkSKB9iuCGbJW3RFaD. No runtime redeployment is needed for
+this documentation-only checkpoint.
+
+New owner evidence: guarded VPS repair succeeded on both services, one successful
+code_interpreter/calculator receipt each, native_execution_verified=true, backup
+/var/backups/firbo-tools-9wapfud6. Do not reinstall or restart diagnosis from zero.
+File artifact/read-back and full parity remain unverified. The paired Mac was online
+at 20:58 UTC but still lacked browser_task. Use Computers -> existing Mac -> updater;
+retain pairing and require real local approval/Stop/offline/browser acceptance.
+
+Failed/limits: secure cloud-browser login was submitted, but the site returned
+Failed to fetch. No authenticated UI task or physical Mac job ran here. Existing
+code_interpreter intentionally forbids file IO; do not remove that restriction to
+manufacture artifact acceptance. The wider PR44 accounting pricing/MCP provisioning,
+provider/customer, design/voice and restore/load gates remain open. FreeLLMAPI stays
+installed. PR13 stays CI-only. Live migrations already recorded by PR44 must not be
+replayed under historical source timestamps. Read current shared/live state first.
+
 ## Continuation — current-company accounting UI/API
 
-Changed: continued shared 7e7555d5 and Codex parity ce421e31 without rewriting
+Changed: continued shared 8a59bc66 (including PR45) and Codex parity ce421e31 without rewriting
 either branch. Added Billing owner/admin snapshot backed by a public invoker /
 private privileged read-only RPC, current membership gates and safe scoped fields.
 No automatic reconciliation, cost release, private-table grants or provider call.

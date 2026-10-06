@@ -33,7 +33,7 @@ jobs:
       - run: npm ci
       - run: npm test
       - name: Native control contract tests
-        run: node --experimental-strip-types --test ../tests/firbo/native-control.test.mjs
+        run: node --experimental-strip-types --test ../tests/firbo/native-control.test.mjs ../tests/firbo/mac-browser-update.test.mjs
       - name: Shared gateway and actual handler regression tests (mocked services)
         run: node --experimental-strip-types --test ../tests/firbo/gateway-routing.test.mjs ../tests/firbo/edge-entrypoints.test.mjs
       - name: Isolated Edge Function type check (SDK stub, not deployed runtime)
