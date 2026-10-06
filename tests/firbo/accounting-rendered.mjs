@@ -1,7 +1,7 @@
 // Real BillingPage and accounting effects. Localhost only, synthetic RPCs.
 import assert from 'node:assert/strict';
 import { chromium } from '../../tools/firbo-browser-runtime/node_modules/playwright/index.mjs';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile, rm } from 'node:fs/promises';
 const origin = 'http://127.0.0.1:5218';
 const evidence = '/tmp/firbo-accounting-evidence';
 const orgA = '11111111-0815-4815-8815-111111111111';
@@ -17,7 +17,25 @@ const receipt = (organization_id, amount = .123456) => ({
 });
 await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ headless: true });
+const generated = [];
 try {
+  for (const [name, content] of [
+    ['accounting-test.html', '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/accounting-harness.jsx"></script></body></html>'],
+    ['accounting-harness.jsx', `
+        import React, {useState} from 'react';
+        import {createRoot} from 'react-dom/client';
+        import {MemoryRouter} from 'react-router';
+        import {I18nProvider} from '/src/i18n/I18nProvider.tsx';
+        import {BillingPage} from '/src/pages/BillingPage.tsx';
+        import '/src/index.css';
+        window.harness={queue:[],organization:'${orgA}',role:'owner'};
+        function App(){const [n,setN]=useState(0); window.harness.render=()=>setN(v=>v+1); return React.createElement(I18nProvider,{key:(window.harness.lang??'en')+':'+(window.harness.localeRevision??0)},React.createElement(MemoryRouter,{},React.createElement(BillingPage)));}
+        createRoot(document.getElementById('root')).render(React.createElement(App));
+      `],
+  ]) {
+    const file = new URL('../../frontend/' + name, import.meta.url);
+    await writeFile(file, content, {flag:'wx'}); generated.push(file);
+  }
   for (const width of [320, 390, 1280]) {
     const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block' });
     const page = await context.newPage();
@@ -27,20 +45,6 @@ try {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== origin) return route.abort();
-      if (url.pathname === '/accounting-test.html') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module">import RefreshRuntime from "/@react-refresh"; RefreshRuntime.injectIntoGlobalHook(window); window.$RefreshReg$=()=>{}; window.$RefreshSig$=()=>type=>type; window.__vite_plugin_react_preamble_installed__=true;</script><script type="module" src="/accounting-harness.js"></script></body></html>` });
-      if (url.pathname === '/accounting-harness.js') return route.fulfill({ contentType: 'application/javascript', body: `
-        import React from '/node_modules/.vite/deps/react.js';
-        import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
-        import * as RouterModule from '/node_modules/.vite/deps/react-router.js';
-        import {I18nProvider} from '/src/i18n/I18nProvider.tsx';
-        import {BillingPage} from '/src/pages/BillingPage.tsx';
-        import '/src/index.css';
-        const {useState}=React; const {createRoot}=ReactDOM;
-        const {MemoryRouter}=RouterModule.default??RouterModule;
-        window.harness={queue:[],organization:'${orgA}',role:'owner'};
-        function App(){const [n,setN]=useState(0); window.harness.render=()=>setN(v=>v+1); return React.createElement(I18nProvider,{key:(window.harness.lang??'en')+':'+(window.harness.localeRevision??0)},React.createElement(MemoryRouter,{},React.createElement(BillingPage)));}
-        createRoot(document.getElementById('root')).render(React.createElement(App));
-      ` });
       if (url.pathname === '/src/lib/company/AuthProvider.tsx') return route.fulfill({ contentType: 'application/javascript', body: `export function useCompanyAuth(){return {current:{organization:{id:window.harness.organization,name:'Synthetic company'},role:window.harness.role}}}` });
       if (url.pathname === '/src/lib/company/client.ts') return route.fulfill({ contentType: 'application/javascript', body: `
         export const COMPANY_ENABLED=true;
@@ -114,4 +118,4 @@ try {
     console.log(`PASS Billing/accounting ${width}px: pending precision, unknown costs, refresh, tenant race, abort, denial, role revocation, bounded controls, eight dictionaries`);
     await context.close();
   }
-} finally { await browser.close(); }
+} finally { await browser.close(); for (const file of generated) await rm(file); }
