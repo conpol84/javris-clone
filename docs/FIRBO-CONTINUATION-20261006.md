@@ -952,3 +952,35 @@ Remains:
   authorized reconciliation monitoring remain separate accounting stages.
 - Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-VISION-20261006.md`. Re-read live
   dependencies and migration ledgers before any release; never merge PR #13.
+
+## Candidate — runner image generation uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #36 `0d4844aa` and preserved newer exact-green
+  PR #30 `d9c07eb9` as a separate merge parent. Neither branch was rewritten.
+- Paid gateway image generation now uses exact-payload reserve, durable dispatch,
+  configured conservative cost reservation and atomic settlement. The ledger
+  request ID is sent to the gateway and ambiguous dispatch never falls back to
+  a second image provider.
+- Pollinations image generation uses a preselected seed in its exact payload and
+  records a zero-cost attempt receipt. Artifact storage occurs after settlement.
+
+Tested / passed:
+- 117 focused agent-tool/accounting/actual-entrypoint tests and all 567
+  non-rendered FIRBO Node tests.
+- Isolated Edge TypeScript and Git diff validation.
+- Only synthetic database and image transports were used; no provider spend.
+
+Failed / limitations:
+- This worktree lacks frontend dependencies and the runtime lacks pytest, so
+  those combined-tree checks remain exact-head CI gates. Both parent heads are
+  independently green, but that does not certify the new combined head.
+- No migration, deployment, provider call, image generation, device job or
+  permission change occurred.
+
+Remains:
+- Publish an isolated draft and require all exact-head CI. Then continue billed
+  search, server execution and authorized reconciliation monitoring route by
+  route before any release.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-IMAGE-20261006.md`. Preserve all
+  prior real-device/account/customer/recovery gates and never merge PR #13.

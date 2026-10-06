@@ -9,7 +9,19 @@ import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-search.ts';
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
-import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage, visionRequestPayload } from '../_shared/agent-tools.ts';
+import {
+  calculatorTool,
+  weatherTool,
+  exchangeRateTool,
+  knowledgeSearch,
+  analyzeImage,
+  visionRequestPayload,
+  gatewayImageRequestPayload,
+  pollinationsImageRequestPayload,
+  requestGatewayImage,
+  requestPollinationsImage,
+  storeGeneratedImage,
+} from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
 import { detectDeliverable, deliverableInstructions, needsPolish, polishSystem } from '../_shared/deliverables.ts';
 import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
@@ -587,15 +599,54 @@ Deno.serve(async (req) => {
     if (usable('exchange_rate') || usable('currency')) loopTools.exchange_rate = (q) => exchangeRateTool(q, fetch, req.signal);
     if (usable('knowledge_search') || usable('retrieval')) loopTools.knowledge_search = (q) => knowledgeSearch(admin, task.organization_id, q);
     const gwV1 = gw ? `${gw.base.replace(/\/v1$/, '')}/v1` : '';
-    if (usable('image_generate')) loopTools.generate_image = (p) => generateImage(p, {
-      organizationId: task.organization_id, signal: req.signal,
-      gateway: gw && Deno.env.get('FIRBO_IMAGE_MODEL') ? { base: gwV1, key: gw.key, model: Deno.env.get('FIRBO_IMAGE_MODEL') } : undefined,
-      store: { upload: async (path, bytes, type) => {
+    if (usable('image_generate')) loopTools.generate_image = async (prompt) => {
+      const store = { upload: async (path: string, bytes: Uint8Array, type: string) => {
         const { error } = await admin.storage.from('media').upload(path, bytes, { contentType: type, upsert: false });
         if (error) throw new Error('image_store_failed');
         return admin.storage.from('media').getPublicUrl(path).data.publicUrl;
-      } },
-    });
+      } };
+      const configuredModel = Deno.env.get('FIRBO_IMAGE_MODEL')?.trim();
+      let artifact;
+      if (gw && configuredModel) {
+        const payload = gatewayImageRequestPayload(prompt, configuredModel);
+        if (!payload) return 'Describe the image to create.';
+        const costUsd = Number(Deno.env.get('FIRBO_IMAGE_COST_USD'));
+        const reservedUsd = Number(Deno.env.get('FIRBO_IMAGE_MAX_COST_USD') ?? Deno.env.get('FIRBO_IMAGE_COST_USD'));
+        if (!Number.isFinite(costUsd) || costUsd < 0 || costUsd > 1_000
+          || !Number.isFinite(reservedUsd) || reservedUsd < costUsd || reservedUsd > 1_000) {
+          throw new Error('image_cost_config_invalid');
+        }
+        artifact = await accountedAttempt({
+          payload, route: `omniroute:${configuredModel}/image`, outputTokenCap: 1, reservedUsd,
+        }, async ({ requestId }) => {
+          const started = Date.now();
+          const result = await requestGatewayImage(payload, {
+            base: gwV1, key: gw.key, requestId, signal: req.signal,
+          });
+          return { value: result, usage: {
+            model: `omniroute:${configuredModel}/image`, inputTokens: 0, outputTokens: 0,
+            costUsd, latencyMs: Date.now() - started, ownKey: false,
+          } };
+        });
+        routedCost += costUsd;
+      } else {
+        const payload = pollinationsImageRequestPayload(prompt, Math.floor(Math.random() * 1e9));
+        if (!payload) return 'Describe the image to create.';
+        artifact = await accountedAttempt({
+          payload, route: 'pollinations:free/image', outputTokenCap: 1, reservedUsd: 0,
+        }, async () => {
+          const started = Date.now();
+          const result = await requestPollinationsImage(payload, { signal: req.signal });
+          return { value: result, usage: {
+            model: 'pollinations:free/image', inputTokens: 0, outputTokens: 0,
+            costUsd: 0, latencyMs: Date.now() - started, ownKey: false,
+          } };
+        });
+      }
+      return storeGeneratedImage(prompt, artifact, {
+        organizationId: task.organization_id, store, signal: req.signal,
+      });
+    };
     if ((usable('image_analyze') || usable('vision')) && gw) loopTools.analyze_image = async (q) => {
       const visionModel = Deno.env.get('FIRBO_VISION_MODEL') ?? 'firbo-quality';
       const payload = visionRequestPayload(q, visionModel);

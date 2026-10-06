@@ -103,15 +103,29 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
             url = f"{self._api_prefix}/chat/completions"
             resp = self._client.post(url, json=payload)
             if resp.status_code == 400 and "tools" in payload:
-                if self.engine_id == "omniroute":
-                    raise EngineConnectionError(
-                        "OmniRoute rejected a request containing tools (HTTP 400). "
-                        "No text-only retry was performed; "
-                        "verify provider tool support."
-                    )
-                payload.pop("tools", None)
-                payload.pop("tool_choice", None)
-                resp = self._client.post(url, json=payload)
+                # Host-installed FIRBO also uses the vLLM-compatible adapter.
+                # Route policy must follow its aliases, not only adapter ID.
+                if self.engine_id == "omniroute" or payload["model"] in {
+                    "firbo-quality",
+                    "firbo-economy",
+                }:
+                    # Some routed providers reject the optional auto selector.
+                    # Omitting it preserves default auto semantics AND all tools.
+                    # An explicit required/named selection must never be relaxed.
+                    if payload.get("tool_choice") == "auto":
+                        retry_payload = dict(payload)
+                        retry_payload.pop("tool_choice")
+                        resp = self._client.post(url, json=retry_payload)
+                    if resp.status_code == 400:
+                        raise EngineConnectionError(
+                            "FIRBO gateway rejected tools (HTTP 400). "
+                            "No text-only retry was performed; "
+                            "verify provider tool support."
+                        )
+                else:
+                    payload.pop("tools", None)
+                    payload.pop("tool_choice", None)
+                    resp = self._client.post(url, json=payload)
             resp.raise_for_status()
         except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise EngineConnectionError(

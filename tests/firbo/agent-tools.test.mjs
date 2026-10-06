@@ -1,6 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculate, calculatorTool, chunkText, weatherTool, exchangeRateTool, generateImage, analyzeImage, knowledgeSearch } from '../../supabase/functions/_shared/agent-tools.ts';
+import {
+  calculate,
+  calculatorTool,
+  chunkText,
+  weatherTool,
+  exchangeRateTool,
+  generateImage,
+  analyzeImage,
+  knowledgeSearch,
+  gatewayImageRequestPayload,
+  pollinationsImageRequestPayload,
+  requestGatewayImage,
+  requestPollinationsImage,
+  storeGeneratedImage,
+} from '../../supabase/functions/_shared/agent-tools.ts';
 
 test('calculator: arithmetic, precedence, powers, functions and percentages without eval', () => {
   assert.equal(calculate('2 + 3 * 4'), 14);
@@ -64,6 +78,42 @@ test('generate image: free service fallback, stored under the company folder', a
   assert.match(stored[0].path, /^org-1\/[0-9a-f-]+\.jpg$/);
   assert.match(out, /!\[a red bicycle on a beach\]\(https:\/\/cdn\.example\/org-1\//);
   await assert.rejects(generateImage('a cat', { organizationId: 'o', store: { upload: async () => 'x' }, fetcher: async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }) }));
+});
+
+test('image transports use exact payloads and gateway dispatch identity', async () => {
+  const gatewayPayload = gatewayImageRequestPayload('  a   blue poster  ', 'image/model');
+  assert.deepEqual(gatewayPayload, {
+    model: 'image/model', prompt: 'a blue poster', n: 1, size: '1024x1024', response_format: 'b64_json',
+  });
+  const freePayload = pollinationsImageRequestPayload(' a blue poster ', 42);
+  assert.deepEqual(freePayload, { prompt: 'a blue poster', width: 1024, height: 1024, nologo: true, seed: 42 });
+  assert.equal(pollinationsImageRequestPayload('x', 42), null);
+
+  const png = new Uint8Array(5000).fill(9);
+  let gatewayCall;
+  const gateway = await requestGatewayImage(gatewayPayload, {
+    base: 'https://gateway.example/v1', key: 'secret', requestId: '77777777-7777-4777-8777-777777777777',
+    fetcher: async (url, init) => {
+      gatewayCall = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
+      return reply({ data: [{ b64_json: Buffer.from(png).toString('base64') }] });
+    },
+  });
+  assert.equal(gatewayCall.url, 'https://gateway.example/v1/images/generations');
+  assert.equal(gatewayCall.headers['x-request-id'], '77777777-7777-4777-8777-777777777777');
+  assert.deepEqual(gatewayCall.body, gatewayPayload);
+  assert.equal(gateway.bytes.length, 5000);
+
+  let freeUrl = '';
+  const free = await requestPollinationsImage(freePayload, { fetcher: async (url) => {
+    freeUrl = String(url);
+    return new Response(png, { headers: { 'content-type': 'image/jpeg' } });
+  } });
+  assert.match(freeUrl, /seed=42$/);
+  assert.equal(free.model, 'pollinations/free');
+  const stored = await storeGeneratedImage('a blue poster', free, {
+    organizationId: 'org-2', store: { upload: async path => `https://cdn.example/${path}` },
+  });
+  assert.match(stored, /https:\/\/cdn\.example\/org-2\/[0-9a-f-]+\.jpg/);
 });
 
 test('analyze image: needs a https link and reports token usage', async () => {

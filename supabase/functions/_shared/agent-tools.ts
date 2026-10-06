@@ -167,42 +167,133 @@ export async function knowledgeSearch(db: Rpc, organizationId: string, query: st
 // ------------------------------------------------------------------------------------------------ images
 export interface ImageStore { upload(path: string, bytes: Uint8Array, contentType: string): Promise<string> }
 
+export type GatewayImageRequest = {
+  model: string;
+  prompt: string;
+  n: 1;
+  size: '1024x1024';
+  response_format: 'b64_json';
+};
+
+export type PollinationsImageRequest = {
+  prompt: string;
+  width: 1024;
+  height: 1024;
+  nologo: true;
+  seed: number;
+};
+
+export type GeneratedImageArtifact = {
+  model: string;
+  contentType: string;
+  bytes?: Uint8Array;
+  url?: string;
+};
+
+const imagePrompt = (prompt: string) => prompt.replace(/\s+/g, ' ').trim().slice(0, 800);
+
+/** Exact bounded body sent to an OpenAI-compatible image endpoint. */
+export function gatewayImageRequestPayload(prompt: string, model: string): GatewayImageRequest | null {
+  const text = imagePrompt(prompt);
+  const selected = model.trim();
+  if (text.length < 3 || !selected || selected.length > 200) return null;
+  return { model: selected, prompt: text, n: 1, size: '1024x1024', response_format: 'b64_json' };
+}
+
+/** Exact Pollinations request, including its server-selected idempotent seed. */
+export function pollinationsImageRequestPayload(prompt: string, seed: number): PollinationsImageRequest | null {
+  const text = imagePrompt(prompt);
+  if (text.length < 3 || !Number.isSafeInteger(seed) || seed < 0 || seed > 999_999_999) return null;
+  return { prompt: text, width: 1024, height: 1024, nologo: true, seed };
+}
+
+/** One paid gateway dispatch. It never falls back after the caller's durable dispatch transition. */
+export async function requestGatewayImage(payload: GatewayImageRequest, o: {
+  base: string;
+  key: string;
+  requestId?: string;
+  fetcher?: Fetcher;
+  signal?: AbortSignal;
+}): Promise<GeneratedImageArtifact> {
+  const headers: Record<string, string> = { 'content-type': 'application/json', authorization: `Bearer ${o.key}` };
+  if (o.requestId) headers['x-request-id'] = o.requestId;
+  const r = await (o.fetcher ?? fetch)(`${o.base}/images/generations`, {
+    method: 'POST', headers, body: JSON.stringify(payload), signal: sig(o.signal, 60_000),
+  });
+  if (!r.ok) throw new Error(`image_gateway_http_${r.status}`);
+  const item = (await r.json())?.data?.[0];
+  if (item?.b64_json) {
+    const encoded = String(item.b64_json);
+    if (encoded.length < 1_300 || encoded.length > 10_700_000) throw new Error('image_gateway_result_invalid');
+    let bytes: Uint8Array;
+    try { bytes = Uint8Array.from(atob(encoded), c => c.charCodeAt(0)); }
+    catch { throw new Error('image_gateway_result_invalid'); }
+    return { model: payload.model, contentType: 'image/png', bytes };
+  }
+  if (typeof item?.url === 'string' && /^https:\/\/[^\s]+$/.test(item.url)) {
+    return { model: payload.model, contentType: 'image/png', url: item.url };
+  }
+  throw new Error('image_gateway_result_invalid');
+}
+
+/** One zero-provider-fee Pollinations dispatch with an exact preselected seed. */
+export async function requestPollinationsImage(payload: PollinationsImageRequest, o: {
+  fetcher?: Fetcher;
+  signal?: AbortSignal;
+} = {}): Promise<GeneratedImageArtifact> {
+  const query = `width=${payload.width}&height=${payload.height}&nologo=${payload.nologo}&seed=${payload.seed}`;
+  const r = await (o.fetcher ?? fetch)(`https://image.pollinations.ai/prompt/${encodeURIComponent(payload.prompt)}?${query}`, {
+    signal: sig(o.signal, 60_000),
+  });
+  if (!r.ok) throw new Error(`image_http_${r.status}`);
+  const type = r.headers.get('content-type') ?? 'image/jpeg';
+  if (!type.startsWith('image/')) throw new Error('image_not_returned');
+  return { model: 'pollinations/free', contentType: type, bytes: new Uint8Array(await r.arrayBuffer()) };
+}
+
+/** Materializes and stores a generation after its provider attempt has been settled. */
+export async function storeGeneratedImage(prompt: string, artifact: GeneratedImageArtifact, o: {
+  organizationId: string;
+  store: ImageStore;
+  fetcher?: Fetcher;
+  signal?: AbortSignal;
+}): Promise<string> {
+  let { bytes, contentType: type } = artifact;
+  if (!bytes && artifact.url) {
+    const image = await (o.fetcher ?? fetch)(artifact.url, { signal: sig(o.signal, 30_000) });
+    if (!image.ok) throw new Error(`image_download_http_${image.status}`);
+    type = image.headers.get('content-type') ?? type;
+    if (!type.startsWith('image/')) throw new Error('image_not_returned');
+    bytes = new Uint8Array(await image.arrayBuffer());
+  }
+  if (!bytes || bytes.length < 1000 || bytes.length > 8_000_000) throw new Error('image_size');
+  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
+  const link = await o.store.upload(`${o.organizationId}/${crypto.randomUUID()}.${ext}`, bytes, type);
+  const text = imagePrompt(prompt);
+  return `Image created: ${link}\nShow it in the report as ![${text.slice(0, 60).replace(/[[\]]/g, '')}](${link}).`;
+}
+
 /**
  * Creates an image from a description and stores it, returning its public link.
  * Uses the gateway's image model when one is configured (FIRBO_IMAGE_MODEL), else the free Pollinations service.
  */
 export async function generateImage(prompt: string, o: { organizationId: string; store: ImageStore; gateway?: { base: string; key: string; model?: string }; fetcher?: Fetcher; signal?: AbortSignal }): Promise<string> {
   const fetcher = o.fetcher ?? fetch;
-  const text = prompt.replace(/\s+/g, ' ').trim().slice(0, 800);
+  const text = imagePrompt(prompt);
   if (text.length < 3) return 'Describe the image to create.';
-  let bytes: Uint8Array | null = null;
-  let type = 'image/png';
+  let artifact: GeneratedImageArtifact | null = null;
   if (o.gateway?.model) {
     try {
-      const r = await fetcher(`${o.gateway.base}/images/generations`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${o.gateway.key}` },
-        body: JSON.stringify({ model: o.gateway.model, prompt: text, n: 1, size: '1024x1024', response_format: 'b64_json' }), signal: sig(o.signal, 60_000) });
-      if (r.ok) {
-        const item = (await r.json())?.data?.[0];
-        if (item?.b64_json) bytes = Uint8Array.from(atob(String(item.b64_json)), c => c.charCodeAt(0));
-        else if (typeof item?.url === 'string' && /^https:\/\//.test(item.url)) {
-          const img = await fetcher(item.url, { signal: sig(o.signal, 30_000) });
-          if (img.ok) { type = img.headers.get('content-type') ?? type; bytes = new Uint8Array(await img.arrayBuffer()); }
-        }
-      }
+      const payload = gatewayImageRequestPayload(text, o.gateway.model);
+      if (payload) artifact = await requestGatewayImage(payload, { ...o.gateway, fetcher, signal: o.signal });
     } catch { /* fall back to the free service */ }
   }
-  if (!bytes) {
-    const seed = Math.floor(Math.random() * 1e9);
-    const r = await fetcher(`https://image.pollinations.ai/prompt/${encodeURIComponent(text)}?width=1024&height=1024&nologo=true&seed=${seed}`, { signal: sig(o.signal, 60_000) });
-    if (!r.ok) throw new Error(`image_http_${r.status}`);
-    type = r.headers.get('content-type') ?? 'image/jpeg';
-    if (!type.startsWith('image/')) throw new Error('image_not_returned');
-    bytes = new Uint8Array(await r.arrayBuffer());
+  if (!artifact) {
+    const payload = pollinationsImageRequestPayload(text, Math.floor(Math.random() * 1e9));
+    if (!payload) return 'Describe the image to create.';
+    artifact = await requestPollinationsImage(payload, { fetcher, signal: o.signal });
   }
-  if (bytes.length < 1000 || bytes.length > 8_000_000) throw new Error('image_size');
-  const ext = type.includes('png') ? 'png' : type.includes('webp') ? 'webp' : 'jpg';
-  const link = await o.store.upload(`${o.organizationId}/${crypto.randomUUID()}.${ext}`, bytes, type);
-  return `Image created: ${link}\nShow it in the report as ![${text.slice(0, 60).replace(/[[\]]/g, '')}](${link}).`;
+  return storeGeneratedImage(text, artifact, { organizationId: o.organizationId, store: o.store, fetcher, signal: o.signal });
 }
 
 export type VisionRequestPayload = {

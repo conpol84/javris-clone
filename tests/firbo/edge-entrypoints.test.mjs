@@ -36,7 +36,7 @@ for (const name of ['agent-chat','agent-runner']) {
 after(async()=>{globalThis.fetch=originalFetch;globalThis.Deno=originalDeno;delete globalThis.__firboTestCreateClient;await rm(temp,{recursive:true,force:true});});
 
 function fixture(options={}) {
-  const state={calls:[],writes:[],reads:[],env:{
+  const state={calls:[],writes:[],reads:[],stored:[],env:{
     SUPABASE_URL:'https://db.example.test',SUPABASE_ANON_KEY:'public-test',SUPABASE_SERVICE_ROLE_KEY:'service-test',
     FIRBO_TEXT_ROUTING_MODE:'gateway',OMNIROUTE_BASE_URL:'https://gateway.firboai.app/v1',OMNIROUTE_API_KEY:'inference-test',
     OMNIROUTE_PRICE_IN_PER_M:'1',OMNIROUTE_PRICE_OUT_PER_M:'2',
@@ -90,6 +90,10 @@ function fixture(options={}) {
   };
   const client=(_url,key)=>({
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
+    storage:{from:()=>({
+      upload:async(path,bytes,config)=>{state.stored.push({path,size:bytes.length,config});return{error:options.imageStoreError?{message:'storage unavailable'}:null};},
+      getPublicUrl:path=>({data:{publicUrl:`https://cdn.example/${path}`}}),
+    })},
     rpc:async(fn,args)=>{
       state.rpcs=[...(state.rpcs??[]),{fn,args}];
       if(fn==='firbo_reserve_inference') {
@@ -165,6 +169,13 @@ function fixture(options={}) {
     if(String(url).endsWith('/search'))return Response.json({results:[{title:'Sports market grows',url:'https://news.example/a',snippet:'Up 5%'}]});
     if(String(url).endsWith('/web/fetch'))return Response.json({content:'Full article text about the sports market.'});
     if(/jarvis/.test(String(url)))return String(url).endsWith('/v1/info')?Response.json({model:'firbo-quality'}):Response.json({choices:[{message:{content:'45'}}],execution:options.serverExecution});
+    if(options.imageResponse&&String(url).endsWith('/images/generations')){
+      if(options.imageGatewayFailure)return new Response('upstream error',{status:502});
+      return Response.json({data:[{b64_json:Buffer.from(new Uint8Array(5000).fill(7)).toString('base64')}]});
+    }
+    if(options.pollinationsResponse&&String(url).startsWith('https://image.pollinations.ai/')){
+      return new Response(new Uint8Array(5000).fill(8),{status:200,headers:{'content-type':'image/jpeg'}});
+    }
     if(options.visionResponse&&String(url).endsWith('/chat/completions')){
       const request=JSON.parse(init.body);
       if(Array.isArray(request?.messages?.[0]?.content))return Response.json({model:'vision/resolved',choices:[{message:{content:'Blue image.'}}],
@@ -466,6 +477,53 @@ test('agent-runner: missing vision usage is ambiguous and cannot publish or cont
   assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='vision_usage_missing'));
   assert.equal(state.rpcs.filter(r=>r.fn==='firbo_settle_inference').length,1);
   assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: paid image generation has its own exact claim-bound receipt', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a blue launch poster"}',JSON.stringify({summary:'Poster created',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,imageResponse:true,env:{
+    FIRBO_IMAGE_MODEL:'firbo-image',FIRBO_IMAGE_COST_USD:'0.04',FIRBO_IMAGE_MAX_COST_USD:'0.06',
+  }});
+  assert.equal(response.status,200);
+  const imageCall=state.calls.find(c=>String(c.url).endsWith('/images/generations'));
+  assert.ok(imageCall);
+  assert.deepEqual(JSON.parse(imageCall.init.body),{
+    model:'firbo-image',prompt:'a blue launch poster',n:1,size:'1024x1024',response_format:'b64_json',
+  });
+  const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='omniroute:firbo-image/image');
+  assert.ok(reserve);assert.equal(reserve.args.p_output_token_cap,1);assert.equal(reserve.args.p_reserved_usd,0.06);
+  assert.equal(imageCall.init.headers['x-request-id'],state.runnerRequests[1]);
+  const usage=state.writes.filter(w=>w.table==='usage_events');
+  assert.equal(usage.length,3);assert.equal(usage[1].payload.model,'omniroute:firbo-image/image');assert.equal(usage[1].payload.cost_usd,0.04);
+  assert.equal(state.stored.length,1);assert.match(state.stored[0].path,new RegExp(`^${ORG}/[0-9a-f-]+\\.png$`));
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.accounting.attempts.length,3);assert.equal(result.cost_usd,0.04028);
+});
+test('agent-runner: failed paid image dispatch is ambiguous and never falls back', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a blue launch poster"}',JSON.stringify({summary:'Must not publish',report:FULL_REPORT,actions:[]})];
+  const {state,response,body}=await invoke('agent-runner',{tools,chatReplies,imageResponse:true,imageGatewayFailure:true,env:{
+    FIRBO_IMAGE_MODEL:'firbo-image',FIRBO_IMAGE_COST_USD:'0.04',FIRBO_IMAGE_MAX_COST_USD:'0.06',
+  }});
+  assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
+  assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'&&r.args.p_reason==='image_gateway_http_502'));
+  assert.equal(state.calls.filter(c=>String(c.url).endsWith('/images/generations')).length,1);
+  assert.ok(!state.calls.some(c=>String(c.url).includes('pollinations.ai')));
+  assert.equal(state.rpcs.filter(r=>r.fn==='firbo_settle_inference').length,1);
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+test('agent-runner: free image generation still gets a zero-cost attempt receipt', async () => {
+  const tools=[{tool_name:'image_generate',enabled:true,policy:'allow'}];
+  const chatReplies=['{"action":"generate_image","input":"a green match poster"}',JSON.stringify({summary:'Poster created',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools,chatReplies,pollinationsResponse:true});
+  assert.equal(response.status,200);
+  const call=state.calls.find(c=>String(c.url).startsWith('https://image.pollinations.ai/'));
+  assert.ok(call);assert.match(String(call.url),/seed=\d+$/);
+  const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_runner_inference'&&r.args.p_route==='pollinations:free/image');
+  assert.ok(reserve);assert.equal(reserve.args.p_reserved_usd,0);
+  const usage=state.writes.find(w=>w.table==='usage_events'&&w.payload.model==='pollinations:free/image');
+  assert.equal(usage.payload.cost_usd,0);assert.equal(usage.payload.input_tokens,0);assert.equal(usage.payload.output_tokens,0);
+  assert.equal(state.stored.length,1);assert.match(state.stored[0].path,/\.jpg$/);
 });
 test('agent-runner: empty gateway search uses configured Tavily and feeds evidence to the model', async () => {
   const tools=[{tool_name:'web_search',enabled:true,policy:'allow'}];
