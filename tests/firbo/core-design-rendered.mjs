@@ -21,6 +21,7 @@ try {
     await page.getByRole('button', { name: 'Pause animation', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('[data-core-mode]')?.dataset.coreMode === 'static');
     assert.equal(await page.locator('canvas').count(), 0, 'paused graphics must release Canvas');
+    assert.equal(await page.locator('.fb-ring-fallback span').first().evaluate(el => { const s = getComputedStyle(el); return s.animationName === 'none' || s.animationPlayState === 'paused'; }), true, 'manual pause must stop fallback motion');
     await page.evaluate(async () => {
       const { beginVoiceTurn } = await import('/src/lib/company/voiceActivity.ts');
       beginVoiceTurn().phase('listening', 'microphone');
@@ -43,7 +44,7 @@ try {
     await page.waitForFunction(() => document.querySelector('[data-core-mode]')?.dataset.coreMode === 'static');
     assert.equal(await page.getByRole('button', { name: 'Pause animation', exact: true }).isDisabled(), true);
     assert.equal(await page.locator('canvas').count(), 0);
-    assert.equal(await page.locator('.fb-ring-fallback span').first().evaluate(el => getComputedStyle(el).animationPlayState), 'paused');
+    assert.equal(await page.locator('.fb-ring-fallback span').first().evaluate(el => { const s = getComputedStyle(el); return s.animationName === 'none' || s.animationPlayState === 'paused'; }), true, 'reduced motion must stop fallback motion');
     const boxes = await page.getByRole('button').evaluateAll(elements => elements.map(el => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right }; }));
     assert.ok(boxes.every(box => box.left >= 0 && box.right <= viewport.width), 'controls must fit viewport');
     assert.deepEqual(errors, []);
