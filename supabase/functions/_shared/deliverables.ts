@@ -7,10 +7,16 @@ export type Deliverable = 'report' | 'presentation' | 'memo';
 const PRESENTATION = /\b(presentation|slides?|slide deck|deck|pitch|keynote|powerpoint|pptx)\b|παρουσίαση|παρουσιάση|παρουσιασ|διαφάνει|σλάιντ|presentaci[oó]n|apresenta[cç][aã]o|pr[äa]sentation|folien|diapositiv|演示|幻灯片|عرض تقديمي|شرائح/i;
 const MEMO = /\b(e-?mail|memo|letter|message|newsletter|announcement|post)\b|email|μέιλ|επιστολή|γράμμα|μήνυμα|ανακοίνωση|υπόμνημα|correo|carta|mensagem|nachricht|courriel|lettre|邮件|信函|بريد|رسالة/i;
 
-/** The deliverable a task asks for, from its title and description. */
+// "…will become a presentation later" asks for the analysis now, not for the slides.
+const LATER = /\b(later|afterwards|then|next|after that)\b|μετά|αργότερα|στη συνέχεια|despu[eé]s|depois|später|danach|ensuite|plus tard|之后|然后|بعد/i;
+
+/**
+ * The deliverable a task asks for, from its title and description. Slides mentioned in the description count only
+ * when they are asked for now, not as a later step.
+ */
 export function detectDeliverable(title: string, description = ''): Deliverable {
-  const text = `${title}\n${description}`;
-  if (PRESENTATION.test(text)) return 'presentation';
+  if (PRESENTATION.test(title)) return 'presentation';
+  if (PRESENTATION.test(description) && !LATER.test(description)) return 'presentation';
   if (MEMO.test(title)) return 'memo';
   return 'report';
 }

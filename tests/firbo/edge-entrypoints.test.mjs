@@ -459,6 +459,14 @@ test('agent-runner: a presentation starts on the quality route (paid plans), wit
   const free=await invoke('agent-runner',{plan:'free',taskTitle:'Presentation for the board: Q3 sales'});
   assert.notEqual(JSON.parse(free.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
 });
+test('agent-runner: a presentation with no web material researches with its tools instead of writing from nothing', async () => {
+  const tools=[{tool_name:'calculator',enabled:true,policy:'allow'}];
+  const {state,response}=await invoke('agent-runner',{plan:'pro',taskTitle:'Presentation for the board: Q3 sales',tools});
+  assert.equal(response.status,200);
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.match(chat.messages[0].content,/You can use tools before you answer/);
+  assert.doesNotMatch(chat.messages[0].content,/WEB MATERIAL/);
+});
 test('agent-runner: installed skills are part of the instructions', async () => {
   const {state}=await invoke('agent-runner',{skills:[{name:'Price quotes',instructions:'Always add VAT 24% and a validity date.'}]});
   const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
