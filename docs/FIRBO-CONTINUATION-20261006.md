@@ -1,5 +1,34 @@
 # Firbo continuation — combined Claude/Codex release
 
+## Latest source checkpoint — MCP pinned egress, after exact-green PR41
+
+Changed:
+- New isolated branch continues PR41 exact head `0b956a4f` and preserves current
+  Claude `f6442b75` / Codex parity `ce421e31`; both are already ancestors.
+- MCP now requires a separately configured pinned HTTPS egress transport,
+  without direct target fallback. The service resolves once, rejects mixed or
+  non-public DNS, pins the numeric socket and verifies TLS for the original host.
+- Company checks, confirmation, atomic persistence and durable receipts remain.
+
+Tested / passed:
+- 15 Python tests including actual synthetic local TLS; 134 combined focused
+  Node cases; 633 distinct non-rendered Node cases; 528 frontend cases; isolated
+  Edge TypeScript, Ruff and diff checks. No real provider or production call.
+
+Failed / limitations:
+- New exact-head CI is pending. The service and configuration are not deployed;
+  runtime ingress/secret provisioning and real MCP acceptance remain required.
+- This closes only the source candidate for tenant MCP transport. Other HTTP
+  routes and live production networking acceptance are still separate gates.
+
+Remains:
+- Publish draft and require exact-head CI; then live dependency/migration/source
+  reconciliation and separately reviewed egress provisioning before MCP release.
+- Preserve PR39 design, PR40 monitor, PR41 accounting and every prior real VPS,
+  Mac, account/customer, useful artifact/read-back/receipt, voice/design/mobile,
+  restore/monitoring and production-assessment gate. FreeLLMAPI remains installed;
+  PR13 remains CI-only. Details: `FIRBO-MCP-PINNED-EGRESS-20261006.md`.
+
 **Read the last entry in this file for the latest release and remaining gates.
 Earlier release identities and remaining-item lists are historical checkpoints.**
 

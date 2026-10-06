@@ -8,6 +8,7 @@
 //  - only a tool advertised in the same authenticated session may run
 //  - every tool call needs explicit confirmation and a durable pre-execution audit receipt
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { mcpEgressFetch } from '../_shared/mcp-egress.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -75,7 +76,7 @@ async function requestBody(req: Request): Promise<Record<string, any>> {
 
 /** One JSON-RPC call over streamable HTTP. The answer is plain JSON or a server-sent event stream. */
 async function rpc(s: Session, method: string, params: unknown, id?: number): Promise<any> {
-  const res = await fetch(s.url, {
+  const res = await mcpEgressFetch(s.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...s.headers, ...(s.sid ? { 'mcp-session-id': s.sid } : {}) },
     body: JSON.stringify(id === undefined ? { jsonrpc: '2.0', method, params } : { jsonrpc: '2.0', id, method, params }),
