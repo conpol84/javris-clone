@@ -101,9 +101,38 @@ function Scene({ satellites, motion, onSelect, onFailure, state }: { satellites:
           <meshBasicMaterial color={i === 1 ? '#a78bfa' : '#38bdf8'} transparent opacity={0.5} />
         </mesh>
       ))}
+      <InstrumentRings motion={motion} />
       {satellites.map((s, i) => (
         <Satellite key={s.id} sat={s} index={i} total={satellites.length} motion={motion} onSelect={onSelect} />
       ))}
+    </group>
+  );
+}
+
+/** Decorative instrument geometry; never represents fabricated system metrics. */
+function InstrumentRings({ motion }: { motion: number }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame((_state, dt) => {
+    if (ref.current) ref.current.rotation.z += dt * motion * 0.055;
+  });
+  return (
+    <group ref={ref} rotation={[0.18, -0.12, 0]}>
+      {[0, 1, 2, 3].map((index) => (
+        <mesh key={index} rotation={[0, 0, index * Math.PI / 2]}>
+          <torusGeometry args={[2.7, 0.012, 6, 48, Math.PI * 0.38]} />
+          <meshBasicMaterial color="#22d3ee" transparent opacity={0.65} toneMapped={false} />
+        </mesh>
+      ))}
+      {Array.from({ length: 48 }, (_, index) => {
+        const angle = index * Math.PI / 24;
+        const major = index % 4 === 0;
+        return (
+          <mesh key={index} position={[Math.cos(angle) * 2.9, Math.sin(angle) * 2.9, 0]} rotation={[0, 0, angle]}>
+            <boxGeometry args={[major ? 0.15 : 0.06, 0.012, 0.015]} />
+            <meshBasicMaterial color={major ? '#a5f3fc' : '#0891b2'} transparent opacity={major ? 0.8 : 0.45} />
+          </mesh>
+        );
+      })}
     </group>
   );
 }
