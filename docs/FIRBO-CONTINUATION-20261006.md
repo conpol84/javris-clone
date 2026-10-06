@@ -701,3 +701,42 @@ Remains:
   account acceptance. Keep all earlier master-plan gates open.
 
 Details: `docs/FIRBO-APP-CONNECTIONS-20261006.md`.
+### Claude: runner v84–v86, research quality, more test data removed
+
+Changed:
+- agent-runner v84 (500e4e9): web material found before the 15 s budget ends is kept; links in the task
+  are read first and in parallel; slides without any material research first instead of being written
+  from nothing; a description that mentions slides "later" stays a report.
+- v85 (bab14c0): tool steps stop early enough to leave about a minute for the report (a run had started
+  writing with 15 s left and lost all research).
+- v86 (11a057a): the final report step may use all the time left (up to 75 s) instead of 50 s.
+- Deployed with all 12 files from the repo (GPT's computer-policy.ts snapshot/screenshot included).
+
+Tested / passed:
+- 513/514 node tests (only browser-control-rendered fails: Playwright download in this sandbox), edge tsc.
+- Live: task c755fe63 (Research Agent, Trade Athletes) finished on v86 as format=report with
+  powers_used web_search + browser_extract, an honest report (no invented facts) and 2 proposed actions
+  waiting for the owner's approval.
+
+Failed / limitations:
+- PlayersFX / PickFantasy / app.tradeathletes.com are JavaScript apps: a server read returns almost no text.
+- No working web search from Supabase: the gateway /search returns no results (no search provider set in
+  OmniRoute), DuckDuckGo serves a block page, Google News 503, Bing returns unrelated results to bots.
+  Real research needs a search provider key in OmniRoute (owner action, never in chat).
+- The c755fe63 report quotes "480€ / Θεσσαλονίκη" from the "[Δοκιμή] Τιμοκατάλογος" test document,
+  removed right after; the owner should reject or ignore those lines.
+
+Data:
+- Task 2b960b56 (presentation written without sources) set to cancelled with cancel_reason (not deleted).
+- Removed test data: knowledge source "[Δοκιμή] Τιμοκατάλογος" + its 2 chunks, failed task
+  "[Δοκιμή ποιότητας] Έρευνα αγοράς αθλητικής ένδυσης".
+- MCP note: plain UPDATE/DELETE statements hang in the MCP; wrapping them in a CTE
+  (`with d as (delete ... returning 1) select count(*) from d`) works.
+
+Remains:
+- Presentation from the analysis once real material exists (search provider configured).
+- Owner: search provider key in OmniRoute, signed-in meeting test, connect apps, Mac Connector update,
+  Telegram/WhatsApp, second customer account, OmniRoute key rotation.
+
+Live now: runner v86, chat v38, mission-runner v26, connector v28, MCP v19, channel-inbound v9,
+frontend dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp.
