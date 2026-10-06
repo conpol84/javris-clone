@@ -65,7 +65,9 @@ def wait_lock(proc: subprocess.Popen, app: str) -> None:
     raise AssertionError("second reservation did not contend on the organization lock")
 
 
-def race(isolation: str, source: str = "agent-chat") -> None:
+def race(
+    isolation: str, source: str = "agent-chat", rollover_status: str | None = None
+) -> None:
     suffix = uuid.uuid4().hex
     org = str(uuid.uuid4())
     agent = str(uuid.uuid4())
@@ -85,9 +87,18 @@ def race(isolation: str, source: str = "agent-chat") -> None:
         )
 
     try:
+        age = ""
+        if rollover_status is not None:
+            assert rollover_status in ("reserved", "reconcile_required")
+            age = (
+                "reset role; update private.inference_requests "
+                "set created_at=(date_trunc('month',now() at time zone 'utc') "
+                f"at time zone 'utc')-interval '40 days',status='{rollover_status}' "
+                f"where organization_id='{org}'; {SERVICE} "
+            )
         send(
             a,
-            f"begin isolation level {isolation}; {SERVICE} {call(first_key, 'agent-chat')}; select 'reservation_ready';",
+            f"begin isolation level {isolation}; {SERVICE} {call(first_key, 'agent-chat')}; {age} select 'reservation_ready';",
         )
         wait_ready(a)
         send(
@@ -116,7 +127,7 @@ def race(isolation: str, source: str = "agent-chat") -> None:
                 raise AssertionError(result)
         if (
             sql(
-                f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'"
+                f"select count(*) from private.inference_requests where organization_id='{org}' and status in ('reserved','reconcile_required')"
             )
             != "1"
         ):
@@ -124,7 +135,7 @@ def race(isolation: str, source: str = "agent-chat") -> None:
                 "more than one reservation crossed the budget boundary"
             )
         print(
-            f"PASS {isolation}: one winner for concurrent chat/{source} budget reservations",
+            f"PASS {isolation}: one winner for concurrent chat/{source} budget reservations (rollover={rollover_status})",
             flush=True,
         )
     finally:
@@ -134,7 +145,7 @@ def race(isolation: str, source: str = "agent-chat") -> None:
                 proc.wait()
 
 
-def settlement_handoff(isolation: str) -> None:
+def settlement_handoff(isolation: str, rollover: bool = False) -> None:
     suffix = uuid.uuid4().hex
     org = str(uuid.uuid4())
     agent = str(uuid.uuid4())
@@ -151,6 +162,13 @@ def settlement_handoff(isolation: str) -> None:
         )
     )
     request_id = initial["request_id"]
+    if rollover:
+        sql(
+            "update private.inference_requests "
+            "set created_at=(date_trunc('month',now() at time zone 'utc') "
+            "at time zone 'utc')-interval '40 days',status='reconcile_required' "
+            f"where id='{request_id}'"
+        )
     app = "accounting_settle_" + suffix
     a, b = start(app + "_a"), start(app + "_b")
     try:
@@ -198,7 +216,7 @@ def settlement_handoff(isolation: str) -> None:
         ):
             raise AssertionError("reservation admitted between settlement aggregates")
         print(
-            f"PASS {isolation}: settlement cannot disappear between budget aggregates",
+            f"PASS {isolation}: settlement cannot disappear between budget aggregates (rollover={rollover})",
             flush=True,
         )
     finally:
@@ -212,3 +230,6 @@ for level in ("read committed", "serializable"):
     race(level)
     race(level, "mission-runner")
     settlement_handoff(level)
+    race(level, "mission-runner", "reserved")
+    race(level, "mission-runner", "reconcile_required")
+    settlement_handoff(level, rollover=True)
