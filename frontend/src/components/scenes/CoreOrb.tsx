@@ -3,7 +3,9 @@ import type { HoloState } from './HologramScene';
 import { Glow } from './fx';
 import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
-import { Suspense, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { CoreControls } from './CoreControls';
+import { corePresentation } from './corePresentation';
 import { Canvas, useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { supportsWebGL, usePrefersReducedMotion } from './webgl';
@@ -60,7 +62,7 @@ function Satellite({ sat, index, total, motion, onSelect }: { sat: OrbSatellite;
   );
 }
 
-function Scene({ satellites, motion, onSelect, onFailure, state }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void; onFailure: () => void; state: HoloState }) {
+function Scene({ satellites, motion, onSelect, onFailure, state, pointCount }: { satellites: OrbSatellite[]; motion: number; onSelect?: (id: string) => void; onFailure: () => void; state: HoloState; pointCount: number }) {
   const group = useRef<THREE.Group>(null);
   const rings = useRef<(THREE.Mesh | null)[]>([]);
   const glow = useMemo(() => glowTexture(), []);
@@ -87,7 +89,7 @@ function Scene({ satellites, motion, onSelect, onFailure, state }: { satellites:
       <SceneFallbackBoundary fallback={null} onFailure={onFailure}>
         <Suspense fallback={null}>
           <group position={[0, -0.35, 0]} scale={1.15}>
-            <HoloHead state={state} motion={motion} />
+            <HoloHead state={state} motion={motion} pointCount={pointCount} />
           </group>
         </Suspense>
       </SceneFallbackBoundary>
@@ -137,11 +139,11 @@ function InstrumentRings({ motion }: { motion: number }) {
   );
 }
 
-function Fallback() {
+function Fallback({ still = false }: { still?: boolean }) {
   return (
     <div className="fb-ring-fallback" aria-hidden="true">
       {[180, 250, 320].map((d, i) => (
-        <span key={d} style={{ width: d, height: d, animationDuration: `${14 + i * 6}s`, animationDirection: i % 2 ? 'reverse' : 'normal' }} />
+        <span key={d} style={{ width: d, height: d, animationDuration: `${14 + i * 6}s`, animationDirection: i % 2 ? 'reverse' : 'normal', animationPlayState: still ? 'paused' : 'running' }} />
       ))}
     </div>
   );
@@ -152,23 +154,31 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
   const reduced = usePrefersReducedMotion();
   const voice = useSyncExternalStore(subscribeVoice, getVoiceSnapshot, getServerVoiceSnapshot);
   const [failed, setFailed] = useState(false);
-  if (failed || !supportsWebGL()) {
-    return <div className={className} aria-hidden="true" data-voice-phase={voice.phase}><Fallback /></div>;
-  }
+  const [paused, setPaused] = useState(false);
+  const [lightweight, setLightweight] = useState(() => typeof navigator !== 'undefined' && (navigator.hardwareConcurrency ?? 4) < 4);
+  useEffect(() => {
+    // Set an initial mobile default, but leave later choices under user control.
+    if (window.matchMedia?.('(max-width: 767px)').matches) setLightweight(true);
+  }, []);
+  const presentation = corePresentation(paused, reduced, lightweight);
   return (
-    <div className={className} aria-hidden="true" data-voice-phase={voice.phase}>
-      <SceneFallbackBoundary fallback={<Fallback />}>
+    <div className={className} data-voice-phase={voice.phase} data-core-mode={presentation.static ? 'static' : lightweight ? 'lightweight' : 'full'}>
+      <CoreControls paused={paused} reduced={reduced} lightweight={lightweight} phase={voice.phase} onPause={() => setPaused(v => !v)} onLightweight={() => setLightweight(v => !v)} />
+      <div aria-hidden="true" className="absolute inset-0">
+      {presentation.static || failed || !supportsWebGL() ? <Fallback still={presentation.static} /> : <SceneFallbackBoundary fallback={<Fallback />}>
         <Canvas
+          key={lightweight ? 'lightweight' : 'full'}
           style={{ position: 'absolute', inset: 0 }}
-          dpr={[1, 1.75]}
+          dpr={[1, presentation.dpr]}
           camera={{ position: [0, 0, 7.2], fov: 42 }}
-          gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
-          frameloop={reduced ? 'demand' : 'always'}
+          gl={{ antialias: !lightweight, alpha: true, powerPreference: lightweight ? 'low-power' : 'high-performance' }}
+          frameloop="always"
         >
-          <Scene state={hologramState(voice.phase)} satellites={satellites} motion={reduced ? 0 : 1} onSelect={onSelect} onFailure={() => setFailed(true)} />
-          <Glow />
+          <Scene state={hologramState(voice.phase)} satellites={satellites} motion={1} pointCount={presentation.pointCount} onSelect={onSelect} onFailure={() => setFailed(true)} />
+          {presentation.bloom ? <Glow /> : null}
         </Canvas>
-      </SceneFallbackBoundary>
+      </SceneFallbackBoundary>}
+      </div>
     </div>
   );
 }

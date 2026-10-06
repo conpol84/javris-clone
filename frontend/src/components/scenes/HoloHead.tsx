@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
@@ -10,7 +10,6 @@ import type { HoloState } from './HologramScene';
 export const HEAD_URL = '/models/firbo-head.glb';
 
 const COLORS: Record<HoloState, string> = { idle: '#22d3ee', listening: '#34d399', thinking: '#a78bfa', speaking: '#7dd3fc' };
-const COUNT = 16000;
 
 const vertex = /* glsl */ `
   uniform float uTime;
@@ -25,7 +24,7 @@ const vertex = /* glsl */ `
   void main() {
     vec3 p = position;
     // the jaw drops with the voice
-    float jaw = smoothstep(-0.32, -0.8, p.y) * smoothstep(-0.1, 0.25, p.z);
+    float jaw = (1.0 - smoothstep(-0.8, -0.32, p.y)) * smoothstep(-0.1, 0.25, p.z);
     p.y -= jaw * uLevel * 0.09;
     p.z += jaw * uLevel * 0.02;
     // slow shimmer so the hologram never sits perfectly still
@@ -49,7 +48,7 @@ const fragment = /* glsl */ `
     vec2 c = gl_PointCoord - 0.5;
     float r = length(c);
     if (r > 0.5) discard;
-    float soft = smoothstep(0.5, 0.05, r);
+    float soft = 1.0 - smoothstep(0.05, 0.5, r);
     float a = soft * (0.16 + vRim * 0.55 + vGlow * 0.38);
     vec3 col = mix(uColor, vec3(1.0), vGlow * 0.7 + vRim * 0.2);
     gl_FragColor = vec4(col, a);
@@ -57,7 +56,7 @@ const fragment = /* glsl */ `
 `;
 
 /** A real human head scan turned into a living hologram of 16 000 light points: rim-lit, scanned by a moving beam, and its jaw moves with the voice. */
-export function HoloHead({ state, motion }: { state: HoloState; motion: number }) {
+export function HoloHead({ state, motion, pointCount = 16000 }: { state: HoloState; motion: number; pointCount?: number }) {
   const gltf = useGLTF(HEAD_URL);
   const mat = useRef<THREE.ShaderMaterial>(null);
   const group = useRef<THREE.Group>(null);
@@ -79,12 +78,12 @@ export function HoloHead({ state, motion }: { state: HoloState; motion: number }
     src.translate(-centre.x, -centre.y, -centre.z);
     src.scale(scale, scale, scale);
     const sampler = new MeshSurfaceSampler(new THREE.Mesh(src)).build();
-    const pos = new Float32Array(COUNT * 3);
-    const nor = new Float32Array(COUNT * 3);
-    const seed = new Float32Array(COUNT);
+    const pos = new Float32Array(pointCount * 3);
+    const nor = new Float32Array(pointCount * 3);
+    const seed = new Float32Array(pointCount);
     const p = new THREE.Vector3();
     const n = new THREE.Vector3();
-    for (let i = 0; i < COUNT; i++) {
+    for (let i = 0; i < pointCount; i++) {
       sampler.sample(p, n);
       pos.set([p.x, p.y, p.z], i * 3);
       nor.set([n.x, n.y, n.z], i * 3);
@@ -95,8 +94,10 @@ export function HoloHead({ state, motion }: { state: HoloState; motion: number }
     g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     g.setAttribute('aNormal', new THREE.BufferAttribute(nor, 3));
     g.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+    src.dispose();
     return g;
-  }, [gltf]);
+  }, [gltf, pointCount]);
+  useEffect(() => () => geo.dispose(), [geo]);
 
   const uniforms = useMemo(() => ({ uTime: { value: 0 }, uLevel: { value: 0 }, uScan: { value: 0 }, uPx: { value: 6 }, uColor: { value: new THREE.Color(COLORS.idle) } }), []);
 
