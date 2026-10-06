@@ -114,9 +114,18 @@ def test_rollback_recovers_file_and_attempts_both_services_on_restart_failure(tm
 
 @pytest.mark.parametrize("legacy", [False, True])
 @pytest.mark.parametrize("multi", [False, True])
-@pytest.mark.parametrize("native_tool", [None, "code_interpreter", "calculator"])
+@pytest.mark.parametrize(
+    "native_tool,trace",
+    [
+        (None, False),
+        ("code_interpreter", False),
+        ("calculator", False),
+        ("code_interpreter", True),
+        ("calculator", True),
+    ],
+)
 def test_worker_uses_configured_vllm_route_and_never_drops_tools(
-    tmp_path, legacy, multi, native_tool
+    tmp_path, legacy, multi, native_tool, trace, fault=None
 ):
     received = []
     native_args = (
@@ -144,6 +153,7 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(
                     "choices": [
                         {
                             "message": {
+                                "content": "PRIVATE_RESPONSE_DO_NOT_PRINT",
                                 "tool_calls": [
                                     {
                                         "function": {
@@ -153,11 +163,13 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(
                                             else '{"marker":"FIRBO_TOOL_PROBE_OK"}',
                                         }
                                     }
-                                ]
+                                ],
                             }
                         }
                     ]
                 }
+                if not payload.get("tools"):
+                    result["choices"][0]["message"]["tool_calls"] = []
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(result).encode())
@@ -175,7 +187,10 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(
         if legacy
         else (f'[engine.vllm]\nhost = "{endpoint}"')
     )
-    config.write_text('[engine]\ndefault = "vllm"\n' + section + "\n")
+    config.write_text(
+        '[engine]\ndefault = "vllm"\n' + section + "\n[security]\nenabled = false\n"
+        '[agent]\ndefault_system_prompt = "PRIVATE_SYSTEM_DO_NOT_PRINT"\n'
+    )
     env = {
         **os.environ,
         "OPENJARVIS_HOME": str(tmp_path),
@@ -187,6 +202,17 @@ def test_worker_uses_configured_vllm_route_and_never_drops_tools(
     }
     try:
         worker = repair.WORKER
+        if fault:
+            worker = (
+                "from openjarvis.engine._openai_compat import _OpenAICompatibleEngine\n"
+                "_original_generate = _OpenAICompatibleEngine.generate\n"
+                "def broken_generate(self, messages, **kwargs):\n"
+                + ("    kwargs.pop('tools', None)\n" if fault == "outbound" else "")
+                + "    result = _original_generate(self, messages, **kwargs)\n"
+                + ("    result.pop('tool_calls', None)\n" if fault == "parser" else "")
+                + "    return result\n"
+                "_OpenAICompatibleEngine.generate = broken_generate\n" + worker
+            )
         if multi:
             # Real MultiEngine/HTTP adapter; isolate discovery from other ports.
             worker = (
@@ -207,6 +233,7 @@ _discovery.discover_engines = lambda cfg: [
                     "env": env,
                     "engine": "multi" if multi else "vllm",
                     "model": "firbo-quality",
+                    "trace": trace,
                     "native": {
                         "tool": native_tool,
                         "arguments": native_args,
@@ -234,14 +261,35 @@ _discovery.discover_engines = lambda cfg: [
             report["route_source"] == "reconstructed_from_current_config_and_catalogue"
         )
     assert report["endpoint"]["port"] == server.server_port
-    assert report["probes"]["auto"] == {
-        "http": 400,
-        "probe_call": False,
-        "mentions": ["tool_choice"],
-    }
-    assert report["probes"]["required"]["probe_call"] is True
+    if trace:
+        assert report["trace_tools_executed"] is False
+        assert report["trace_scope"] == "fresh_process_installed_code_not_live_process"
+        assert len(report["installed_sources"]) == 8
+        assert len(report["stages"]) == 4
+        for stage in report["stages"].values():
+            assert stage.get("result") == {
+                "tool_calls": 0 if fault else 1,
+                "expected_call": not bool(fault),
+            }, stage
+            assert len(stage["wire"]) == (1 if fault == "outbound" else 2)
+            for entry in stage["wire"]:
+                assert entry["request"]["prompt_retained"] is True
+                assert entry["request"]["schema_matches"] is (fault != "outbound")
+            assert stage["wire"][-1]["response"]["expected_call"] is (
+                fault != "outbound"
+            )
+        assert "PRIVATE_RESPONSE_DO_NOT_PRINT" not in result.stdout
+        assert "PRIVATE_SYSTEM_DO_NOT_PRINT" not in result.stdout
+        assert len(received) == (4 if fault == "outbound" else 8)
+    else:
+        assert report["probes"]["auto"] == {
+            "http": 400,
+            "probe_call": False,
+            "mentions": ["tool_choice"],
+        }
+        assert report["probes"]["required"]["probe_call"] is True
     if native_tool:
-        assert len(received) == 2
+        assert len(received) == ((4 if fault == "outbound" else 8) if trace else 2)
         assert report["orchestrator_fixture"]["native_schema_forwarded"] is True
         assert report["orchestrator_fixture"]["tools_executed"] is False
         assert report["shell_requires_confirmation"] is True
@@ -250,9 +298,18 @@ _discovery.discover_engines = lambda cfg: [
         assert len(received) == 3
     assert all(path == "/v1/chat/completions" for path, _, _ in received)
     assert all(auth == "Bearer private-test-key" for _, auth, _ in received)
-    assert all(body["tools"] for _, _, body in received)
+    assert all(
+        bool(body.get("tools")) is (fault != "outbound") for _, _, body in received
+    )
     assert "private-test-key" not in result.stdout
     assert "PRIVATE_DO_NOT_PRINT" not in result.stdout
+
+
+@pytest.mark.parametrize("fault", ["outbound", "parser"])
+def test_trace_distinguishes_request_loss_from_response_parser_loss(tmp_path, fault):
+    test_worker_uses_configured_vllm_route_and_never_drops_tools(
+        tmp_path, False, True, "calculator", True, fault=fault
+    )
 
 
 @pytest.mark.parametrize(
