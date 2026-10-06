@@ -1,5 +1,8 @@
 # FIRBO integrated release — 6 October 2026
 
+**Read the final LIVE entry below. Earlier sections are the authoring checkpoint;
+their pending schema, CI, graphics and VPS statements have been superseded.**
+
 Owner instruction in the direct session: complete the agreed work, preserve both contributors, retain every outstanding gate and remember the decisions across sessions. Continue the master plan; never merge CI-only PR13.
 
 ## Current accepted inputs
@@ -60,3 +63,92 @@ Runner attempt schema is absent at this checkpoint. Server pricing/output bounds
 | Final assessment | Evidence-based completed/failed/unverified inventory and production assessment |
 
 External components: preserve Mark-LV as functional/visual reference without copying noncommercial code/assets. TalkingHead, Pipecat and whisper.cpp remain evaluation candidates, not installed integration claims. Existing Playwright remains the browser execution basis. Keep FreeLLMAPI installed. OS microphone/consent and unavailable VPS terminal access remain real owner actions, not synthetic acceptance.
+
+## Final LIVE identities and acceptance
+
+Changed:
+- PR44: https://github.com/conpol84/javris-clone/pull/44 (merged).
+- Accepted runtime source: `d30b24742bd02271526f735b56f1d83558559286`;
+  combined tree: `396ffae7870d60294a083b5e88bb5583a811bf41`.
+- Shared merge: `d749e63e8a34f9346834f6c13469c7f5e3cd0d61`.
+  The final checkpoint commit adds documentation only, without another deployment.
+- Preview `dpl_BKu7vjKh3Se56xqKyPYayG8q4C4v` accepted before production.
+- Production `dpl_EgkUQpS3G5qkSKB9iuCGbJW3RFaD`, READY, firboai.app,
+  project `prj_tNGCKDtXfH6ohh9i4UbqPkL53KJa`,
+  team `team_MeaZI1Z6JWuUXbVh6DIbedLn`, exact accepted source.
+  Previous production `dpl_DpTKgffcbmnYj3At3xJh9jSnJQRR` retained as rollback identity.
+- Agent-chat v39 (8 files; verify_jwt false with existing custom authentication);
+  mission-runner v29 (4 files; verify_jwt true);
+  server-jarvis v15 (3 files; verify_jwt true). Complete bundle byte comparisons passed.
+  Agent-runner v90 and MCP v19 were not cut over.
+
+Migration identity mapping — already applied on `bfeinnsorgjycivozcau`:
+
+| Accepted source file | Actual live migration identity |
+|---|---|
+| 20261006144554_inference_reservation_rollover.sql | 20261006205256_inference_reservation_rollover |
+| 20261006154856_inference_runner_attempt_ledger.sql | 20261006205845_inference_runner_attempt_ledger |
+
+These are semantically identical reviewed migrations. Never replay them using
+the source timestamps. Fresh live guards and complete function/dependency reads
+preceded each mutation. Runner ledger read-back confirmed both private tables'
+RLS, no direct anon/authenticated privileges, and service_role-only RPCs with
+empty search_path. Rollback-backed real probes verified duplicate admission,
+single dispatch, cancellation denial and reconcile_required propagation without
+retaining a task, attempt, usage or inference probe row.
+
+Tested / passed:
+- All 11 exact-head workflow families passed: frontend, lifecycle/PostgreSQL,
+  pinned MCP, ownership, voice rollout, voice compatibility, server receipts,
+  security SAST, M2 mobile, devices/adapters and Computer Manager.
+- Local: 537 frontend, 633 distinct non-rendered Node, 62 runtime/server Python,
+  32 engine contract and 17 egress cases; production build, strict Edge TS,
+  full Ruff check/format (1446 files).
+- PostgreSQL CI: all 18 READ COMMITTED/SERIALIZABLE concurrency races and
+  reconciliation monitor read-only/unchanged-ledger tests passed.
+- Real CI Chromium: graphics controls at 1280 and 390 widths passed pause/resume,
+  lightweight mode, voice independence, reduced motion and bounds. Screenshots
+  inspected: cyan particle head, segmented rings and working control labels.
+  This is rendered harness evidence, not full reference/physical-phone acceptance.
+- Public domain read-back HTTP 200; source/deployment identity verified;
+  served connector SHA256 `84b40bfd71bf4b4a0b28baf4737e72dc99613fcc290997781ce464d56e626c92`;
+  browser SHA256 `2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3`.
+- All three updated Edge functions returned anonymous HTTP 401.
+
+Failed / corrected / limits:
+- Local initial Python dependency environment was incomplete; correct isolated
+  environment passed. Local rendered browser lacked Chromium; unchanged real
+  Chromium CI passed. Git CLI push lacked credentials; authenticated GitHub
+  connector created the identical combined tree, preserving all merge parents.
+- Security Advisor after the ledger: 8 intentional locked-table/no-policy INFO,
+  the same 8 authenticated-definer and 1 leaked-password WARN, no new WARN/ERROR.
+- VPS repair already completed by the owner in the other session: backup
+  `/var/backups/firbo-tools-9wapfud6`, `native_execution_verified:true`,
+  `full_parity_complete:false`. Owner-reported, not independently rerun here.
+  The useful artifact/delivery/read-back gate remains open; do not reinstall.
+- Real database inventory: 5 devices, 1 paired/online, no browser_task capability,
+  no unresolved inference request and no retained runner probe attempt.
+
+Remains / concrete next actions:
+1. Verify `FIRBO_SERVER_PRICE_IN_PER_M`, `FIRBO_SERVER_PRICE_OUT_PER_M` and
+   `FIRBO_SERVER_MAX_OUTPUT_TOKENS` against the actual billed route. No invented
+   free price; do not disable existing server_task by deploying absent config.
+   Then exact runner bundle cutover and independent provider usage/receipt checks.
+2. Provision the dedicated pinned HTTPS MCP service, credential and origin
+   allowlist on authorized VPS ingress; perform harmless approved real MCP
+   acceptance before deploying the Edge MCP cutover. This session has no callable
+   VPS terminal/SSH capability.
+3. Run `tools/mac/FIRBO-Mac-Browser-Update.command` on the already paired Mac.
+   It retains existing pairing, uses pinned live asset hashes and installs the
+   browser runtime. Local owner consent, Stop/offline and actual click/fill/
+   scroll/read/snapshot/upload/download acceptance remain.
+4. Obtain the useful VPS artifact and read it back with a correlated receipt.
+   Continue real Google/Microsoft consent/refresh/revoke, authorized messaging
+   tests, second-customer isolation, Knowledge/Skills/Workflows and delegation.
+5. Complete final cyan HUD reference composition, real mobile and language/
+   voice/media acceptance, encrypted off-host backup and booting isolated
+   restore, monitoring/load/rollback rehearsal and final production assessment.
+
+Do not mark the master plan complete. Keep FreeLLMAPI installed; TalkingHead,
+Pipecat and whisper.cpp remain evaluated candidates. Preserve Mark-LV licensing
+and existing permissions. No computer permission auto-enable or Mac re-pair.
