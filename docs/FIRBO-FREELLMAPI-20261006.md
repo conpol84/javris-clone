@@ -7,6 +7,10 @@ Production Vercel deployment dpl_9BwGdUMw7nVveTBhutx1Ek2pTDrr is READY at that c
 Mission-runner v28 and its three live dependencies match this source byte for byte:
 the previously reported live/source drift is closed. No backend redeploy is needed.
 
+Fixed the Mac updater's pinned Connector hash to match the new shared source
+84b40bfd71bf4b4a0b28baf4737e72dc99613fcc290997781ce464d56e626c92.
+Its previous hash rejected the new release. Existing pairing and approvals remain.
+
 Added an optional private FreeLLMAPI Compose overlay and a read-only readiness probe.
 The overlay is disabled unless its profile is selected. It preserves the existing
 Firbo services and routing, stores SQLite persistently, binds the dashboard to
