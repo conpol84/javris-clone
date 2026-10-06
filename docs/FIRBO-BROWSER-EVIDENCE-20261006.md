@@ -1,8 +1,9 @@
 # FIRBO browser accessibility and screenshot adapter
 
-Candidate reviewed 6 October 2026. This stage continues the OpenJarvis parity
-matrix from the current shared Claude/Codex checkpoint `5c6a0bc`. It does not
-claim a Mac installation, a real account task, or a production release.
+Released 6 October 2026. PR #21 preserved the shared Claude checkpoint
+`5c6a0bc` and Codex head `73e51d4` as explicit parents in merge
+`9b2b8ce0733762c957eb74377d88e1ae7b8fa247`. This release does not claim a
+Mac installation or a real account/device task.
 
 ## Changed
 
@@ -33,25 +34,33 @@ claim a Mac installation, a real account task, or a production release.
   eight language labels. Frontend TypeScript and the production build pass.
 - The rendered Chromium test now covers a real DOM accessibility snapshot, local
   PNG bytes and separate capture approvals using synthetic in-memory HTTP only.
+- All seven exact-head GitHub workflows passed. The scoped-browser workflow ran
+  the updated visible Chromium fixture under Xvfb successfully.
+- Supabase `connector` v28 is ACTIVE with digest
+  `65e01d4e06a25e8400fe947510214456137a484a17fed5279a052be99f6d37f3`;
+  both deployed files match the merge source exactly. Runner v83, chat v37,
+  mission v26 and all migrations were preserved.
+- Production deployment `dpl_8ekCf1V4MUVuMzKZnoJQ2Q3y2WD1` is READY. The
+  public browser module matches the repository byte-for-byte and the served
+  Computers chunk includes both actions. A 30-minute error/fatal scan was empty.
 
 ## Failed / evidence boundary
 
 - This workspace has neither the pinned Chromium executable nor Xvfb. The local
-  rendered test therefore cannot launch and is not counted as passed. The
-  existing `firbo-browser-control` CI workflow installs Chromium and runs the
-  same test under Xvfb; its exact-head result is required before any merge.
+  rendered test therefore could not launch and is not counted as a local pass;
+  exact-head CI supplied the separate rendered-browser evidence.
 - No Connector was updated on the paired Mac. Source and automated tests do not
   prove Screen Recording permission, user consent, Stop/offline behavior or a
   useful saved/read-back artifact on that device.
 
 ## Remains
 
-- Run exact-head CI, review any real failure, and merge only with both histories
-  preserved. Deploy the frontend and matching `connector` validator only after
-  the accepted source is immutable; do not change `agent-runner`, `agent-chat`,
-  `mission-runner`, SQL or permissions for this stage.
 - Update the already-paired Mac without re-pairing or automatically changing
   grants. Perform a user-approved browser task with snapshot, local screenshot,
   Stop/offline checks and a useful artifact read back by its hash.
 - Signed-in CEO/meeting/task acceptance, OAuth, approved messaging, second real
   customer isolation and the rest of the master plan remain open.
+
+References: https://github.com/conpol84/javris-clone/pull/21 ;
+https://github.com/conpol84/javris-clone/actions/runs/37423292153 ;
+https://firboai.app

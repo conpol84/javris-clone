@@ -406,7 +406,7 @@ References: https://github.com/conpol84/javris-clone/pull/20 ;
 https://github.com/conpol84/javris-clone/actions/runs/37416789387 ;
 https://firboai.app
 
-### Candidate — bounded browser accessibility and screenshot adapter
+### PR #21 — bounded browser accessibility and screenshot release (6 October 2026)
 
 Changed:
 - Continued exact shared checkpoint `5c6a0bc` without concurrent branch drift.
@@ -419,24 +419,37 @@ Changed:
   cannot approve them. Server and Connector validate the same closed plan.
 - Computers exposes both actions in all eight languages. See
   `FIRBO-BROWSER-EVIDENCE-20261006.md`.
+- PR #21 merged with both histories preserved at
+  `9b2b8ce0733762c957eb74377d88e1ae7b8fa247`; accepted head `73e51d4`,
+  immutable tree `f60e617f90fcdc385396c711923c073bda188888`.
 
 Tested / passed:
 - 91/91 focused browser/policy/approval/Connector tests, all 546 non-rendered
   FIRBO Node tests, 487/487 frontend tests, frontend TypeScript and production
-  build passed. Final exact-head CI is required after the candidate commit.
+  build passed. All seven exact-head workflows passed, including the visible
+  Chromium/Xvfb fixture in run `37423292153`.
+- Supabase `connector` v28 is ACTIVE, `verify_jwt=false`, digest
+  `65e01d4e06a25e8400fe947510214456137a484a17fed5279a052be99f6d37f3`;
+  its two deployed files match source exactly. Runner v83, chat v37, mission v26
+  and every migration remain unchanged.
+- Production `dpl_8ekCf1V4MUVuMzKZnoJQ2Q3y2WD1` is READY from the tested
+  immutable PR source with `withLatestCommit:false`. Public `firbo-browser.mjs`
+  matches source byte-for-byte; the served Computers chunk contains both new
+  controls. The 30-minute error/fatal scan was empty.
 
 Failed / limitations:
 - Local rendered Chromium is blocked because this workspace lacks the pinned
-  browser executable and Xvfb. Do not count it as passed; the exact-head GitHub
-  workflow must install Chromium and run the updated real-DOM fixture.
+  browser executable and Xvfb. It is not counted as a local pass; exact-head CI
+  supplied separate rendered-browser evidence.
 - No Mac, account, credential, integration row, permission, job or message was
-  changed. This is source/automated evidence only, not real-device acceptance.
+  changed. Source, automated Chromium and served-source evidence do not prove
+  real-device acceptance.
 
 Remains:
-- Commit/publish the candidate branch, require exact-head CI, preserve any newer
-  Claude work, then decide merge/release. Only the frontend and matching
-  connector validator are in scope; preserve runner v83, chat v37,
-  mission-runner v26 and all migrations.
 - Real already-paired Mac update and approved snapshot/screenshot/Stop/offline
   useful-artifact read-back; signed-in CEO acceptance, OAuth, approved channels,
   second customer and all remaining master-plan gates.
+
+References: https://github.com/conpol84/javris-clone/pull/21 ;
+https://github.com/conpol84/javris-clone/actions/runs/37423292153 ;
+https://firboai.app
