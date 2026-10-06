@@ -10,6 +10,13 @@ test('authenticated device receives the exact supported report protocol',async()
  const p=await r.json();assert.equal(p.protocol,'firbo-connector/v2');assert.equal(p.report_ack,'sha256-v1');assert.equal(p.remote_stop,false);
  assert.equal(r.headers.get('cache-control'),'no-store');
 });
+test('poll claims work only through the atomic server RPC',async()=>{
+ const {state,invoke}=await makeHandler();const row={...jobRow(),status:'queued',kind:'read',params:{path:'synthetic'},created_at:new Date().toISOString()};state.rows.connector_jobs.push(row);
+ const response=await invoke({action:'poll',token:TOKEN});assert.equal(response.status,200);
+ assert.deepEqual((await response.json()).job,{id:row.id,kind:'read',params:{path:'synthetic'}});
+ assert.equal(row.status,'running');assert.equal(state.claims.length,1);
+ assert.deepEqual(state.claims[0].p_org,ORG);assert.deepEqual(state.claims[0].p_device,DEVICE);
+});
 test('capabilities do not bypass token authentication',async()=>{
  const {invoke,state}=await makeHandler();for(const token of [undefined,'a'.repeat(40),'b'.repeat(64),'not-a-token']){
   assert.equal((await invoke({action:'capabilities',token})).status,401);

@@ -44,6 +44,7 @@ const LOCAL_ERRORS = new Set([
   'operation_stopped', 'unsafe_file_type', 'write_verification_failed', 'process_spawn_failed', 'reserved_local_path',
   'browser_disabled', 'invalid_browser_url', 'browser_open_failed',
   'apps_disabled', 'apps_unsupported', 'invalid_app_name', 'app_open_failed', 'shortcut_failed',
+  'shortcut_timeout', 'stop_unconfirmed_needs_review',
 ]);
 const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'ENOTDIR', 'EISDIR', 'ELOOP']);
 
@@ -68,30 +69,48 @@ export function validateJob(job) {
 export const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._&+'()-]{0,59}$/u;
 
 /** macOS only: `open -a <App>` or `shortcuts run <Name>`, without a shell. Resolves when the launcher finishes. */
-export async function launchMac(kind, name, { spawnImpl = spawn, platform = process.platform, timeoutMs = 60_000, signal } = {}) {
+export async function launchMac(kind, name, { spawnImpl = spawn, platform = process.platform, timeoutMs = 60_000, stopGraceMs = 1000, signal } = {}) {
   if (platform !== 'darwin') throw new Error('apps_unsupported');
   if (!APP_NAME.test(name)) throw new Error('invalid_app_name');
   stopCheck(signal);
   const [cmd, args, failure] = kind === 'open_app' ? ['/usr/bin/open', ['-a', name], 'app_open_failed'] : ['/usr/bin/shortcuts', ['run', name], 'shortcut_failed'];
   return await new Promise((resolve, reject) => {
     let settled = false;
-    let child;
-    // A Shortcut that runs too long or is stopped locally is ended, not left running in the background.
-    const end = () => { try { child?.kill('SIGTERM'); } catch { /* already gone */ } };
+    let child, interrupted, escalation, confirmation;
+    const kill = sig => { try { child?.kill(sig); } catch { /* exit still needs confirmation */ } };
     const finish = error => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(escalation);
+      clearTimeout(confirmation);
       signal?.removeEventListener('abort', onAbort);
-      if (error) { end(); reject(error); } else resolve(kind === 'open_app' ? { app: name, opened: true } : { name, ran: true });
+      if (error) reject(error); else resolve(kind === 'open_app' ? { app: name, opened: true } : { name, ran: true });
     };
-    const onAbort = () => finish(new Error('operation_stopped'));
-    const timer = setTimeout(() => finish(new Error(kind === 'open_app' ? failure : 'shortcut_timeout')), kind === 'open_app' ? 15_000 : timeoutMs);
+    // A kill request is not an exit receipt. Keep the original interruption even
+    // if the child later exits zero, and never claim confirmed Stop without close.
+    // macOS may delegate effects to another app: CLI exit is not an OS rollback.
+    const interrupt = reason => {
+      if (settled || interrupted) return;
+      interrupted = reason;
+      clearTimeout(timer);
+      escalation = setTimeout(() => {
+        confirmation = setTimeout(() => finish(new Error('stop_unconfirmed_needs_review')), stopGraceMs);
+        kill('SIGKILL');
+      }, stopGraceMs);
+      kill('SIGTERM');
+    };
+    const onAbort = () => interrupt('operation_stopped');
+    const timer = setTimeout(() => interrupt(kind === 'open_app' ? failure : 'shortcut_timeout'), kind === 'open_app' ? 15_000 : timeoutMs);
     signal?.addEventListener('abort', onAbort, { once: true });
     try {
       child = spawnImpl(cmd, args, { shell: false, stdio: 'ignore' });
-      child.once('error', () => finish(new Error(failure)));
-      child.once('close', code => finish(code === 0 ? undefined : new Error(failure)));
+      child.once('error', () => { if (!interrupted) finish(new Error(failure)); });
+      child.once('close', code => finish(interrupted ? new Error(interrupted) : code === 0 ? undefined : new Error(failure)));
+      // Covers cancellation during spawn, before listeners could be attached.
+      if (signal?.aborted) {
+        if (interrupted) kill('SIGTERM'); else onAbort();
+      }
     } catch { finish(new Error(failure)); }
   });
 }

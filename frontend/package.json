@@ -68,6 +68,9 @@
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^5.0.1"
   },
+  "overrides": {
+    "katex": "$katex"
+  },
   "allowScripts": {
     "core-js": false,
     "fsevents": false

@@ -207,25 +207,12 @@ Deno.serve(async (req) => {
     const until = Date.now() + 20_000;
     await admin.from('connector_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', dev.id);
     while (Date.now() < until) {
-      const { data: next } = await admin
-        .from('connector_jobs')
-        .select('id, kind, params')
-        .eq('device_id', dev.id)
-        .eq('status', 'queued')
-        .gte('created_at', new Date(Date.now() - JOB_MAX_AGE_MS).toISOString())
-        .order('created_at', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      if (next) {
-        const { data: claimed } = await admin
-          .from('connector_jobs')
-          .update({ status: 'running', started_at: new Date().toISOString() })
-          .eq('id', next.id)
-          .eq('status', 'queued')
-          .select('id')
-          .maybeSingle();
-        if (claimed) return json(200, { job: next });
-      }
+      const { data: next, error: claimError } = await admin.rpc('connector_claim_next_job', {
+        p_org: dev.organization_id, p_device: dev.id,
+        p_min_created: new Date(Date.now() - JOB_MAX_AGE_MS).toISOString(),
+      });
+      if (claimError) return json(503, { error: 'job_claim_unavailable' });
+      if (next) return json(200, { job: next });
       await sleep(1500);
     }
     return json(200, { job: null });
