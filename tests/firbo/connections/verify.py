@@ -228,38 +228,79 @@ with sync_playwright() as pw:
                     dialog.get_by_text("Server setup required", exact=True)
                 ).to_be_visible()
             elif kind == "legacy-setup-dialogs":
-                for service in ["gmail", "gcal", "gdrive", "sheets", "gmail_read", "gcal_read", "gdrive_read", "outlook", "outlook_read", "linkedin", "dropbox"]:
+                for service in [
+                    "gmail",
+                    "gcal",
+                    "gdrive",
+                    "sheets",
+                    "gmail_read",
+                    "gcal_read",
+                    "gdrive_read",
+                    "outlook",
+                    "outlook_read",
+                    "linkedin",
+                    "dropbox",
+                ]:
                     page.locator(f'[data-connection-kind="{service}"]').click()
                     dialog = page.get_by_role("dialog")
                     expect(dialog.locator("form .fb-btn--primary")).to_be_disabled()
-                    expect(dialog.get_by_text("Server setup required", exact=True)).to_be_visible()
-                    expect(dialog.get_by_text("The platform must configure this provider", exact=False)).to_be_visible()
+                    expect(
+                        dialog.get_by_text("Server setup required", exact=True)
+                    ).to_be_visible()
+                    expect(
+                        dialog.get_by_text(
+                            "The platform must configure this provider", exact=False
+                        )
+                    ).to_be_visible()
                     dialog.get_by_text("Server setup details", exact=True).click()
-                    expect(dialog.get_by_text("https://database.invalid/functions/v1/integrations", exact=True)).to_be_visible()
+                    expect(
+                        dialog.get_by_text(
+                            "https://database.invalid/functions/v1/integrations",
+                            exact=True,
+                        )
+                    ).to_be_visible()
                     assert dialog.evaluate("(e)=>e.scrollWidth<=e.clientWidth+1")
                     page.keyboard.press("Escape")
-                assert all(x["action"] in ["connection_manifest", "integration_manifest"] for x in page.evaluate("window.__firboWorld.calls"))
+                assert all(
+                    x["action"] in ["connection_manifest", "integration_manifest"]
+                    for x in page.evaluate("window.__firboWorld.calls")
+                )
             elif kind in ["legacy-ready", "legacy-deep-link"]:
                 if kind == "legacy-ready":
                     page.locator('[data-connection-kind="gmail"]').click()
                 dialog = page.get_by_role("dialog")
-                expect(dialog.get_by_text("Ready for authorization", exact=True)).to_be_visible()
+                expect(
+                    dialog.get_by_text("Ready for authorization", exact=True)
+                ).to_be_visible()
                 expect(dialog.locator("form .fb-btn--primary")).to_be_enabled()
-                assert all(x["action"] in ["connection_manifest", "integration_manifest"] for x in page.evaluate("window.__firboWorld.calls"))
+                assert all(
+                    x["action"] in ["connection_manifest", "integration_manifest"]
+                    for x in page.evaluate("window.__firboWorld.calls")
+                )
             elif kind in ["connection-save-failure", "connection-credentials-failure"]:
                 page.locator('[data-connection-kind="github"]').click()
                 dialog = page.get_by_role("dialog")
-                dialog.get_by_label("Repository (owner/name)", exact=True).fill("synthetic-org/synthetic-repo")
-                dialog.get_by_label("Access token", exact=True).fill("ghp_" + "synthetic" * 5)
+                dialog.get_by_label("Repository (owner/name)", exact=True).fill(
+                    "synthetic-org/synthetic-repo"
+                )
+                dialog.get_by_label("Access token", exact=True).fill(
+                    "ghp_" + "synthetic" * 5
+                )
                 dialog.locator("form .fb-btn--primary").click()
-                expected = "The connection could not be saved" if kind == "connection-save-failure" else "The provider rejected access"
+                expected = (
+                    "The connection could not be saved"
+                    if kind == "connection-save-failure"
+                    else "The provider rejected access"
+                )
                 expect(dialog.get_by_role("alert")).to_contain_text(expected)
                 expect(dialog).to_be_visible()
                 assert "GitHub connected" not in page.locator("body").inner_text()
             elif kind == "readiness-error":
                 page.locator('[data-connection-kind="gmail"]').click()
                 dialog = page.get_by_role("dialog")
-                expect(dialog.get_by_text("Could not check server readiness", exact=False)).to_be_visible()
+                expect(
+                    dialog.get_by_text("Could not check server readiness", exact=False)
+                ).to_be_visible()
                 expect(dialog.locator("form .fb-btn--primary")).to_be_enabled()
                 before = len(page.evaluate("window.__firboWorld.calls"))
                 dialog.get_by_role("button", name="Try again", exact=True).click()

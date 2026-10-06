@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['frontend/**', 'tests/firbo/pages/**', '.github/workflows/firbo-m2-pages.yml']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8, main]
     paths: ['frontend/**', 'tests/firbo/pages/**', '.github/workflows/firbo-m2-pages.yml']
 permissions:
   contents: read

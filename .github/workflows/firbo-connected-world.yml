@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-unified-gateway]
     paths: ['frontend/**','supabase/functions/**','tests/firbo/connections/**','deploy/schema/**','.github/workflows/firbo-connected-world.yml']
   pull_request:
-    branches: [claude/omniroute-engine]
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8, main]
     paths: ['frontend/**','supabase/functions/**','tests/firbo/connections/**','deploy/schema/**','.github/workflows/firbo-connected-world.yml']
 permissions:
   contents: read

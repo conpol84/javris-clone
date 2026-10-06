@@ -12,6 +12,18 @@ concurrency:
   group: firbo-workspace-lifecycle-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  python-lint:
+    name: Python source and acceptance-test lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Pinned lint checks retained from the full CI
+        run: |
+          python3 -m pip install ruff==0.16.7
+          python3 -m ruff check src/ tests/
+          python3 -m ruff format --check src/ tests/
   handlers:
     name: Synthetic handler failure and authorization probes
     runs-on: ubuntu-latest
