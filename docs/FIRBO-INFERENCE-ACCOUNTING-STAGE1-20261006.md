@@ -78,8 +78,10 @@ inferences from served source or CI.
   onto the same ledger with route-specific upper bounds.
 - Add an authorized reconciliation workflow for `reconcile_required` rows and
   monitoring for stale reservations/overruns.
-- Add covering indexes for the ledger's `(organization_id, agent_id)` and
-  `user_id` foreign-key paths; Supabase reports these as performance follow-ups.
+- Candidate migration `20261006084130_inference_request_ledger_indexes.sql`
+  adds covering indexes for the ledger's `(organization_id, agent_id)` and
+  `user_id` foreign-key paths. It remains source-only until exact-head
+  PostgreSQL CI, merge and one-time production application.
 - Prove a real signed-in chat and provider cost receipt after coordinated
   release, then test a second real company. Synthetic PostgreSQL companies do
   not satisfy real-customer isolation.

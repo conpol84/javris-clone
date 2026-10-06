@@ -574,3 +574,26 @@ Remains:
 References: https://github.com/conpol84/javris-clone/pull/23 ;
 https://github.com/conpol84/javris-clone/actions/runs/37436471240 ;
 https://firboai.app
+
+### Candidate — accounting FK covering indexes (not released)
+
+Changed:
+- Continued exact Claude checkpoint `38b02e2`; no direct-session drift was
+  present. Added an additive migration for the two private ledger FK paths
+  reported by the post-release Supabase performance advisor.
+- The PostgreSQL accounting target applies stage 1 followed by the new migration
+  and asserts the exact index columns/order. No live SQL or deployment has been
+  performed by this candidate.
+
+Tested / passed:
+- Workflow YAML/migration-order validation, diff check and all 92 Edge handler
+  tests pass locally. The actual PostgreSQL 17 lifecycle remains an exact-head
+  CI gate because this workspace has no PostgreSQL/container runtime.
+
+Failed / limitations:
+- This candidate changes indexes only. It does not extend accounting to another
+  inference route or prove real-account/provider acceptance.
+
+Remains:
+- Publish an isolated PR, require all exact-head workflows, and apply the new
+  migration once only after merge. Never replay ledger `20261006083523`.
