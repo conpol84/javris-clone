@@ -40,3 +40,30 @@ task/readback. Original company memory/knowledge, skill/lifecycle/workflow adapt
 durable approval continuation, per-attempt runner accounting, provider linking,
 second-customer isolation and off-host restore remain open; use PR30 matrices.
 Mac physical browser/Excel/Stop acceptance follows the server stages.
+
+## Installed and released — owner continuation, 6 October 2026
+
+Owner ran the pinned updater on srv2027143 and returned installed:true,
+services_active:true, backup /var/backups/firbo-engine-70a1iohu. This proves the
+helper completed imports/hash/start checks, not an inference or artifact.
+
+All nine workflows passed for source 161802b049bd746150699cae5e2f0e2e08e938c6.
+Fresh Claude head f6442b75 and parity ce421e31 were unchanged. Live runner v89
+matched all 12 baseline files. Released server-jarvis v14 (three exact matching
+files, verify_jwt:true) and agent-runner v90 (13 matching files, verify_jwt:false
+retained with existing user/cron guards). Claude v89/Tavily is preserved.
+Live agent-chat v38 entrypoint is unchanged; it was not redeployed. Its separate
+accounting dependency differs from this candidate and was also left untouched.
+No migration, credentials, device jobs or provider permission changes occurred.
+
+Frontend production dpl_Ee5eRBnzphaJqJKfr3iPi7Y1ng54 is READY at firboai.app,
+independently resolved to exact source 161802b0. Rollback frontend remains
+dpl_B9gmDQxDew7FTMNNdoTC7bhMpVaR (fd9ebd4). Both updated functions reject
+anonymous POST with 401. Public landing page rendered in the cloud browser;
+authenticated admin execution was blocked by absence of a signed-in session,
+not by a known runtime defect. No login, permission expansion or synthetic
+customer account was created to manufacture acceptance.
+
+Next: safe authenticated local /v1/info for both services on VPS, then actual
+allowed tool call and independently read saved artifact. Remaining full parity
+families above are still open. Do not present this deployment as the whole clone.
