@@ -4,7 +4,7 @@
     "src/openjarvis": "90a89470176d5bb227f04b994c327047881218e2",
     "frontend/src": "49227e71543aec97a3899132def29bb60844187c",
     "rust": "d722411734d4f36926aeea3578e2fc784f85b7fc",
-    "tests": "c3e533912f9354c5ba61186f2a78f56b2c4c0a38"
+    "tests": "4c382f11b0509ec8f2e1d98cf8265bd9e540dea5"
   },
   "meaning": "Presence and registrations only. No installation, enabled-tool, account or execution claim.",
   "scopes": {

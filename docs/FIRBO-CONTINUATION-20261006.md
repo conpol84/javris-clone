@@ -1,5 +1,8 @@
 # Firbo continuation — combined Claude/Codex release
 
+**Latest release is the PR #17 entry at the end of this file. Earlier versions
+and remaining-item lists below are historical checkpoints.**
+
 This checkpoint continues the master plan and the earlier 20261005 handoff.
 Read the final release entry below before deploying anything.
 
@@ -131,3 +134,118 @@ Not done / remains:
 - The MCP SQL tool hangs on statements containing DROP/DELETE (likely an approval
   gate); use `create or replace trigger` or apply via CI. A disabled/blocked
   `computer_use` tool row remains on the test Research Agent.
+
+## PR #17 — combined release and OpenJarvis parity (6 October, latest)
+
+### Changed
+
+- Merged Claude through `c3912f98f70fd76d19cf9949c59d39f45422b0f9`, preserving
+  fresh computer policy, approvals, Studio power rows, professional deliverable
+  formats, PowerPoint downloads, quality pass and presentation repair standard.
+- Included Codex PR #16 `525bb38`; both branch histories are parents of the
+  combined candidate. PR #17 merged into Claude as
+  `f27132a3656cbb9fc3268619bee2fd5586336eb5`.
+- Accepted runtime source: `354a12dd8d0421ad6c1fbc914654f8892feb1272`, tree
+  `60586d259c839b42881bfccaa98c2e42e8ac5787`.
+- Closed the reviewed AI employee computer protocol gaps: fresh agent/tool/task
+  checks, run token and policy/capability snapshots, atomic authorized dispatch,
+  parent cancellation/deletion/recovery/publication guards, and confirmed
+  Shortcut CLI termination with bounded escalation and uncertainty reporting.
+- Suggest-only keeps Claude's list/read allowance but cannot mutate the local
+  computer or bypass that limit through either OpenJarvis server. Server steps
+  also refresh employee/task authorization. Per-tool server execution scoping
+  remains an adapter requirement; do not claim a new full server security model.
+- Preserved `started_at` in atomic job claims. Fixed FIFO fixture isolation;
+  retained all prior assertions and added employee/tool revocation races.
+- Added reproducible OpenJarvis AST/source inventory and function-family matrix:
+  `docs/FIRBO-OPENJARVIS-PARITY-20261006.md`, JSON inventory and its script.
+
+### Tested / passed
+
+- Exact source: all 9 PR CI workflow runs passed. Actual PostgreSQL 17.6 passed
+  rollback/lifecycle assertions plus **37 concurrent protocol checks** across
+  Read Committed, Repeatable Read and Serializable. Actual Chromium passed.
+- Local: production build, 468 frontend tests, 83 final edge-entrypoint tests,
+  24 focused computer policy/Shortcut/deliverable tests; receipt/approval and
+  local-operation suites passed in local selections and CI. Counts overlap;
+  do not add them into an invented grand total. Edge TypeScript and changed
+  Python formatting/lint checks passed.
+- Applied migration is recorded by Supabase as **20261006023507**, name
+  `agent_computer_run_protocol`. Its candidate filename was 20261006030000;
+  the follow-up aligns the filename and CI reference with the real ledger.
+  It also retains the concurrent idempotent `started_at` column guard for fresh
+  installs. That column already exists live; the function bodies are unchanged.
+  **Do not replay either filename in production.**
+- Live `connector` **v27** matches both submitted files exactly; live
+  `agent-runner` **v80** matches all 12 submitted files exactly. Agent-chat v34
+  was left intact, retaining task briefing `e9fb240`.
+- Live schema read confirms the new RPC is service-role-only. Direct read-only
+  tests accept UTC all-day hours and reject incomplete hours/invalid zones.
+- Production Vercel **dpl_58bZ53W55Y6e76rMgbBd1rcoERmB**, READY, source
+  `354a12d`, independently resolved from `firboai.app`. Pinned redeploy from
+  verified preview with `withLatestCommit:false`; no untested branch head used.
+- Prior frontend rollback target: `dpl_HwR3pfREEFg8Xzp9DXQueeJFEGUA` at
+  `8aed938`. Backend rollback to old v79/v26 is NOT schema-compatible for new
+  inline agent jobs: retain the migration-aware versions or repair forward.
+
+### Failed / corrected
+
+- The original PR #16 SQL test expected a new job despite older queued fixture
+  jobs on the same device. Isolated a device for the SQL tests and another for
+  the concurrent employee tests; FIFO and every assertion remain intact.
+- System PostgreSQL installation here was unavailable; actual PostgreSQL ran
+  in isolated GitHub CI, not in the live customer database.
+- First apply_migration call returned invalid/expired requestState. A read
+  proved no migration/column/RPC existed before retry. The identical second
+  call succeeded; no blind duplicate application or approval bypass occurred.
+- CLI push lacked credentials. Used the authorized GitHub Git-object API with
+  both parents and expected-head non-force updates; verified identical trees.
+- Local generated frontend/tsconfig.tsbuildinfo remains uncommitted/preserved.
+
+### Remains
+
+- Mac is paired/online but has no browser_task capability. Update the existing
+  Connector/browser runtime without re-pairing, then prove real local browser,
+  consent/Stop/offline behavior and a useful saved/read-back artifact.
+- Full original OpenJarvis source is retained: zero missing upstream files in
+  Python/frontend/Rust/tests, with 64 static tools, 30 channels, 27 connectors,
+  23 agents and 6 engine registrations. This is SOURCE, not enabled-tool parity.
+  See the matrix for unmapped company adapters, browser screenshot/accessibility
+  tree, typed server tools, knowledge graph, engine lifecycle and telemetry.
+- Both admin and customer server health routes respond; anonymous info routes
+  require authentication. No direct Hostinger/SSH capability exists here:
+  installed source hashes/tool configuration and real sandbox isolation are
+  still not certified. Keep the second real customer account acceptance open.
+- Google/Microsoft provider consent/refresh/revoke and Telegram/WhatsApp real
+  tests remain. The integrations table returned zero rows; do not invent
+  connections or send messages without an approved destination and content.
+- Preserve original remaining gates: company Knowledge/Skills/Workflow real
+  acceptance; atomic global accounting/Free budgets; signed desktop/OS input;
+  natural voice/mobile/eight-language devices; encrypted off-host restore that
+  boots, load/monitoring and final product assessment. No full-plan completion.
+- No device permissions, user credentials or external messages were changed.
+  Last pre-release read showed zero active connector jobs and four enabled
+  computer power rows, which were preserved.
+
+### Final integration follow-up
+
+- Concurrent hardening head `8b22130758b6762f4e9ab5ad588a52d35de48903`
+  was discovered before closure. Its history and dependency fix are preserved:
+  PPTX version pin/lock alignment and image-size 2.0.4 advisory override.
+  PR #16 was reopened immediately when the newer head was discovered; do not
+  close it as superseded until its new history is in the target branch.
+- The migration filename now matches the applied ledger. The additional
+  `ADD COLUMN IF NOT EXISTS started_at timestamptz` is a fresh-install guard,
+  not a new production schema requirement. No SQL replay or edge redeploy.
+- Live served connector SHA256:
+  `55c429a7dcb61a1e5a6b19fcc7ffbeda5c24fb62edad13bfeae755b87b9c295b`;
+  browser SHA256:
+  `2748e17b59cbea0c7638eb6dea8c185ac132700b0189699349292ed21c4d4621`.
+  Both returned HTTP 200 and matched the released repository assets. Anonymous
+  empty POSTs to agent-chat, agent-runner and connector each returned HTTP 401.
+- Existing continuation automation was updated to this release and remaining
+  gates, preserving direct-session priority and no concurrent duplicate work.
+- Follow-up validation: clean npm 11.19 install, production build, all 468
+  frontend tests and actual PPTX ZIP generation with text and embedded PNG
+  passed. Production remains pinned to the accepted PR #17 runtime until the
+  follow-up relevant CI completes. No edge implementation changed afterward.

@@ -3,7 +3,9 @@
 Owner directive, 6 October 2026: always retain both Claude's and Codex's work.
 
 - Before editing or releasing, read the latest continuation and inspect the current
-  heads of `claude/gifted-dijkstra-rph5j8` and `codex/firbo-reconcile-20261005`.
+  heads of `claude/gifted-dijkstra-rph5j8` and `codex/firbo-parity-20261006`.
+  The older `codex/firbo-reconcile-20261005` and `codex/firbo-hardening-20261006`
+  are historical inputs, not the latest release sources.
 - Fetch and merge new work. Preserve both parents and review overlapping files;
   never replace a file with an older branch's copy simply to resolve a conflict.
 - Do not force-push, reset away another session's work, or discard uncommitted
@@ -30,3 +32,7 @@ Reconciled release candidate: `7f915df6edf2fbce66b5e09b004e1b25ce6375be`.
 It contains both `44ecae2` and Claude `6f5aa78`, including `e9fb240`.
 The only changes beyond their combined implementation are two precise browser
 test selectors: the path textbox and the offline job-submission button.
+
+Latest combined release: PR #17 merged into Claude at `f27132a`; accepted runtime
+commit `354a12d` includes Claude `c3912f9` and Codex PR #16 `525bb38`.
+Read the latest entry in FIRBO-CONTINUATION-20261006.md before release.

@@ -69,7 +69,8 @@
     "vitest": "^5.0.1"
   },
   "overrides": {
-    "katex": "$katex"
+    "katex": "$katex",
+    "image-size": "2.0.4"
   },
   "allowScripts": {
     "core-js": false,
