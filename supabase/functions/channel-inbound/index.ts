@@ -230,7 +230,7 @@ Deno.serve(async (req) => {
         await admin.from('integrations').update({ config: { ...(integ.config ?? {}), conversation_id: convoId } }).eq('id', integ.id);
       }
       const r = await fetch(`${url}/functions/v1/agent-chat`, { method: 'POST', headers: { 'content-type': 'application/json', authorization: `Bearer ${service}`, 'x-cron-secret': cronSecret },
-        body: JSON.stringify({ conversation_id: convoId, message: text, lang, system_user_id: owner }), signal: AbortSignal.timeout(120_000) }).catch(() => null);
+        body: JSON.stringify({ conversation_id: convoId, message: text, lang, system_user_id: owner, request_id: crypto.randomUUID() }), signal: AbortSignal.timeout(120_000) }).catch(() => null);
       const out = r && r.ok ? await r.json().catch(() => null) : null;
       await ch.send(String(out?.message?.content ?? '') || t(lang, 'error'));
     })().catch(() => undefined);

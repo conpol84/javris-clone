@@ -35,7 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [knowledge, integrations, workflows, skills, tasks, run-protocol]
+        target: [knowledge, integrations, workflows, skills, tasks, run-protocol, accounting]
     services:
       postgres:
         image: postgres:17.6
@@ -109,6 +109,14 @@ jobs:
           Path('/tmp/firbo-lifecycle-evidence/assertions.sql').write_text('begin;\n' + source + '\nrollback;\n')
           PY
               psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              ;;
+            accounting)
+              python3 tests/firbo/workspace-postgres-loader.py tasks --output /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f /tmp/firbo-lifecycle-evidence/base.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-fixture.sql
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261006081517_inference_request_ledger_stage1.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/accounting/postgres-assertions.sql | tee /tmp/firbo-lifecycle-evidence/results.txt
+              python3 tests/firbo/accounting/postgres-concurrency.py | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
           esac
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
