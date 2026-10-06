@@ -740,3 +740,34 @@ Remains:
 
 Live now: runner v86, chat v38, mission-runner v26, connector v28, MCP v19, channel-inbound v9,
 frontend dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp.
+
+### Shared-build audit and CI repair — source only
+
+Changed:
+- Preserved the exact Claude head `0ae3150` and both checkpoint histories in
+  merge `8cfd610`; accepted implementation `c9b963f`, tree
+  `5213178a7815746a738b5bdb954fb89c1697cb1f`.
+- Fixed the real CI Ruff E731 failure, retained the race SQL, formatted both
+  affected tests, added lifecycle lint and enabled actual-page/connections
+  workflows for the current shared PR base. No assertions were weakened.
+- Confirmed PR #15–#24 and old gateway/hotfix heads remain ancestors.
+
+Tested / passed:
+- 516 frontend tests, 532 non-rendered Node tests, strict Edge TypeScript,
+  production/tauri/world/page builds, Ruff lint/format, YAML gate checks and
+  diff check. All 31 files of seven live bundles match the exact Claude source;
+  candidate differences are only the expected pending app/mission edits.
+
+Failed / limitations:
+- Automatic approval review again rejected the authorized repository push.
+  No workaround, new PR, remote CI, migration or deployment was performed.
+- Real PostgreSQL and rendered Chromium candidate checks remain pending.
+
+Remains:
+- Upload the exact reviewed branch after the blocked action is authorized,
+  run exact-head CI, recheck drift and release the matching pending bundles.
+- Production remains `dpl_EKo9`, runner v86, chat v38, mission v26,
+  integrations v29, connector v28, MCP v19 and channel-inbound v9.
+- Keep all provider/device/second-customer/master-plan gates open.
+
+Detailed evidence: `FIRBO-SHARED-BUILD-AUDIT-20261006.md`.
