@@ -22,7 +22,8 @@ try {
     const context = await browser.newContext({ viewport: { width, height: 900 }, serviceWorkers: 'block' });
     const page = await context.newPage();
     const errors = [];
-    page.on('pageerror', e => errors.push(e.message));
+    page.on('pageerror', e => { errors.push(e.message); console.error('SYNTHETIC HARNESS ERROR', e.message); });
+    page.on('console', message => { if (message.type() === 'error') console.error('SYNTHETIC HARNESS CONSOLE', message.text()); });
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (url.origin !== origin) return route.abort();
@@ -33,6 +34,7 @@ try {
         import {MemoryRouter} from '/node_modules/.vite/deps/react-router.js';
         import {I18nProvider} from '/src/i18n/I18nProvider.tsx';
         import {BillingPage} from '/src/pages/BillingPage.tsx';
+        import '/src/index.css';
         window.harness={queue:[],organization:'${orgA}',role:'owner'};
         function App(){const [n,setN]=useState(0); window.harness.render=()=>setN(v=>v+1); return React.createElement(I18nProvider,{key:(window.harness.lang??'en')+':'+(window.harness.localeRevision??0)},React.createElement(MemoryRouter,{},React.createElement(BillingPage)));}
         createRoot(document.getElementById('root')).render(React.createElement(App));
@@ -50,7 +52,11 @@ try {
     });
     await page.goto(`${origin}/accounting-test.html?lang=en`);
     const panel = page.locator('section[aria-labelledby="inference-accounting-title"]');
-    await panel.waitFor();
+    await panel.waitFor().catch(async error => {
+      console.error('SYNTHETIC HARNESS STATE', await page.locator('body').textContent());
+      await page.screenshot({ path: `${evidence}/accounting-${width}-load-failure.png` });
+      throw error;
+    });
     await page.waitForFunction(() => window.harness?.queue.length === 1);
     await page.evaluate(data => window.harness.queue[0].resolve({ data, error: null }), receipt(orgA));
     await panel.getByText(pendingId, { exact: true }).waitFor();
