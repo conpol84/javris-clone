@@ -3,6 +3,15 @@
 Status: isolated candidate, not applied to production. This is a prerequisite
 from the accepted runner design, not the completed runner adapter.
 
+Published draft: https://github.com/conpol84/javris-clone/pull/31 on
+`codex/firbo-accounting-rollover-20261006`. Initial remote implementation head
+`a35901b95c3f37bcc917dc245b155d4cec5b62e6` has the identical tree
+`568cd1629deb5791dab73c8a19aabaf3fbb1bd75` to local `a2de7472`.
+All five changed files were read back byte-for-byte. The PR initially targeted
+PR #29's branch; it now targets the shared Claude branch used by the repository's
+full CI. No merge is authorized by that target change. Remote workflows had not
+started at the initial readback; their absence is not a test pass.
+
 ## Current activity and preservation
 
 Read on 6 October 2026: shared Claude remains
@@ -18,6 +27,9 @@ All seven PR #29 workflows now completed successfully at that exact head:
 The direct session is preparing OpenJarvis execution receipts in separate
 `codex/firbo-server-receipts-20261006`, observed local head `d1d98613`.
 It modifies runner/server/UI paths; this stage modifies none of those files.
+That work is now draft PR #30, first observed remote head `ee2c8044`;
+the direct-session local branch has since advanced to `c0cd0e4b`. Do not assume
+the first remote receipt candidate is the final release source.
 Preserve and reconcile that work before any combined release. Leave FreeLLMAPI
 installed until its replacement as the owner requested. PR #13 stays CI-only.
 
