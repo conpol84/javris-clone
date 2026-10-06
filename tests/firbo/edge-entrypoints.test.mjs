@@ -372,6 +372,7 @@ test('agent-runner: a presentation starts on the quality route (paid plans), wit
   const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
   assert.equal(chat.model,'firbo-quality');
   assert.match(chat.messages[0].content,/DELIVERABLE: a presentation/);
+  assert.doesNotMatch(chat.messages[0].content,/You can use tools before you answer/);
   const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
   assert.equal(result.routed_up,'deliverable');
   assert.equal(result.format,'presentation');
