@@ -626,6 +626,81 @@ https://github.com/conpol84/javris-clone/actions/runs/37438061534
 - Remains for the owner: one signed-in meeting through the app, connecting work-source apps,
   Mac Connector update, Telegram/WhatsApp, second customer account, OmniRoute key rotation.
 
+
+### Candidate — mission/meeting inference ledger (6 October, source only)
+
+Changed:
+- Continued Claude checkpoint `a823bcbd0f54e4ef1d29ad15905ef29991289b1b`, which
+  already includes merged PRs #17 through #24 and both contributors' history.
+- Preserved Claude `22e5480` test-data cleanup checkpoint during the combined
+  merge; its runtime files were unchanged.
+- Each mission plan, synthesis, meeting speaker and CEO minutes model attempt
+  uses the chat ledger's private company lock and current employee budget.
+  Fallbacks reserve separately; ambiguous earlier results retain their cost
+  reservation. Lost settlement responses cannot trigger another provider call.
+- Mission results contain accounting request IDs and review state. Previously
+  ambiguous missions cannot be re-executed automatically. Free/BYOK remains
+  zero Firbo cost while still consuming per-call rate quota. Existing daily
+  plan limits now apply atomically across chat and meeting model calls.
+- Added source allowlist migration, mixed-route PostgreSQL assertions/races
+  and actual handler tests. No frontend, connector or task-runner changes.
+
+Tested / passed:
+- 103 actual chat/task/mission handler tests with mocked transport; 519
+  non-rendered top-level Node tests; strict Edge TypeScript and diff checks.
+- Real PostgreSQL migration and six race checks remain an exact-head CI gate.
+
+Failed / limitations:
+- Source-only candidate: no production migration, Edge deployment, provider
+  request, user permission, integration or device job was changed.
+- Existing mission task publication/claim semantics are preserved; this does
+  not claim synthesis idempotency or repair every mission lifecycle issue.
+- Agent-runner, speech and other inference routes still need ledger adapters.
+
+Remains:
+- Require exact-head CI, re-check concurrent branches/live dependencies, merge
+  preserving history, apply only the new migration and deploy mission-runner.
+  Never replay `20261006083523` or `20261006084808`.
+- Keep real Mac, real customer sandbox, OAuth/channel acceptance, reconciliation
+  monitoring and all other remaining master-plan gates open.
+
+### Candidate — app connection readiness and actionable failures (6 October)
+
+Changed:
+- Continued the source-only mission accounting candidate; added manager-scoped
+  readiness metadata for all 11 legacy OAuth adapters and specific errors for
+  missing setup, disabled runtime, expired consent and failed persistence.
+- Token/webhook apps state required inputs; all app deep links work. Provider
+  401/403/429 responses have distinct, sanitized explanations. Legacy OAuth
+  redirects are restricted to the expected provider HTTPS origin.
+- Preserved newer Claude runner/material-research work `500e4e9` and Codex parity
+  `ce421e3`. App implementation `2cdb3ac`; combined runtime source `2c28393`.
+
+Tested / passed:
+- 516 frontend tests, 532 non-rendered Node tests, strict frontend/Edge TypeScript
+  and production frontend/isolated world builds. All four retained live
+  integrations v29 files match the pre-change source by content comparison.
+- Extended existing actual-page checks for setup/ready/deep-link/error/retry
+  behavior without weakening existing layout, company or device checks.
+- Live reread found Claude's runner v84; all 12 dependency files match the
+  combined source. Frontend production, integrations v29 and mission-runner v26
+  remain unchanged. Production has zero connected integrations.
+
+Failed / limitations:
+- Browser execution is pending: browser installation failed (certificate error,
+  then truncated/non-ZIP downloads). Source/build checks do not replace rendered
+  verification. Exact-head CI and PostgreSQL gates are still pending.
+- Automatic approval review again rejected GitHub push; no bypass, PR or
+  candidate deployment was performed. Actual provider credentials, account
+  consent and live connections were not configured or claimed as working.
+
+Remains:
+- Accepted authorization for the exact repository upload, latest-source/live
+  reconciliation, exact-head CI and then deployment of the matching bundles.
+- Real provider registrations/secrets, device origin approval and signed-in
+  account acceptance. Keep all earlier master-plan gates open.
+
+Details: `docs/FIRBO-APP-CONNECTIONS-20261006.md`.
 ### Claude: runner v84–v86, research quality, more test data removed
 
 Changed:
@@ -665,3 +740,34 @@ Remains:
 
 Live now: runner v86, chat v38, mission-runner v26, connector v28, MCP v19, channel-inbound v9,
 frontend dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp.
+
+### Shared-build audit and CI repair — source only
+
+Changed:
+- Preserved the exact Claude head `0ae3150` and both checkpoint histories in
+  merge `8cfd610`; accepted implementation `c9b963f`, tree
+  `5213178a7815746a738b5bdb954fb89c1697cb1f`.
+- Fixed the real CI Ruff E731 failure, retained the race SQL, formatted both
+  affected tests, added lifecycle lint and enabled actual-page/connections
+  workflows for the current shared PR base. No assertions were weakened.
+- Confirmed PR #15–#24 and old gateway/hotfix heads remain ancestors.
+
+Tested / passed:
+- 516 frontend tests, 532 non-rendered Node tests, strict Edge TypeScript,
+  production/tauri/world/page builds, Ruff lint/format, YAML gate checks and
+  diff check. All 31 files of seven live bundles match the exact Claude source;
+  candidate differences are only the expected pending app/mission edits.
+
+Failed / limitations:
+- Automatic approval review again rejected the authorized repository push.
+  No workaround, new PR, remote CI, migration or deployment was performed.
+- Real PostgreSQL and rendered Chromium candidate checks remain pending.
+
+Remains:
+- Upload the exact reviewed branch after the blocked action is authorized,
+  run exact-head CI, recheck drift and release the matching pending bundles.
+- Production remains `dpl_EKo9`, runner v86, chat v38, mission v26,
+  integrations v29, connector v28, MCP v19 and channel-inbound v9.
+- Keep all provider/device/second-customer/master-plan gates open.
+
+Detailed evidence: `FIRBO-SHARED-BUILD-AUDIT-20261006.md`.

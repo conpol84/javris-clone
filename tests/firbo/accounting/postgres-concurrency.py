@@ -15,7 +15,9 @@ SERVICE = 'set local role service_role; set local request.jwt.claims=\'{"role":"
 
 
 def sql(query: str) -> str:
-    return subprocess.check_output(PSQL + ["-c", query], text=True, stderr=subprocess.PIPE).strip()
+    return subprocess.check_output(
+        PSQL + ["-c", query], text=True, stderr=subprocess.PIPE
+    ).strip()
 
 
 def start(name: str) -> subprocess.Popen:
@@ -50,7 +52,12 @@ def wait_ready(proc: subprocess.Popen) -> None:
 def wait_lock(proc: subprocess.Popen, app: str) -> None:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:
-        if sql(f"select count(*) from pg_stat_activity where application_name='{app}' and wait_event_type='Lock'") == "1":
+        if (
+            sql(
+                f"select count(*) from pg_stat_activity where application_name='{app}' and wait_event_type='Lock'"
+            )
+            == "1"
+        ):
             return
         if proc.poll() is not None:
             raise AssertionError(proc.stderr.read())
@@ -58,7 +65,7 @@ def wait_lock(proc: subprocess.Popen, app: str) -> None:
     raise AssertionError("second reservation did not contend on the organization lock")
 
 
-def race(isolation: str) -> None:
+def race(isolation: str, source: str = "agent-chat") -> None:
     suffix = uuid.uuid4().hex
     org = str(uuid.uuid4())
     agent = str(uuid.uuid4())
@@ -70,14 +77,23 @@ def race(isolation: str) -> None:
     )
     app = "accounting_" + suffix
     a, b = start(app + "_a"), start(app + "_b")
-    call = lambda key: (
-        f"select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat',"
-        f"'{key}',0.750000,60,100)"
-    )
+
+    def call(key: str, route: str) -> str:
+        return (
+            f"select public.firbo_reserve_inference('{org}','{USER}','{agent}','{route}',"
+            f"'{key}',0.750000,60,100)"
+        )
+
     try:
-        send(a, f"begin isolation level {isolation}; {SERVICE} {call(first_key)}; select 'reservation_ready';")
+        send(
+            a,
+            f"begin isolation level {isolation}; {SERVICE} {call(first_key, 'agent-chat')}; select 'reservation_ready';",
+        )
         wait_ready(a)
-        send(b, f"begin isolation level {isolation}; {SERVICE} {call(second_key)}; commit;")
+        send(
+            b,
+            f"begin isolation level {isolation}; {SERVICE} {call(second_key, source)}; commit;",
+        )
         b.stdin.close()
         wait_lock(b, app + "_b")
         send(a, "commit;\n\\q")
@@ -93,11 +109,24 @@ def race(isolation: str) -> None:
             if code != 0:
                 raise AssertionError(err)
             result = json.loads(out.splitlines()[-1])
-            if result.get("ok") is not False or result.get("reason") != "budget_exceeded":
+            if (
+                result.get("ok") is not False
+                or result.get("reason") != "budget_exceeded"
+            ):
                 raise AssertionError(result)
-        if sql(f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'") != "1":
-            raise AssertionError("more than one reservation crossed the budget boundary")
-        print(f"PASS {isolation}: one winner for concurrent budget reservations", flush=True)
+        if (
+            sql(
+                f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'"
+            )
+            != "1"
+        ):
+            raise AssertionError(
+                "more than one reservation crossed the budget boundary"
+            )
+        print(
+            f"PASS {isolation}: one winner for concurrent chat/{source} budget reservations",
+            flush=True,
+        )
     finally:
         for proc in (a, b):
             if proc.poll() is None:
@@ -115,17 +144,25 @@ def settlement_handoff(isolation: str) -> None:
         f"insert into public.organization_members values('{org}','{USER}','owner',now());"
         f"insert into public.agents(id,organization_id,name,slug,monthly_budget_usd) values('{agent}','{org}','Settle agent','settle-agent',1.00);"
     )
-    initial = json.loads(sql(
-        f"begin; {SERVICE} select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat',"
-        f"'{initial_key}',0.750000,60,100); commit;"
-    ))
+    initial = json.loads(
+        sql(
+            f"begin; {SERVICE} select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat',"
+            f"'{initial_key}',0.750000,60,100); commit;"
+        )
+    )
     request_id = initial["request_id"]
     app = "accounting_settle_" + suffix
     a, b = start(app + "_a"), start(app + "_b")
     try:
-        send(a, f"begin isolation level {isolation}; {SERVICE} select public.firbo_settle_inference('{request_id}','test:model',100,50,0.750000,100,false); select 'reservation_ready';")
+        send(
+            a,
+            f"begin isolation level {isolation}; {SERVICE} select public.firbo_settle_inference('{request_id}','test:model',100,50,0.750000,100,false); select 'reservation_ready';",
+        )
         wait_ready(a)
-        send(b, f"begin isolation level {isolation}; {SERVICE} select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat','{next_key}',0.500000,60,100); commit;")
+        send(
+            b,
+            f"begin isolation level {isolation}; {SERVICE} select public.firbo_reserve_inference('{org}','{USER}','{agent}','agent-chat','{next_key}',0.500000,60,100); commit;",
+        )
         b.stdin.close()
         wait_lock(b, app + "_b")
         send(a, "commit;\n\\q")
@@ -141,13 +178,29 @@ def settlement_handoff(isolation: str) -> None:
             if code != 0:
                 raise AssertionError(err)
             result = json.loads(out.splitlines()[-1])
-            if result.get("ok") is not False or result.get("reason") != "budget_exceeded":
+            if (
+                result.get("ok") is not False
+                or result.get("reason") != "budget_exceeded"
+            ):
                 raise AssertionError(result)
-        if sql(f"select count(*) from public.usage_events where inference_request_id='{request_id}'") != "1":
+        if (
+            sql(
+                f"select count(*) from public.usage_events where inference_request_id='{request_id}'"
+            )
+            != "1"
+        ):
             raise AssertionError("settlement handoff lost or duplicated usage")
-        if sql(f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'") != "0":
+        if (
+            sql(
+                f"select count(*) from private.inference_requests where organization_id='{org}' and status='reserved'"
+            )
+            != "0"
+        ):
             raise AssertionError("reservation admitted between settlement aggregates")
-        print(f"PASS {isolation}: settlement cannot disappear between budget aggregates", flush=True)
+        print(
+            f"PASS {isolation}: settlement cannot disappear between budget aggregates",
+            flush=True,
+        )
     finally:
         for proc in (a, b):
             if proc.poll() is None:
@@ -157,4 +210,5 @@ def settlement_handoff(isolation: str) -> None:
 
 for level in ("read committed", "serializable"):
     race(level)
+    race(level, "mission-runner")
     settlement_handoff(level)

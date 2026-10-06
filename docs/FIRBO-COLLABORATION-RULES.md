@@ -8,6 +8,9 @@ Owner directive, 6 October 2026: always retain both Claude's and Codex's work.
   are historical inputs, not the latest release sources.
 - Fetch and merge new work. Preserve both parents and review overlapping files;
   never replace a file with an older branch's copy simply to resolve a conflict.
+- Compare the fetched head with the current GitHub branch identity. A cached
+  branch fetch can be stale; fetch the confirmed exact commit before merging
+  when the identities differ. Record both contributors' accepted heads.
 - Do not force-push, reset away another session's work, or discard uncommitted
   changes. Use expected-head, non-force updates. Re-read after a rejected update.
 - Check relevant tests on the combined tree. Changes to page controls require
