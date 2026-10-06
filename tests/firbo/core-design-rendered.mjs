@@ -37,6 +37,11 @@ try {
     assert.equal(await mode.getAttribute('data-core-mode'), 'lightweight');
     await page.locator('canvas').waitFor({ state: 'visible' });
     await page.waitForLoadState('networkidle');
+    await page.waitForFunction(width => { const r = document.querySelector('canvas')?.getBoundingClientRect(); return r && r.height >= 600 && r.width >= width - 1; }, viewport.width, { timeout: 15000 }).catch(async error => {
+      console.log('CANVAS DIAGNOSTIC', await page.locator('canvas').evaluate(el => { const rows = []; for (let p = el; p; p = p.parentElement) { const r = p.getBoundingClientRect(); rows.push({ tag: p.tagName, className: p.className, width: r.width, height: r.height, style: p.getAttribute('style') }); } return rows; }));
+      await page.screenshot({ path: `${evidence}/core-${viewport.width}-size-failure.png` });
+      throw error;
+    });
     const canvasBox = await page.locator('canvas').boundingBox();
     assert.ok(canvasBox && canvasBox.height >= 600 && canvasBox.width >= viewport.width - 1, 'actual positioned core must have a full-size canvas');
     await page.screenshot({ path: `${evidence}/core-${viewport.width}-lightweight.png` });
