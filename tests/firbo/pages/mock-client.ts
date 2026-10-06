@@ -64,6 +64,12 @@ export const COMPANY_ENABLED=true;
 export const companyClient={...base,from,
   rpc: (name:string,...args:any[])=>name==='list_members' ? Promise.resolve({data:[{user_id:'u1',role,full_name:SAMPLE_NAME,email,created_at:date},{user_id:'u2',role:'member',full_name:SAMPLE_NAME+'-Second',email:'second.'+email,created_at:date}],error:null}) : name==='is_platform_admin' ? Promise.resolve({data:role==='owner',error:null}) : (base.rpc as any)(name,...args),
   functions:{invoke:async(name:string, options?:{body?:Record<string,any>})=>{
+    // Jarvis status is a read. Chat/execution still reaches the mutation guard.
+    if(name==='server-jarvis' && options?.body?.action==='status') {
+      if(state==='loading')return new Promise(()=>{});
+      if(state==='error'||role==='member')return {data:null,error:new Error('Synthetic status read denied')};
+      return {data:{configured:true,online:true,model:'demo:model',agent:'Synthetic server agent',engine:'synthetic',models:['demo:model']},error:null};
+    }
     if(name==='connector' && params.get('computer_actions')==='1') {
       const b=options?.body??{}; writes.push(`connector:${b.action}`);
       if(role!=='owner')return {data:null,error:new Error('Denied synthetic mutation')};
