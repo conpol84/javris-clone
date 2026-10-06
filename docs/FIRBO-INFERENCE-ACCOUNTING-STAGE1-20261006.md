@@ -1,7 +1,7 @@
-# FIRBO inference accounting — stage 1 candidate
+# FIRBO inference accounting — stage 1 release
 
-Reviewed 6 October 2026. This is a source and automated-test candidate, not a
-claim that global accounting is complete or live.
+Released 6 October 2026. This is not a claim that global accounting is complete
+or that real signed-in/provider acceptance has been performed.
 
 ## Changed
 
@@ -48,22 +48,29 @@ actual migration and checks:
 - simultaneous 75-cent reservations against a $1 budget under both READ
   COMMITTED and SERIALIZABLE isolation.
 
-This workspace has no PostgreSQL client or container runtime, so that database
-gate must pass in exact-head CI before merge or any production migration.
+This workspace has no PostgreSQL client or container runtime. Exact-head CI run
+`37436471240` supplied independent PostgreSQL 17 evidence and passed the actual
+migration, assertions and all four races before merge or production migration.
 
-## Release boundary
+## Released evidence
 
-No SQL, Edge Function or frontend deployment has been performed by this
-candidate. A safe eventual rollout must preserve this order:
+- PR #23 merged with both histories preserved at
+  `fe9de7b257fc9e48c44cf0b8c1dfe0ae5c326a50`; the accepted source tree is
+  `009cdba5d9def9cecc4d03580ff0e6334fb85353`.
+- The safe order was preserved: compatible web/channel callers, migration once,
+  then the matching chat function. The migration ledger is `20261006083523`.
+- `channel-inbound` v9 and `agent-chat` v38 are ACTIVE. Every deployed chat file
+  matches accepted source exactly. Anonymous chat POST returns HTTP 401.
+- Vercel deployment `dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp` is READY from the
+  accepted PR head with `withLatestCommit:false`; `firboai.app` serves the new
+  caller and its deployment-scoped 30-minute error/fatal scan is empty.
+- Post-release catalog checks show zero ledger/usage rows, direct table access
+  denied to anon/authenticated/service_role, RPC execution limited to
+  service_role and empty function search paths.
 
-1. publish clients (`frontend` and `channel-inbound`) that send `request_id`;
-2. apply the new migration once;
-3. deploy the matching `agent-chat`; and
-4. verify exact deployed files, anonymous denial, a legitimate signed-in chat
-   receipt and reconciliation state without manufacturing provider work.
-
-If any step after the migration fails, keep the existing agent-chat live until
-all callers send the request ID; do not deploy the new handler alone.
+No legitimate signed-in chat was invoked for release verification. Therefore the
+real provider cost receipt and reconciliation state remain acceptance gates, not
+inferences from served source or CI.
 
 ## Remains
 
@@ -71,9 +78,10 @@ all callers send the request ID; do not deploy the new handler alone.
   onto the same ledger with route-specific upper bounds.
 - Add an authorized reconciliation workflow for `reconcile_required` rows and
   monitoring for stale reservations/overruns.
+- Add covering indexes for the ledger's `(organization_id, agent_id)` and
+  `user_id` foreign-key paths; Supabase reports these as performance follow-ups.
 - Prove a real signed-in chat and provider cost receipt after coordinated
   release, then test a second real company. Synthetic PostgreSQL companies do
   not satisfy real-customer isolation.
 - Complete Free entitlement, cross-route accounting and every other open master
   plan gate. Stage 1 is not the global ledger exit criterion.
-

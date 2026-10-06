@@ -516,7 +516,7 @@ References: https://github.com/conpol84/javris-clone/pull/22 ;
 https://github.com/conpol84/javris-clone/actions/runs/37425692392 ;
 https://firboai.app
 
-### Candidate — inference accounting ledger stage 1 (not released)
+### PR #23 — inference accounting ledger stage 1 release
 
 Changed:
 - Continued exact Claude checkpoint `13f4304`; no direct-session branch drift
@@ -526,26 +526,51 @@ Changed:
   admission, atomic usage settlement, duplicate suppression, explicit
   reconciliation for ambiguous provider results and release for known local
   pre-provider failures. Free/BYOK reserves $0 but remains rate-counted.
-- Added an exact PostgreSQL 17 lifecycle/race target. No migration, Edge
-  Function, frontend deployment, provider call or production write has occurred.
+- Added an exact PostgreSQL 17 lifecycle/race target. PR #23 merged with both
+  histories preserved at `fe9de7b257fc9e48c44cf0b8c1dfe0ae5c326a50`.
+  Accepted Codex head `0d31c30683870a325eabe3b33bf76e8f45ad0ca2`,
+  immutable tree `009cdba5d9def9cecc4d03580ff0e6334fb85353`.
   See `FIRBO-INFERENCE-ACCOUNTING-STAGE1-20261006.md`.
 
-Tested / passed locally:
+Tested / passed:
 - 92 actual mocked-transport Edge handler tests, 561 non-rendered FIRBO Node
   tests, 490 frontend tests, strict Edge TypeScript and production build.
-- PostgreSQL client/container is absent locally. Exact-head CI must execute the
-  new ACL, settlement and four concurrency races before merge or any rollout.
+- All seven exact-head workflows passed: `37436471173`, `37436471228`,
+  `37436471240`, `37436471267`, `37436471225`, `37436471295` and
+  `37436471287`. PostgreSQL 17 executed the actual migration, ACL/settlement
+  assertions and all four READ COMMITTED/SERIALIZABLE concurrency races.
+- Production migration was applied once as ledger `20261006083523`. Live ACL
+  checks show no direct table access for anon/authenticated/service_role and RPC
+  execution only for service_role. All four functions retain an empty search
+  path; no accounting request or usage row was created by release verification.
+- `channel-inbound` v9 and `agent-chat` v38 are ACTIVE. All eight chat bundle
+  files match accepted source byte-for-byte; chat digest is
+  `037b3fcaf1a32c621b1fc5c7ddb92c377081c1986405444a2b1f8f953acd8abb`.
+- Production `dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp` is READY from the tested
+  immutable PR head with `withLatestCommit:false`. `firboai.app` returns 200,
+  the served runner contains the client request UUID, anonymous chat POST is
+  denied with HTTP 401, and the deployment-scoped 30-minute error/fatal scan is
+  empty. Rollback remains `dpl_GmvEdCJBQCV5fRfHHRRcmPmrhQKZ`.
 
 Failed / limitations:
-- This is SOURCE + local automated evidence only. `agent-runner`, missions,
-  speech and other inference routes still use their older guards; the global
-  cross-route accounting/Free-budget exit criterion remains open.
-- Coordinated rollout is required because the new handler requires request IDs:
-  clients/channel bridge first, migration once, matching chat function last.
+- This is source, automated, rendered and live-served evidence. No legitimate
+  signed-in chat/provider request was made, so real-account cost receipt and
+  reconciliation acceptance remain unproven.
+- `agent-runner`, missions, speech and other inference routes still use their
+  older guards; the global cross-route accounting/Free-budget exit criterion
+  remains open. Supabase performance lint also reports two new unindexed FK
+  paths on the private ledger for a follow-up migration; this is not treated as
+  stage-1 completion.
+- Direct preview promotion returned 422; immutable production redeploy succeeded.
 
 Remains:
-- Open a PR from the candidate, inspect exact-head PostgreSQL and all relevant
-  workflows, fix real failures, then release only if both histories and rollout
-  ordering are preserved. Do not claim this candidate is merged or live.
-- Reconciliation UI/monitoring, the remaining inference routes, real signed-in
-  receipt and second-customer isolation remain after stage 1.
+- Reconciliation UI/monitoring, the remaining inference routes, the two covering
+  indexes, real signed-in receipt and second-customer isolation remain after
+  stage 1. Preserve connector v28, runner v83, chat v38, channel-inbound v9,
+  MCP v19 and mission-runner v26; never replay ledger `20261006083523`.
+- Mac, signed-in CEO/meetings/delegation, provider OAuth/channel tests, backup,
+  monitoring/load and every other master-plan gate remain open.
+
+References: https://github.com/conpol84/javris-clone/pull/23 ;
+https://github.com/conpol84/javris-clone/actions/runs/37436471240 ;
+https://firboai.app
