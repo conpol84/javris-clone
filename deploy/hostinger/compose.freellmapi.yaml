@@ -5,6 +5,8 @@ services:
     image: ${FREELLMAPI_IMAGE:?Set an immutable ghcr.io image digest after review}
     profiles: [freellmapi]
     restart: unless-stopped
+    # Run directly as node: cap_drop ALL blocks the root entrypoint's setpriv.
+    user: "1000:1000"
     env_file: .env.freellmapi
     environment:
       NODE_ENV: production

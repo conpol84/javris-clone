@@ -29,7 +29,7 @@ The integration does not require embedding either gateway's code in the frontend
    be checked before pulling. The service does not host model weights.
 2. Set FREELLMAPI_IMAGE to a reviewed immutable ghcr.io image digest in the host
    environment. Create .env.freellmapi (0600) with a fresh 64-hex ENCRYPTION_KEY.
-3. Create freellmapi-bootstrap.json (0600) containing the initial admin account
+3. Create freellmapi-bootstrap.json (0600, uid/gid 1000) containing the initial admin account
    under admin.email/admin.password. Never commit either file or credentials.
    This closes first-run account claiming before the listener starts.
 4. Add the overlay to the CURRENT Compose arguments and start only freellmapi
@@ -70,3 +70,23 @@ capacity measurement, provider account connection or real inference occurred.
 Mac browser control still requires the paired device's local update and consent;
 signed-in meeting and second-customer acceptance remain open. These cannot be
 declared completed by a Vercel build or synthetic tests.
+
+## Guided terminal installation
+
+Owner verified srv2027143: x86_64, 2 CPUs, 4.8 GiB available RAM, 36 GB
+free disk, Compose 5.5.1 and gateway network hostinger_default. The owner pulled
+the pinned upstream image digest used by install-freellmapi.py (857527059 bytes).
+
+The guided installer creates an isolated Compose project in /opt/firbo-freellmapi,
+generates local credentials without printing them, attaches to the existing
+gateway network and verifies that the four original container IDs remain intact.
+It refuses existing directories/volumes/containers and an occupied loopback port.
+It starts as uid/gid 1000 because cap_drop ALL prevents the upstream root
+entrypoint from calling setpriv. Docker initializes the fresh volume from the
+image's node-owned data directory; the bootstrap file is also node-readable.
+Provider keys, actual inference and routing activation remain separate steps.
+
+The disposable Docker workflow substitutes only the hostname guard. Its four
+existing containers are stand-ins; it verifies installation, refusal to overwrite,
+non-root execution, anonymous 401 and network access. It is not evidence of a
+completed installation on the owner's server.
