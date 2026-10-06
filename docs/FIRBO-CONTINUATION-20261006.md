@@ -95,3 +95,39 @@ priority over any scheduled continuation. Read current Git/live state first.
   It does not close real Mac browser acceptance or the remaining master plan.
 - References: https://github.com/conpol84/javris-clone/pull/15 and
   https://github.com/conpol84/javris-clone/actions/runs/37390691934 .
+
+## Claude follow-up after PR #15 (`d909222` fast-forwarded, then `ca8bdf9`)
+
+Changed (addresses Remains item 3, AI employee computer execution review points):
+- agent-runner re-reads the device's policy, pairing and capabilities before every
+  computer step; no per-run snapshot. Turning AI access off applies on the next step.
+- `decideForEmployee`: an approval-only employee never runs a step by itself, browser
+  plans included; a suggest-only employee may only list/read, every other step becomes
+  a suggestion in its report; owner denials stay denials.
+- connector: `computer_browser_task` Inbox approvals are executable (only steps and
+  timeout are sent), refused on a device without browser_task capability, and broken
+  plans return 422.
+- Mac connector: Stop and the timeout end a running Shortcut (SIGTERM).
+- DB `20261006010000_agent_computer_job_guards`: `claim_task_run` also waits for an
+  employee's own queued/running steps (`agent_task_id`); deleting a task withdraws its
+  queued employee steps. publish_task_run unchanged on purpose.
+
+Tested / passed:
+- 468/469 Firbo node tests (only browser-control-rendered fails here: Playwright 1.63
+  Chromium cannot be downloaded in this workspace; CI covers it), edge tsc, frontend
+  tsc, 465 frontend tests.
+- Live DB, rolled back: an agent job with agent_task_id makes claim_task_run raise
+  task_active_jobs.
+- Live: connector v26, agent-runner v77 deployed; a real Research Agent task listed
+  `/Users/macmini/Documents` on Polis1984 through v77 (job done, report saved). AI
+  policy and the temporary computer_use power were switched off again afterwards.
+
+Not done / remains:
+- Frontend (`firbo-connector.mjs` Shortcut Stop, Inbox action list) is NOT released:
+  production is still `7f915df`. Next release must take `claude/gifted-dijkstra-rph5j8`
+  at or after `ca8bdf9` through the usual CI gates.
+- Approval-to-execution of `computer_browser_task` and Shortcut Stop on a real Mac
+  are not yet accepted on the device.
+- The MCP SQL tool hangs on statements containing DROP/DELETE (likely an approval
+  gate); use `create or replace trigger` or apply via CI. A disabled/blocked
+  `computer_use` tool row remains on the test Research Agent.
