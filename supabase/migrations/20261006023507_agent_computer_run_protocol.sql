@@ -6,7 +6,8 @@ begin;
 alter table public.connector_jobs
   add column if not exists agent_run_claim uuid,
   add column if not exists agent_policy_snapshot jsonb,
-  add column if not exists agent_capabilities_snapshot jsonb;
+  add column if not exists agent_capabilities_snapshot jsonb,
+  add column if not exists started_at timestamptz;
 
 -- Jobs created before this protocol have no capability token.  Do not guess
 -- about an already-running OS effect: an operator must reconcile it before
