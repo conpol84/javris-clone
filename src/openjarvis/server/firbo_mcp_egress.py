@@ -9,11 +9,16 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import socket
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from openjarvis.security.mcp_egress import EgressDenied, forward_mcp, target_url
 
 MAX_ENVELOPE = 128_000
+INGRESS_TIMEOUT = 5.0
+MAX_HEADERS = 16_000
 
 
 def make_handler(token: str, origins: frozenset[str]):
@@ -36,8 +41,51 @@ def make_handler(token: str, origins: frozenset[str]):
             pass
 
         def handle(self):
-            self.connection.settimeout(5)
-            super().handle()
+            self.connection.settimeout(INGRESS_TIMEOUT)
+            self._ingress_deadline = time.monotonic() + INGRESS_TIMEOUT
+            self._ingress_expired = threading.Event()
+
+            def expire():
+                self._ingress_expired.set()
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+            # A socket inactivity timeout is reset by each incoming byte.
+            # One watchdog bounds the entire request line + headers + body.
+            self._ingress_timer = threading.Timer(INGRESS_TIMEOUT, expire)
+            self._ingress_timer.daemon = True
+            self._ingress_timer.start()
+            try:
+                super().handle()
+            except OSError:
+                # An expired/disconnected client cannot receive an error body.
+                # Avoid HTTPServer traceback logs containing request details.
+                self.close_connection = True
+            finally:
+                self.stop_ingress()
+
+        def stop_ingress(self):
+            timer = self._ingress_timer
+            if timer is not None:
+                timer.cancel()
+                timer.join()
+                self._ingress_timer = None
+
+        def parse_request(self):
+            if not super().parse_request():
+                return False
+            if (
+                len(self.raw_requestline)
+                + sum(
+                    len(name) + len(value) + 4 for name, value in self.headers.items()
+                )
+                > MAX_HEADERS
+            ):
+                self.reply(431, {"error": "headers_too_large"})
+                return False
+            return True
 
         def reply(self, status, value):
             raw = json.dumps(value, separators=(",", ":")).encode()
@@ -53,13 +101,19 @@ def make_handler(token: str, origins: frozenset[str]):
         def do_POST(self):
             if self.path != "/v1/mcp":
                 return self.reply(404, {"error": "not_found"})
-            auth = self.headers.get("Authorization", "")
-            if not auth.isascii() or not hmac.compare_digest(auth, "Bearer " + token):
+            auth_values = self.headers.get_all("Authorization") or []
+            if (
+                len(auth_values) != 1
+                or not auth_values[0].isascii()
+                or not hmac.compare_digest(auth_values[0], "Bearer " + token)
+            ):
                 return self.reply(401, {"error": "unauthorized"})
             lengths = self.headers.get_all("Content-Length") or []
             if (
                 self.headers.get("Transfer-Encoding")
                 or len(lengths) != 1
+                or not 1 <= len(lengths[0]) <= 6
+                or not lengths[0].isascii()
                 or not lengths[0].isdecimal()
             ):
                 return self.reply(400, {"error": "bad_request"})
@@ -73,6 +127,13 @@ def make_handler(token: str, origins: frozenset[str]):
                 envelope = json.loads(raw)
             except (ValueError, TimeoutError):
                 return self.reply(400, {"error": "bad_request"})
+            self.stop_ingress()
+            if (
+                self._ingress_expired.is_set()
+                or time.monotonic() >= self._ingress_deadline
+            ):
+                self.close_connection = True
+                return
             try:
                 status, headers, body = forward_mcp(envelope, origins)
             except EgressDenied:
