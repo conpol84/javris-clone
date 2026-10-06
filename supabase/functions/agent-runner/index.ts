@@ -633,7 +633,7 @@ Deno.serve(async (req) => {
   try {
     const out = await runAgentLoop({ evidence,
       call: callLoop, system, user: userMsg, tools: free || writeOnly ? {} : loopTools, allowThink: !free && !writeOnly && usable('think'),
-      maxSteps: Math.min(8, Math.max(5, Number(agent.max_steps) || 6)), budgetMs: loopBudget, finalTimeoutMs: writeOnly ? 85_000 : 50_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
+      maxSteps: Math.min(8, Math.max(5, Number(agent.max_steps) || 6)), budgetMs: loopBudget, finalTimeoutMs: writeOnly ? 85_000 : 75_000, deadline: requestStarted + WALL_CLOCK_MS, material: [pulse, web.block].filter(Boolean).join('\n\n'),
       repairSystem: `${REPAIR_SYSTEM}${standard ? ` Ignore "Keep it concise": the report must meet this standard.\n${standard}\n` : ' '}Write the summary and the report in ${LANG_NAME[lang]}.`, toolHelp,
     });
     text = out.text; steps = out.steps; calls = out.calls;
