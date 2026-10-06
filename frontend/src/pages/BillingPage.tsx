@@ -6,6 +6,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { usePlatformAdmin } from '../lib/company/admin';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
+import { InferenceAccounting } from '../components/company/InferenceAccounting';
 import {
   BillingError, LIMIT_KEYS, loadPlans, loadPlanUsage, openPortal, setPlanManually, startCheckout, type PlanRow, type PlanUsage,
 } from '../lib/company/billing';
@@ -134,6 +135,8 @@ export function BillingPage() {
             {info.plan.id !== 'enterprise' && <p className="fb-dim mt-3 text-xs">{t('bill.enforced')}</p>}
           </section>
         )}
+
+        <InferenceAccounting orgId={orgId} allowed={canBill} />
 
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold">{t('bill.choose')}</h2>

@@ -1100,3 +1100,18 @@ Remains:
   design/voice/mobile and encrypted off-host restore/monitoring/load acceptance.
 - Preserve FreeLLMAPI and both contributors. No permissions auto-enabled, Mac
   re-pairing, fabricated provider connection or master-plan completion claim.
+
+## Continuation — current-company accounting UI/API
+
+Changed: continued shared 7e7555d5 and Codex parity ce421e31 without rewriting
+either branch. Added Billing owner/admin snapshot backed by a public invoker /
+private privileged read-only RPC, current membership gates and safe scoped fields.
+No automatic reconciliation, cost release, private-table grants or provider call.
+
+Tested/passed: 541 frontend tests, production build, client malformed/tenant/error
+cases, translation consistency and React quality review. Failed/limits: local
+Chromium archives invalid; actual CI Chromium/PostgreSQL acceptance still required.
+No migration/deployment at authoring. Remains: exact-head CI, fresh live guards,
+read-back, real database caller/denial tests, accepted frontend deployment and all
+previous real VPS/Mac/account/customer/backup/design gates. Details and final LIVE
+entry are in FIRBO-ACCOUNTING-UI-20261006.md. Never merge CI-only PR13.
