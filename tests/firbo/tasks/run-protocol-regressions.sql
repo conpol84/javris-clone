@@ -252,6 +252,7 @@ begin
     'select public.publish_task_run(%L,%L,%L,%L::jsonb,%L::jsonb,%L)','11111111-0601-4601-8601-111111111111',t,c,'{"report":"too early"}','[]','completed'));
   claimed := public.connector_claim_next_job('11111111-0601-4601-8601-111111111111','77777777-0616-4616-8616-777777777777',now()-interval '10 minutes');
   perform pg_temp.assert_run('atomic claim returns the authorised inline job',(claimed->>'id')::uuid=j and claimed->>'kind'='list');
+  perform pg_temp.assert_run('atomic claim preserves execution start time',(select started_at is not null from public.connector_jobs where id=j));
   perform public.connector_finish_execution(j,'77777777-0616-4616-8616-777777777777','11111111-0601-4601-8601-111111111111',true,'{"entries":[]}',null,repeat('b',64));
   perform pg_temp.assert_run('inline receipt cannot complete its parent',(select status='running' and run_claim=c from public.tasks where id=t));
   perform pg_temp.assert_run('parent publishes only after inline job is terminal',(public.publish_task_run('11111111-0601-4601-8601-111111111111',t,c,'{"report":"complete"}','[]','completed')->>'status')='completed');

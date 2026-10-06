@@ -179,7 +179,7 @@ begin
       for update skip locked;
     if not found then return null; end if;
     begin
-      update public.connector_jobs set status = 'running'
+      update public.connector_jobs set status = 'running', started_at = statement_timestamp()
         where id = j.id and status = 'queued' returning * into j;
       if found then
         return jsonb_build_object('id',j.id,'kind',j.kind,'params',j.params);

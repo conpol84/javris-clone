@@ -494,7 +494,7 @@ Deno.serve(async (req) => {
   // approval) to use a matching power.
   const SERVER_POWERS = /^(code_interpreter|shell_exec|file_read|file_write|pdf_extract|apply_patch|git_\w+)$/;
   let toolHelp: Partial<Record<'server_task' | 'computer', string>> | undefined;
-  if (!free && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
+  if (!free && agent.autonomy !== 'suggest' && (agent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')) {
     const { data: admins } = await admin.from('platform_admins').select('user_id');
     const ids = (admins ?? []).map((a: any) => a.user_id);
     const { count } = ids.length ? await admin.from('organization_members').select('user_id', { count: 'exact', head: true }).eq('organization_id', task.organization_id).in('user_id', ids) : { count: 0 };
@@ -507,6 +507,18 @@ Deno.serve(async (req) => {
     if (/^https:\/\//.test(serverUrl) && serverKey) {
       if (!adminCompany) toolHelp = { server_task: '{"action": "server_task", "input": "the job, with the Python code or the data"} runs Python for you in a locked sandbox (no internet, nothing is kept) and returns the output: use it for data analysis, statistics, parsing and exact calculations. Put any data it needs inside the job.' };
       loopTools.server_task = async (job) => {
+        // A draft-only employee must not bypass the local computer policy by
+        // delegating arbitrary code to the full server or customer sandbox.
+        const [{ data: currentAgent }, { data: currentTask }] = await Promise.all([
+          admin.from('agents').select('id,enabled,autonomy,agent_tools(*)').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('tasks').select('id,status,run_claim,assigned_agent_id,result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
+        ]);
+        if (!currentAgent?.enabled || currentAgent.autonomy === 'suggest'
+          || !(currentAgent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')
+          || !currentTask || currentTask.status !== 'running' || currentTask.run_claim !== claimed.run_claim
+          || currentTask.assigned_agent_id !== agent.id || currentTask.result?.reconcile_required === true) {
+          return 'Server execution is no longer authorised. Describe the proposed work without running it.';
+        }
         const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
         // The server agent requires a model name: use the one it runs by default.
         const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));

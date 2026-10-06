@@ -382,6 +382,14 @@ test('agent-runner: the calculator power is offered and its exact result is fed 
 });
 const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise'};
 const serverReplies=()=>['{"action":"server_task","input":"print(sum(range(10)))"}',JSON.stringify({summary:'45',report:'45',actions:[]})];
+test('suggest-only employees cannot execute through either OpenJarvis server', async () => {
+  for (const extra of [{ autonomy: 'suggest' }, { freshAutonomy: 'suggest' }, { freshAgentEnabled: false }]) {
+    const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+      chatReplies:serverReplies(),plan:'pro',env:serverEnv,...extra});
+    assert.equal(response.status,200);
+    assert.ok(!state.calls.some(c=>/https:\/\/(box|admin)-jarvis\.example/.test(String(c.url))));
+  }
+});
 test('agent-runner: a customer company gets only the sandboxed server agent, never the admin one', async () => {
   const tools=[{tool_name:'code_interpreter',enabled:true,policy:'allow'}];
   const {state,response}=await invoke('agent-runner',{tools,chatReplies:serverReplies(),plan:'pro',env:serverEnv});

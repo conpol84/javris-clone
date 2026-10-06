@@ -23,6 +23,7 @@ create table public.connector_jobs (
   params jsonb not null default '{}'::jsonb,
   status text not null default 'queued' check (status in ('queued','running','done','error','cancelled')),
   created_at timestamptz not null default now(),
+  started_at timestamptz,
   finished_at timestamptz,
   result jsonb,
   report_sha256 text,
