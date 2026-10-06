@@ -14,6 +14,7 @@ OWNER = "aaaaaaaa-0701-4701-8701-aaaaaaaaaaaa"
 ORG = "11111111-0701-4701-8701-111111111111"
 AGENT = "33333333-0701-4701-8701-333333333333"
 DEVICE = "77777777-0701-4701-8701-777777777777"
+AGENT_DEVICE = "77777777-0701-4701-8701-777777777778"
 AGENT_POLICY = '{"enabled":true}'
 CAPABILITIES = '{"job_kinds":["list","read","write","exec","browser_open","browser_task","open_app","shortcut"]}'
 SERVICE = 'set local role service_role; set local request.jwt.claims=\'{"role":"service_role"}\';'
@@ -48,7 +49,7 @@ def agent_job_insert(identifier: str, token: str, kind: str = "list") -> str:
     return f"""insert into public.connector_jobs(
       organization_id,device_id,kind,params,status,origin,agent_task_id,agent_id,
       agent_run_claim,agent_policy_snapshot,agent_capabilities_snapshot)
-      values('{ORG}','{DEVICE}','{kind}','{{}}','queued','agent','{identifier}',
+      values('{ORG}','{AGENT_DEVICE}','{kind}','{{}}','queued','agent','{identifier}',
       '{AGENT}','{token}','{AGENT_POLICY}'::jsonb,'{CAPABILITIES}'::jsonb)"""
 
 
@@ -328,8 +329,8 @@ def publication_before_agent_job(isolation: str) -> None:
 
 def policy_revoke_before_dispatch(isolation: str) -> None:
     t, token, job = agent_task()
-    first = f"{SERVICE} update public.connector_devices set agent_policy='{{\"enabled\":false}}'::jsonb where id='{DEVICE}'"
-    second = f"{SERVICE} select public.connector_claim_next_job('{ORG}','{DEVICE}',now()-interval '10 minutes')"
+    first = f"{SERVICE} update public.connector_devices set agent_policy='{{\"enabled\":false}}'::jsonb where id='{AGENT_DEVICE}'"
+    second = f"{SERVICE} select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')"
     expected = None if isolation == "read committed" else "40001"
     race(
         "device policy revocation wins over inline job dispatch",
@@ -340,7 +341,7 @@ def policy_revoke_before_dispatch(isolation: str) -> None:
     )
     if isolation != "read committed":
         service(
-            f"select public.connector_claim_next_job('{ORG}','{DEVICE}',now()-interval '10 minutes')"
+            f"select public.connector_claim_next_job('{ORG}','{AGENT_DEVICE}',now()-interval '10 minutes')"
         )
     assert (
         sql(
@@ -355,7 +356,7 @@ def policy_revoke_before_dispatch(isolation: str) -> None:
         == "t"
     )
     service(
-        f"update public.connector_devices set agent_policy='{AGENT_POLICY}'::jsonb where id='{DEVICE}'; {publish(t, token)}"
+        f"update public.connector_devices set agent_policy='{AGENT_POLICY}'::jsonb where id='{AGENT_DEVICE}'; {publish(t, token)}"
     )
 
 
@@ -423,8 +424,9 @@ if __name__ == "__main__":
       insert into public.organization_members(organization_id,user_id,role) values('{ORG}','{OWNER}','owner');
       insert into public.agents(id,organization_id,name,slug) values('{AGENT}','{ORG}','Synthetic run agent','synthetic-race-agent');
       update public.agent_tools set enabled=true,policy='allow' where agent_id='{AGENT}' and tool_name='computer_use';
-      insert into public.connector_devices(id,organization_id,created_by,name,paired,capabilities,agent_policy)
-        values('{DEVICE}','{ORG}','{OWNER}','Synthetic paired race device',true,'{CAPABILITIES}'::jsonb,'{AGENT_POLICY}'::jsonb);
+      insert into public.connector_devices(id,organization_id,created_by,name,paired,capabilities,agent_policy) values
+        ('{DEVICE}','{ORG}','{OWNER}','Synthetic paired race device',true,'{CAPABILITIES}'::jsonb,'{AGENT_POLICY}'::jsonb),
+        ('{AGENT_DEVICE}','{ORG}','{OWNER}','Synthetic isolated agent race device',true,'{CAPABILITIES}'::jsonb,'{AGENT_POLICY}'::jsonb);
       set firbo.seeding='off';""")
     try:
         for level in ("read committed", "repeatable read", "serializable"):
