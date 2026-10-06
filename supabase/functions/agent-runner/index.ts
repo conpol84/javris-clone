@@ -522,7 +522,8 @@ Deno.serve(async (req) => {
       .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null);
     const machines: Machine[] = (devRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy) })).filter((d: Machine) => d.policy.enabled);
     if (machines.length) {
-      const askFirst = (agent.agent_tools ?? []).some((t: any) => t.tool_name === 'computer_use' && t.policy === 'approve');
+      // The power set to "approval" (the Studio default) means: every computer step waits for the owner in the Inbox.
+      const askFirst = (agent.agent_tools ?? []).some((t: any) => t.tool_name === 'computer_use' && (t.policy === 'approval' || t.policy === 'approve'));
       const online = (d: Machine) => !!d.last_seen_at && Date.now() - Date.parse(d.last_seen_at) < 90_000;
       const kindsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.job_kinds) ? d.capabilities.job_kinds : []);
       const rootsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.roots) ? d.capabilities.roots : []);
