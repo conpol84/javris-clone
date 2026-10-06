@@ -328,11 +328,12 @@ def run():
                         tabs = page.locator('main [role="tablist"]').first.get_by_role(
                             "tab"
                         )
-                        for i in (1, 2):
+                        expect(tabs).to_have_count(5)
+                        for i in (1, 2, 3):
                             tabs.nth(i).click()
                             page.wait_for_load_state("networkidle")
                             check(f"admin-tab-{i}")
-                        tabs.nth(3).click()
+                        tabs.nth(4).click()
                         expect(page.locator("main textarea")).to_be_visible()
                         check("native-console")
                         expect(page.locator("main textarea")).to_have_attribute(
