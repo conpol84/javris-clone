@@ -454,7 +454,7 @@ References: https://github.com/conpol84/javris-clone/pull/21 ;
 https://github.com/conpol84/javris-clone/actions/runs/37423292153 ;
 https://firboai.app
 
-### Codex: MCP company boundary candidate (6 October 2026)
+### PR #22 — MCP company boundary release (6 October 2026)
 
 Changed:
 - Continued exact Claude checkpoint `f24287b99cbfb5aa94fc19d7012b26b0fc8ecb22`
@@ -468,27 +468,50 @@ Changed:
   SQL replay, provider consent, credential, integration row, external tool call,
   device job or message was created. Eight-language confirmation copy included.
   See `FIRBO-MCP-BOUNDARY-20261006.md`.
+- PR #22 merged with both histories preserved at
+  `97a10a375ec488d6bc8f3120ae07900d8ea2bf57`. Accepted head
+  `be8332a09bc10de9f38fd9e4764d9e32b8b2f959`, immutable tree
+  `7610f4e3f0394fe93908c0247b3bdec35e199b57`.
 
 Tested / passed:
 - 9/9 actual MCP Edge entrypoint tests with synthetic DB/remote doubles, 2/2
-  focused frontend receipt test, all 555 non-rendered FIRBO Node tests and all
+  focused frontend receipt tests, all 555 non-rendered FIRBO Node tests and all
   489 frontend tests pass. Edge TypeScript, frontend production build, clean npm
   11.19 install, diff check and production dependency audit (zero
-  vulnerabilities) pass. Exact-head CI remains a release gate.
+  vulnerabilities) pass.
+- All six exact-head workflows passed: `37425692404`, `37425692340`,
+  `37425692352`, `37425692357`, `37425692392` and `37425692402`; the latter
+  operational run supplied separate browser/rendered evidence.
+- Supabase `mcp` v19 is ACTIVE with `verify_jwt=true`, digest
+  `4bae985da5c47dd2f142d23746db9e038383faec616f337c513f4cfb8bb23aea`;
+  its deployed source matches the accepted file exactly. Connector v28,
+  runner v83, chat v37, mission-runner v26 and all migrations remain unchanged.
+- Production `dpl_GmvEdCJBQCV5fRfHHRRcmPmrhQKZ` is READY from tested preview
+  `dpl_6ANscVpdtBA4Z4xNz77fsW1J9Fnu` with `withLatestCommit:false`.
+  `firboai.app` returns 200 and its Integrations chunk contains receipt/SHA-256
+  output. Deployment-scoped 30-minute error/fatal scan is empty. Frontend
+  rollback remains `dpl_8ekCf1V4MUVuMzKZnoJQ2Q3y2WD1`.
 
 Failed / limitations:
 - The wildcard local FIRBO run reaches the existing rendered-browser fixture but
   cannot load its pinned Playwright runtime in this workspace. This is an
-  environment limitation, not counted as a pass; exact-head CI must supply
+  environment limitation, not counted as a pass; exact-head CI supplied
   independent rendered evidence.
 - Literal/local/internal hosts and redirects are denied, but the Edge fetch API
   does not provide the Connector's socket-level DNS pinning. Network-pinned
   egress remains required before declaring arbitrary tenant MCP hosts a complete
   SSRF boundary.
+- Direct preview promotion returned 422; the tested preview was pinned into a
+  new production deployment instead. Anonymous live MCP invocation returned
+  HTTP 401. No signed-in/provider call was made.
 
 Remains:
-- Full non-rendered/frontend gates, exact-head PR workflows, merge and immutable
-  deployment verification. Then legitimate owner-approved provider acceptance
-  with receipt reconciliation; no real connection or call may be invented.
+- Legitimate owner-approved provider acceptance with receipt reconciliation;
+  network-pinned egress and second-customer isolation. No real connection or
+  call may be invented from the release evidence.
 - Mac, signed-in CEO, OAuth/channel, second customer and all remaining
   master-plan gates stay open. No full-plan completion.
+
+References: https://github.com/conpol84/javris-clone/pull/22 ;
+https://github.com/conpol84/javris-clone/actions/runs/37425692392 ;
+https://firboai.app
