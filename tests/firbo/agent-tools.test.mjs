@@ -1,6 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { calculate, calculatorTool, chunkText, weatherTool, exchangeRateTool, generateImage, analyzeImage, knowledgeSearch } from '../../supabase/functions/_shared/agent-tools.ts';
+import {
+  calculate,
+  calculatorTool,
+  chunkText,
+  weatherTool,
+  exchangeRateTool,
+  generateImage,
+  analyzeImage,
+  knowledgeSearch,
+  gatewayImageRequestPayload,
+  pollinationsImageRequestPayload,
+  requestGatewayImage,
+  requestPollinationsImage,
+  storeGeneratedImage,
+} from '../../supabase/functions/_shared/agent-tools.ts';
 
 test('calculator: arithmetic, precedence, powers, functions and percentages without eval', () => {
   assert.equal(calculate('2 + 3 * 4'), 14);
@@ -66,14 +80,54 @@ test('generate image: free service fallback, stored under the company folder', a
   await assert.rejects(generateImage('a cat', { organizationId: 'o', store: { upload: async () => 'x' }, fetcher: async () => new Response('<html>', { status: 200, headers: { 'content-type': 'text/html' } }) }));
 });
 
+test('image transports use exact payloads and gateway dispatch identity', async () => {
+  const gatewayPayload = gatewayImageRequestPayload('  a   blue poster  ', 'image/model');
+  assert.deepEqual(gatewayPayload, {
+    model: 'image/model', prompt: 'a blue poster', n: 1, size: '1024x1024', response_format: 'b64_json',
+  });
+  const freePayload = pollinationsImageRequestPayload(' a blue poster ', 42);
+  assert.deepEqual(freePayload, { prompt: 'a blue poster', width: 1024, height: 1024, nologo: true, seed: 42 });
+  assert.equal(pollinationsImageRequestPayload('x', 42), null);
+
+  const png = new Uint8Array(5000).fill(9);
+  let gatewayCall;
+  const gateway = await requestGatewayImage(gatewayPayload, {
+    base: 'https://gateway.example/v1', key: 'secret', requestId: '77777777-7777-4777-8777-777777777777',
+    fetcher: async (url, init) => {
+      gatewayCall = { url: String(url), headers: init.headers, body: JSON.parse(init.body) };
+      return reply({ data: [{ b64_json: Buffer.from(png).toString('base64') }] });
+    },
+  });
+  assert.equal(gatewayCall.url, 'https://gateway.example/v1/images/generations');
+  assert.equal(gatewayCall.headers['x-request-id'], '77777777-7777-4777-8777-777777777777');
+  assert.deepEqual(gatewayCall.body, gatewayPayload);
+  assert.equal(gateway.bytes.length, 5000);
+
+  let freeUrl = '';
+  const free = await requestPollinationsImage(freePayload, { fetcher: async (url) => {
+    freeUrl = String(url);
+    return new Response(png, { headers: { 'content-type': 'image/jpeg' } });
+  } });
+  assert.match(freeUrl, /seed=42$/);
+  assert.equal(free.model, 'pollinations/free');
+  const stored = await storeGeneratedImage('a blue poster', free, {
+    organizationId: 'org-2', store: { upload: async path => `https://cdn.example/${path}` },
+  });
+  assert.match(stored, /https:\/\/cdn\.example\/org-2\/[0-9a-f-]+\.jpg/);
+});
+
 test('analyze image: needs a https link and reports token usage', async () => {
   assert.match((await analyzeImage('what is this', { gateway: { base: 'https://g/v1', key: 'k', model: 'm' } })).text, /https link/);
   let sent;
   const out = await analyzeImage('https://x.example/a.png what color?', { gateway: { base: 'https://g/v1', key: 'k', model: 'firbo-quality' },
-    fetcher: async (_url, init) => { sent = JSON.parse(init.body); return reply({ choices: [{ message: { content: 'Blue.' } }], usage: { prompt_tokens: 100, completion_tokens: 5 } }); } });
+    requestId: '77777777-7777-4777-8777-777777777777',
+    fetcher: async (_url, init) => { sent = { body: JSON.parse(init.body), headers: init.headers }; return reply({ choices: [{ message: { content: 'Blue.' } }], usage: { prompt_tokens: 100, completion_tokens: 5 } }); } });
   assert.equal(out.text, 'Blue.');
   assert.equal(out.inTok, 100);
-  assert.equal(sent.messages[0].content[1].image_url.url, 'https://x.example/a.png');
+  assert.equal(sent.body.messages[0].content[1].image_url.url, 'https://x.example/a.png');
+  assert.equal(sent.headers['x-request-id'], '77777777-7777-4777-8777-777777777777');
+  await assert.rejects(analyzeImage('https://x.example/a.png', { gateway: { base: 'https://g/v1', key: 'k', model: 'm' },
+    fetcher: async () => reply({ choices: [{ message: { content: 'Blue.' } }] }) }), /vision_usage_missing/);
 });
 
 test('knowledge search: company-scoped hybrid search call and readable hits', async () => {

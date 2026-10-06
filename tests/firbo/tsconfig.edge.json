@@ -28,6 +28,7 @@
     "../../supabase/functions/_shared/agent-loop.ts",
     "../../supabase/functions/_shared/free-search.ts",
     "../../supabase/functions/_shared/agent-tools.ts",
+    "../../supabase/functions/_shared/runner-inference-accounting.ts",
     "../../supabase/functions/_shared/company-pulse.ts",
     "../../supabase/functions/knowledge/index.ts",
     "../../supabase/functions/workflow-runner/index.ts",

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { freeWebSearch, tavilySearch } from '../../supabase/functions/_shared/free-search.ts';
+import { freeWebSearch, tavilySearch, tavilySearchWithUsage } from '../../supabase/functions/_shared/free-search.ts';
 
 const KEY = 'synthetic-test-key-not-a-credential';
 const hit = { title: 'Research <b>result</b>', url: 'https://example.org/report', content: 'Public evidence.' };
@@ -66,4 +66,29 @@ test('abort is propagated to the provider transport', async () => {
     options.signal.throwIfAborted();
     throw new Error('must not reach transport');
   }, controller.signal), { name: 'AbortError' });
+});
+
+test('claim-bound search requires usage and forwards the ledger request id', async () => {
+  const requestId = '11111111-1111-4111-8111-111111111111';
+  const seen = [];
+  const result = await tavilySearchWithUsage('market news', KEY, async (url, options) => {
+    seen.push({ url, options });
+    return Response.json({ results: [hit], usage: { credits: 1 } });
+  }, undefined, 5, requestId);
+  assert.deepEqual(result, {
+    text: '1. Research result - https://example.org/report\n   Public evidence.', credits: 1,
+  });
+  assert.equal(seen[0].options.headers['x-request-id'], requestId);
+  assert.deepEqual(JSON.parse(seen[0].options.body), {
+    query: 'market news', max_results: 5, search_depth: 'basic', include_answer: false, include_usage: true,
+  });
+});
+
+test('claim-bound search refuses missing or malformed usage after dispatch', async () => {
+  for (const usage of [undefined, {}, { credits: -1 }, { credits: 1.5 }, { credits: '1' }]) {
+    await assert.rejects(
+      tavilySearchWithUsage('market news', KEY, async () => Response.json({ results: [hit], usage })),
+      /tavily_usage_missing/,
+    );
+  }
 });
