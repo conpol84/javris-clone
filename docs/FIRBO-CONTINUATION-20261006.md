@@ -1046,3 +1046,57 @@ Remains:
   route before any release.
 - Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-IMAGE-20261006.md`. Preserve all
   prior real-device/account/customer/recovery gates and never merge PR #13.
+
+## LIVE integrated release — PR44, 6 October 2026 (latest authoritative entry)
+
+This entry supersedes earlier pending release/schema/CI statements. Runtime source
+is `d30b24742bd02271526f735b56f1d83558559286`; PR44 merged into the shared
+Claude branch at `d749e63e8a34f9346834f6c13469c7f5e3cd0d61`.
+Read `FIRBO-INTEGRATED-RELEASE-20261006.md` for the final source, production
+identities and remaining gates. Do not replay the source timestamp migrations.
+
+Changed:
+- Integrated the latest accepted runtime, graphics and accounting/MCP sources,
+  retaining Claude `f6442b75`, Codex parity `ce421e31`, PR30 `39645cec`,
+  PR39 `9167cf4b` and PR43 `05e89042`. No branch rewritten; PR13 untouched.
+- Fixed the actual live prior-month unresolved-liability budget bug.
+- Applied the additive runner attempt ledger with private RLS and service-only RPCs.
+- Published the exact accepted frontend and compatible chat, mission and server
+  receipt bundles. Runner/MCP production cutovers remain explicitly gated.
+
+Tested / passed:
+- All 11 workflow families succeeded on the exact combined runtime head.
+- 537 frontend tests; 633 distinct non-rendered Node tests; 62 runtime/server
+  Python tests plus 32 engine contract cases; 17 pinned-egress Python tests;
+  production build, strict Edge TypeScript, Ruff check and format.
+- Exact-head CI: real Chromium controls at 1280/390, including pause/resume,
+  lightweight graphics, microphone independence, reduced motion and bounds.
+  PostgreSQL 17.6 passed all 18 READ COMMITTED/SERIALIZABLE races and read-only
+  reconciliation-monitor assertions.
+- Live rollback-backed database probes covered both prior-month pending states,
+  stable request replay, single dispatch, cancellation denial and ambiguous
+  dispatch reconciliation. Full before/after digests/counts matched. No provider call.
+- Domain/source/assets and every file of each deployed Edge bundle read back;
+  anonymous calls to the three updated functions returned HTTP 401.
+
+Failed / limits:
+- Initial local Python environment lacked fastapi; corrected environment passed.
+  Local Chromium was absent; unchanged rendered assertions passed in real CI Chromium.
+- VPS temperature repair is owner-confirmed from the other session, backup
+  `/var/backups/firbo-tools-9wapfud6`, with `native_execution_verified:true`
+  and `full_parity_complete:false`. Do not repeat that installation.
+  A useful delivered file, read-back and correlated receipt remain unverified.
+- Current real inventory: 5 devices, 1 paired/online, 0 browser_task capable.
+  The paired Mac must run its local updater; cloud CI is not Mac acceptance.
+- Existing Security Advisor warnings persist (8 authenticated-definer, 1 leaked
+  password); no new WARN/ERROR. Private no-policy INFO tables increased 6 to 8
+  with the intentionally locked runner ledger tables.
+
+Remains:
+- Verify actual server input/output pricing and output bound; provision pinned MCP
+  HTTPS ingress, credential and origin allowlist before runner/MCP cutovers.
+- Paired Mac updater/consent, useful VPS artifact/read-back, real provider usage,
+  OAuth/channel consent, second customer isolation, business workflows, final
+  design/voice/mobile and encrypted off-host restore/monitoring/load acceptance.
+- Preserve FreeLLMAPI and both contributors. No permissions auto-enabled, Mac
+  re-pairing, fabricated provider connection or master-plan completion claim.
