@@ -161,6 +161,9 @@ class PolicyTests(unittest.TestCase):
                 raw, server_hostname="mcp.example.com"
             )
             dns.assert_not_called()
+            conn.stop_deadline()
+            conn.close()
+            self.assertIsNone(conn._deadline_timer)
 
     def test_tls_failure_does_not_retry_another_ip(self):
         raw, context = MagicMock(), MagicMock()
@@ -220,6 +223,32 @@ class LocalTLS(unittest.TestCase):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 outer.requests.append((self.path, dict(self.headers), body))
                 self.send_response(outer.status)
+                if outer.slow_chunk:
+                    self.wfile.write(
+                        b"HTTP/1.0 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1;"
+                    )
+                    for _ in range(12):
+                        if outer.stopped.wait(0.05):
+                            return
+                        try:
+                            self.wfile.write(b"x")
+                            self.wfile.flush()
+                        except OSError:
+                            return
+                    self.wfile.write(b"\r\nx\r\n0\r\n\r\n")
+                    return
+                if outer.slow_headers:
+                    self.wfile.write(b"HTTP/1.1 200 OK\r\n")
+                    for _ in range(12):
+                        if outer.stopped.wait(0.05):
+                            return
+                        try:
+                            self.wfile.write(b"X-Synthetic: drip\r\n")
+                            self.wfile.flush()
+                        except OSError:
+                            return
+                    self.wfile.write(b"Content-Length: 2\r\n\r\n{}")
+                    return
                 if outer.status == 302:
                     self.send_header(
                         "Location", "http://169.254.169.254/latest/meta-data/"
@@ -235,6 +264,9 @@ class LocalTLS(unittest.TestCase):
             200,
         )
         self.emit_length = True
+        self.slow_headers = False
+        self.slow_chunk = False
+        self.stopped = threading.Event()
         self.server = HTTPServer(("127.0.0.1", 0), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(cert, key)
@@ -247,6 +279,7 @@ class LocalTLS(unittest.TestCase):
         self.client_context = ssl.create_default_context(cafile=str(cert))
 
     def tearDown(self):
+        self.stopped.set()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
@@ -255,6 +288,13 @@ class LocalTLS(unittest.TestCase):
     def forward(self, request=None, context=None, origins=ORIGINS):
         port, attempts = self.server.server_port, []
         real_socket = socket.socket
+        real_connection = egress.PinnedHTTPSConnection
+        connections = []
+
+        def capture_connection(*args):
+            conn = real_connection(*args)
+            connections.append(conn)
+            return conn
 
         class SyntheticPublicSocket(real_socket):
             def connect(self, address):
@@ -266,13 +306,19 @@ class LocalTLS(unittest.TestCase):
         with (
             patch.object(socket, "getaddrinfo", return_value=[answer()]) as dns,
             patch.object(socket, "socket", SyntheticPublicSocket),
+            patch.object(egress, "PinnedHTTPSConnection", capture_connection),
             patch.object(
                 ssl,
                 "create_default_context",
                 return_value=context or self.client_context,
             ),
         ):
-            result = egress.forward_mcp(request or envelope(), origins)
+            try:
+                result = egress.forward_mcp(request or envelope(), origins)
+            finally:
+                for conn in connections:
+                    self.assertIsNone(conn._deadline_timer)
+                    self.assertIsNone(conn.sock)
             dns.assert_called_once_with(
                 "mcp.example.com", 443, socket.AF_UNSPEC, socket.SOCK_STREAM
             )
@@ -289,6 +335,24 @@ class LocalTLS(unittest.TestCase):
         self.assertEqual(path, "/mcp")
         self.assertEqual(headers["Host"], "mcp.example.com")
         self.assertEqual(headers["authorization"], "Bearer synthetic-provider-token")
+
+    def test_actual_slow_headers_obey_total_deadline(self):
+        self.slow_headers = True
+        started = time.monotonic()
+        with patch.object(egress, "TIMEOUT", 0.2):
+            with self.assertRaisesRegex(TimeoutError, "egress_timeout"):
+                self.forward()
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_actual_slow_chunk_metadata_obeys_total_deadline(self):
+        self.slow_chunk = True
+        started = time.monotonic()
+        with patch.object(egress, "TIMEOUT", 0.2):
+            with self.assertRaisesRegex(TimeoutError, "egress_timeout"):
+                self.forward()
+        self.assertLess(time.monotonic() - started, 0.5)
+        self.assertEqual(len(self.requests), 1)
 
     def test_actual_redirect_is_not_followed(self):
         self.status = 302

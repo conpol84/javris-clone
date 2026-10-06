@@ -124,10 +124,12 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
             host, 443, timeout=TIMEOUT, context=ssl.create_default_context()
         )
         self.family, self.ip, self.deadline = family, ip, deadline
+        self.expired = threading.Event()
+        self._deadline_timer = None
 
     def remaining(self) -> float:
         left = self.deadline - time.monotonic()
-        if left <= 0:
+        if self.expired.is_set() or left <= 0:
             raise TimeoutError("egress_timeout")
         return left
 
@@ -139,9 +141,33 @@ class PinnedHTTPSConnection(http.client.HTTPSConnection):
             raw.connect((self.ip, 443))
             raw.settimeout(self.remaining())
             self.sock = self._context.wrap_socket(raw, server_hostname=self.host)
+            # Buffered HTTP header/chunk reads may perform many individual recv
+            # calls. An inactivity timeout alone cannot bound a slow drip.
+            tls_socket = self.sock
+
+            def expire():
+                self.expired.set()
+                try:
+                    tls_socket.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+
+            self._deadline_timer = threading.Timer(self.remaining(), expire)
+            self._deadline_timer.daemon = True
+            self._deadline_timer.start()
         except BaseException:
             raw.close()
+            self.close()
             raise
+
+    def stop_deadline(self):
+        # http.client.close() can hand a Connection: close socket to the
+        # response's buffered reader. Keep the timer until that reader ends.
+        timer = self._deadline_timer
+        if timer is not None:
+            timer.cancel()
+            timer.join()
+            self._deadline_timer = None
 
 
 def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
@@ -183,6 +209,7 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
         raise EgressDenied("request_denied") from exc
     family, ip = resolve_public(host)
     conn = PinnedHTTPSConnection(host, family, ip, deadline)
+    res = None
     try:
         conn.request(
             "POST",
@@ -199,6 +226,7 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
         live_socket = conn.sock
         live_socket.settimeout(conn.remaining())
         res = conn.getresponse()
+        conn.remaining()
         if 300 <= res.status < 400:
             raise EgressDenied("redirect_denied")
         if res.getheader("Content-Encoding", "identity").lower() != "identity":
@@ -227,6 +255,14 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
             if not re.fullmatch(r"[\x21-\x7e]{1,200}", sid):
                 raise EgressDenied("session_denied")
             headers["mcp-session-id"] = sid
+        conn.remaining()
         return res.status, headers, b"".join(chunks)
+    except (OSError, http.client.HTTPException) as exc:
+        if conn.expired.is_set() or time.monotonic() >= deadline:
+            raise TimeoutError("egress_timeout") from exc
+        raise
     finally:
+        conn.stop_deadline()
+        if res is not None:
+            res.close()
         conn.close()
