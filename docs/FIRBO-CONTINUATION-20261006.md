@@ -268,3 +268,27 @@ Not done / remains:
   sourced figures, table and presenter notes, 1 model call.
 - Remains: plan steps 2-4 (meetings with minutes/decisions/tasks; CEO brings employees into the
   chat; CEO proposes apps to connect as work sources). Test rows titled "[Δοκιμή]" remain.
+
+### Claude: meetings and the CEO that delegates (plan steps 2-3)
+
+- Changed (backend, live): mission-runner v26 (verify_jwt kept true) adds action `meet` for a mission
+  with `metadata.meeting=true`: invited (or best-matching, max 5) employees speak in parallel from
+  their role and recent finished work, the CEO writes professional minutes (attendees, agenda,
+  discussion, decisions, action-item table, risks, next meeting), action items become pending
+  child tasks (`metadata.from_meeting`), every model call is accounted to its speaker.
+  agent-chat v36: the CEO delegates (TASK line), calls meetings (MEETING line) and hands over (ASK),
+  up to one of each per reply, converted server-side to `[[task:]]`/`[[meet:]]`/`[[ask:]]` markers
+  for real employees only; removed on Telegram/WhatsApp; the CEO never asks for passwords, keys,
+  SSH, server addresses or DNS; gpt-5/o chat models use reasoning_effort low (a live reply was cut
+  off by its own reasoning). Fixed: an `ASK:` match inside `TASK:` left a stray "T".
+- Changed (frontend, NOT released): Missions page Mission/Meeting toggle, invitees, minutes, what each
+  employee said, run action items in place; CEO chat buttons: "Give it to <employee>" (creates the
+  task, runs it, shows the result inline, slides included) and "Open the meeting"
+  (/missions?meet=<topic>&with=<ids>); copy in 8 languages.
+- Tested: 489/490 node tests (Playwright download only), 471/471 frontend, edge typecheck incl.
+  mission-runner; new tests: mission-meeting.test.mjs, task-briefing markers, handoff parsing.
+- Passed live: agent-chat v36 CEO reply in Greek in 10 s naming real employees for the deck and the
+  pricing meeting (server path; buttons are app-only). mission-runner `meet` needs a signed-in user
+  (verify_jwt): live acceptance through the app after the frontend release.
+- Remains: frontend release from this branch; live meeting through the app; plan step 4 (CEO
+  proposes apps to connect as work sources; Trade Athletes has no integrations connected).
