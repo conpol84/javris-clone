@@ -17,7 +17,7 @@ jobs:
           python3 -m venv /tmp/firbo-receipts
           /tmp/firbo-receipts/bin/pip install -r tests/firbo/requirements.txt
           /tmp/firbo-receipts/bin/pip install tomlkit==0.15.1
-          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py tests/firbo/test_engine_updater.py tests/firbo/test_runtime_tool_repair.py
+          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py tests/firbo/test_engine_updater.py tests/firbo/test_runtime_tool_repair.py tests/firbo/test_artifact_acceptance.py
           PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/engine tests/engine/test_omniroute_tool_contract.py
   bridge-and-panel:
     runs-on: ubuntu-latest
