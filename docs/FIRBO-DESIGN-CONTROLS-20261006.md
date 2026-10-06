@@ -34,10 +34,14 @@
   new exact-head CI rendered gate before any release.
 - No provider call, third-party library installation in production, VPS/Mac job,
   database migration, deployment, credential or permissions change.
-- Publication was blocked by the runtime source-egress review pending explicit
-  owner approval for this exact candidate/new remote branch. No API workaround
-  is permitted or attempted. Source is committed locally; no draft PR or
-  exact-head remote CI is claimed created for this stage.
+- Earlier publication was blocked by source-egress review. The owner explicitly
+  approved upload and continuation; PR39 was then created through the connected
+  API (CLI lacked credentials), with exact local/remote tree equality.
+- First actual rendered job 112452798907 exposed that the scene harness omitted
+  the application's index.css/Tailwind layers: Canvas intercepted clicks because
+  z-index utilities were absent. Added the real application stylesheet, retained
+  normal Playwright clicks and every assertion, and added screenshot artifacts.
+  Require the follow-up exact-head rendered result before claiming acceptance.
 
 ## Reusable components decision
 

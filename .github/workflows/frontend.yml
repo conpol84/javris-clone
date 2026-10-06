@@ -64,3 +64,9 @@ jobs:
             sleep 1
           done
           node tests/firbo/core-design-rendered.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-core-design-evidence
+          path: /tmp/firbo-core-evidence/
+          retention-days: 7

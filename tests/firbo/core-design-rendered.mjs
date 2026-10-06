@@ -2,8 +2,11 @@
 // Start frontend Vite on port 5218 before running. Never calls providers or jobs.
 import assert from 'node:assert/strict';
 import { chromium } from '../../tools/firbo-browser-runtime/node_modules/playwright/index.mjs';
+import { mkdir } from 'node:fs/promises';
 
 const origin = 'http://127.0.0.1:5218';
+const evidence = '/tmp/firbo-core-evidence';
+await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ headless: true, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 try {
   for (const viewport of [{ width: 1280, height: 800 }, { width: 390, height: 844 }]) {
@@ -23,6 +26,7 @@ try {
       beginVoiceTurn().phase('listening', 'microphone');
     });
     await page.getByRole('status').filter({ hasText: 'Microphone on. Speak now.' }).waitFor();
+    await page.screenshot({ path: `${evidence}/core-${viewport.width}-paused.png` });
     assert.equal(await mode.getAttribute('data-core-mode'), 'static');
     await page.getByRole('button', { name: 'Resume animation', exact: true }).click();
     await page.waitForFunction(() => document.querySelector('[data-core-mode]')?.dataset.coreMode !== 'static');
@@ -30,6 +34,7 @@ try {
     if (await light.getAttribute('aria-pressed') === 'false') await light.click();
     assert.equal(await light.getAttribute('aria-pressed'), 'true');
     assert.equal(await mode.getAttribute('data-core-mode'), 'lightweight');
+    await page.screenshot({ path: `${evidence}/core-${viewport.width}-lightweight.png` });
     // Graphics-only changes must preserve the real in-memory microphone phase.
     assert.equal(await page.evaluate(async () => (await import('/src/lib/company/voiceActivity.ts')).getVoiceSnapshot().phase), 'listening');
     await page.emulateMedia({ reducedMotion: 'reduce' });
