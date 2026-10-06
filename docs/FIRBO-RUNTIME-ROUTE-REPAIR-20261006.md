@@ -1,5 +1,58 @@
 # Active runtime route and tool repair — 6 October 2026
 
+## Native trace follow-up after d9c07eb was run
+
+Observed / failed:
+- Both services returned requested native calls from their direct gateway
+  probes. The capture-only Orchestrator fixture forwarded the actual schema.
+- Both live server direct requests returned zero calls, and normal native
+  execution returned zero tools and native_receipt_verified=false. Neither
+  code_interpreter nor calculator reported an approval block. This does NOT
+  prove a particular parser, wrapper, prompt or cached routing defect.
+- The old gateway probe bypassed generate(), response normalization, server
+  identity prompts and configured engine wrappers. Its success did not verify
+  those stages. No claim that the live tool issue has been repaired.
+
+Changed:
+- Added standalone --trace-native to the same pinned diagnostic script.
+  It fingerprints eight installed modules and observes actual HTTP payload
+  summaries and raw response call counts through the installed adapter,
+  server identity path, reconstructed scanner/telemetry wrappers, and captured
+  configured Orchestrator first request. Then it repeats live server direct
+  and normal native receipt checks. The existing apply path is unchanged.
+- Traces expose only counts, booleans, numeric generation options and hashes,
+  never headers, arguments, system text, user text or response prose. A worker
+  returns model calls without executing them; the configured agent uses a
+  capture-only engine before inference replay. No approval bypass or policy,
+  provider, config, installed-file, database, frontend or Mac changes.
+- Reconstruction is labelled fresh-process evidence, not live-process state;
+  it uses one safe native schema, not the entire running agent inventory or
+  live memory context. Scanner construction failure is reported and blocks
+  configured-agent replay. Never infer live acceptance from a worker fixture.
+
+Tested / passed:
+- 58 local runtime/update/receipt tests, including 43 repair/trace cases.
+  Real disposable HTTP tests cover vLLM and MultiEngine, current/legacy config,
+  both safe schemas, optional auto retry, installed parsing, server identity,
+  telemetry and captured agent inference. Scanner native binaries are absent
+  in this test environment; HTTP fixtures explicitly disable scanners.
+- Fault injection distinguishes outbound schema loss from response parser
+  loss. Secret header, upstream error/response prose and system text are
+  excluded from output. Ruff check/format and git diff whitespace passed.
+- Accepted contributor refs rechecked: Claude f6442b754eb26019c16f4aa40c50a15d6e73c14b,
+  parity ce421e3121f49b0ba0aa6ea8cc0a2ad69a7a7a6a; PR30 parent d9c07eb unchanged.
+
+Remains:
+- Owner runs the checksum-pinned script with --trace-native on srv2027143;
+  this session still has no direct VPS execution access. Identify the first
+  failed wire/result boundary, then repair only that measured cause. Do not
+  repeat --apply, change providers, disable guardrails or force all requests
+  to execute tools speculatively. Native live execution remains FAILED.
+- Jarvis artifact/approval acceptance, Mac connector/browser acceptance,
+  complete animated 3D design and the existing master-plan backlog remain open.
+
+Earlier entries below are historical observations and instructions.
+
 ## Native-tool follow-up after b0715ef was run
 
 Changed:

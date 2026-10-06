@@ -6,6 +6,8 @@ No endpoint guessing, port publishing, config edits or provider switching.
 at a recognized forwarding site, with backup and rollback on failed health.
 --verify-execution additionally asks the admin agent to printf a unique marker.
 --diagnose-native tests safe native tools without modifying installed files.
+--trace-native also traces installed adapter/server/prompt boundaries, without
+executing any tools in the diagnostic worker or printing request/response prose.
 """
 
 import argparse
@@ -185,8 +187,9 @@ def agent_forwarding_probe():
 
 
 def run(args, **kwargs):
+    timeout = kwargs.pop("timeout", 180)
     result = subprocess.run(
-        args, capture_output=True, text=True, timeout=180, cwd="/tmp", **kwargs
+        args, capture_output=True, text=True, timeout=timeout, cwd="/tmp", **kwargs
     )
     if result.returncode:
         raise RepairError("command_failed:" + Path(args[0]).name)
@@ -341,6 +344,169 @@ try:
         )
         report["probe_tool"] = expected_name
         choices_to_test = ("auto", "required")
+    if job.get("trace"):
+        import hashlib, importlib
+        from pathlib import Path
+        from openjarvis.core.types import Message, Role
+        from openjarvis.core.events import EventBus
+        from openjarvis.server.models import ChatCompletionRequest
+        from openjarvis.server.routes import _handle_direct
+        from openjarvis.prompt.builder import SystemPromptBuilder
+        from openjarvis.telemetry.instrumented_engine import InstrumentedEngine
+
+        def fingerprint(value):
+            return hashlib.sha256(json.dumps(value, sort_keys=True,
+                default=str).encode()).hexdigest()
+
+        def call_summary(calls, nested=False):
+            matched = False
+            for call in calls:
+                function = call.get("function", {}) if nested else call
+                try:
+                    arguments = json.loads(function.get("arguments", "{}"))
+                except (ValueError, TypeError):
+                    continue
+                matched = matched or (function.get("name") == expected_name
+                    and arguments == expected_args)
+            return {"tool_calls": len(calls), "expected_call": matched}
+
+        report["installed_sources"] = {}
+        for name in ("engine._openai_compat", "engine.multi", "agents._stubs",
+                     "agents.orchestrator", "server.routes", "server.models",
+                     "telemetry.instrumented_engine", "security.guardrails"):
+            module = importlib.import_module("openjarvis." + name)
+            report["installed_sources"][name] = hashlib.sha256(
+                Path(module.__file__).read_bytes()).hexdigest()
+        report["trace_scope"] = "fresh_process_installed_code_not_live_process"
+        report["trace_tools_executed"] = False
+        report["stages"] = {}
+        wire = []
+        original_post = engine._client.post
+
+        def traced_post(url, **kwargs):
+            payload = kwargs.get("json") or {}
+            messages = payload.get("messages") or []
+            entry = {
+                "request": {
+                    "model_matches": payload.get("model") == job["model"],
+                    "tool_count": len(payload.get("tools") or []),
+                    "schema_matches": payload.get("tools") == [native_schema],
+                    "tool_choice": payload.get("tool_choice")
+                        if payload.get("tool_choice") in
+                            (None, "auto", "required", "none")
+                        else "named_or_other",
+                    "temperature": payload.get("temperature"),
+                    "max_tokens": payload.get("max_tokens"),
+                    "roles": [m.get("role") if m.get("role") in
+                        ("system", "user", "assistant", "tool") else "other"
+                        for m in messages],
+                    "prompt_retained": any(m.get("role") == "user" and
+                        m.get("content") == job["native"]["prompt"] for m in messages),
+                    "system_chars": sum(len(str(m.get("content", "")))
+                        for m in messages if m.get("role") == "system"),
+                    "messages_sha256": fingerprint(messages),
+                },
+            }
+            wire.append(entry)
+            # Bound every wire call even when the service default is 600s.
+            kwargs["timeout"] = 25
+            response = original_post(url, **kwargs)
+            entry["http"] = response.status_code
+            if response.is_success:
+                data = response.json()
+                choices = data.get("choices") or []
+                choice = choices[0] if choices else {}
+                message = choice.get("message") or {}
+                entry["response"] = call_summary(
+                    message.get("tool_calls") or [], nested=True)
+                entry["response"]["content_chars"] = len(
+                    str(message.get("content") or ""))
+                finish = choice.get("finish_reason")
+                entry["response"]["finish_reason"] = finish if finish in (
+                    None, "stop", "length", "tool_calls", "content_filter") else "other"
+            return response
+
+        engine._client.post = traced_post
+
+        def stage(name, generate):
+            wire.clear()
+            try:
+                value = generate()
+                if isinstance(value, dict):
+                    result = call_summary(value.get("tool_calls") or [])
+                else:
+                    choices = value.choices or []
+                    calls = choices[0].message.tool_calls if choices else []
+                    result = call_summary(calls or [], nested=True)
+                report["stages"][name] = {"wire": list(wire), "result": result}
+            except Exception as error:
+                report["stages"][name] = {
+                    "wire": list(wire), "error_type": type(error).__name__}
+
+        user_messages = [Message(role=Role.USER, content=job["native"]["prompt"])]
+        stage("adapter_plain", lambda: owner.generate(user_messages,
+            model=job["model"], tools=[native_schema], max_tokens=256, temperature=0.0))
+        request = ChatCompletionRequest(model=job["model"],
+            messages=body["messages"], tools=[native_schema],
+            max_tokens=256, temperature=0.0)
+        stage("server_identity", lambda: _handle_direct(owner, job["model"],
+            request, app_config=config))
+
+        # Reconstruct configured scanners/telemetry without audit stores, tools,
+        # capability changes, or subscribers. This is not live-process state.
+        wrapped = owner
+        wrappers_ready = False
+        try:
+            if config.security.enabled:
+                from openjarvis.security.guardrails import GuardrailsEngine
+                from openjarvis.security.scanner import PIIScanner, SecretScanner
+                from openjarvis.security.types import RedactionMode
+                scanners = []
+                if config.security.secret_scanner:
+                    scanners.append(SecretScanner())
+                if config.security.pii_scanner:
+                    scanners.append(PIIScanner())
+                if scanners:
+                    wrapped = GuardrailsEngine(wrapped, scanners=scanners,
+                        mode=RedactionMode(config.security.mode),
+                        scan_input=config.security.scan_input,
+                        scan_output=config.security.scan_output)
+            wrapped = InstrumentedEngine(wrapped, EventBus())
+            wrappers_ready = True
+            stage("configured_wrappers", lambda: _handle_direct(wrapped,
+                job["model"], request, app_config=config))
+        except Exception as error:
+            report["stages"]["configured_wrappers"] = {
+                "error_type": type(error).__name__}
+
+        # Capture the first configured agent request with a text-only fake
+        # engine. Replay it only for inference; returned calls are NEVER run.
+        try:
+            if not wrappers_ready:
+                raise RuntimeError("configured_wrappers_unavailable")
+            captured_requests = []
+            def capture_request(messages, **kwargs):
+                captured_requests.append((list(messages), dict(kwargs)))
+                return {"content": "capture complete", "usage": {}}
+            builder = SystemPromptBuilder(
+                agent_template=config.agent.default_system_prompt or "",
+                memory_files_config=config.memory_files,
+                system_prompt_config=config.system_prompt)
+            configured_agent = OrchestratorAgent(
+                SimpleNamespace(generate=capture_request), job["model"],
+                tools=[tool], max_turns=1, prompt_builder=builder)
+            configured_agent.run(job["native"]["prompt"])
+            if len(captured_requests) != 1:
+                raise RuntimeError("unexpected_capture_count")
+            captured_messages, captured_kwargs = captured_requests[0]
+            stage("configured_agent_request", lambda: wrapped.generate(
+                captured_messages, **captured_kwargs))
+        except Exception as error:
+            report["stages"]["configured_agent_request"] = {
+                "error_type": type(error).__name__}
+        engine._client.post = original_post
+        print(json.dumps(report))
+        raise SystemExit(0)
     for choice in choices_to_test:
         payload = dict(body)
         if choice != "omitted":
@@ -396,7 +562,7 @@ SAFE_WORKER = (
 )
 
 
-def gateway_probe(env, runtime, native=None):
+def gateway_probe(env, runtime, native=None, trace=False):
     if runtime.get("engine") not in {"vllm", "omniroute", "multi"}:
         return {"blocked": "unsupported_active_engine", "engine": runtime.get("engine")}
     job = {
@@ -405,11 +571,13 @@ def gateway_probe(env, runtime, native=None):
         "model": runtime["model"],
         "engine_override": runtime.get("engine_override"),
         "native": native,
+        "trace": trace,
     }
     return json.loads(
         run(
             ["runuser", "-u", "jarvis", "--", str(PYTHON), "-B", "-c", SAFE_WORKER],
             input=json.dumps(job),
+            timeout=300 if trace else 180,
         )
     )
 
@@ -580,9 +748,11 @@ def native_receipt(result, case):
     }
 
 
-def native_diagnostics(service, env, runtime):
+def native_diagnostics(service, env, runtime, trace=False):
     case = native_case(service, runtime)
-    gateway = gateway_probe(env, runtime, native=case)
+    gateway = gateway_probe(
+        env, runtime, native=case, **({"trace": True} if trace else {})
+    )
     schema = gateway.pop("native_schema", None)
     print(json.dumps({"service": service, "native_gateway": gateway}), flush=True)
     body = {
@@ -614,6 +784,12 @@ def native_diagnostics(service, env, runtime):
                                 for c in calls
                             ),
                             "tools_executed": False,
+                            "agent_receipt_present": isinstance(
+                                raw.get("execution"), dict
+                            ),
+                            "reported_executed_tools": (raw.get("execution") or {}).get(
+                                "tool_count"
+                            ),
                         },
                     }
                 ),
@@ -646,9 +822,12 @@ def main():
     parser.add_argument("--apply", action="store_true")
     parser.add_argument("--verify-execution", action="store_true")
     parser.add_argument("--diagnose-native", action="store_true")
+    parser.add_argument("--trace-native", action="store_true")
     args = parser.parse_args()
-    if args.diagnose_native and (args.apply or args.verify_execution):
-        parser.error("--diagnose-native runs alone and does not install code")
+    if (args.diagnose_native or args.trace_native) and (
+        args.apply or args.verify_execution
+    ):
+        parser.error("native diagnostics run alone and do not install code")
     if os.geteuid() != 0 or socket.gethostname() != "srv2027143":
         raise RepairError("run_as_root_on_srv2027143")
     if Path("/home/jarvis/.openjarvis-box/.venv").resolve() != PYTHON.parent.parent:
@@ -667,11 +846,11 @@ def main():
     )
     if Path(installed).resolve().parent != PACKAGE:
         raise RepairError("unexpected_installed_package")
-    if args.diagnose_native:
+    if args.diagnose_native or args.trace_native:
         for service in SERVICES:
             try:
                 env, runtime = info(service)
-                native_diagnostics(service, env, runtime)
+                native_diagnostics(service, env, runtime, trace=args.trace_native)
             except Exception as error:
                 print(
                     json.dumps(
