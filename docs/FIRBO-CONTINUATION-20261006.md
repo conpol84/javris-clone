@@ -575,25 +575,42 @@ References: https://github.com/conpol84/javris-clone/pull/23 ;
 https://github.com/conpol84/javris-clone/actions/runs/37436471240 ;
 https://firboai.app
 
-### Candidate — accounting FK covering indexes (not released)
+### PR #24 — accounting FK covering indexes release
 
 Changed:
 - Continued exact Claude checkpoint `38b02e2`; no direct-session drift was
   present. Added an additive migration for the two private ledger FK paths
   reported by the post-release Supabase performance advisor.
 - The PostgreSQL accounting target applies stage 1 followed by the new migration
-  and asserts the exact index columns/order. No live SQL or deployment has been
-  performed by this candidate.
+  and asserts the exact index columns/order. PR #24 merged with both histories
+  preserved at `11d433a58a926be141c633dca9dda0fd6ac184cc`.
+  Accepted Codex head `b09a6d51330985345934ff9783401dd5c481b4c6`,
+  immutable tree `c3b3928416a611e7d342525cf1fb4c6e1f39ca65`.
 
 Tested / passed:
 - Workflow YAML/migration-order validation, diff check and all 92 Edge handler
-  tests pass locally. The actual PostgreSQL 17 lifecycle remains an exact-head
-  CI gate because this workspace has no PostgreSQL/container runtime.
+  tests pass locally.
+- All seven exact-head workflows passed: `37438061513`, `37438061473`,
+  `37438061482`, `37438061685`, `37438061534`, `37438061538` and
+  `37438061682`. PostgreSQL 17 applied both migrations and passed the exact index
+  assertions plus retained accounting semantics/races.
+- Production migration was applied once as ledger `20261006084808`. Live catalog
+  inspection reports `(organization_id, agent_id)` and `user_id` in the intended
+  order. Both new unindexed-FK findings disappeared from the advisor.
 
 Failed / limitations:
-- This candidate changes indexes only. It does not extend accounting to another
-  inference route or prove real-account/provider acceptance.
+- This release changes indexes only. It does not extend accounting to another
+  inference route or prove real-account/provider acceptance. New indexes appear
+  as unused because the live accounting ledger intentionally remains empty.
 
 Remains:
-- Publish an isolated PR, require all exact-head workflows, and apply the new
-  migration once only after merge. Never replay ledger `20261006083523`.
+- Extend the ledger route by route, add reconciliation monitoring, and complete
+  legitimate signed-in receipt/second-company acceptance. Never replay ledgers
+  `20261006083523` or `20261006084808`.
+
+No frontend or Edge Function changed; production remains
+`dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp`, chat v38, channel-inbound v9, connector
+v28, runner v83, MCP v19 and mission-runner v26.
+
+References: https://github.com/conpol84/javris-clone/pull/24 ;
+https://github.com/conpol84/javris-clone/actions/runs/37438061534

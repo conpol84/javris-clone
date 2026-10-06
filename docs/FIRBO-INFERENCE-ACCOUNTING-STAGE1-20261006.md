@@ -78,10 +78,10 @@ inferences from served source or CI.
   onto the same ledger with route-specific upper bounds.
 - Add an authorized reconciliation workflow for `reconcile_required` rows and
   monitoring for stale reservations/overruns.
-- Candidate migration `20261006084130_inference_request_ledger_indexes.sql`
-  adds covering indexes for the ledger's `(organization_id, agent_id)` and
-  `user_id` foreign-key paths. It remains source-only until exact-head
-  PostgreSQL CI, merge and one-time production application.
+- PR #24 released migration `20261006084130_inference_request_ledger_indexes.sql`
+  with covering indexes for the ledger's `(organization_id, agent_id)` and
+  `user_id` foreign-key paths. All seven exact-head workflows passed; production
+  applied it once as ledger `20261006084808`, and both advisor findings cleared.
 - Prove a real signed-in chat and provider cost receipt after coordinated
   release, then test a second real company. Synthetic PostgreSQL companies do
   not satisfy real-customer isolation.
