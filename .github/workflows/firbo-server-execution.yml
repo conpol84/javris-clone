@@ -2,7 +2,7 @@ name: Firbo server execution receipts
 on:
   pull_request:
     branches: [claude/gifted-dijkstra-rph5j8]
-    paths: ['src/openjarvis/server/**', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-server-execution.yml']
+    paths: ['src/openjarvis/server/**', 'deploy/hostinger/update-openjarvis-engine.py', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-server-execution.yml']
 permissions:
   contents: read
 jobs:
@@ -16,7 +16,7 @@ jobs:
         run: |
           python3 -m venv /tmp/firbo-receipts
           /tmp/firbo-receipts/bin/pip install -r tests/firbo/requirements.txt
-          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py
+          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py tests/firbo/test_engine_updater.py
   bridge-and-panel:
     runs-on: ubuntu-latest
     timeout-minutes: 10
