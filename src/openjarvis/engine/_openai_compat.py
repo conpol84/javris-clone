@@ -106,7 +106,8 @@ class _OpenAICompatibleEngine(AsyncHTTPEngineMixin, InferenceEngine):
                 # Host-installed FIRBO also uses the vLLM-compatible adapter.
                 # Route policy must follow its aliases, not only adapter ID.
                 if self.engine_id == "omniroute" or payload["model"] in {
-                    "firbo-quality", "firbo-economy"
+                    "firbo-quality",
+                    "firbo-economy",
                 }:
                     # Some routed providers reject the optional auto selector.
                     # Omitting it preserves default auto semantics AND all tools.

@@ -49,7 +49,8 @@ NEW_BLOCK = """            if resp.status_code == 400 and "tools" in payload:
                 # Host-installed FIRBO also uses the vLLM-compatible adapter.
                 # Route policy must follow its aliases, not only adapter ID.
                 if self.engine_id == "omniroute" or payload["model"] in {
-                    "firbo-quality", "firbo-economy"
+                    "firbo-quality",
+                    "firbo-economy",
                 }:
                     # Some routed providers reject the optional auto selector.
                     # Omitting it preserves default auto semantics AND all tools.
@@ -69,7 +70,7 @@ NEW_BLOCK = """            if resp.status_code == 400 and "tools" in payload:
                     payload.pop("tool_choice", None)
                     resp = self._client.post(url, json=payload)
 """
-CANDIDATE_SHA = "52ac25dd6e2c361f70cc9f08d04ef5f83227f8f8f753646e323b494c72c47f17"
+CANDIDATE_SHA = "673f96dd99d9070bba33c0e7d9b0b9511ac902cad94d643448d9519551f38b61"
 
 
 def digest(data):

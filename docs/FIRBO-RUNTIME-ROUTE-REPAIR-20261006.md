@@ -46,7 +46,7 @@ upstream cause. Previous agent responses still show zero tools and no artifact.
   correct bearer key, exact /v1 path, all three requests retaining tools, no
   credentials or upstream error prose in output.
 - Ruff and whitespace checks passed. Candidate engine SHA256:
-  `52ac25dd6e2c361f70cc9f08d04ef5f83227f8f8f753646e323b494c72c47f17`.
+  `673f96dd99d9070bba33c0e7d9b0b9511ac902cad94d643448d9519551f38b61`.
 
 ## Remains
 
