@@ -923,3 +923,32 @@ Remains:
   migration or deployment.
 - Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-STAGE2-20261006.md`. Preserve all
   prior real-account/device/customer/recovery gates and never merge PR #13.
+
+## Candidate — runner vision uses claim-bound attempt receipts
+
+Changed:
+- Continued exact-green draft PR #35 `e4514580` and preserved current active
+  PR #30 `9021ae53` as a separate merge parent. Neither branch was rewritten.
+- Adapted `analyze_image` to exact-payload fingerprinting, conservative
+  non-text reservation, durable dispatch, required provider usage and atomic
+  settlement. Vision now has an independent attempt receipt and request ID.
+- Missing usage after dispatch stops with reconciliation required and cannot
+  publish. Removed only the now-duplicate vision legacy aggregate insert.
+
+Tested / passed:
+- 113 focused Edge/helper/fake-transport tests; 563 non-rendered FIRBO Node
+  tests; 524 frontend tests; frontend production build; strict Edge/full
+  frontend TypeScript; two newer PR #30 engine contract tests; Ruff and diff
+  checks. No real provider transport was used.
+
+Failed / limits:
+- The rendered browser test cannot import the absent isolated Playwright
+  package in this workspace; the remaining 563 Node tests pass. Exact-head
+  remote CI and PostgreSQL remain required for this new source.
+- No migration, deployment, provider/device call or production change.
+
+Remains:
+- Image generation, billed gateway/Tavily search, server execution and
+  authorized reconciliation monitoring remain separate accounting stages.
+- Detailed evidence: `FIRBO-RUNNER-ACCOUNTING-VISION-20261006.md`. Re-read live
+  dependencies and migration ledgers before any release; never merge PR #13.
