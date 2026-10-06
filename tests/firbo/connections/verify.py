@@ -243,14 +243,14 @@ with sync_playwright() as pw:
                 if kind == "legacy-ready":
                     page.locator('[data-connection-kind="gmail"]').click()
                 dialog = page.get_by_role("dialog")
-                expect(dialog.get_by_text("Ready to authorize", exact=True)).to_be_visible()
+                expect(dialog.get_by_text("Ready for authorization", exact=True)).to_be_visible()
                 expect(dialog.locator("form .fb-btn--primary")).to_be_enabled()
                 assert all(x["action"] in ["connection_manifest", "integration_manifest"] for x in page.evaluate("window.__firboWorld.calls"))
             elif kind in ["connection-save-failure", "connection-credentials-failure"]:
                 page.locator('[data-connection-kind="github"]').click()
                 dialog = page.get_by_role("dialog")
-                dialog.locator('input').nth(1).fill("synthetic-org/synthetic-repo")
-                dialog.locator('input').nth(2).fill("ghp_" + "synthetic" * 5)
+                dialog.get_by_label("Repository (owner/name)", exact=True).fill("synthetic-org/synthetic-repo")
+                dialog.get_by_label("Access token", exact=True).fill("ghp_" + "synthetic" * 5)
                 dialog.locator("form .fb-btn--primary").click()
                 expected = "The connection could not be saved" if kind == "connection-save-failure" else "The provider rejected access"
                 expect(dialog.get_by_role("alert")).to_contain_text(expected)

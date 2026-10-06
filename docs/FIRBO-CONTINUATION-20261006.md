@@ -663,3 +663,38 @@ Remains:
   Never replay `20261006083523` or `20261006084808`.
 - Keep real Mac, real customer sandbox, OAuth/channel acceptance, reconciliation
   monitoring and all other remaining master-plan gates open.
+
+### Candidate — app connection readiness and actionable failures (6 October)
+
+Changed:
+- Continued the source-only mission accounting candidate; added manager-scoped
+  readiness metadata for all 11 legacy OAuth adapters and specific errors for
+  missing setup, disabled runtime, expired consent and failed persistence.
+- Token/webhook apps state required inputs; all app deep links work. Provider
+  401/403/429 responses have distinct, sanitized explanations. Legacy OAuth
+  redirects are restricted to the expected provider HTTPS origin.
+- Preserved newer Claude runner/material-research work `500e4e9` and Codex parity
+  `ce421e3`. App implementation `2cdb3ac`; combined runtime source `2c28393`.
+
+Tested / passed:
+- 516 frontend tests, 532 non-rendered Node tests, strict frontend/Edge TypeScript
+  and production frontend/isolated world builds. All four retained live
+  integrations v29 files match the pre-change source by content comparison.
+- Extended existing actual-page checks for setup/ready/deep-link/error/retry
+  behavior without weakening existing layout, company or device checks.
+
+Failed / limitations:
+- Browser execution is pending: browser installation failed (certificate error,
+  then truncated/non-ZIP downloads). Source/build checks do not replace rendered
+  verification. Exact-head CI and PostgreSQL gates are still pending.
+- Automatic approval review again rejected GitHub push; no bypass, PR or
+  candidate deployment was performed. Actual provider credentials, account
+  consent and live connections were not configured or claimed as working.
+
+Remains:
+- Accepted authorization for the exact repository upload, latest-source/live
+  reconciliation, exact-head CI and then deployment of the matching bundles.
+- Real provider registrations/secrets, device origin approval and signed-in
+  account acceptance. Keep all earlier master-plan gates open.
+
+Details: `docs/FIRBO-APP-CONNECTIONS-20261006.md`.
