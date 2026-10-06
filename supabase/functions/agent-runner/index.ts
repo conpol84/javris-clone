@@ -202,7 +202,12 @@ Deno.serve(async (req) => {
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
   const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
   const feedback = (feedbackRows ?? []) as { rating: number; note: string | null }[];
-  const wantsUpgrade = feedback.filter(f => f.rating < 0).length >= 2 && orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
+  const onEconomy = orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
+  // A presentation or a message to send starts on the quality route: the economy combo is too slow for a long structured
+  // answer, and its 30 s cut-off then leaves the quality route no time to write the slides. Reports keep the normal route.
+  const deliverable = detectDeliverable(task.title ?? '', task.description ?? '');
+  const wantsDeliverable = onEconomy && deliverable !== 'report';
+  const wantsUpgrade = onEconomy && (feedback.filter(f => f.rating < 0).length >= 2 || wantsDeliverable);
   // The quality route is a fixed server-side combo (not a model the company picked), so it does not need the per-agent allowlist.
   const qualityPlan = () => {
     try { return gatewayForAgent({ id: agent.id, model: `omniroute:${Deno.env.get('FIRBO_QUALITY_MODEL')?.trim() || 'firbo-quality'}` }, name => Deno.env.get(name), { force: true }); }
@@ -314,7 +319,6 @@ Deno.serve(async (req) => {
   } finally { clearTimeout(webTimer); webController.abort(); }
   // The work product asked for (report, presentation, message) and its professional standard. Scheduled digests keep their
   // own short format unless they ask for slides or a message; the small free pilot lane has no room for the extra instructions.
-  const deliverable = detectDeliverable(task.title ?? '', task.description ?? '');
   const standard = !free && (!task.shift_id || deliverable !== 'report') ? deliverableInstructions(deliverable) : '';
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
@@ -646,7 +650,7 @@ Deno.serve(async (req) => {
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
     queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang, format: deliverable, ...(polished ? { polished: true } : {}),
-    ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
+    ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: feedback.filter(f => f.rating < 0).length >= 2 ? 'feedback' : 'deliverable' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
   let saved = await publish(finalStatus, result, reconcile ? [] : approvalsOut);
   if (!saved && !reconcile) {
     // A rejected transaction still owns its claim and can save a blocked report.

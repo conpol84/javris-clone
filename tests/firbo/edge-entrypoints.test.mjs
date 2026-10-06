@@ -39,7 +39,7 @@ function fixture(options={}) {
     OMNIROUTE_PRICE_IN_PER_M:'1',OMNIROUTE_PRICE_OUT_PER_M:'2',
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
-  const task={id:TASK,organization_id:ORG,title:'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
+  const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
   const agent={id:AGENT,name:'Test agent',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
   const execute=(table,op,payload,filters,selection)=>{
     const info={table,op,payload,filters,selection};
@@ -327,6 +327,18 @@ test('agent-runner: two 👎 on recent reports move an economy agent up to the q
   assert.equal(state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result.routed_up,'feedback');
   const liked=await invoke('agent-runner',{feedback:[{rating:-1,note:null},{rating:1,note:null}],plan:'pro'});
   assert.notEqual(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
+});
+test('agent-runner: a presentation starts on the quality route (paid plans), with the slide standard', async () => {
+  const {state,response}=await invoke('agent-runner',{plan:'pro',taskTitle:'Presentation for the board: Q3 sales'});
+  assert.equal(response.status,200);
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.equal(chat.model,'firbo-quality');
+  assert.match(chat.messages[0].content,/DELIVERABLE: a presentation/);
+  const result=state.writes.find(w=>w.table==='tasks'&&w.payload.result?.summary).payload.result;
+  assert.equal(result.routed_up,'deliverable');
+  assert.equal(result.format,'presentation');
+  const free=await invoke('agent-runner',{plan:'free',taskTitle:'Presentation for the board: Q3 sales'});
+  assert.notEqual(JSON.parse(free.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
 });
 test('agent-runner: installed skills are part of the instructions', async () => {
   const {state}=await invoke('agent-runner',{skills:[{name:'Price quotes',instructions:'Always add VAT 24% and a validity date.'}]});
