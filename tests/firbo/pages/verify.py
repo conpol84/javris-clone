@@ -6,6 +6,7 @@ Service workers and remote requests are blocked. No execution forms are submitte
 
 import json
 import os
+import re
 from pathlib import Path
 from urllib.parse import urlencode, urlparse
 
@@ -315,10 +316,18 @@ def run():
                             >= nav.bounding_box()["height"] - 1
                         ), "navigation overlaps content"
                     if route == "/gateway":
+                        expect(
+                            page.locator('main a[href="/admin?tab=jarvis"]')
+                        ).to_be_visible()
+                        free_models = page.locator('main a[href="/gateway?tab=free"]')
+                        expect(free_models).to_be_visible()
+                        free_models.click()
+                        expect(page).to_have_url(re.compile(r"/gateway\?tab=free$"))
                         tabs = page.locator('main [role="tablist"]').first.get_by_role(
                             "tab"
                         )
                         expect(tabs).to_have_count(10)
+                        expect(tabs.nth(8)).to_have_attribute("aria-selected", "true")
                         for i in range(1, 10):
                             tabs.nth(i).click()
                             page.wait_for_load_state("networkidle")

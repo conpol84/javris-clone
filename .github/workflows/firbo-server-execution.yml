@@ -33,6 +33,6 @@ jobs:
       - run: npm ci --prefix frontend
       - name: Panel and strict types
         run: |
-          npm --prefix frontend test -- --run src/components/admin/ServerExecutionReceipt.test.tsx src/components/admin/ServerJarvisPanel.test.tsx src/components/admin/ServerRuntimeInventory.test.tsx
+          npm --prefix frontend test -- --run src/components/admin/ServerExecutionReceipt.test.tsx src/components/admin/ServerJarvisPanel.test.tsx src/components/admin/ServerRuntimeInventory.test.tsx src/components/admin/ServerToolCheck.test.tsx
           frontend/node_modules/.bin/tsc --noEmit -p tests/firbo/tsconfig.edge.json
           npm --prefix frontend run build
