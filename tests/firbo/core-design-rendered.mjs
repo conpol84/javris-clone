@@ -34,6 +34,8 @@ try {
     if (await light.getAttribute('aria-pressed') === 'false') await light.click();
     assert.equal(await light.getAttribute('aria-pressed'), 'true');
     assert.equal(await mode.getAttribute('data-core-mode'), 'lightweight');
+    await page.locator('canvas').waitFor({ state: 'visible' });
+    await page.waitForLoadState('networkidle');
     await page.screenshot({ path: `${evidence}/core-${viewport.width}-lightweight.png` });
     // Graphics-only changes must preserve the real in-memory microphone phase.
     assert.equal(await page.evaluate(async () => (await import('/src/lib/company/voiceActivity.ts')).getVoiceSnapshot().phase), 'listening');
