@@ -8,6 +8,7 @@ import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTra
 import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
+import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -77,7 +78,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
   const { data: who } = await userClient.auth.getUser();
   let user: { id: string; email?: string | null } | null = who?.user ?? null;
-  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; system_user_id?: string } = {};
+  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; system_user_id?: string; request_id?: string } = {};
   try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json(400, { error: 'bad_request' });
   // Server-to-server (the owner writing from Telegram): the scheduler secret plus the person it acts for.
@@ -94,7 +95,10 @@ Deno.serve(async (req) => {
   }
   if (!user) return json(401, { error: 'unauthorized' });
   const text = typeof body.message === 'string' ? body.message.trim() : '';
-  if (!body.conversation_id || typeof body.conversation_id !== 'string' || !text) return json(400, { error: 'bad_request' });
+  if (!body.conversation_id || typeof body.conversation_id !== 'string' || !text
+    || typeof body.request_id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(body.request_id)) {
+    return json(400, { error: 'bad_request' });
+  }
   if (text.length > MAX_MESSAGE) return json(413, { error: 'too_long' });
   const lang = body.lang && body.lang in LANG_NAME ? body.lang : 'en';
   const { data: convo } = await reader.from('conversations')
@@ -130,30 +134,15 @@ Deno.serve(async (req) => {
   const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
   if (!free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
+  const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
+  if (planError) return json(503, { error: 'budget_unavailable' });
+  const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
+  if (!Number.isSafeInteger(cap) || cap < 1 || cap > 100_000) return json(503, { error: 'budget_unavailable' });
   const monthStart = new Date();
   monthStart.setUTCDate(1); monthStart.setUTCHours(0, 0, 0, 0);
-  const { data: spendRows, error: spendError } = await admin.from('usage_events').select('cost_usd').eq('agent_id', agent.id).gte('created_at', monthStart.toISOString());
-  if (spendError) return json(503, { error: 'budget_unavailable' });
-  const spent = (spendRows ?? []).reduce((s: number, r: any) => s + Number(r.cost_usd ?? 0), 0);
-  if (!free && agent.monthly_budget_usd != null && spent >= Number(agent.monthly_budget_usd)) return json(402, { error: 'budget_exceeded', spent, budget: Number(agent.monthly_budget_usd) });
-  const { count: lastHour, error: hourError } = await admin.from('usage_events').select('id', { count: 'exact', head: true })
-    .eq('agent_id', agent.id).gte('created_at', new Date(Date.now() - 3_600_000).toISOString());
-  if (hourError) return json(503, { error: 'budget_unavailable' });
-  if ((lastHour ?? 0) >= HOURLY_RUN_LIMIT) return json(429, { error: 'rate_limited' });
-  const { count: orgDay, error: dayError } = await admin.from('usage_events').select('id', { count: 'exact', head: true })
-    .eq('organization_id', convo.organization_id).gte('created_at', new Date(Date.now() - 86_400_000).toISOString());
-  const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
-  if (dayError || planError) return json(503, { error: 'budget_unavailable' });
-  const cap = Math.min(Number(planCap ?? 25), Number(Deno.env.get('ORG_DAILY_RUN_LIMIT') ?? Infinity));
-  if (Number.isNaN(cap) || cap < 0) return json(503, { error: 'budget_unavailable' });
-  if ((orgDay ?? 0) >= cap) return json(429, { error: 'plan_limit' });
   const { data: history } = await admin.from('messages').select('role, content').eq('conversation_id', convo.id)
     .in('role', ['user', 'assistant']).order('created_at', { ascending: false }).limit(HISTORY);
   const past = (history ?? []).reverse().map((m: any) => ({ role: m.role, content: String(m.content).slice(0, MAX_MESSAGE) }));
-  const { data: userRow, error: userError } = await admin.from('messages')
-    .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'user', content: text })
-    .select('id, role, content, created_at').single();
-  if (userError || !userRow) return json(503, { error: 'message_save_failed' });
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type').eq('organization_id', convo.organization_id)
@@ -226,6 +215,43 @@ Deno.serve(async (req) => {
   // The record of the task being asked about goes next to the question too (it is not saved in the conversation).
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
+  const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
+  const freeMessages = free ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
+  let reservedUsd = 0;
+  try {
+    if (!own && !free && gateway) {
+      reservedUsd = maximumInferenceCost({ messages: routedMessages }, [{ priceIn: gateway.priceIn, priceOut: gateway.priceOut, maxOutputTokens: 1800 }]);
+    } else if (!own && !free) {
+      reservedUsd = maximumInferenceCost({ messages: routedMessages }, targets.map(target => ({
+        priceIn: priceOf(target.provider, 'IN'), priceOut: priceOf(target.provider, 'OUT'),
+        maxOutputTokens: target.provider === 'openai' ? 8000 : 1800,
+      })));
+    }
+  } catch {
+    return json(503, { error: 'budget_unavailable' });
+  }
+  let accounting: { requestId: string };
+  try {
+    accounting = await reserveInference(admin, {
+      organizationId: convo.organization_id, userId: user.id, agentId: agent.id,
+      requestKey: body.request_id, reservedUsd, hourlyLimit: HOURLY_RUN_LIMIT, dailyLimit: cap,
+    });
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'budget_unavailable';
+    if (reason === 'budget_exceeded') return json(402, { error: reason });
+    if (reason === 'rate_limited' || reason === 'plan_limit') return json(429, { error: reason });
+    if (reason === 'request_in_progress' || reason === 'request_already_resolved') {
+      return json(409, { error: 'not_runnable', reason });
+    }
+    return json(503, { error: 'budget_unavailable' });
+  }
+  const { data: userRow, error: userError } = await admin.from('messages')
+    .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'user', content: text })
+    .select('id, role, content, created_at').single();
+  if (userError || !userRow) {
+    await releaseInference(admin, accounting.requestId, 'message_save_failed');
+    return json(503, { error: 'message_save_failed' });
+  }
   const t0 = Date.now();
   let completion: any = null;
   let used: { provider: string; model: string } | null = null;
@@ -235,13 +261,13 @@ Deno.serve(async (req) => {
   if (free) {
     try {
       // The local model has a small context (the route accepts at most 2800 bytes), so it gets a compact prompt.
-      routed = await completeViaFree(convo.organization_id, auth, crypto.randomUUID(), compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }), { signal: req.signal });
+      routed = await completeViaFree(convo.organization_id, auth, body.request_id, freeMessages, { signal: req.signal });
       completion = routed.completion; routing = routed.trace;
       used = { provider: 'firbo-free', model: routed.trace.reported_model };
     } catch (error) { lastError = error instanceof GatewayError ? error.code : 'free_error'; }
   } else if (gateway) {
     try {
-      routed = await completeViaGateway(gateway, [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }], Number(agent.temperature ?? 0.5), { signal: req.signal });
+      routed = await completeViaGateway(gateway, routedMessages, Number(agent.temperature ?? 0.5), { signal: req.signal });
       completion = routed.completion; routing = routed.trace;
       used = { provider: 'omniroute', model: gateway.model };
     } catch (error) {
@@ -270,7 +296,11 @@ Deno.serve(async (req) => {
       lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
     }
   }
-  if (!completion || !used) return json(502, { error: 'model_error', reason: lastError, user_message: userRow, routing });
+  if (!completion || !used) {
+    await markInferenceAmbiguous(admin, accounting.requestId, lastError);
+    return json(502, { error: 'model_error', reason: lastError, retry_safe: false, user_message: userRow, routing,
+      accounting: { request_id: accounting.requestId, status: 'reconcile_required' } });
+  }
   const model = `${used.provider}:${used.model}`;
   const latency = Date.now() - t0;
   // The CEO may put the owner through to the employee who did the work: the reply then carries a marker the app shows as a button.
@@ -289,16 +319,34 @@ Deno.serve(async (req) => {
   const ownUsed = !!own && used === own;
   // Own-key usage is billed by the provider to the company, so it costs the company nothing at Firbo.
   const cost = routed ? routed.cost : ownUsed ? 0 : Math.round(((inTok * priceOf(used.provider, 'IN') + outTok * priceOf(used.provider, 'OUT')) / 1e6) * 1e6) / 1e6;
-  // Do not report success when either usage accounting or the assistant message failed to persist.
-  const { error: usageError } = await admin.from('usage_events').insert({ organization_id: convo.organization_id, user_id: user.id, agent_id: agent.id, model,
-    input_tokens: inTok, output_tokens: outTok, cost_usd: cost, latency_ms: latency, ...(ownUsed ? { own_key: true } : {}) });
+  // Usage is inserted and the reservation is released in one database transaction.
+  // Do not save the assistant reply first: a visible result without its cost row
+  // would turn a transient accounting error into unmetered success.
+  let accountingStatus: 'settled' | 'settled_overrun';
+  try {
+    accountingStatus = await settleInference(admin, accounting.requestId, {
+      model, inputTokens: inTok, outputTokens: outTok, costUsd: cost, latencyMs: latency, ownKey: ownUsed,
+    });
+  } catch {
+    await markInferenceAmbiguous(admin, accounting.requestId, 'usage_save_failed');
+    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-chat', conversation_id: convo.id,
+      organization_id: convo.organization_id, request_id: accounting.requestId, usage_saved: false, message_saved: false }));
+    return json(503, { error: 'result_save_failed', retry_safe: false, user_message: userRow, routing,
+      accounting: { request_id: accounting.requestId, status: 'reconcile_required' } });
+  }
+  if (accountingStatus === 'settled_overrun') {
+    console.error(JSON.stringify({ event: 'firbo_inference_reservation_overrun', source: 'agent-chat', organization_id: convo.organization_id,
+      conversation_id: convo.id, request_id: accounting.requestId, reserved_usd: reservedUsd, actual_usd: cost }));
+  }
   const { data: botRow, error: botError } = await admin.from('messages')
     .insert({ organization_id: convo.organization_id, conversation_id: convo.id, role: 'assistant', content: reply, model, input_tokens: inTok, output_tokens: outTok, latency_ms: latency })
     .select('id, role, content, created_at, model').single();
-  if (usageError || botError || !botRow) {
-    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-chat', conversation_id: convo.id, organization_id: convo.organization_id, request_id: routing?.request_id, usage_saved: !usageError, message_saved: !!botRow && !botError }));
-    return json(503, { error: 'result_save_failed', retry_safe: false, user_message: userRow, message: botRow, routing });
+  if (botError || !botRow) {
+    console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-chat', conversation_id: convo.id, organization_id: convo.organization_id, request_id: accounting.requestId, usage_saved: true, message_saved: !!botRow && !botError }));
+    return json(503, { error: 'result_save_failed', retry_safe: false, user_message: userRow, message: botRow, routing,
+      accounting: { request_id: accounting.requestId, status: accountingStatus } });
   }
   await admin.from('conversations').update({ updated_at: new Date().toISOString(), ...(convo.title ? {} : { title: text.slice(0, 60) }) }).eq('id', convo.id);
-  return json(200, { user_message: userRow, message: botRow, routing });
+  return json(200, { user_message: userRow, message: botRow, routing,
+    accounting: { request_id: accounting.requestId, status: accountingStatus } });
 });

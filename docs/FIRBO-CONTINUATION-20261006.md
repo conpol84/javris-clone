@@ -515,3 +515,37 @@ Remains:
 References: https://github.com/conpol84/javris-clone/pull/22 ;
 https://github.com/conpol84/javris-clone/actions/runs/37425692392 ;
 https://firboai.app
+
+### Candidate — inference accounting ledger stage 1 (not released)
+
+Changed:
+- Continued exact Claude checkpoint `13f4304`; no direct-session branch drift
+  was present. PR #13 remains untouched.
+- Added a private, service-only request ledger for `agent-chat`: client request
+  UUID, pessimistic pre-provider cost reservation, per-company/agent row-lock
+  admission, atomic usage settlement, duplicate suppression, explicit
+  reconciliation for ambiguous provider results and release for known local
+  pre-provider failures. Free/BYOK reserves $0 but remains rate-counted.
+- Added an exact PostgreSQL 17 lifecycle/race target. No migration, Edge
+  Function, frontend deployment, provider call or production write has occurred.
+  See `FIRBO-INFERENCE-ACCOUNTING-STAGE1-20261006.md`.
+
+Tested / passed locally:
+- 92 actual mocked-transport Edge handler tests, 561 non-rendered FIRBO Node
+  tests, 490 frontend tests, strict Edge TypeScript and production build.
+- PostgreSQL client/container is absent locally. Exact-head CI must execute the
+  new ACL, settlement and four concurrency races before merge or any rollout.
+
+Failed / limitations:
+- This is SOURCE + local automated evidence only. `agent-runner`, missions,
+  speech and other inference routes still use their older guards; the global
+  cross-route accounting/Free-budget exit criterion remains open.
+- Coordinated rollout is required because the new handler requires request IDs:
+  clients/channel bridge first, migration once, matching chat function last.
+
+Remains:
+- Open a PR from the candidate, inspect exact-head PostgreSQL and all relevant
+  workflows, fix real failures, then release only if both histories and rollout
+  ordering are preserved. Do not claim this candidate is merged or live.
+- Reconciliation UI/monitoring, the remaining inference routes, real signed-in
+  receipt and second-customer isolation remain after stage 1.

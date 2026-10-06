@@ -8,6 +8,7 @@ import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { maximumInferenceCost } from '../../supabase/functions/_shared/inference-accounting.ts';
 
 const USER='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const ORG='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -15,6 +16,8 @@ const AGENT='cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const TASK='dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const CONVO='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const CLAIM='ffffffff-ffff-4fff-8fff-ffffffffffff';
+const CHAT_REQUEST='11111111-1111-4111-8111-111111111111';
+const ACCOUNTING='22222222-2222-4222-8222-222222222222';
 const root = new URL('../../',import.meta.url);
 const originalFetch=globalThis.fetch, originalDeno=globalThis.Deno;
 const temp=await mkdtemp(join(tmpdir(),'firbo-edge-tests-'));
@@ -89,6 +92,22 @@ function fixture(options={}) {
     auth:{getUser:async()=>({data:{user:options.unsigned?null:user}}),admin:{getUserById:async()=>({data:{user}})}},
     rpc:async(fn,args)=>{
       state.rpcs=[...(state.rpcs??[]),{fn,args}];
+      if(fn==='firbo_reserve_inference') {
+        if(options.budgetError)return{data:null,error:{message:'db unavailable'}};
+        if(options.spent)return{data:{ok:false,reason:'budget_exceeded',spent:options.spent,budget:10},error:null};
+        if((options.count??0)>=60)return{data:{ok:false,reason:'rate_limited',hourly:options.count,limit:60},error:null};
+        if(options.reservationDuplicate)return{data:{ok:true,duplicate:true,request_id:ACCOUNTING,status:'reserved'},error:null};
+        return{data:{ok:true,duplicate:false,request_id:ACCOUNTING,status:'reserved',spent:0,reserved:0,budget:10},error:null};
+      }
+      if(fn==='firbo_settle_inference') {
+        if(options.usageError)return{data:null,error:{message:'db unavailable'}};
+        state.writes.push({table:'usage_events',op:'rpc',payload:{organization_id:ORG,user_id:USER,agent_id:AGENT,model:args.p_model,
+          input_tokens:args.p_input_tokens,output_tokens:args.p_output_tokens,cost_usd:args.p_cost_usd,latency_ms:args.p_latency_ms,own_key:args.p_own_key,
+          inference_request_id:args.p_request}});
+        return{data:{ok:true,duplicate:false,request_id:args.p_request,status:options.accountingOverrun?'settled_overrun':'settled'},error:null};
+      }
+      if(fn==='firbo_mark_inference_ambiguous')return{data:{ok:true,request_id:args.p_request,status:'reconcile_required'},error:null};
+      if(fn==='firbo_release_inference')return{data:{ok:true,request_id:args.p_request,status:'released'},error:null};
       if(fn==='claim_task_run') {
         if(options.claimLost||options.activeExecution)return{data:null,error:{message:options.activeExecution?'task_active_jobs':'not_runnable'}};
         if(options.claimUnavailable)return{data:null,error:{message:'database unavailable'}};
@@ -142,7 +161,7 @@ function fixture(options={}) {
 const FULL_REPORT=['## Executive summary','The market grew. '.repeat(40),'## Findings','Sales rose in every region. '.repeat(25),'## Recommendations','1. Expand online. '.repeat(25)].join('\n');
 async function invoke(name,options={},bodyExtra={}){
   const state=fixture(options);
-  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',...bodyExtra}:{task_id:TASK,...bodyExtra};
+  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',request_id:CHAT_REQUEST,...bodyExtra}:{task_id:TASK,...bodyExtra};
   const headers={'content-type':'application/json',authorization:'Bearer user-test',...(options.cron?{'x-cron-secret':options.cron}:{})};
   const response=await handlers[name](new Request('https://db.example.test/functions/v1/'+name,{method:'POST',headers,body:JSON.stringify(payload)}));
   return{state,response,body:await response.json()};
@@ -174,6 +193,44 @@ for(const name of Object.keys(handlers)){
   });
 }
 test('chat cannot act on another user conversation',async()=>{const {state,response}=await invoke('agent-chat',{foreignConversation:true});assert.equal(response.status,403);assert.equal(state.calls.length,0);});
+test('agent-chat requires a client request id before any write or inference',async()=>{
+  const {state,response}=await invoke('agent-chat',{}, {request_id:undefined});
+  assert.equal(response.status,400);assert.equal(state.calls.length,0);assert.equal(state.writes.length,0);
+});
+test('agent-chat reserves before inference and settles the same ledger row atomically',async()=>{
+  const {state,response,body}=await invoke('agent-chat');
+  assert.equal(response.status,200);
+  const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_inference');
+  const settle=state.rpcs.find(r=>r.fn==='firbo_settle_inference');
+  assert.equal(reserve.args.p_org,ORG);assert.equal(reserve.args.p_agent,AGENT);assert.equal(reserve.args.p_request_key,CHAT_REQUEST);
+  assert.ok(reserve.args.p_reserved_usd>settle.args.p_cost_usd);assert.equal(settle.args.p_request,ACCOUNTING);
+  assert.deepEqual(body.accounting,{request_id:ACCOUNTING,status:'settled'});
+  assert.equal(state.writes.filter(w=>w.table==='usage_events').length,1);
+});
+test('agent-chat keeps an ambiguous provider failure reserved for reconciliation',async()=>{
+  const {state,response,body}=await invoke('agent-chat',{gatewayFailure:true});
+  assert.equal(response.status,502);assert.equal(body.retry_safe,false);assert.equal(body.accounting.status,'reconcile_required');
+  const reconcile=state.rpcs.find(r=>r.fn==='firbo_mark_inference_ambiguous');
+  assert.equal(reconcile.args.p_request,ACCOUNTING);assert.equal(reconcile.args.p_reason,'gateway_http_502');
+  assert.ok(!state.rpcs.some(r=>r.fn==='firbo_settle_inference'));
+});
+test('agent-chat refuses a concurrent duplicate reservation',async()=>{
+  const {state,response,body}=await invoke('agent-chat',{reservationDuplicate:true});
+  assert.equal(response.status,409);assert.equal(body.error,'not_runnable');assert.equal(body.reason,'request_in_progress');assert.equal(state.calls.length,0);
+  assert.ok(!state.writes.some(w=>w.table==='messages'));
+});
+test('agent-chat releases a reservation when the local user message cannot be saved',async()=>{
+  const {state,response}=await invoke('agent-chat',{messageError:true});
+  assert.equal(response.status,503);assert.equal(state.calls.length,0);
+  const release=state.rpcs.find(r=>r.fn==='firbo_release_inference');
+  assert.equal(release.args.p_request,ACCOUNTING);assert.equal(release.args.p_reason,'message_save_failed');
+});
+test('reservation estimate is conservative, additive across fallbacks and rejects invalid rates',()=>{
+  const one=maximumInferenceCost({messages:[{role:'user',content:'hello'}]},[{priceIn:1,priceOut:2,maxOutputTokens:100}]);
+  const two=maximumInferenceCost({messages:[{role:'user',content:'hello'}]},[{priceIn:1,priceOut:2,maxOutputTokens:100},{priceIn:3,priceOut:4,maxOutputTokens:200}]);
+  assert.ok(one>0);assert.ok(two>one);
+  assert.throws(()=>maximumInferenceCost({},[{priceIn:-1,priceOut:1,maxOutputTokens:1}]),/invalid_cost_rate/);
+});
 test('agent-chat offers only work sources not already present in this company',async()=>{
   const {state,response}=await invoke('agent-chat',{agentType:'ceo',integrations:[{kind:'gdrive_read',status:'active'}]});
   assert.equal(response.status,200);
