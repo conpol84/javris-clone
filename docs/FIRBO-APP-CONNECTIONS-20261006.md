@@ -72,6 +72,10 @@ secrets, and provider-owned registrations cannot be fabricated.
 - Preserved mission accounting implementation `b582ce8`, app implementation
   `2cdb3ac`, Claude cleanup `22e5480`, new Claude runner `500e4e9` and the current
   Codex parity history `ce421e3`. Combined runtime source is `2c28393`.
+- Final live reread: frontend remains `dpl_EKo9oCXqxyCZpSQpjzxQUBHUQbqp`,
+  integrations v29, mission-runner v26; Claude concurrently released runner v84.
+  All 12 runner v84 dependency files match the combined candidate by content
+  comparison. Do not redeploy that unchanged runner. Connected integrations: 0.
 
 ## Failed / pending
 

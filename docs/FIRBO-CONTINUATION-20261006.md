@@ -682,6 +682,9 @@ Tested / passed:
   integrations v29 files match the pre-change source by content comparison.
 - Extended existing actual-page checks for setup/ready/deep-link/error/retry
   behavior without weakening existing layout, company or device checks.
+- Live reread found Claude's runner v84; all 12 dependency files match the
+  combined source. Frontend production, integrations v29 and mission-runner v26
+  remain unchanged. Production has zero connected integrations.
 
 Failed / limitations:
 - Browser execution is pending: browser installation failed (certificate error,
