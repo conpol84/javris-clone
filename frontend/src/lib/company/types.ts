@@ -64,6 +64,10 @@ export interface TaskResult {
   model?: string;
   /** Why the run moved to the quality route ('feedback' after 👎, 'invalid_reply' when the economy model failed). */
   routed_up?: string;
+  /** The work product the employee wrote: a report, a slide presentation or a message ready to send. */
+  format?: 'report' | 'presentation' | 'memo';
+  /** True when the draft got the quality pass before it was saved. */
+  polished?: boolean;
   actions?: { action: string; risk: string; payload: Record<string, unknown> }[];
   queued?: number;
   dropped?: string[];

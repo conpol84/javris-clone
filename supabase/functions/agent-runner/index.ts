@@ -10,6 +10,7 @@ import { freeWebSearch, readPageDirect, readTopPages } from '../_shared/free-sea
 import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
 import { calculatorTool, weatherTool, exchangeRateTool, knowledgeSearch, generateImage, analyzeImage } from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
+import { detectDeliverable, deliverableInstructions, needsPolish, polishSystem } from '../_shared/deliverables.ts';
 import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
@@ -311,6 +312,10 @@ Deno.serve(async (req) => {
       new Promise<typeof noWeb>(resolve => { webTimer = setTimeout(() => { webController.abort(); resolve(noWeb); }, 15_000); }),
     ]);
   } finally { clearTimeout(webTimer); webController.abort(); }
+  // The work product asked for (report, presentation, message) and its professional standard. Scheduled digests keep their
+  // own short format unless they ask for slides or a message; the small free pilot lane has no room for the extra instructions.
+  const deliverable = detectDeliverable(task.title ?? '', task.description ?? '');
+  const standard = !free && (!task.shift_id || deliverable !== 'report') ? deliverableInstructions(deliverable) : '';
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
@@ -319,6 +324,7 @@ Deno.serve(async (req) => {
     'You cannot send, publish, pay or change anything yourself. Propose such steps as actions that a human will approve.',
     'Never invent facts, names, figures, dates or links. Use only what you were given or found; when you could not find something, say so.',
     `Write everything in ${LANG_NAME[lang]}. Today is ${new Date().toISOString().slice(0, 10)}; when the task asks for recent news, look for items from the last weeks.`,
+    ...(standard ? [standard] : []),
     `Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown: the actual work product), "actions": [{"action": string (short name such as send_email), "risk": "low"|"medium"|"high", "payload": object}]} with at most ${MAX_ACTIONS} actions. Use an empty actions array when nothing needs to leave the company. You may add "learned": [at most 3 short facts about the company, its customers or its work that will help next time]; leave it out when there is nothing durable to remember.`,
   ].join('\n\n');
   // Scheduled work gets the pulse next to the task too: smaller models follow the user message far better than a long system prompt.
@@ -585,6 +591,7 @@ Deno.serve(async (req) => {
     }
   }
   let text = '';
+  let polished = false;
   let steps: LoopStep[] = [];
   let calls = 0;
   const evidence: string[] = [];
@@ -606,6 +613,18 @@ Deno.serve(async (req) => {
     const finished = await finishCutOff(callOnce, text, { instructions: `Write in ${LANG_NAME[lang]}.`, deadline: requestStarted + WALL_CLOCK_MS });
     text = finished.text; calls += finished.calls;
     if (text && (isUnusableReply(text) || isLeftoverToolRequest(text))) text = sourcesReport().text;
+    // Quality pass: a draft below the standard of its deliverable is rewritten once (same facts) while there is time.
+    const draft = parseModelJson(text);
+    const left = requestStarted + WALL_CLOCK_MS - Date.now() - 5_000;
+    if (standard && isFinalAnswer(text) && needsPolish(deliverable, draft.report) && left > 40_000) {
+      const better = await callOnce([
+        { role: 'system', content: polishSystem(deliverable, LANG_NAME[lang]) },
+        { role: 'user', content: `TASK:\n${task.title}\n${String(task.description ?? '').slice(0, 1500)}\n\nCOMPANY: ${org?.name ?? ''}. ${profile.goal ? `Goal: ${profile.goal}.` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}\n\nMATERIAL:\n${evidence.join('\n\n').slice(-7000) || '(none)'}\n\nDRAFT:\n${text.slice(0, 9000)}` },
+      ], Math.min(60_000, left)).catch(() => '');
+      calls++;
+      const clean = better.replace(/<think>[\s\S]*?<\/think>/gi, '').trim();
+      if (isFinalAnswer(clean) && !isUnusableReply(clean) && parseModelJson(clean).report.trim().length > draft.report.trim().length * 0.8) { text = clean; polished = true; }
+    }
   } catch {
     // The model failed or timed out at the end, but the research is not lost: hand over the sources that were found.
     if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }
@@ -641,7 +660,7 @@ Deno.serve(async (req) => {
   const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-    queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang,
+    queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang, format: deliverable, ...(polished ? { polished: true } : {}),
     ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: 'feedback' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
   let saved = await publish(finalStatus, result, reconcile ? [] : approvalsOut);
   if (!saved && !reconcile) {
