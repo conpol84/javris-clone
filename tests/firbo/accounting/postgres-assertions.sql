@@ -85,3 +85,37 @@ end $$;
 
 select 'accounting reservation, settlement, ACL, reconciliation and limits' as check_name, true as passed;
 
+do $$
+declare
+  org_agent_cols text[];
+  user_cols text[];
+begin
+  select array_agg(a.attname::text order by k.ordinality)
+    into org_agent_cols
+    from pg_class i
+    join pg_namespace n on n.oid = i.relnamespace
+    join pg_index x on x.indexrelid = i.oid
+    join unnest(x.indkey) with ordinality as k(attnum, ordinality) on true
+    join pg_attribute a on a.attrelid = x.indrelid and a.attnum = k.attnum
+   where n.nspname = 'private'
+     and i.relname = 'inference_requests_org_agent_idx';
+
+  select array_agg(a.attname::text order by k.ordinality)
+    into user_cols
+    from pg_class i
+    join pg_namespace n on n.oid = i.relnamespace
+    join pg_index x on x.indexrelid = i.oid
+    join unnest(x.indkey) with ordinality as k(attnum, ordinality) on true
+    join pg_attribute a on a.attrelid = x.indrelid and a.attnum = k.attnum
+   where n.nspname = 'private'
+     and i.relname = 'inference_requests_user_idx';
+
+  if org_agent_cols is distinct from array['organization_id', 'agent_id'] then
+    raise exception 'organization/agent FK index missing or ordered incorrectly: %', org_agent_cols;
+  end if;
+  if user_cols is distinct from array['user_id'] then
+    raise exception 'user FK index missing or ordered incorrectly: %', user_cols;
+  end if;
+end $$;
+
+select 'accounting foreign-key covering indexes' as check_name, true as passed;
