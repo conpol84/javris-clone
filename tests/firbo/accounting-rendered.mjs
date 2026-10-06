@@ -29,12 +29,14 @@ try {
       if (url.origin !== origin) return route.abort();
       if (url.pathname === '/accounting-test.html') return route.fulfill({ contentType: 'text/html', body: `<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/accounting-harness.js"></script></body></html>` });
       if (url.pathname === '/accounting-harness.js') return route.fulfill({ contentType: 'application/javascript', body: `
-        import React, {useState} from '/node_modules/.vite/deps/react.js';
-        import {createRoot} from '/node_modules/.vite/deps/react-dom_client.js';
-        import {MemoryRouter} from '/node_modules/.vite/deps/react-router.js';
+        import React from '/node_modules/.vite/deps/react.js';
+        import ReactDOM from '/node_modules/.vite/deps/react-dom_client.js';
+        import * as RouterModule from '/node_modules/.vite/deps/react-router.js';
         import {I18nProvider} from '/src/i18n/I18nProvider.tsx';
         import {BillingPage} from '/src/pages/BillingPage.tsx';
         import '/src/index.css';
+        const {useState}=React; const {createRoot}=ReactDOM;
+        const {MemoryRouter}=RouterModule.default??RouterModule;
         window.harness={queue:[],organization:'${orgA}',role:'owner'};
         function App(){const [n,setN]=useState(0); window.harness.render=()=>setN(v=>v+1); return React.createElement(I18nProvider,{key:(window.harness.lang??'en')+':'+(window.harness.localeRevision??0)},React.createElement(MemoryRouter,{},React.createElement(BillingPage)));}
         createRoot(document.getElementById('root')).render(React.createElement(App));
