@@ -362,12 +362,13 @@ References: https://github.com/conpol84/javris-clone/pull/19 ;
 https://github.com/conpol84/javris-clone/actions/runs/37412639429 ;
 https://firboai.app
 
-### Codex: CEO work-source proposals (candidate)
+### PR #20 — safe CEO work-source proposals release (6 October 2026)
 
 Changed:
-- Continued Claude checkpoint `445933907548f9cc240f08bbb6c06b1f3b33cb59`
-  on `codex/firbo-work-source-proposals-20261006` without modifying device jobs,
-  permissions, integration rows or external channels.
+- Continued Claude checkpoint `445933907548f9cc240f08bbb6c06b1f3b33cb59`;
+  PR #20 merged with both histories preserved at
+  `6a5f36893bfab60802630b9364a5f6ba18841b47`. Accepted head `ad9bdd3`,
+  immutable tree `60ca01aa46f0d6e180e9c1742a02a184a66fdf49`.
 - Added organization-scoped, allowlisted proposals for Google Drive/Gmail/Google
   Calendar/Outlook read, Notion and GitHub. Existing kinds are excluded; an
   integration-read error disables proposals. The rendered action only opens the
@@ -378,16 +379,29 @@ Changed:
 Tested / passed:
 - 110/110 expanded edge/meeting/briefing tests (including 21/21 focused action
   tests), 19/19 focused frontend tests, 485/485 full frontend tests, frontend and
-  edge TypeScript, production build and diff check.
+  edge TypeScript, production build and diff check. All six exact-head PR
+  workflows passed, including operational pages, security and PostgreSQL
+  workspace lifecycle.
   See `FIRBO-WORK-SOURCE-PROPOSALS-20261006.md`.
+- Backend `agent-chat` v37 is ACTIVE and all seven deployed files match the
+  merge source exactly. No SQL or other edge function was deployed.
+- Production `dpl_D6XHthZAmsy8sCUJJxVXoAqVE51g` is READY at source `6a5f368`;
+  public `firboai.app` and `CeoActions-Bm-t-Vpx.js` rendered the new parser,
+  allowlist and setup-only link. Error/fatal runtime scan was empty.
 
 Failed / limitations:
 - Initial focused test exposed underscore removal in `gdrive_read`; fixed before
   the passing runs. The expanded suite then exposed its missing integration-table
   mock; added with organization-scope assertions before the 110/110 pass. No
-  signed-in or provider acceptance is claimed, and this candidate is not live.
+  signed-in or provider acceptance is claimed.
+- Direct Vercel preview promotion returned 422; the tested preview was pinned
+  into a production redeploy with `withLatestCommit:false`, and reached READY.
 
 Remains:
-- Exact-head CI, merge/deploy if accepted, then signed-in proposal/meeting/task
-  acceptance. Google/Microsoft consent/refresh/revoke, real device/channel and all
-  other master-plan gates remain open.
+- Signed-in proposal/meeting/task acceptance. Google/Microsoft
+  consent/refresh/revoke, real device/channel and all other master-plan gates
+  remain open. PR #13 remains untouched; no full-plan completion.
+
+References: https://github.com/conpol84/javris-clone/pull/20 ;
+https://github.com/conpol84/javris-clone/actions/runs/37416789387 ;
+https://firboai.app
