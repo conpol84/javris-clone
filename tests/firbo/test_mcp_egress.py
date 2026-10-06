@@ -11,6 +11,7 @@ import tempfile
 import threading
 import time
 import unittest
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -388,6 +389,188 @@ class LocalTLS(unittest.TestCase):
 
 
 class ServiceTests(unittest.TestCase):
+    @contextmanager
+    def running_service(self, timeout=0.2):
+        handlers = []
+        parent = service.make_handler(TOKEN, ORIGINS)
+
+        class CapturedHandler(parent):
+            def __init__(self, *args):
+                handlers.append(self)
+                super().__init__(*args)
+
+        with patch.object(service, "INGRESS_TIMEOUT", timeout):
+            server = HTTPServer(("127.0.0.1", 0), CapturedHandler)
+            thread = threading.Thread(
+                target=lambda: server.serve_forever(poll_interval=0.01), daemon=True
+            )
+            thread.start()
+            try:
+                yield server, handlers
+            finally:
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=2)
+                self.assertFalse(thread.is_alive())
+                for handler in handlers:
+                    self.assertIsNone(handler._ingress_timer)
+
+    def assert_slow_request_closed(self, prefix, drip):
+        with (
+            self.running_service() as (server, handlers),
+            patch.object(
+                service, "forward_mcp", return_value=(200, {}, b'{"ok":true}')
+            ) as forward,
+        ):
+            started = time.monotonic()
+            with socket.create_connection(server.server_address, timeout=1) as client:
+                client.sendall(prefix)
+                for _ in range(12):
+                    time.sleep(0.035)
+                    try:
+                        client.sendall(drip)
+                        # Nonblocking probe notices EOF without resetting the
+                        # arrival drip. No real provider or DNS is involved.
+                        client.settimeout(0.001)
+                        if client.recv(1) == b"":
+                            break
+                    except TimeoutError:
+                        pass
+                    except OSError:
+                        break
+            self.assertLess(time.monotonic() - started, 0.4)
+            forward.assert_not_called()
+            # The service is serial: a subsequent accepted request proves
+            # that the slow sender cannot continue monopolizing its socket.
+            conn = http.client.HTTPConnection(*server.server_address, timeout=1)
+            conn.request(
+                "POST",
+                "/v1/mcp",
+                json.dumps(envelope()),
+                {"Authorization": "Bearer " + TOKEN},
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            response.read()
+            conn.close()
+            forward.assert_called_once_with(envelope(), ORIGINS)
+            self.assertTrue(handlers[0]._ingress_expired.is_set())
+
+    def test_actual_slow_request_line_has_total_deadline(self):
+        self.assert_slow_request_closed(b"PO", b"S")
+
+    def test_actual_slow_headers_have_total_deadline(self):
+        self.assert_slow_request_closed(
+            b"POST /v1/mcp HTTP/1.0\r\n", b"X-Synthetic: drip\r\n"
+        )
+
+    def test_actual_slow_body_has_total_deadline(self):
+        self.assert_slow_request_closed(
+            (
+                "POST /v1/mcp HTTP/1.0\r\nAuthorization: Bearer "
+                + TOKEN
+                + "\r\nContent-Length: 1000\r\n\r\n"
+            ).encode(),
+            b"x",
+        )
+
+    def test_body_deadline_cannot_reset_after_headers(self):
+        with (
+            self.running_service() as (server, _handlers),
+            patch.object(service, "forward_mcp") as forward,
+        ):
+            started = time.monotonic()
+            with socket.create_connection(server.server_address, timeout=1) as client:
+                client.sendall(b"POST /v1/mcp HTTP/1.0\r\n")
+                time.sleep(0.12)
+                client.sendall(
+                    (
+                        "Authorization: Bearer "
+                        + TOKEN
+                        + "\r\nContent-Length: 1000\r\n\r\n"
+                    ).encode()
+                )
+                self.assertEqual(client.recv(1), b"")
+            self.assertLess(time.monotonic() - started, 0.3)
+            forward.assert_not_called()
+
+    def test_invalid_or_ambiguous_framing_never_dispatches(self):
+        auth = "Authorization: Bearer " + TOKEN + "\r\n"
+        cases = [
+            (auth + auth + "Content-Length: 2\r\n", 401),
+            (auth + "Content-Length: 2\r\nContent-Length: 2\r\n", 400),
+            (auth + "Content-Length: 2\r\nTransfer-Encoding: chunked\r\n", 400),
+            (auth + "Content-Length: " + "9" * 5000 + "\r\n", 400),
+            (auth + "Content-Length: 128001\r\n", 413),
+            (auth + "Content-Length: 2\r\nX-Huge: " + "x" * 16000 + "\r\n", 431),
+        ]
+        with (
+            self.running_service(timeout=1) as (server, _handlers),
+            patch.object(service, "forward_mcp") as forward,
+        ):
+            for headers, status in cases:
+                with self.subTest(status=status, header_length=len(headers)):
+                    with socket.create_connection(
+                        server.server_address, timeout=1
+                    ) as client:
+                        client.sendall(
+                            ("POST /v1/mcp HTTP/1.0\r\n" + headers + "\r\n{}").encode()
+                        )
+                        response = http.client.HTTPResponse(client)
+                        response.begin()
+                        self.assertEqual(response.status, status)
+                        response.read()
+            forward.assert_not_called()
+
+    def test_ingress_timer_does_not_cut_off_admitted_upstream(self):
+        def synthetic_forward(request, origins):
+            self.assertEqual(request, envelope())
+            self.assertEqual(origins, ORIGINS)
+            time.sleep(0.3)
+            return 200, {}, b'{"ok":true}'
+
+        with (
+            self.running_service() as (server, handlers),
+            patch.object(service, "forward_mcp", side_effect=synthetic_forward),
+        ):
+            conn = http.client.HTTPConnection(*server.server_address, timeout=1)
+            conn.request(
+                "POST",
+                "/v1/mcp",
+                json.dumps(envelope()),
+                {"Authorization": "Bearer " + TOKEN},
+            )
+            response = conn.getresponse()
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.read(), b'{"ok":true}')
+            conn.close()
+            self.assertFalse(handlers[0]._ingress_expired.is_set())
+
+    def test_delayed_watchdog_cannot_dispatch_after_deadline(self):
+        # Model a delayed timer callback without depending on scheduler load.
+        # The independent monotonic check must refuse a complete valid body.
+        with (
+            self.running_service() as (server, handlers),
+            patch.object(service, "time") as clock,
+            patch.object(service.threading, "Timer") as timer_type,
+            patch.object(service, "forward_mcp") as forward,
+        ):
+            clock.monotonic.side_effect = [100.0, 100.3]
+            conn = http.client.HTTPConnection(*server.server_address, timeout=1)
+            conn.request(
+                "POST",
+                "/v1/mcp",
+                json.dumps(envelope()),
+                {"Authorization": "Bearer " + TOKEN},
+            )
+            with self.assertRaises(http.client.RemoteDisconnected):
+                conn.getresponse()
+            conn.close()
+            forward.assert_not_called()
+            self.assertFalse(handlers[0]._ingress_expired.is_set())
+            timer_type.return_value.cancel.assert_called_once()
+            timer_type.return_value.join.assert_called_once()
+
     def test_startup_needs_explicit_credentials_and_origins(self):
         for token, origins in [
             ("", ORIGINS),
