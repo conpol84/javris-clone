@@ -12,6 +12,7 @@ vi.mock('./runner',async original=>({...await original<typeof import('./runner')
 vi.mock('./voice',()=>({unlockAudio:vi.fn(),speak:async()=>({status:'completed'}),listenSmart:listen}));
 vi.mock('./laptop-bridge',async original=>({...await original<typeof import('./laptop-bridge')>(),prepareDirectComputerCommand:prepare,dispatchDirectComputerCommand:dispatch}));
 import {useCeoSession} from './useCeoSession';
+import {createConversation} from './data';
 
 function session(canComputer=true){
  fixture.index=0;fixture.refIndex=0;fixture.effects=[];
@@ -25,6 +26,15 @@ it('Command/Talk incomplete request reads capabilities and never asks an LLM to 
  const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
  expect(prepare).toHaveBeenCalledWith('org','browser_task','el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
  const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Δεν μπήκε εργασία');
+});
+it('sends a VPS artifact read to server chat without requiring a laptop',async()=>{
+ vi.mocked(createConversation).mockResolvedValue({id:'server-conversation'} as Awaited<ReturnType<typeof createConversation>>);
+ sendChat.mockResolvedValue({message:{content:'Server response'}});
+ const message='Διάβασε από τον VPS το αρχείο:\n/home/jarvis/.openjarvis/firbo-acceptance-7e50xgua/report.md\n\nΔείξε το πραγματικό περιεχόμενό του και την απόδειξη εκτέλεσης της ανάγνωσης. Μην δημιουργήσεις ή αλλάξεις αρχεία. Αν δεν έχεις πρόσβαση, ανέφερε ακριβώς τι εμποδίζει την ανάγνωση.';
+ const hook=session();await hook.ask(message);
+ expect(sendChat).toHaveBeenCalledExactlyOnceWith('server-conversation',message,'el',true,expect.any(AbortSignal));
+ expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toBe('Server response');
 });
 it('refuses incomplete owner-control requests for a non-admin writer',async()=>{
  const hook=session(false);await hook.ask('run AppleScript on Polis1984');expect(prepare).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
