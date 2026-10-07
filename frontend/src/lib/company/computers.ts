@@ -40,6 +40,7 @@ export interface JobRow {
   error: string | null;
   created_at: string;
   finished_at: string | null;
+  cancel_requested_at?: string | null;
   task_id?: string | null;
   approval_id?: string | null;
   report_sha256?: string | null;
@@ -93,7 +94,7 @@ export async function listDevices(orgId: string): Promise<DeviceRow[]> {
 export async function listJobs(orgId: string, deviceId: string): Promise<JobRow[]> {
   const { data, error } = await requireClient()
     .from('connector_jobs')
-    .select('id, device_id, kind, params, status, result, error, created_at, finished_at, task_id, approval_id, report_sha256, receipt, origin, agent_id')
+    .select('id, device_id, kind, params, status, result, error, created_at, finished_at, cancel_requested_at, task_id, approval_id, report_sha256, receipt, origin, agent_id')
     .eq('organization_id', orgId)
     .eq('device_id', deviceId)
     .order('created_at', { ascending: false })
@@ -108,7 +109,7 @@ export const removeDevice = (device_id: string) => call<{ ok: true }>({ action: 
 export const giveJob = (device_id: string, kind: JobRow['kind'], params: Record<string, unknown>, confirm = false) =>
   call<{ job_id: string }>({ action: 'create_job', device_id, kind, params, confirm });
 export const setAgentPolicy = (device_id: string, policy: ComputerPolicy) => call<{ ok: true; policy: ComputerPolicy }>({ action: 'set_policy', device_id, policy });
-export const cancelJob = (job_id: string) => call<{ ok: true }>({ action: 'cancel_job', job_id });
+export const cancelJob = (job_id: string) => call<{ ok: true; stop_requested?: boolean; duplicate?: boolean }>({ action: 'cancel_job', job_id });
 
 export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
 export const isComputerApprovalAction = (action: string) => COMPUTER_APPROVAL_ACTIONS.has(action.trim().toLowerCase());

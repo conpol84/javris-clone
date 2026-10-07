@@ -7,7 +7,7 @@ const payload=(id,report={ok:true,result:{value:42}})=>({action:'report',token:T
 
 test('authenticated device receives the exact supported report protocol',async()=>{
  const {invoke}=await makeHandler();const r=await invoke({action:'capabilities',token:TOKEN});assert.equal(r.status,200);
- const p=await r.json();assert.equal(p.protocol,'firbo-connector/v2');assert.equal(p.report_ack,'sha256-v1');assert.equal(p.remote_stop,false);
+ const p=await r.json();assert.equal(p.protocol,'firbo-connector/v2');assert.equal(p.report_ack,'sha256-v1');assert.equal(p.remote_stop,true);assert.equal(p.running_stop,'cancel-request-v1');assert.equal(p.queued_cancel_only,false);
  assert.equal(r.headers.get('cache-control'),'no-store');
 });
 test('poll claims work only through the atomic server RPC',async()=>{

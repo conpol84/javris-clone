@@ -31,7 +31,7 @@ curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
 (
   cd "$firbo_stage"
   shasum -a 256 -c <<'HASHES'
-84b40bfd71bf4b4a0b28baf4737e72dc99613fcc290997781ce464d56e626c92  firbo-connector.mjs
+bb64b0b4b919d209b3808b8aebf3e3d03a94264a974ce6a6d96276c08e864b5b  firbo-connector.mjs
 2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3  firbo-browser.mjs
 HASHES
 )
