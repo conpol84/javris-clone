@@ -1,0 +1,27 @@
+name: Firbo pinned page egress
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths: ['src/openjarvis/security/page_egress.py', 'src/openjarvis/server/firbo_page_egress.py', 'supabase/functions/_shared/page-egress.ts', 'supabase/functions/_shared/free-search.ts', 'tests/firbo/**', '.github/workflows/firbo-page-egress.yml']
+permissions:
+  contents: read
+jobs:
+  offline-and-local-tls:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.12'}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Pinned sockets, synthetic TLS, framing and private service auth
+        run: PYTHONPATH=src python3 -m unittest discover -s tests/firbo -p test_page_egress.py -v
+      - name: Edge page routing, content cleanup and fail-closed behavior
+        run: node --experimental-strip-types --test tests/firbo/free-search.test.mjs tests/firbo/page-egress.test.mjs
+      - run: python3 -m pip install ruff==0.16.7
+      - name: Lint and format changed Python
+        run: |
+          ruff check src/openjarvis/security/page_egress.py src/openjarvis/server/firbo_page_egress.py tests/firbo/test_page_egress.py
+          ruff format --check src/openjarvis/security/page_egress.py src/openjarvis/server/firbo_page_egress.py tests/firbo/test_page_egress.py

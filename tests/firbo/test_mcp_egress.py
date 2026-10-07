@@ -225,6 +225,10 @@ class LocalTLS(unittest.TestCase):
             def do_POST(self):
                 body = self.rfile.read(int(self.headers["Content-Length"]))
                 outer.requests.append((self.path, dict(self.headers), body))
+                if outer.raw_response is not None:
+                    self.wfile.write(outer.raw_response)
+                    self.close_connection = True
+                    return
                 self.send_response(outer.status)
                 if outer.slow_chunk:
                     self.wfile.write(
@@ -267,6 +271,7 @@ class LocalTLS(unittest.TestCase):
             200,
         )
         self.emit_length = True
+        self.raw_response = None
         self.slow_headers = False
         self.slow_chunk = False
         self.stopped = threading.Event()
@@ -373,6 +378,88 @@ class LocalTLS(unittest.TestCase):
         self.payload = b"x" * 400_001
         with self.assertRaisesRegex(egress.EgressDenied, "response_too_large"):
             self.forward()
+
+    def test_actual_truncated_content_length_is_not_success(self):
+        self.raw_response = (
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            + f"Content-Length: {len(self.payload) + 10}\r\n".encode()
+            + b"Connection: close\r\n\r\n"
+            + self.payload
+        )
+        with self.assertRaisesRegex(egress.EgressDenied, "response_incomplete"):
+            self.forward()
+        self.assertEqual(len(self.requests), 1)
+
+    def test_actual_ambiguous_or_unsupported_transfer_framing_is_denied(self):
+        cases = [
+            b"Transfer-Encoding: gzip\r\n",
+            b"Transfer-Encoding: gzip, chunked\r\n",
+            b"Transfer-Encoding: chunked\r\nTransfer-Encoding: chunked\r\n",
+            b"Transfer-Encoding: chunked\r\nContent-Length: 2\r\n",
+            b"Content-Length: 2\r\nContent-Length: 2\r\n",
+        ]
+        for headers in cases:
+            with self.subTest(headers=headers):
+                self.raw_response = (
+                    b"HTTP/1.1 200 OK\r\n"
+                    + headers
+                    + b"Connection: close\r\n\r\n2\r\n{}\r\n0\r\n\r\n"
+                )
+                with self.assertRaisesRegex(
+                    egress.EgressDenied, "response_framing_denied"
+                ):
+                    self.forward()
+        self.assertEqual(len(self.requests), len(cases))
+
+    def test_actual_valid_chunked_response_remains_supported(self):
+        self.raw_response = (
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            b"Transfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+            + f"{len(self.payload):x}\r\n".encode()
+            + self.payload
+            + b"\r\n0\r\n\r\n"
+        )
+        self.assertEqual(
+            self.forward(), (200, {"content-type": "application/json"}, self.payload)
+        )
+
+    def test_actual_incomplete_chunked_response_is_not_success(self):
+        for body in (b"2\r\n{", b"2\r\n{}\r\n"):
+            with self.subTest(body=body):
+                self.raw_response = (
+                    b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n"
+                    b"Connection: close\r\n\r\n" + body
+                )
+                with self.assertRaisesRegex(egress.EgressDenied, "response_incomplete"):
+                    self.forward()
+        self.assertEqual(len(self.requests), 2)
+
+    def test_actual_empty_notification_and_close_delimited_json_remain_supported(self):
+        self.raw_response = (
+            b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        )
+        self.assertEqual(
+            self.forward(), (202, {"content-type": "application/json"}, b"")
+        )
+        self.raw_response = (
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n"
+            b"Connection: close\r\n\r\n" + self.payload
+        )
+        self.assertEqual(
+            self.forward(), (200, {"content-type": "application/json"}, self.payload)
+        )
+
+    def test_actual_invalid_or_unbounded_content_length_is_denied(self):
+        for length in (b"-1", b"1, 1", b"400001", b"9" * 5000):
+            with self.subTest(length_size=len(length)):
+                self.raw_response = (
+                    b"HTTP/1.1 200 OK\r\nContent-Length: "
+                    + length
+                    + b"\r\nConnection: close\r\n\r\n{}"
+                )
+                with self.assertRaisesRegex(egress.EgressDenied, "response_too_large"):
+                    self.forward()
+        self.assertEqual(len(self.requests), 4)
 
     def test_actual_trusted_certificate_wrong_hostname_is_rejected(self):
         request = envelope()
@@ -547,6 +634,35 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(response.read(), b'{"ok":true}')
             conn.close()
             self.assertFalse(handlers[0]._ingress_expired.is_set())
+
+    def test_denied_upstream_is_generic_no_retry_and_service_recovers(self):
+        with (
+            self.running_service() as (server, _handlers),
+            patch.object(
+                service,
+                "forward_mcp",
+                side_effect=[
+                    egress.EgressDenied("response_incomplete"),
+                    (200, {"content-type": "application/json"}, b'{"ok":true}'),
+                ],
+            ) as forward,
+        ):
+            for expected_status, expected_body in (
+                (502, b'{"error":"egress_denied"}'),
+                (200, b'{"ok":true}'),
+            ):
+                conn = http.client.HTTPConnection(*server.server_address, timeout=1)
+                conn.request(
+                    "POST",
+                    "/v1/mcp",
+                    json.dumps(envelope()),
+                    {"Authorization": "Bearer " + TOKEN},
+                )
+                response = conn.getresponse()
+                self.assertEqual(response.status, expected_status)
+                self.assertEqual(response.read(), expected_body)
+                conn.close()
+                self.assertEqual(forward.call_count, 1 if expected_status == 502 else 2)
 
     def test_delayed_watchdog_cannot_dispatch_after_deadline(self):
         # Model a delayed timer callback without depending on scheduler load.

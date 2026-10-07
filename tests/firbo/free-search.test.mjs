@@ -2,6 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuckDuckGo, parseRss, parseWikipedia, freeWebSearch, isPublicHost, readPageDirect } from '../../supabase/functions/_shared/free-search.ts';
 
+const PAGE_ENDPOINT = 'https://egress.example.test/v1/page';
+const PAGE_TOKEN = 'synthetic-page-service-token-32-characters';
+globalThis.Deno = { env: { get: key => ({ FIRBO_PAGE_EGRESS_URL: PAGE_ENDPOINT, FIRBO_PAGE_EGRESS_TOKEN: PAGE_TOKEN })[key] } };
+const throughPageService = upstream => async (url, init) => {
+  assert.equal(String(url), PAGE_ENDPOINT);
+  assert.equal(init.method, 'POST');
+  assert.equal(init.redirect, 'error');
+  assert.equal(init.headers.authorization, `Bearer ${PAGE_TOKEN}`);
+  return upstream(JSON.parse(init.body).url, init);
+};
+
 const DDG = `<div><h2><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.sgieurope.com%2Fhome%2Ftopics&amp;rut=abc">Latest News &amp; Analysis | Sports Retail</a></h2>
 <a class="result__snippet" href="x">Sports <b>retail</b> news, every day.</a></div>
 <div><a class="result__a" href="https://duckduckgo.com/y.js?ad=1">Ad</a></div>
@@ -47,13 +58,18 @@ test('only public hosts can be read', () => {
   for (const h of ['localhost', '127.0.0.1', '10.0.0.5', '192.168.1.1', '172.20.0.1', '169.254.169.254', '100.64.0.1', 'metadata', 'db.internal', '[::1]']) assert.equal(isPublicHost(h), false, h);
   for (const h of ['www.sgieurope.com', 'news.google.com', '8.8.8.8']) assert.equal(isPublicHost(h), true, h);
 });
-test('a redirect to a private address is refused; page text is cleaned', async () => {
-  await assert.rejects(readPageDirect('https://a.example/x', async () => new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest' } })), /page_not_allowed/);
+test('private targets are refused before dispatch and page text is cleaned', async () => {
+  let calls = 0;
+  await assert.rejects(readPageDirect('https://127.0.0.1/latest', async () => { calls++; }), /page_not_allowed/);
+  assert.equal(calls, 0);
   await assert.rejects(readPageDirect('file:///etc/passwd'), /page_not_allowed/);
   const html = '<html><head><title>Sales up</title><script>evil()</script></head><body><nav>menu</nav><article><h1>Q3</h1><p>Sales rose 5%.</p></article></body></html>';
-  const out = await readPageDirect('https://a.example/x', async () => new Response(html, { headers: { 'content-type': 'text/html' } }));
+  const out = await readPageDirect('https://a.example/x', throughPageService(async target => {
+    assert.equal(target, 'https://a.example/x');
+    return new Response(html, { headers: { 'content-type': 'text/html', 'content-length': String(html.length) } });
+  }));
   assert.match(out, /^Sales up\n/); assert.match(out, /Sales rose 5%/); assert.doesNotMatch(out, /evil|menu/);
-  await assert.rejects(readPageDirect('https://a.example/f.pdf', async () => new Response('x', { headers: { 'content-type': 'application/pdf' } })), /page_not_text/);
+  await assert.rejects(readPageDirect('https://a.example/f.pdf', throughPageService(async () => new Response('x', { headers: { 'content-type': 'application/pdf' } }))), /page_not_text/);
 });
 test('percent-encoded letters in links are shown as letters, other escapes stay', async () => {
   const { readableUrl } = await import('../../supabase/functions/_shared/free-search.ts');
@@ -76,9 +92,9 @@ test('deep research reads the top result pages and skips private or failing ones
   const results = '1. A - https://a.example/x\n   s\nRecent news:\nN1. B (Mon) - https://b.example/y\nN2. A again - https://a.example/x\nW1. C - https://c.example/z';
   assert.deepEqual(resultLinks(results, 3), ['https://a.example/x', 'https://b.example/y', 'https://c.example/z']);
   const long = 'word '.repeat(100);
-  const fetcher = async (url) => url.startsWith('https://a.example')
+  const fetcher = throughPageService(async url => url.startsWith('https://a.example')
     ? new Response(`<html><title>A page</title><article>${long}</article></html>`, { headers: { 'content-type': 'text/html' } })
-    : new Response('nope', { status: 500 });
+    : new Response('nope', { status: 500 }));
   const pages = await readTopPages(results, fetcher, undefined, { max: 2 });
   assert.equal(pages.length, 1);
   assert.equal(pages[0].url, 'https://a.example/x');

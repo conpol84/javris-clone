@@ -1,0 +1,24 @@
+{
+  "schema": "firbo-agent-runner-bundle/v1",
+  "entrypoint": "index.ts",
+  "base_source": "9367669bfaf654626c5f02bd698154a5fdd2748f",
+  "bundle_gate_source": "b265aa76aab1698cbae23c8123bd1556ff3917b5",
+  "files": [
+    {"path":"_shared/agent-loop.ts","source_path":"supabase/functions/_shared/agent-loop.ts","sha256":"aee25bdb812595c482565fb058b8ffd76e9ae57760132d5b6d4d61e7da73f803","bytes":22204},
+    {"path":"_shared/agent-tools.ts","source_path":"supabase/functions/_shared/agent-tools.ts","sha256":"705b97e4dda234d68a6a29bf1b3c055c7bb3c6d34ca2b9a7664be21e7b151875","bytes":18420},
+    {"path":"_shared/company-pulse.ts","source_path":"supabase/functions/_shared/company-pulse.ts","sha256":"860a6d7a045dd1f542263ce2957b59e514698b51de9c26be746f16320ad7bfbc","bytes":3407},
+    {"path":"_shared/company-skills.ts","source_path":"supabase/functions/_shared/company-skills.ts","sha256":"b3e7e09d708a6403f02c1fbe08c7f4f7eb4bf86ef4805a076154fdb3844df35c","bytes":2721},
+    {"path":"_shared/computer-policy.ts","source_path":"supabase/functions/_shared/computer-policy.ts","sha256":"a9f19ba0a23dc68c8372f0de3f37ed6a623f852542ecf1b9d822427b65173bd7","bytes":15409},
+    {"path":"_shared/deliverables.ts","source_path":"supabase/functions/_shared/deliverables.ts","sha256":"03ac262fcdd895cc22c55d882cb6b654c1445c36331a63119aac1189a4fec419","bytes":6744},
+    {"path":"_shared/free-routing.ts","source_path":"supabase/functions/_shared/free-routing.ts","sha256":"808ecbb7db7d8d2ad274fc43b9aefd0c675e7f67faacbd88c1c65b47c9af25b7","bytes":4909},
+    {"path":"_shared/free-search.ts","source_path":"supabase/functions/_shared/free-search.ts","sha256":"16d7ee329442c0c1515b51ae9088b73681dc992703645c653742cb085413308e","bytes":14576},
+    {"path":"_shared/gateway-routing.ts","source_path":"supabase/functions/_shared/gateway-routing.ts","sha256":"a558cee5385fcbff91e1d1b1220ba73fac6cf9d662267669a65ef5f3a4410d6e","bytes":13820},
+    {"path":"_shared/inference-accounting.ts","source_path":"supabase/functions/_shared/inference-accounting.ts","sha256":"9a43adb9ce4da34894cfdc70ea8964b15dc14cd343bc051bed03e4c930d6bdc8","bytes":5636},
+    {"path":"_shared/model-json.ts","source_path":"supabase/functions/_shared/model-json.ts","sha256":"d9b0429070828ad3e844451ecac2fccf0d14a3e6b3de2e8bb65fc7fd29196be4","bytes":3458},
+    {"path":"_shared/own-keys.ts","source_path":"supabase/functions/_shared/own-keys.ts","sha256":"369f680a22f1ea694cbcb50f3e229f804405e9fad4afc01ccb6f1f7191d8eff9","bytes":4992},
+    {"path":"_shared/page-egress.ts","source_path":"supabase/functions/_shared/page-egress.ts","sha256":"2dd7031eb51124bf168d582ab4c846321bdf4770ad7fbae32f55935742935074","bytes":2808},
+    {"path":"_shared/runner-inference-accounting.ts","source_path":"supabase/functions/_shared/runner-inference-accounting.ts","sha256":"e8668d0ae49c6219db03b494d7443c2361fac8e8577743086e16004bfbd9d85d","bytes":8969},
+    {"path":"_shared/server-execution.ts","source_path":"supabase/functions/_shared/server-execution.ts","sha256":"977e84737337593e575b7c09cd5d9542e45e905de7d54fa690e8babb2430f62e","bytes":4675},
+    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"ec065babe3e3ade54cf788693362900e2e7f01d3331053d5b22901d71d9597c0","bytes":75770}
+  ]
+}
