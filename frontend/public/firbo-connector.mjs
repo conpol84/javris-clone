@@ -750,6 +750,39 @@ export function localCapabilities(cfg) {
   return Array.isArray(cfg?.roots) && cfg.roots.length ? { job_kinds: kinds, roots: cfg.roots.slice(0, 8) } : { job_kinds: kinds };
 }
 const retryableConnection = error => error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
+
+/** While one job is running, ask Firbo only whether that exact device/job has
+ * a Stop request. A transient network failure delays remote Stop but never
+ * fabricates a cancellation. Revocation/terminal conflicts fail closed locally.
+ */
+export async function monitorRemoteStop(job, cfg, {
+  callFn = connectorCall, signal, onStop = () => {}, intervalMs = 750,
+} = {}) {
+  if (!job || !UUID.test(job.id) || !cfg || !/^[a-f0-9]{64}$/.test(cfg.token)) throw new Error('bad_job');
+  if (!Number.isInteger(intervalMs) || intervalMs < 100 || intervalMs > 5000) throw new Error('invalid_timeout');
+  while (!signal?.aborted) {
+    try {
+      const out = await callFn('control', { token: cfg.token, job_id: job.id }, { signal });
+      if (signal?.aborted) break;
+      if (!out || out.ok !== true || out.job_id !== job.id || typeof out.stop !== 'boolean' || typeof out.terminal !== 'boolean') {
+        throw new Error('connector_invalid_response');
+      }
+      if (out.stop === true || out.terminal === true) {
+        onStop(out.stop === true ? 'remote_stop' : 'remote_terminal');
+        return { stopped: true, reason: out.stop === true ? 'remote_stop' : 'remote_terminal' };
+      }
+    } catch (error) {
+      if (signal?.aborted) break;
+      if ([401, 403, 404, 409].includes(error?.status) || !retryableConnection(error)) {
+        onStop('remote_control_failed');
+        return { stopped: true, reason: 'remote_control_failed' };
+      }
+    }
+    await delay(intervalMs, signal);
+  }
+  return { stopped: false, reason: null };
+}
+
 export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
   if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true && cfg.allowApps !== true)) throw new Error('invalid_local_config');
   cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
@@ -773,6 +806,7 @@ export async function runDurableConnector(cfg, { directory, signal, callFn = con
     }
     if (signal?.aborted) return { processed: 0, local_states: journal.counts() };
     if (protocol?.protocol !== 'firbo-connector/v2' || protocol.report_ack !== 'sha256-v1') throw new Error('matching_connector_backend_required');
+    const remoteStop = protocol.remote_stop === true && protocol.running_stop === 'cancel-request-v1';
     backoff = 1000;
     emit('connected_to_firbo');
     const recovered = journal.recoverInterrupted();
@@ -785,7 +819,27 @@ export async function runDurableConnector(cfg, { directory, signal, callFn = con
         if (signal?.aborted) break;
         if (!out || !Object.hasOwn(out, 'job')) throw new Error('connector_invalid_response');
         if (!out.job) { await delay(150, signal); continue; }
-        const result = await executeJournaled(out.job, cfg, journal, { signal });
+        const jobController = new AbortController();
+        const monitorController = new AbortController();
+        const stopJob = reason => {
+          if (!jobController.signal.aborted) {
+            emit(reason === 'remote_stop' ? 'remote_stop_received' : 'remote_execution_invalidated');
+            jobController.abort();
+          }
+        };
+        const stopAll = () => { jobController.abort(); monitorController.abort(); };
+        signal?.addEventListener('abort', stopAll, { once: true });
+        const watcher = remoteStop
+          ? monitorRemoteStop(out.job, cfg, { callFn, signal: monitorController.signal, onStop: stopJob })
+          : Promise.resolve({ stopped: false, reason: null });
+        let result;
+        try {
+          result = await executeJournaled(out.job, cfg, journal, { signal: jobController.signal });
+        } finally {
+          monitorController.abort();
+          await watcher.catch(() => {});
+          signal?.removeEventListener('abort', stopAll);
+        }
         if (!result.executed && result.phase === 'acked') throw new Error('server_reissued_acknowledged_job');
         completed++; backoff = 1000;
         emit('result_saved_locally');
