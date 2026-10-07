@@ -158,7 +158,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
     finally { mutation.current = false; if (live.current) setBusy(false); }
   };
   const cancel = async (job: JobRow) => {
-    if (!canManage || job.status !== 'queued' || job.device_id !== sel || mutation.current) return;
+    if (!canManage || !['queued','running'].includes(job.status) || job.cancel_requested_at || job.device_id !== sel || mutation.current) return;
     mutation.current = true; setBusy(true);
     try { await cancelJob(job.id); if (live.current) await loadJobs(); }
     catch (err) { if (live.current) toast.error(errText(err)); }
@@ -337,6 +337,8 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                         <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? j.params.url ?? j.params.app ?? j.params.name ?? '')}</span>
                         <span style={{ color: j.status === 'done' ? 'var(--fb-ok)' : j.status === 'error' ? 'var(--fb-err)' : 'var(--fb-warn)' }}>{t(`comp.status.${j.status}` as TKey)}</span>
                         {j.status === 'queued' && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.cancelQueued}</button>}
+                        {j.status === 'running' && !j.cancel_requested_at && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.stopRunning}</button>}
+                        {j.status === 'running' && j.cancel_requested_at && <span className="fb-chip" role="status">{l.stopRequested}</span>}
                       </div>
                       {j.error && <p className="text-xs" style={{ color: 'var(--fb-err)' }}>{t(`comp.jobErr.${j.error}` as TKey) === `comp.jobErr.${j.error}` ? j.error : t(`comp.jobErr.${j.error}` as TKey)}</p>}
                       {j.result && <pre className="fb-input overflow-auto whitespace-pre-wrap p-2 font-mono text-[11px]" style={{ height: 'auto', maxHeight: 220 }}>{formatComputerResult(j)}</pre>}
