@@ -29,6 +29,10 @@
 
 ## Failed / limitations
 
+- The first exact-head workflow rejected every manifest hash. The authoring
+  workspace had appended one extra newline while reconstructing the shared
+  source for local testing. Hashes were regenerated from the exact GitHub bytes;
+  the gate and all assertions were retained unchanged.
 - The Supabase connection available in this run lists PickFantasy and Trade
   Athletes, not the FIRBO project. Therefore current FIRBO secrets, pricing and
   a fresh production bundle could not be read through this connection.
@@ -45,4 +49,3 @@
   authorized acceptance. Keep PR60 Take Control and PR61 MCP work independent.
 - Preserve FreeLLMAPI, never merge PR13, and keep all Mac, provider, customer,
   OAuth/channel, restore/load and final-production gates open.
-
