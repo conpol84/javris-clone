@@ -101,7 +101,10 @@ with sync_playwright() as pw:
                 expect(
                     notice.get_by_role("link", name="Download Mac updater")
                 ).to_have_attribute("href", "/FIRBO-Mac-Browser-Update.command")
-                expect(notice).to_contain_text("local approval")
+                expect(notice).to_contain_text("Full Control")
+                expect(notice).to_contain_text("firboai.app")
+                expect(notice).to_contain_text("javris.firboai.app")
+                expect(notice).to_contain_text("destructive commands remain blocked")
                 assert not page.evaluate(v.GEOMETRY)["bad"]
                 page.get_by_test_id("select-device-d2").click()
                 expect(notice).to_have_count(0)
