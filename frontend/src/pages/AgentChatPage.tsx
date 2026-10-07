@@ -17,6 +17,7 @@ import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
 import { voiceMessages } from '../lib/company/voiceMessages';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
+import { dispatchDirectComputerCommand, parseDirectComputerCommand, parseOwnerDecision, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 
 /** Continuous chat with any AI employee, with saved history. */
@@ -27,6 +28,7 @@ export function AgentChatPage() {
   const [params, setParams] = useSearchParams();
   const orgId = current?.organization.id ?? '';
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
+  const canComputer = ['owner', 'admin'].includes(current?.role ?? '');
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [convos, setConvos] = useState<ConversationRow[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -43,6 +45,7 @@ export function AgentChatPage() {
     }
   });
   const stopListen = useRef<() => void>(() => {});
+  const pendingComputer = useRef<DirectComputerProposal | null>(null);
   const canTalk = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   const voiceTurn = useRef<VoiceTurn | null>(null);
   const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
@@ -54,6 +57,7 @@ export function AgentChatPage() {
   const voiceScope = JSON.stringify([orgId, user?.id, activeId, lang, canWrite]);
   const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
   useEffect(() => {
+    pendingComputer.current = null;
     setListening(false); setInterim(''); setSending(false);
     return () => { stopListen.current(); voiceTurn.current?.cancel(); };
   }, [voiceScope]);
@@ -61,6 +65,7 @@ export function AgentChatPage() {
   const agentOf = useCallback((id: string | null) => agents.find((a) => a.id === id) ?? null, [agents]);
   const nameOf = (a: AgentRow | null) => (a ? agentLabel(a, i18n).name : t('unassigned'));
   const activeAgent = agentOf(active?.agent_id ?? null);
+  const activeIsCeo = !!activeAgent && (activeAgent.type === 'ceo' || activeAgent.slug.startsWith('ceo'));
 
   // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
   const [listLoaded, setListLoaded] = useState(false);
@@ -158,6 +163,42 @@ export function AgentChatPage() {
     const temp: ChatMessage = { id: `tmp-${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages((m) => [...m, temp]);
     try {
+      if (activeIsCeo) {
+        const proposal = parseDirectComputerCommand(msg);
+        const decision = parseOwnerDecision(msg);
+        const pending = pendingComputer.current;
+        if (proposal || (pending && decision)) {
+          const directMessage = (content: string) => {
+            const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
+            setMessages((m) => [...m.filter((x) => x.id !== temp.id), temp, assistant]);
+          };
+          if (!canComputer) {
+            pendingComputer.current = null;
+            const role = current?.role ?? 'viewer';
+            directMessage(lang === 'el'
+              ? `Δεν θα το αναθέσω σε agent. Ο έλεγχος του Polis1984 επιτρέπεται μόνο σε Owner/Admin· ο τρέχων ρόλος σου είναι ${role}.`
+              : `I will not delegate this to an agent. Polis1984 computer control is available only to Owner/Admin; your current role is ${role}.`);
+            return;
+          }
+          const chosen = proposal ?? pending!;
+          if (proposal && decision !== 'approve') {
+            pendingComputer.current = proposal;
+            directMessage(lang === 'el'
+              ? `Θα εκτελέσω στο Polis1984: ${proposal.description}. Το εγκρίνεις;`
+              : `I will run this on Polis1984: ${proposal.description}. Do you approve?`);
+            return;
+          }
+          pendingComputer.current = null;
+          if (!proposal && decision === 'reject') {
+            directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
+            return;
+          }
+          const remote = await dispatchDirectComputerCommand(orgId, chosen, lang);
+          if (voiceScopeRef.current !== scopeAtSend) return;
+          directMessage(remote.reply);
+          return;
+        }
+      }
       const out = await sendChat(active.id, msg, lang, speakOn);
       if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
