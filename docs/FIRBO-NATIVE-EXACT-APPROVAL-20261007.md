@@ -70,6 +70,17 @@ policy relaxation or rerun of an ambiguous provider request is part of this fix.
 
 ## Validation and remaining work
 
+Owner confirmed installation at 18:27 UTC, with exact three-module read-back and
+backup `/var/backups/firbo-native-approval-d71oqodw`. The subsequent verifier
+stopped before consent/grant/model dispatch with `UnsupportedOperation`: Python
+`open('/dev/tty', 'r+')` requires a seekable buffered random stream. Separate
+write/read terminal streams fix this without stdin fallback or automatic consent.
+Actual controlling-PTY tests exercise the complete issuer for exact acceptance,
+wrong input and EOF; rejected input creates no grant. Update only the staged
+controller before a new explicitly approved verifier run. No reinstall/restart
+is required. Preserve the earlier `firbo-acceptance-ktkj5b7w` evidence directory;
+artifact and website acceptance remain unverified.
+
 Owner rollout follow-up: the first installation stopped before replacement at
 `unexpected_file`. Read-only metadata showed two hard links on the three untouched
 baseline modules (`tools/_stubs.py`, `tools/shell_exec.py`, `cli/serve.py`); all
