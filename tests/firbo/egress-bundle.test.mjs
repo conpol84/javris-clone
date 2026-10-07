@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
@@ -105,11 +106,49 @@ test('release mode requires matching routes, private checks, fresh evidence and 
     FIRBO_PAGE_EGRESS_URL: config.page.public_url,
     FIRBO_PAGE_EGRESS_TOKEN: 'p'.repeat(40),
   };
+  const hash = value => createHash('sha256').update(value).digest('hex');
+  const probe = (status, body, certificate = 'c'.repeat(64)) => ({
+    status, body_sha256: hash(body), tls_peer_sha256: certificate, attempts: 1,
+  });
+  const acceptance = {
+    schema: 'firbo-egress-acceptance/v1',
+    checked_at: new Date().toISOString(),
+    bundle_manifest_sha256: hash(await readFile(join(root, 'deploy/firbo-egress-bundle.json'))),
+    probe_payload_sha256: hash('{}'),
+    contains_secrets: false,
+    upstream_dispatch_expected: false,
+    services: {
+      mcp: {
+        url: config.mcp.public_url,
+        anonymous: probe(401, '{"error":"unauthorized"}'),
+        authenticated_malformed: probe(502, '{"error":"egress_denied"}'),
+      },
+      page: {
+        url: config.page.public_url,
+        anonymous: probe(401, '{"error":"unauthorized"}'),
+        authenticated_malformed: probe(400, '{"error":"bad_request"}'),
+      },
+    },
+  };
+  const acceptancePath = join(dir, 'acceptance.json');
   try {
     await writeFile(path, JSON.stringify(config));
+    await writeFile(acceptancePath, JSON.stringify(acceptance));
     assert.match(run(['--release-config', path]).stderr, /do not match Edge runtime environment/);
     assert.equal(run(['--release-config', path], env).status, 0);
+    assert.equal(run(['--release-config', path, '--acceptance-receipt', acceptancePath], env).status, 0);
     assert.match(run(['--release-config', path], { ...env, FIRBO_PAGE_EGRESS_TOKEN: env.FIRBO_MCP_EGRESS_TOKEN }).stderr, /distinct runtime tokens/);
+
+    await writeFile(path, JSON.stringify({ ...config, verified_at: new Date(Date.now() - 86_400_001).toISOString() }));
+    assert.match(run(['--release-config', path], env).stderr, /verified_at is invalid or stale/);
+    await writeFile(path, JSON.stringify(config));
+
+    await writeFile(acceptancePath, JSON.stringify({ ...acceptance, checked_at: new Date(Date.now() - 901_000).toISOString() }));
+    assert.match(run(['--release-config', path, '--acceptance-receipt', acceptancePath], env).stderr, /invalid or stale/);
+    await writeFile(acceptancePath, JSON.stringify({ ...acceptance, services: { ...acceptance.services, page: { ...acceptance.services.page, authenticated_malformed: probe(200, '{}') } } }));
+    assert.match(run(['--release-config', path, '--acceptance-receipt', acceptancePath], env).stderr, /page authenticated acceptance probe is invalid/);
+    await writeFile(acceptancePath, JSON.stringify({ ...acceptance, runtime_token: 'must-not-be-accepted' }));
+    assert.match(run(['--release-config', path, '--acceptance-receipt', acceptancePath], env).stderr, /acceptance receipt fields are invalid/);
 
     await writeFile(path, JSON.stringify({ ...config, evidence: { ...config.evidence, tls_ingress: 'pending' } }));
     assert.match(run(['--release-config', path], env).stderr, /tls_ingress evidence is required/);

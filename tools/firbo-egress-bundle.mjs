@@ -26,6 +26,13 @@ function duplicates(values) {
   return [...new Set(values.filter((value, index) => values.indexOf(value) !== index))];
 }
 
+function exactKeys(value, keys, label) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)
+    || Object.keys(value).sort().join(',') !== [...keys].sort().join(',')) {
+    fail(`${label} fields are invalid`);
+  }
+}
+
 function compare(expected, actual, label) {
   const repeated = duplicates(actual.map(item => item.path));
   if (repeated.length) fail(`${label} contains duplicate paths: ${repeated.join(',')}`);
@@ -82,6 +89,7 @@ function privateBind(value, name) {
     && (parts[0] === 127 || parts[0] === 10 || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
       || (parts[0] === 192 && parts[1] === 168));
   if (!valid) fail(`${name} bind must be loopback or RFC1918 IPv4`);
+  return parts[0] === 127 ? 'loopback' : 'private';
 }
 
 function validToken(value) {
@@ -94,9 +102,12 @@ function evidence(value, name) {
   }
 }
 
-function checkReceipt(value, contract, bind, port, originCount) {
+function checkReceipt(value, contract, bind, port, bindScope, originCount) {
+  exactKeys(value, originCount === undefined
+    ? ['contract', 'configuration_valid', 'bind_scope', 'bind_address', 'port', 'contains_secrets', 'listener_started']
+    : ['contract', 'configuration_valid', 'bind_scope', 'bind_address', 'port', 'allowed_origin_count', 'contains_secrets', 'listener_started'], contract);
   if (!value || value.contract !== contract || value.configuration_valid !== true
-    || value.bind_address !== bind || value.port !== port || value.contains_secrets !== false
+    || value.bind_scope !== bindScope || value.bind_address !== bind || value.port !== port || value.contains_secrets !== false
     || value.listener_started !== false
     || (originCount !== undefined && value.allowed_origin_count !== originCount)) {
     fail(`${contract} receipt does not match release configuration`);
@@ -106,10 +117,14 @@ function checkReceipt(value, contract, bind, port, originCount) {
 async function verifyReleaseConfig(path) {
   const config = await json(path, 'release config');
   if (config.schema !== 'firbo-egress-release/v1') fail('release config schema is invalid');
+  exactKeys(config, ['schema', 'verified_at', 'mcp', 'page', 'evidence'], 'release config');
+  exactKeys(config.mcp, ['public_url', 'bind', 'port', 'allowed_origins', 'check'], 'MCP release config');
+  exactKeys(config.page, ['public_url', 'bind', 'port', 'check'], 'page release config');
+  exactKeys(config.evidence, ['supervision', 'tls_ingress', 'rate_and_concurrency_limits', 'log_suppression'], 'release evidence');
   const mcpUrl = publicUrl(config.mcp?.public_url, '/v1/mcp', 'MCP');
   const pageUrl = publicUrl(config.page?.public_url, '/v1/page', 'page');
-  privateBind(config.mcp?.bind, 'MCP');
-  privateBind(config.page?.bind, 'page');
+  const mcpScope = privateBind(config.mcp?.bind, 'MCP');
+  const pageScope = privateBind(config.page?.bind, 'page');
   for (const [name, port] of [['MCP', config.mcp?.port], ['page', config.page?.port]]) {
     if (!Number.isSafeInteger(port) || port < 1024 || port > 65535) fail(`${name} port is invalid`);
   }
@@ -125,13 +140,13 @@ async function verifyReleaseConfig(path) {
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
       || url.pathname !== '/' || !url.hostname.includes('.')) fail('MCP allowed origin is invalid');
   }
-  checkReceipt(config.mcp.check, 'firbo-mcp-egress-config/v1', config.mcp.bind, config.mcp.port, config.mcp.allowed_origins.length);
-  checkReceipt(config.page.check, 'firbo-page-egress-config/v1', config.page.bind, config.page.port);
+  checkReceipt(config.mcp.check, 'firbo-mcp-egress-config/v1', config.mcp.bind, config.mcp.port, mcpScope, config.mcp.allowed_origins.length);
+  checkReceipt(config.page.check, 'firbo-page-egress-config/v1', config.page.bind, config.page.port, pageScope);
   for (const name of ['supervision', 'tls_ingress', 'rate_and_concurrency_limits', 'log_suppression']) {
     evidence(config.evidence?.[name], name);
   }
   const verified = Date.parse(config.verified_at);
-  if (!Number.isFinite(verified) || verified > Date.now() + 300_000 || Date.now() - verified > 31 * 86_400_000) {
+  if (!Number.isFinite(verified) || verified > Date.now() + 300_000 || Date.now() - verified > 86_400_000) {
     fail('verified_at is invalid or stale');
   }
   const env = process.env;
@@ -143,6 +158,41 @@ async function verifyReleaseConfig(path) {
   if (!validToken(mcpToken) || !validToken(pageToken) || mcpToken === pageToken) {
     fail('dedicated distinct runtime tokens are required');
   }
+  return { config, mcpUrl, pageUrl };
+}
+
+function acceptedProbe(value, status, body, label) {
+  exactKeys(value, ['status', 'body_sha256', 'tls_peer_sha256', 'attempts'], label);
+  if (!value || value.status !== status || value.attempts !== 1
+    || value.body_sha256 !== sha256(Buffer.from(body))
+    || !/^[a-f0-9]{64}$/.test(value.tls_peer_sha256)) {
+    fail(`${label} acceptance probe is invalid`);
+  }
+}
+
+async function verifyAcceptanceReceipt(path, release, manifestSha) {
+  const receipt = await json(path, 'acceptance receipt');
+  exactKeys(receipt, ['schema', 'checked_at', 'bundle_manifest_sha256', 'probe_payload_sha256', 'contains_secrets', 'upstream_dispatch_expected', 'services'], 'acceptance receipt');
+  const checked = Date.parse(receipt.checked_at);
+  if (receipt.schema !== 'firbo-egress-acceptance/v1'
+    || receipt.bundle_manifest_sha256 !== manifestSha
+    || receipt.probe_payload_sha256 !== sha256(Buffer.from('{}'))
+    || receipt.contains_secrets !== false || receipt.upstream_dispatch_expected !== false
+    || !Number.isFinite(checked) || checked > Date.now() + 300_000 || Date.now() - checked > 900_000
+    || !receipt.services || Object.keys(receipt.services).sort().join(',') !== 'mcp,page') {
+    fail('acceptance receipt is invalid or stale');
+  }
+  const mcp = receipt.services.mcp;
+  const page = receipt.services.page;
+  exactKeys(mcp, ['url', 'anonymous', 'authenticated_malformed'], 'MCP acceptance receipt');
+  exactKeys(page, ['url', 'anonymous', 'authenticated_malformed'], 'page acceptance receipt');
+  if (!mcp || mcp.url !== release.mcpUrl || !page || page.url !== release.pageUrl) {
+    fail('acceptance receipt routes do not match release configuration');
+  }
+  acceptedProbe(mcp.anonymous, 401, '{"error":"unauthorized"}', 'MCP anonymous');
+  acceptedProbe(mcp.authenticated_malformed, 502, '{"error":"egress_denied"}', 'MCP authenticated');
+  acceptedProbe(page.anonymous, 401, '{"error":"unauthorized"}', 'page anonymous');
+  acceptedProbe(page.authenticated_malformed, 400, '{"error":"bad_request"}', 'page authenticated');
 }
 
 const args = process.argv.slice(2);
@@ -167,7 +217,12 @@ const edge = current.filter(item => item.kind === 'edge');
 const servicePath = after('--service-readback');
 const edgePath = after('--edge-readback');
 const configPath = after('--release-config');
+const acceptancePath = after('--acceptance-receipt');
 if (servicePath) await verifyReadback(servicePath, services, 'service read-back');
 if (edgePath) await verifyReadback(edgePath, edge, 'Edge read-back');
-if (configPath) await verifyReleaseConfig(configPath);
+const release = configPath ? await verifyReleaseConfig(configPath) : null;
+if (acceptancePath && !release) fail('--acceptance-receipt requires --release-config');
+if (acceptancePath) {
+  await verifyAcceptanceReceipt(acceptancePath, release, sha256(await readFile(manifestPath)));
+}
 process.stdout.write(JSON.stringify({ ok: true, files: current.length, service_files: services.length, edge_files: edge.length }) + '\n');

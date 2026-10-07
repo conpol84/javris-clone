@@ -8,7 +8,9 @@ on:
       - 'supabase/functions/_shared/*egress.ts'
       - 'deploy/firbo-egress-bundle.json'
       - 'tools/firbo-egress-bundle.mjs'
+      - 'tools/firbo_egress_acceptance.py'
       - 'tests/firbo/egress-bundle.test.mjs'
+      - 'tests/firbo/test_egress_acceptance.py'
       - '.github/workflows/firbo-egress-bundle.yml'
 permissions:
   contents: read
@@ -23,3 +25,10 @@ jobs:
         with: {node-version: '22.22.0'}
       - name: Verify service, Edge and release-configuration closure
         run: node --test tests/firbo/egress-bundle.test.mjs
+      - name: Verify zero-dispatch deployed acceptance receipt
+        run: python3 -m unittest tests/firbo/test_egress_acceptance.py -v
+      - run: python3 -m pip install ruff==0.16.7
+      - name: Lint and format acceptance probe
+        run: |
+          ruff check tools/firbo_egress_acceptance.py tests/firbo/test_egress_acceptance.py
+          ruff format --check tools/firbo_egress_acceptance.py tests/firbo/test_egress_acceptance.py
