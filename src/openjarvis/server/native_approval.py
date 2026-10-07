@@ -57,7 +57,10 @@ def reserve(grant_id, model, messages):
         root_fd = _directory(ROOT, 0, 0o755)
         # Resolve children through the verified directory, not a mutable path.
         grants_fd = os.open(
-            "grants", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd
+            # Service may traverse this directory but may not enumerate grants.
+            "grants",
+            os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=root_fd,
         )
         used_fd = os.open(
             "used", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=root_fd

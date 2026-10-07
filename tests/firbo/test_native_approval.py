@@ -538,7 +538,11 @@ def test_real_root_service_uid_separation():
         grant_path = root / "grants" / (GRANT_ID + ".key")
         grant_path.write_text(json.dumps(grant))
         grant_path.chmod(0o644)
-        source = Path(approval.__file__).resolve()
+        # The runner's checkout parent is private. Stage the exact runtime bytes
+        # in this root-owned traversable directory, as in the real installation.
+        source = root / "native_approval.py"
+        source.write_bytes(Path(approval.__file__).read_bytes())
+        source.chmod(0o644)
         program = """import importlib.util, pathlib, sys
 spec = importlib.util.spec_from_file_location("approval", sys.argv[1])
 m = importlib.util.module_from_spec(spec)

@@ -51,7 +51,7 @@ BUNDLE = {
         "592c67a9d40ac8198ab31cd55517d30f6d5744d1f253869cce66d2d09202f4f9"
     ),
     "server/native_approval.py": (
-        "fb557bf9be7baba2b67d03aca2d9e803b432f18f22fccab30efad75665031222"
+        "65e57f97efb4f4199a55096091247410c921c9bb82682ca20d8c7d1b5319fe02"
     ),
 }
 
