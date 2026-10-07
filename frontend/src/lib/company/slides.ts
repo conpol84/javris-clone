@@ -30,8 +30,7 @@ export function slideText(slide: Slide): string[] {
   return slide.body.split('\n').map((l) => l.replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim()).filter((l) => l && !/^-+$/.test(l));
 }
 
-/** Builds and downloads a .pptx of the slides (the library loads only when asked). */
-export async function downloadPptx(slides: Slide[], fileName: string): Promise<void> {
+async function buildPptx(slides: Slide[]) {
   const { default: PptxGenJS } = await import('pptxgenjs');
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE';
@@ -43,10 +42,24 @@ export async function downloadPptx(slides: Slide[], fileName: string): Promise<v
     const text = slideText(s);
     if (text.length) {
       slide.addText(text.map((t) => ({ text: t, options: { bullet: !dark, breakLine: true } })),
-        { x: 0.8, y: dark ? 3.9 : 1.5, w: 11.8, h: dark ? 2 : 5.4, fontSize: dark ? 18 : 18, color: dark ? 'B8C4D9' : '1F2937', valign: 'top', fontFace: 'Arial', paraSpaceAfter: 8 });
+        { x: 0.8, y: dark ? 3.9 : 1.5, w: 11.8, h: dark ? 2 : 5.4, fontSize: 18, color: dark ? 'B8C4D9' : '1F2937', valign: 'top', fontFace: 'Arial', paraSpaceAfter: 8 });
     }
     if (s.notes) slide.addNotes(s.notes);
     slide.addText(`${i + 1} / ${slides.length}`, { x: 11.9, y: 7.0, w: 1, h: 0.3, fontSize: 10, color: dark ? '8899AA' : '9CA3AF', align: 'right' });
   });
+  return pptx;
+}
+
+/** Creates a real PPTX package in memory for acceptance checks and non-download consumers. */
+export async function renderPptxBytes(slides: Slide[]): Promise<Uint8Array> {
+  const pptx = await buildPptx(slides);
+  const output = await pptx.write({ outputType: 'uint8array' });
+  if (!(output instanceof Uint8Array)) throw new Error('pptx_binary_unavailable');
+  return output;
+}
+
+/** Builds and downloads a .pptx of the slides (the library loads only when asked). */
+export async function downloadPptx(slides: Slide[], fileName: string): Promise<void> {
+  const pptx = await buildPptx(slides);
   await pptx.writeFile({ fileName: `${fileName.replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 80) || 'presentation'}.pptx` });
 }
