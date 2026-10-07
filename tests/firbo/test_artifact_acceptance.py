@@ -83,6 +83,24 @@ def run(tmp_path, tamper=lambda value: value):
     return result, calls
 
 
+def test_rust_shell_receipt_is_exactly_accepted(tmp_path):
+    expected = "a" * 64
+    from openjarvis.core.types import ToolResult
+
+    result = envelope(
+        ToolResult(
+            "shell_exec",
+            "Exit code: 0\n--- stdout ---\n" + expected + "\n\n--- stderr ---\n",
+        )
+    )
+    assert artifact.receipt(
+        result,
+        "shell_exec",
+        "Exit code: 0\n--- stdout ---\n" + expected + "\n\n--- stderr ---",
+    )
+    assert not artifact.receipt(result, "shell_exec", expected)
+
+
 def test_actual_file_write_read_and_independent_hash(tmp_path):
     outcome, calls = run(tmp_path)
     assert outcome["artifact_verified"] is True
