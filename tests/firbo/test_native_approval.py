@@ -394,6 +394,94 @@ def test_rollout_exact_readback_idempotence_and_rollback(controller, monkeypatch
         assert module.digest((package / name).read_bytes()) == expected
 
 
+@pytest.mark.parametrize("answer", ["approve", "wrong", "eof"])
+def test_issue_approval_through_real_controlling_terminal(
+    controller, monkeypatch, tmp_path, answer
+):
+    import errno
+    import pty
+    import select
+    import signal
+
+    module, package, staged, _ = controller
+    for name in module.BUNDLE:
+        (package / name).write_bytes((staged / Path(name).name).read_bytes())
+    root = tmp_path / "issued"
+    monkeypatch.setattr(module, "APPROVAL_ROOT", root)
+    monkeypatch.setattr(
+        module, "approval_directories", lambda _: (root / "grants").mkdir(parents=True)
+    )
+    body = {"model": "test", "messages": [{"role": "user", "content": "exact"}]}
+    action_hash = module.digest(
+        approval.canonical({"tool": "shell_exec", "arguments": ARGS}).encode()
+    )
+    expected_prompt = (
+        "Type APPROVE " + action_hash[:12] + " to authorize only this exact action: "
+    ).encode()
+    pid, master = pty.fork()
+    if pid == 0:
+        try:
+            module.issue_approval(body, ARGS)
+            os.write(1, b"ISSUED\n")
+            os._exit(0)
+        except Exception as error:
+            message = "DENIED:" + type(error).__name__ + ":" + str(error) + "\n"
+            os.write(1, message.encode())
+            os._exit(2)
+    output = b""
+    sent = False
+    status = None
+    deadline = time.monotonic() + 8
+    try:
+        while time.monotonic() < deadline:
+            ready, _, _ = select.select([master], [], [], 0.1)
+            if ready:
+                try:
+                    output += os.read(master, 65536)
+                except OSError as error:
+                    if error.errno != errno.EIO:
+                        raise
+            if not sent and expected_prompt in output:
+                response = {
+                    "approve": ("APPROVE " + action_hash[:12] + "\n").encode(),
+                    "wrong": b"APPROVE wrong\n",
+                    "eof": b"\x04",
+                }[answer]
+                os.write(master, response)
+                sent = True
+            finished, status_value = os.waitpid(pid, os.WNOHANG)
+            if finished:
+                status = status_value
+                break
+        assert sent, output.decode(errors="replace")
+        assert status is not None, "terminal child timed out"
+        assert os.waitstatus_to_exitcode(status) == (0 if answer == "approve" else 2)
+        if answer == "approve":
+            files = list((root / "grants").glob("*.key"))
+            assert len(files) == 1
+            grant = json.loads(files[0].read_text())
+            assert grant["arguments"] == ARGS
+            assert grant["request_sha256"] == approval.request_digest(
+                "test",
+                [
+                    {
+                        "role": "user",
+                        "content": "exact",
+                        "name": None,
+                        "tool_calls": None,
+                        "tool_call_id": None,
+                    }
+                ],
+            )
+        else:
+            assert not root.exists(), "rejected input must not create a grant"
+    finally:
+        if status is None:
+            os.kill(pid, signal.SIGKILL)
+            os.waitpid(pid, 0)
+        os.close(master)
+
+
 def test_rollout_readiness_failure_restores_originals(controller, monkeypatch):
     module, package, _, _ = controller
     restarts = []

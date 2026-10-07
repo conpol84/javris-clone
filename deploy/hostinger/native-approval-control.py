@@ -154,13 +154,16 @@ def issue_approval(request, arguments):
         ),
         flush=True,
     )
-    with open("/dev/tty", "r+") as terminal:
+    # A terminal is not seekable: r+ uses BufferedRandom and fails before the
+    # prompt. Separate streams preserve real terminal-only operator consent.
+    with open("/dev/tty", "w") as terminal:
         terminal.write(
             "Type APPROVE "
             + action_hash[:12]
             + " to authorize only this exact action: "
         )
         terminal.flush()
+    with open("/dev/tty", "r") as terminal:
         answer = terminal.readline().strip()
     require(answer == "APPROVE " + action_hash[:12], "operator_declined_no_dispatch")
     approval_directories(user)
