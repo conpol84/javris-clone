@@ -24,5 +24,6 @@ export function connectorCommands(platform: ComputerPlatform, access: ComputerAc
     allowWrite: `${prefix} allow-write`,
     allowExec: `${prefix} allow-exec`,
     auto: `${prefix} auto`,
+    fullControl: `${prefix} full-control`,
   };
 }
