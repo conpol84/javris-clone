@@ -343,6 +343,34 @@ Deno.serve(async (req) => {
       throw error;
     }
   };
+  // An unresolved provider attempt must retain its running claim and liability.
+  // Publish only its review marker, never a completion or a retryable state.
+  // Compare the old result as well as the claim so a concurrent receipt is kept.
+  const recordReconciliation = async (): Promise<boolean> => {
+    try {
+      const { data: current, error: readError } = await admin.from('tasks')
+        .select('id,organization_id,status,run_claim,result')
+        .eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle();
+      if (readError || !current || current.id !== task.id || current.organization_id !== task.organization_id
+        || current.status !== 'running' || current.run_claim !== claimed.run_claim) return false;
+      const prior = current.result;
+      if (prior !== null && (typeof prior !== 'object' || Array.isArray(prior))) return false;
+      const reason = inferenceReconcileReason ?? 'provider_result_unknown';
+      const result = { ...(prior ?? {}), error: 'reconciliation_required',
+        reconciliation_reason: /^[a-z0-9_]{1,80}$/.test(reason) ? reason : 'provider_result_unknown',
+        reconcile_required: true, verified_success: false,
+        reconciliation: { settled_attempts: inferenceReceipts, attempt_count: attemptOrdinal },
+      };
+      let update = admin.from('tasks').update({ result })
+        .eq('id', task.id).eq('organization_id', task.organization_id)
+        .eq('status', 'running').eq('run_claim', claimed.run_claim);
+      update = prior === null ? update.is('result', null) : update.eq('result', JSON.stringify(prior));
+      const { data: saved, error } = await update.select('id,organization_id,status,run_claim,result').maybeSingle();
+      return !error && saved?.id === task.id && saved?.organization_id === task.organization_id
+        && saved?.status === 'running' && saved?.run_claim === claimed.run_claim
+        && saved?.result?.reconcile_required === true;
+    } catch { return false; }
+  };
   const gw = resolveTarget('omniroute:gateway');
   const flat = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
   const money = (value: number) => Math.round(value * 1e6) / 1e6;
@@ -476,11 +504,12 @@ Deno.serve(async (req) => {
     ]);
   } finally { clearTimeout(webTimer); webController.abort(); }
   if (inferenceReconcileRequired) {
+    const reconciliationSaved = await recordReconciliation();
     console.error(JSON.stringify({ event: 'firbo_search_reconciliation_required', source: 'agent-runner',
       organization_id: task.organization_id, task_id: task.id,
       reason: inferenceReconcileReason ?? 'provider_result_unknown', attempts: attemptOrdinal }));
     return json(503, { error: 'reconciliation_required', reason: inferenceReconcileReason ?? 'provider_result_unknown',
-      retry_safe: false, accounting: { attempts: inferenceReceipts } });
+      retry_safe: false, reconciliation_saved: reconciliationSaved, accounting: { attempts: inferenceReceipts } });
   }
   // The work product asked for (report, presentation, message) and its professional standard. Scheduled digests keep their
   // own short format unless they ask for slides or a message; the small free pilot lane has no room for the extra instructions.
@@ -934,11 +963,12 @@ Deno.serve(async (req) => {
     if (used) { const fallback = sourcesReport(); if (fallback.sources) text = fallback.text; }
   }
   if (inferenceReconcileRequired) {
+    const reconciliationSaved = await recordReconciliation();
     console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner',
       organization_id: task.organization_id, task_id: task.id,
       reason: inferenceReconcileReason ?? 'provider_result_unknown', attempts: attemptOrdinal }));
     return json(503, { error: 'reconciliation_required', reason: inferenceReconcileReason ?? 'provider_result_unknown',
-      retry_safe: false, accounting: { attempts: inferenceReceipts }, routing });
+      retry_safe: false, reconciliation_saved: reconciliationSaved, accounting: { attempts: inferenceReceipts }, routing });
   }
   if (!text || !used) {
     const saved = await publish('failed', { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) });
