@@ -23,6 +23,8 @@
 
 ## Failed
 
+- The first PostgreSQL run correctly exposed that row-locking needs `UPDATE` as well as `SELECT`; the fixture now models Supabase service-role DML grants explicitly and the unchanged migration passes.
+- The next repository run found only Ruff formatting drift in the Python concurrency test; the pinned formatter corrected it without changing the assertions.
 - No live migration or production callback was attempted. Those are outside this source-only checkpoint.
 
 ## Remains
