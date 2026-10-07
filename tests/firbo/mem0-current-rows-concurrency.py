@@ -7,7 +7,6 @@ from contextlib import closing
 import psycopg
 from psycopg import errors
 
-
 DSN = os.environ["DATABASE_URL"]
 ORG = "00000000-0000-0000-0000-000000000201"
 ACTOR = "00000000-0000-0000-0000-000000000101"
@@ -23,8 +22,13 @@ def reader_connection() -> psycopg.Connection:
 
 
 def assert_membership_lock() -> None:
-    with closing(reader_connection()) as reader, closing(psycopg.connect(DSN)) as writer:
-        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == ("company-current",)
+    with (
+        closing(reader_connection()) as reader,
+        closing(psycopg.connect(DSN)) as writer,
+    ):
+        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == (
+            "company-current",
+        )
         writer.execute("set lock_timeout = '250ms'")
         try:
             writer.execute(
@@ -34,26 +38,40 @@ def assert_membership_lock() -> None:
         except errors.LockNotAvailable:
             writer.rollback()
         else:
-            raise AssertionError("membership revocation was not blocked by the reader transaction")
+            raise AssertionError(
+                "membership revocation was not blocked by the reader transaction"
+            )
         reader.rollback()
 
 
 def assert_agent_lock() -> None:
-    with closing(reader_connection()) as reader, closing(psycopg.connect(DSN)) as writer:
+    with (
+        closing(reader_connection()) as reader,
+        closing(psycopg.connect(DSN)) as writer,
+    ):
         reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchall()
         writer.execute("set lock_timeout = '250ms'")
         try:
-            writer.execute("update public.agents set enabled = false where id = %s", (AGENT,))
+            writer.execute(
+                "update public.agents set enabled = false where id = %s", (AGENT,)
+            )
         except errors.LockNotAvailable:
             writer.rollback()
         else:
-            raise AssertionError("agent disablement was not blocked by the reader transaction")
+            raise AssertionError(
+                "agent disablement was not blocked by the reader transaction"
+            )
         reader.rollback()
 
 
 def assert_memory_lock_and_fresh_read() -> None:
-    with closing(reader_connection()) as reader, closing(psycopg.connect(DSN)) as writer:
-        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == ("company-current",)
+    with (
+        closing(reader_connection()) as reader,
+        closing(psycopg.connect(DSN)) as writer,
+    ):
+        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == (
+            "company-current",
+        )
         writer.execute("set lock_timeout = '250ms'")
         try:
             writer.execute(
@@ -63,7 +81,9 @@ def assert_memory_lock_and_fresh_read() -> None:
         except errors.LockNotAvailable:
             writer.rollback()
         else:
-            raise AssertionError("memory correction was not blocked by the reader transaction")
+            raise AssertionError(
+                "memory correction was not blocked by the reader transaction"
+            )
         reader.commit()
 
         writer.execute(
@@ -71,7 +91,9 @@ def assert_memory_lock_and_fresh_read() -> None:
             (MEMORY,),
         )
         writer.commit()
-        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == ("corrected",)
+        assert reader.execute(CALL, (ORG, ACTOR, AGENT, [MEMORY])).fetchone() == (
+            "corrected",
+        )
         reader.rollback()
 
 
