@@ -8,6 +8,22 @@ if [ "$(uname -s)" != Darwin ]; then
   echo 'Run this file on the paired Mac.' >&2
   exit 1
 fi
+# Current Playwright supported macOS baseline; check before downloads or installs.
+firbo_macos=$(sw_vers -productVersion 2>/dev/null) || {
+  echo 'Cannot read macOS version. No FIRBO installation or permissions were changed.' >&2
+  exit 1
+}
+if [[ ! "$firbo_macos" =~ ^([0-9]{1,2})\.[0-9]{1,2}(\.[0-9]{1,2})?$ ]]; then
+  echo 'Cannot validate macOS version. No FIRBO installation or permissions were changed.' >&2
+  exit 1
+fi
+firbo_macos_major=$((10#${BASH_REMATCH[1]}))
+if [ "$firbo_macos_major" -lt 14 ]; then
+  echo "macOS $firbo_macos is outside the supported FIRBO browser baseline (macOS 14 Sonoma or newer)." >&2
+  echo 'Existing pairing, Connector files and permissions were not changed.' >&2
+  echo 'Check your Mac model before choosing an OS upgrade or another supported computer.' >&2
+  exit 1
+fi
 command -v node >/dev/null || { echo 'Install Node.js LTS from https://nodejs.org first.' >&2; exit 1; }
 node -e 'const [a,b]=process.versions.node.split(".").map(Number); if(a<22||(a===22&&b<13)){console.error("Node.js 22.13 or newer is required; install LTS from https://nodejs.org.");process.exit(1)}'
 if [ ! -f "$HOME/.firbo-connector.json" ]; then

@@ -53,7 +53,22 @@ only list/read/write/exec/browser_open. Server policy is Full Control but local
 browser_task/open_app/shortcut/full_control capability is absent. No role change,
 repair job, re-pairing or local permission change was made.
 
-## Mac: one-time owner step
+## Mac compatibility and one-time owner step
+
+Concurrent PR76 was reviewed and preserved as a real merge parent. Its exact
+head 8b84e0de469d59f7259791cda32648420eaf7a9e passed all 11 workflow families;
+the complete combined tree must pass again. Both updater copies now reject
+unsupported macOS before installation or permission changes.
+
+The newer owner read-back in PR76 identifies macOS 10.15.7, Macmini6,2 (Late
+2012), x86_64 and Node v22.16.0. Apple lists Catalina as the newest officially
+compatible OS for this hardware (https://support.apple.com/en-us/102852).
+Current Playwright requires macOS 14+ (https://playwright.dev/docs/intro).
+Do not repeat the installer or prescribe an unsupported macOS upgrade for this
+Mac. Physical browser acceptance requires a supported OS/computer; no hardware
+purchase, OS replacement or permission change is performed by this repair.
+
+For an existing paired Mac on a supported OS:
 
 1. On Polis1984, stop the old Connector terminal with Ctrl+C.
 2. Sign in to FIRBO, open Computers, select the existing Polis1984 and download
