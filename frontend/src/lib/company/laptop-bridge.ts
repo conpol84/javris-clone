@@ -21,7 +21,7 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
  if(/(?:^|\s)(no|nope|cancel|stop|oxi|οχι|μην|min)(?:\s|$)/u.test(plain))return'reject';
- if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα)(?:\s|$)/u.test(plain))return'approve';
+ if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
  return null;
 }
 function youtubeQuery(text:string){

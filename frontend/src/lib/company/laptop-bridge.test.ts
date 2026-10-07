@@ -38,11 +38,15 @@ describe('CEO direct Full Control',()=>{
  it('recognises YouTube search/play and app-open commands without an LLM',()=>{
   const y=parseDirectComputerCommand('anikse to youtube kai vale mazonaki sto serchto proto tragoudi kane play');
   expect(y?.kind).toBe('browser_task');expect(JSON.stringify(y?.params)).toContain('Mazonaki'.toLowerCase().slice(0,4));
+  const liveWording=parseDirectComputerCommand('anixeto youtube vale oikonomopoulo sto serch vr to proto tragoudi varto na pezi');
+  expect(liveWording?.kind).toBe('browser_task');expect(JSON.stringify(liveWording?.params)).toContain('oikonomopoulo');
   expect(parseDirectComputerCommand('Άνοιξε το Microsoft Word')?.kind).toBe('open_app');
  });
  it('treats one natural owner reply as approval or rejection',()=>{
   expect(parseOwnerDecision('ναι το εγκρίνω')).toBe('approve');
   expect(parseOwnerDecision('kanto esi, egkrino')).toBe('approve');
+  expect(parseOwnerDecision('ksekina')).toBe('approve');
+  expect(parseOwnerDecision('ξεκίνα')).toBe('approve');
   expect(parseOwnerDecision('όχι, μην το κάνεις')).toBe('reject');
  });
  it('does not delegate when the Mac is online but still runs the old connector',async()=>{
