@@ -237,6 +237,7 @@ with sync_playwright() as pw:
                 page.get_by_test_id("select-device-d1").click()
                 workspace = page.get_by_test_id("computer-workspace")
                 expect(workspace).to_be_visible()
+                expect(workspace.get_by_test_id("take-control")).to_be_visible()
                 path_input = workspace.get_by_role(
                     "textbox", name="Path inside an allowed folder", exact=True
                 )

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState, useRef, type FormEvent } from 'react';
-import { Check, Copy, Download, Monitor, Trash2 } from 'lucide-react';
+import { Check, Copy, Download, Monitor, ShieldAlert, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { StatusDot } from '../components/command/Panel';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
-import { addDevice, cancelJob, canOpenBrowser, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, removeDevice, type DeviceRow, type JobRow } from '../lib/company/computers';
+import { addDevice, cancelJob, canOpenBrowser, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, policyOf, removeDevice, takeControl, type DeviceRow, type JobRow } from '../lib/company/computers';
 import { getVoiceLaptop, setVoiceLaptop } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 import {DeviceFabric} from '../components/devices/DeviceFabric';
@@ -19,6 +19,7 @@ import { computerSetupLabels } from '../lib/company/computer-setup-labels';
 import { BrowserTaskComposer } from '../components/devices/BrowserTaskComposer';
 import { browserTaskLabels } from '../lib/company/browser-task-labels';
 import { MacBrowserUpdate } from '../components/devices/MacBrowserUpdate';
+import { agentAccessLabels } from '../lib/company/agent-access-labels';
 
 type Kind = JobRow['kind'];
 const KINDS: Kind[] = ['list', 'read', 'write', 'exec', 'browser_open'];
@@ -58,6 +59,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const l = computerManagerLabels[lang];
   const wc = useWorkspaceCopy();
   const setup = computerSetupLabels[lang];
+  const accessLabels = agentAccessLabels[lang];
   const [platform, setPlatform] = useState<ComputerPlatform>(() => suggestedComputerPlatform(navigator.platform));
   const [access, setAccess] = useState<ComputerAccess>('browser');
   const localCommands = connectorCommands(platform, access);
@@ -163,6 +165,22 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
     try { await cancelJob(job.id); if (live.current) await loadJobs(); }
     catch (err) { if (live.current) toast.error(errText(err)); }
     finally { mutation.current = false; if (live.current) setBusy(false); }
+  };
+
+  const takeOver = async () => {
+    if (!canManage || !chosen || mutation.current || !policyOf(chosen).enabled || !window.confirm(accessLabels.takeControlConfirm)) return;
+    mutation.current = true; setBusy(true);
+    try {
+      await takeControl(chosen.id);
+      if (!live.current) return;
+      if (voiceLaptop === chosen.id) { setVoiceLaptop(orgId, null); setVoiceLaptopState(null); }
+      toast.success(accessLabels.takeControlDone);
+      await Promise.all([load(), loadJobs()]);
+    } catch (err) {
+      if (live.current) toast.error(errText(err));
+    } finally {
+      mutation.current = false; if (live.current) setBusy(false);
+    }
   };
 
   const chosen = devices.find((d) => d.id === sel && d.paired && !d.revoked_at) ?? null;
@@ -304,6 +322,15 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
               <section key={chosen.id} data-testid="computer-workspace" className="fb-glass fb-col gap-3 p-5">
                 <h2 className="text-base font-semibold">{t('comp.workOn', { name: chosen.name })}</h2>
                 <MacBrowserUpdate device={chosen} lang={lang} />
+                {policyOf(chosen).enabled && (
+                  <div className="rounded-xl p-3" style={{ border: '1px solid var(--fb-err)', background: 'rgba(248,113,113,.06)' }}>
+                    <p className="text-sm font-semibold">{accessLabels.takeControl}</p>
+                    <p className="fb-dim mt-1 text-xs">{accessLabels.takeControlHelp}</p>
+                    <button type="button" data-testid="take-control" className="fb-btn fb-btn--ghost mt-2" style={{ color: 'var(--fb-err)', borderColor: 'var(--fb-err)' }} disabled={busy} onClick={() => void takeOver()}>
+                      <ShieldAlert size={14} /> {accessLabels.takeControl}
+                    </button>
+                  </div>
+                )}
                 <AgentAccessPanel key={`policy-${chosen.id}`} device={chosen} platform={platform} onSaved={() => void load()} />
                 {!isOnline(chosen, now) && <div className="fb-col gap-2" style={{ color: 'var(--fb-warn)' }}>
                   <p className="text-sm">{setup.offline}</p>

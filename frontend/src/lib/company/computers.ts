@@ -111,6 +111,7 @@ export const giveJob = (device_id: string, kind: JobRow['kind'], params: Record<
   call<{ job_id: string }>({ action: 'create_job', device_id, kind, params, confirm });
 export const setAgentPolicy = (device_id: string, policy: ComputerPolicy) => call<{ ok: true; policy: ComputerPolicy }>({ action: 'set_policy', device_id, policy });
 export const cancelJob = (job_id: string) => call<{ ok: true; stop_requested?: boolean; duplicate?: boolean }>({ action: 'cancel_job', job_id });
+export const takeControl = (device_id: string) => call<{ ok: true; policy: ComputerPolicy; queued_cancelled: number; running_stop_requested: number }>({ action: 'take_control', device_id });
 
 export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
 export const isComputerApprovalAction = (action: string) => COMPUTER_APPROVAL_ACTIONS.has(action.trim().toLowerCase());
