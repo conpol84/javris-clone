@@ -47,12 +47,13 @@ function browserUrl(value: unknown): string | null {
     return url.href;
   } catch { return null; }
 }
-function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?: string[] } {
+function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?: string[]; full_control?: boolean } {
   const record = value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
   const kinds = Array.isArray(record.job_kinds) ? record.job_kinds.filter((x): x is string => typeof x === 'string' && DEVICE_JOB_KINDS.has(x)) : [];
   // The computer's allowed folders, so AI employees ask for paths that exist. Plain path strings only.
   const roots = Array.isArray(record.roots) ? record.roots.filter((x): x is string => typeof x === 'string' && x.length <= 300 && !/[\0\r\n]/.test(x)) : [];
-  return roots.length ? { job_kinds: [...new Set(kinds)].slice(0, 8), roots: roots.slice(0, 8) } : { job_kinds: [...new Set(kinds)].slice(0, 8) };
+  const base = { job_kinds: [...new Set(kinds)].slice(0, 8), ...(record.full_control === true ? { full_control: true } : {}) };
+  return roots.length ? { ...base, roots: roots.slice(0, 8) } : base;
 }
 
 export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
