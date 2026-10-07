@@ -150,17 +150,22 @@ export async function executeBrowserPlan(raw, cfg, {
         ensure();
         const req=route.request();
         if (++requests>200) throw new Error('browser_request_limit');
-        if (!plan.sites.includes(browserOrigin(req.url()))) throw new Error('browser_site_denied');
+        const requestOrigin=browserOrigin(req.url());
+        if (!ownerFullControl && !plan.sites.includes(requestOrigin)) throw new Error('browser_site_denied');
         if (!['GET','HEAD'].includes(req.method())) {
-          // Actual writes are locally reviewed, even if a page tries to disguise
-          // publishing/payment as a routine click. --auto never approves these.
-          if (!MUTATIONS.has(activeAction) || !await confirm('browser_request', {
+          // Full Control is not a blanket write grant. Only a same-origin
+          // mutation emitted during the already-approved click/fill/upload
+          // step may proceed without a second prompt.
+          let sameOrigin=false;
+          try { sameOrigin=browserOrigin(page.url())===requestOrigin; } catch {}
+          const ownerApprovedSameOrigin=ownerFullControl&&sameOrigin&&MUTATIONS.has(activeAction);
+          if (!ownerApprovedSameOrigin && (!MUTATIONS.has(activeAction) || !await confirm('browser_request', {
             url:req.url(),method:req.method(),body_sha256:hash(req.postDataBuffer()??Buffer.alloc(0)),
             body_preview:(req.postData()??'').slice(0,2000),
-          },stop.signal)) throw new Error('browser_write_denied');
+          },stop.signal))) throw new Error('browser_write_denied');
         }
         ensure();
-        const out=await transport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:plan.sites},{signal:stop.signal});
+        const out=await transport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:ownerFullControl?[requestOrigin]:plan.sites},{signal:stop.signal});
         transferred+=out.body.length;
         if (transferred>20*MAX_BYTES) throw new Error('browser_transfer_too_large');
         const headers={};
