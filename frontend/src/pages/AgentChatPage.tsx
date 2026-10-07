@@ -46,6 +46,8 @@ export function AgentChatPage() {
   });
   const stopListen = useRef<() => void>(() => {});
   const pendingComputer = useRef<DirectComputerProposal | null>(null);
+  const computerRun = useRef<AbortController | null>(null);
+  const [computerRunning, setComputerRunning] = useState(false);
   const canTalk = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   const voiceTurn = useRef<VoiceTurn | null>(null);
   const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
@@ -54,12 +56,13 @@ export function AgentChatPage() {
   const copy = useWorkspaceCopy();
   const askAgent = params.get('ask');
   const askQuestion = params.get('q') ?? '';
-  const voiceScope = JSON.stringify([orgId, user?.id, activeId, lang, canWrite]);
+  const voiceScope = JSON.stringify([orgId, user?.id, activeId, lang, canWrite, canComputer]);
   const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
   useEffect(() => {
     pendingComputer.current = null;
+    computerRun.current?.abort(); computerRun.current = null; setComputerRunning(false);
     setListening(false); setInterim(''); setSending(false);
-    return () => { stopListen.current(); voiceTurn.current?.cancel(); };
+    return () => { computerRun.current?.abort(); stopListen.current(); voiceTurn.current?.cancel(); };
   }, [voiceScope]);
   const active = convos.find((c) => c.id === activeId) ?? null;
   const agentOf = useCallback((id: string | null) => agents.find((a) => a.id === id) ?? null, [agents]);
@@ -181,6 +184,11 @@ export function AgentChatPage() {
             return;
           }
           const chosen = proposal ?? pending!;
+          if (decision === 'reject') {
+            pendingComputer.current = null;
+            directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
+            return;
+          }
           if (proposal && decision !== 'approve') {
             pendingComputer.current = proposal;
             directMessage(lang === 'el'
@@ -189,11 +197,14 @@ export function AgentChatPage() {
             return;
           }
           pendingComputer.current = null;
-          if (!proposal && decision === 'reject') {
-            directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
-            return;
+          const controller = new AbortController();
+          computerRun.current = controller; setComputerRunning(true);
+          let remote;
+          try {
+            remote = await dispatchDirectComputerCommand(orgId, chosen, lang, controller.signal);
+          } finally {
+            if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
           }
-          const remote = await dispatchDirectComputerCommand(orgId, chosen, lang);
           if (voiceScopeRef.current !== scopeAtSend) return;
           directMessage(remote.reply);
           return;
@@ -211,6 +222,10 @@ export function AgentChatPage() {
       }
     } catch (err) {
       if (voiceScopeRef.current !== scopeAtSend) return;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setMessages((m) => [...m, { id: `stop-${crypto.randomUUID()}`, role: 'assistant', content: lang === 'el' ? 'Ζητήθηκε Stop. Η τελική κατάσταση θα επιβεβαιωθεί στους Υπολογιστές.' : 'Stop requested. Check Computers for the confirmed final status.', created_at: new Date().toISOString() }]);
+        return;
+      }
       setMessages((m) => m.filter((x) => x.id !== temp.id));
       setText(msg);
       toast.error(runErrorText(t, err));
@@ -386,6 +401,7 @@ export function AgentChatPage() {
               <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={speakOn} aria-label={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
                 {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
               </button>
+              {computerRunning && <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-label={t('ceo.stop')} onClick={() => computerRun.current?.abort()}><Square size={16} /> {t('ceo.stop')}</button>}
               {canTalk ? (
                 <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44, color: listening ? 'var(--fb-accent)' : undefined }} disabled={!canWrite || sending} aria-pressed={listening} aria-label={t(listening ? 'voice.micStop' : 'voice.mic')} title={t(listening ? 'voice.micStop' : 'voice.mic')} onClick={talk}>
                   {listening ? <Square size={16} /> : <Mic size={16} />}

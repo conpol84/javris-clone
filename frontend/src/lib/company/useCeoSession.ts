@@ -106,6 +106,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       if(canComputer){
         const proposal=parseDirectComputerCommand(message),decision=parseOwnerDecision(message);
         if(proposal){
+          if(decision==='reject'){pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
           if(decision==='approve'){
             pendingComputer.current=null;
             const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);

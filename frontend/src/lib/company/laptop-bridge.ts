@@ -20,6 +20,11 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
+ // ‘No, do it yourself’ rejects delegation, not the pending computer action.
+ const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
+ const veto=/(?:^|\s)(cancel|stop|μην|min|do not|dont|don t)(?:\s|$)/u.test(plain);
+ if(veto)return'reject';
+ if(self)return'approve';
  if(/(?:^|\s)(no|nope|cancel|stop|oxi|οχι|μην|min)(?:\s|$)/u.test(plain))return'reject';
  if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
  return null;
@@ -84,11 +89,14 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
   const deadline=now()+45_000;
   while(now()<deadline&&!signal?.aborted){
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
-   if(row?.status==='done')return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${proposal.description}.`:`Done on ${device.name}: ${proposal.description}.`};
+   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+   const verified=row?.kind===proposal.kind&&row.device_id===device.id&&(proposal.kind==='browser_task'?row.result?.completed===true:row.result?.opened===true&&row.result?.app===proposal.params.app);
+   if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
+   if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${proposal.description}.`:`Done on ${device.name}: ${proposal.description}.`};
    if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?`Το ${device.name} δεν ολοκλήρωσε την ενέργεια.`:`${device.name} did not complete the action.`};
    await sleep(650,signal);
   }
-  if(signal?.aborted){await cancel(job.job_id).catch(()=>{});throw new DOMException('Cancelled','AbortError');}
+  if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
   return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η ενέργεια ξεκίνησε στο ${device.name}, αλλά δεν έχει επιβεβαιωθεί ακόμη.`:`The action started on ${device.name}, but it is not confirmed yet.`};
  }catch(error){
   if(error instanceof DOMException&&error.name==='AbortError'){if(jobId)await cancel(jobId).catch(()=>{});throw error;}
