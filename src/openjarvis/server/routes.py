@@ -167,11 +167,17 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         and (not request_body.stream or bool(getattr(agent, "_tools", None)))
     )
 
+    if request_body.firbo_native_approval and (
+        not use_server_agent or request_body.stream or request_body.tools
+    ):
+        raise HTTPException(status_code=400, detail="approval_route_not_supported")
+
     # Inject memory context into messages before dispatching
     config = getattr(request.app.state, "config", None)
     memory_backend = getattr(request.app.state, "memory_backend", None)
     if (
-        config is not None
+        not request_body.firbo_native_approval
+        and config is not None
         and config.agent.context_from_memory
         and request_body.messages
     ):
@@ -339,15 +345,22 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # worker thread so a slow/wedged non-streaming request can't stall the
     # event loop and every other concurrent request with it.
     if use_server_agent:
-        response = await asyncio.to_thread(
-            _handle_agent,
-            agent,
-            model,
-            request_body,
-            complexity_info,
-            trace_store=getattr(request.app.state, "trace_store", None),
-            bus=getattr(request.app.state, "bus", None),
-        )
+        from openjarvis.server.native_approval import ApprovalDenied
+
+        try:
+            response = await asyncio.to_thread(
+                _handle_agent,
+                agent,
+                model,
+                request_body,
+                complexity_info,
+                trace_store=getattr(request.app.state, "trace_store", None),
+                bus=getattr(request.app.state, "bus", None),
+            )
+        except ApprovalDenied:
+            raise HTTPException(
+                status_code=403, detail="native_approval_denied"
+            ) from None
     else:
         bus = getattr(request.app.state, "bus", None)
         response = await asyncio.to_thread(
@@ -622,7 +635,9 @@ def _handle_agent(
     # Locked for the full override-run-restore cycle (#759): only the
     # override/restore lines racing wouldn't be enough, since agent.run()
     # itself reads self._model throughout the call.
-    with _get_agent_model_lock(agent):
+    from openjarvis.server.native_approval import approved_request
+
+    with _get_agent_model_lock(agent), approved_request(agent, req):
         original_model = agent._model
         if model:
             agent._model = model

@@ -7,6 +7,7 @@ directory is retained for inspection, even after ambiguous execution. This is
 VPS acceptance only, not website, physical-device or full-parity acceptance.
 """
 
+import argparse
 import hashlib
 import importlib.util
 import json
@@ -91,7 +92,7 @@ def request_id(result):
     )
 
 
-def verify(api, directory, owner, env, runtime, nonce):
+def verify(api, directory, owner, env, runtime, nonce, approval_issuer=None):
     path = directory / "report.md"
     names = (runtime.get("runtime") or {}).get("tool_names") or []
     safe_names = sorted(
@@ -125,18 +126,21 @@ def verify(api, directory, owner, env, runtime, nonce):
         [str(api.PYTHON), "-B", "-c", program, str(path), content.hex()]
     )
 
-    def ask(prompt):
+    def ask(prompt, approval_arguments=None):
+        body = {
+            "model": runtime["model"],
+            "stream": False,
+            "max_tokens": 1024,
+            "firbo_include_execution": True,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if approval_issuer is not None and approval_arguments is not None:
+            body["firbo_native_approval"] = approval_issuer(body, approval_arguments)
         return api.local_request(
             api.SERVICES[SERVICE],
             env["OPENJARVIS_API_KEY"],
             "/v1/chat/completions",
-            {
-                "model": runtime["model"],
-                "stream": False,
-                "max_tokens": 1024,
-                "firbo_include_execution": True,
-                "messages": [{"role": "user", "content": prompt}],
-            },
+            body,
             timeout=145,
         )
 
@@ -154,7 +158,8 @@ def verify(api, directory, owner, env, runtime, nonce):
         + json.dumps({"command": command, "timeout": 15, "working_dir": str(directory)})
         + ". Use no other tools. Do not read secrets, use the network "
         "or change other files. "
-        "Preserve any required approval: if blocked, stop and report the block."
+        "Preserve any required approval: if blocked, stop and report the block.",
+        {"command": command, "timeout": 15, "working_dir": str(directory)},
     )
     outcome["write_request_id"] = request_id(created)
     execution = created.get("execution") if isinstance(created, dict) else None
@@ -169,11 +174,7 @@ def verify(api, directory, owner, env, runtime, nonce):
     # 1) direct/raw stdout, 2) Python subprocess fallback, 3) Rust backend.
     # The Rust tool includes the exit code and explicit stdout/stderr sections;
     # do not loosen this into substring matching because prose is not evidence.
-    rust_stdout = (
-        "Exit code: 0\n--- stdout ---\n"
-        + expected_sha
-        + "\n\n--- stderr ---"
-    )
+    rust_stdout = "Exit code: 0\n--- stdout ---\n" + expected_sha + "\n\n--- stderr ---"
     outcome["write_receipt_verified"] = (
         receipt(created, "shell_exec", expected_sha)
         or receipt(created, "shell_exec", "=== STDOUT ===\n" + expected_sha)
@@ -200,6 +201,9 @@ def verify(api, directory, owner, env, runtime, nonce):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--approve-exact-shell", action="store_true")
+    args = parser.parse_args()
     if os.geteuid() != 0 or socket.gethostname() != "srv2027143":
         raise ValueError("run_as_root_on_srv2027143")
     helper = Path(__file__).with_name("repair-openjarvis-tools.py")
@@ -220,7 +224,18 @@ def main():
         json.dumps({"artifact_directory": str(directory), "phase": "before_request"}),
         flush=True,
     )
-    outcome = verify(api, directory, user.pw_uid, env, runtime, uuid.uuid4().hex)
+    issuer = None
+    if args.approve_exact_shell:
+        control_path = Path(__file__).with_name("native-approval-control.py")
+        control_spec = importlib.util.spec_from_file_location(
+            "approval_control", control_path
+        )
+        control = importlib.util.module_from_spec(control_spec)
+        control_spec.loader.exec_module(control)
+        issuer = control.issue_approval
+    outcome = verify(
+        api, directory, user.pw_uid, env, runtime, uuid.uuid4().hex, issuer
+    )
     print(json.dumps(outcome, indent=2))
     return 0 if outcome["artifact_verified"] else 1
 
