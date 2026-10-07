@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAppStore } from '../lib/store';
@@ -2338,7 +2339,7 @@ export function DataSourcesPage() {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto px-6 py-10">
       <div className="max-w-5xl mx-auto">
       <header className="mb-6">
         <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>

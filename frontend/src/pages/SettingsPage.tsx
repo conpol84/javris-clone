@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Palette,
@@ -454,7 +455,7 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto px-6 py-10">
       <div className="max-w-2xl mx-auto">
         <header className="mb-6">
           <div className="flex items-center justify-between gap-3">

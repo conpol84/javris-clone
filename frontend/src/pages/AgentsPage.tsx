@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -3547,7 +3548,7 @@ export function AgentsPage() {
 
   if (loading) {
     return (
-      <div className="flex-1 flex items-center justify-center" style={{ color: 'var(--color-text-tertiary)' }}>
+      <div className="fb-root fb-legacy flex-1 flex items-center justify-center" style={{ color: 'var(--color-text-tertiary)' }}>
         Loading agents...
       </div>
     );
@@ -3573,7 +3574,7 @@ export function AgentsPage() {
     ] as const;
 
     return (
-      <div className="flex-1 overflow-y-auto px-6 py-10">
+      <div className="fb-root fb-legacy flex-1 overflow-y-auto px-6 py-10">
         <div className="max-w-5xl mx-auto">
         {/* Back button */}
         <button
@@ -3904,7 +3905,7 @@ export function AgentsPage() {
   // ── List View ───────────────────────────────────────────────────────────
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto px-6 py-10">
       <div className="max-w-5xl mx-auto">
       {/* Launch wizard modal */}
       {showWizard && (
