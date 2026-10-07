@@ -365,6 +365,9 @@ Deno.serve(async (req) => {
       ? { perCreditUsd, maxCredits, reservedUsd: money(perCreditUsd * maxCredits) } : null;
   };
   const serverTaskPricing = () => {
+    // Import/bundle recovery must not activate the VPS route. Enable only after
+    // the billed route, output bound and real execution receipt pass acceptance.
+    if (Deno.env.get('FIRBO_SERVER_EXECUTION_ENABLED') !== 'on') return null;
     const rawIn = Deno.env.get('FIRBO_SERVER_PRICE_IN_PER_M')?.trim();
     const rawOut = Deno.env.get('FIRBO_SERVER_PRICE_OUT_PER_M')?.trim();
     const rawMax = Deno.env.get('FIRBO_SERVER_MAX_OUTPUT_TOKENS')?.trim();
@@ -372,8 +375,8 @@ Deno.serve(async (req) => {
     const priceIn = Number(rawIn);
     const priceOut = Number(rawOut);
     const maxOutputTokens = Number(rawMax);
-    return Number.isFinite(priceIn) && priceIn >= 0 && priceIn <= 1_000_000
-      && Number.isFinite(priceOut) && priceOut >= 0 && priceOut <= 1_000_000
+    return Number.isFinite(priceIn) && priceIn > 0 && priceIn <= 1_000_000
+      && Number.isFinite(priceOut) && priceOut > 0 && priceOut <= 1_000_000
       && Number.isSafeInteger(maxOutputTokens) && maxOutputTokens >= 1 && maxOutputTokens <= 100_000
       ? { priceIn, priceOut, maxOutputTokens } : null;
   };
@@ -794,7 +797,7 @@ Deno.serve(async (req) => {
         const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
         // The server agent requires a model name: use the one it runs by default.
         const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
-        const payload = { model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false, firbo_include_execution: true };
+        const payload = { model: String((info as any)?.model || 'default'), messages: [{ role: 'user', content: job }], stream: false, max_tokens: pricing.maxOutputTokens, firbo_include_execution: true };
         const reservedUsd = maximumInferenceCost(payload, [{ priceIn: pricing.priceIn, priceOut: pricing.priceOut, maxOutputTokens: pricing.maxOutputTokens }]);
         const out = await accountedAttempt({ payload, route: `openjarvis:${adminCompany ? 'admin' : 'sandbox'}`,
           outputTokenCap: pricing.maxOutputTokens, reservedUsd }, async ({ requestId }) => {

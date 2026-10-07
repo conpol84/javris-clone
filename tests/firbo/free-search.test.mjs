@@ -4,7 +4,7 @@ import { parseDuckDuckGo, parseRss, parseWikipedia, freeWebSearch, isPublicHost,
 
 const PAGE_ENDPOINT = 'https://egress.example.test/v1/page';
 const PAGE_TOKEN = 'synthetic-page-service-token-32-characters';
-globalThis.Deno = { env: { get: key => ({ FIRBO_PAGE_EGRESS_URL: PAGE_ENDPOINT, FIRBO_PAGE_EGRESS_TOKEN: PAGE_TOKEN })[key] } };
+globalThis.Deno = { env: { get: key => ({ FIRBO_PAGE_EGRESS_URL: PAGE_ENDPOINT, FIRBO_PAGE_EGRESS_TOKEN: PAGE_TOKEN, FIRBO_PAGE_EGRESS_ENABLED: 'on' })[key] } };
 const throughPageService = upstream => async (url, init) => {
   assert.equal(String(url), PAGE_ENDPOINT);
   assert.equal(init.method, 'POST');

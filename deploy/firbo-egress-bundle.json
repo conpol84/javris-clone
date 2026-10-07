@@ -7,6 +7,6 @@
     {"kind":"edge","path":"supabase/functions/_shared/mcp-egress.ts","sha256":"ac62e66a92e90133f538b276c24b6a1ba52b6877f9de835254f5c7dde9e52805","bytes":1540},
     {"kind":"service","path":"src/openjarvis/security/page_egress.py","sha256":"fe4050b4087d3605ca844b4627f7726b1c16b541fa9499073427a8e0f21e032f","bytes":10383},
     {"kind":"service","path":"src/openjarvis/server/firbo_page_egress.py","sha256":"5aea41b4e681942cac1bdd3107e04becc47b8e037573016e3dbe61265ac270d3","bytes":7423},
-    {"kind":"edge","path":"supabase/functions/_shared/page-egress.ts","sha256":"2dd7031eb51124bf168d582ab4c846321bdf4770ad7fbae32f55935742935074","bytes":2808}
+    {"kind":"edge","path":"supabase/functions/_shared/page-egress.ts","sha256":"58f1dc32dbd73e20e0a1e40bd2b15f9a98a4afbc77707b61fe82440860b2e2b0","bytes":3079}
   ]
 }
