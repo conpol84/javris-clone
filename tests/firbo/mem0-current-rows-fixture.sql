@@ -36,7 +36,10 @@ alter table public.agents enable row level security;
 alter table public.memories enable row level security;
 
 grant usage on schema public to anon, authenticated, service_role;
-grant select on public.organization_members, public.agents, public.memories to service_role;
+-- PostgreSQL row-locking clauses require UPDATE privilege in addition to
+-- SELECT. Supabase's service_role has table DML grants; model that boundary
+-- explicitly while still denying every client role.
+grant select, update on public.organization_members, public.agents, public.memories to service_role;
 
 insert into auth.users(id) values
   ('00000000-0000-0000-0000-000000000101'),
