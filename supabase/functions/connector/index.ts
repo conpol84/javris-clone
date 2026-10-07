@@ -322,6 +322,48 @@ Deno.serve(async (req) => {
     return json(200, { ok: true });
   }
 
+  if (action === 'take_control') {
+    const { data: dev } = await admin.from('connector_devices')
+      .select('id, organization_id, name, agent_policy, revoked_at')
+      .eq('id', str(body.device_id, 60)).maybeSingle();
+    if (!dev || dev.revoked_at) return json(404, { error: 'not_found' });
+    if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
+
+    // Fail closed: disable future AI work before touching active jobs.
+    const current = dev.agent_policy && typeof dev.agent_policy === 'object' && !Array.isArray(dev.agent_policy)
+      ? dev.agent_policy as Record<string, unknown> : {};
+    const policy = cleanPolicy({ ...current, enabled: false });
+    const { error: policyError } = await admin.from('connector_devices').update({ agent_policy: policy }).eq('id', dev.id);
+    if (policyError) return json(503, { error: 'save_failed' });
+
+    const now = new Date().toISOString();
+    const { data: queued, error: queuedError } = await admin.from('connector_jobs')
+      .update({ status: 'cancelled', finished_at: now })
+      .eq('device_id', dev.id).eq('organization_id', dev.organization_id).eq('status', 'queued')
+      .select('id');
+    if (queuedError) return json(503, { error: 'save_failed' });
+
+    // A running effect is not called cancelled until the paired computer
+    // actually interrupts it and returns the durable final receipt.
+    const { data: running, error: runningError } = await admin.from('connector_jobs')
+      .update({ cancel_requested_at: now })
+      .eq('device_id', dev.id).eq('organization_id', dev.organization_id).eq('status', 'running')
+      .is('cancel_requested_at', null).select('id');
+    if (runningError) return json(503, { error: 'save_failed' });
+
+    await audit(dev.organization_id, 'connector.take_control', dev.id, {
+      name: dev.name,
+      queued_cancelled: queued?.length ?? 0,
+      running_stop_requested: running?.length ?? 0,
+    });
+    return json(200, {
+      ok: true,
+      policy,
+      queued_cancelled: queued?.length ?? 0,
+      running_stop_requested: running?.length ?? 0,
+    });
+  }
+
   if (action === 'create_job') {
     const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });

@@ -14,7 +14,7 @@ const messages = [
   {id:'m1',role:'user',content:'Synthetic UI test. No actual agent was invoked.',created_at:date},
   {id:'m2',role:'assistant',content:'Report: https://example.invalid/' + 'long-unbroken-'.repeat(24) + '\n\n' + 'Sample report text. '.repeat(80),created_at:date},
 ];
-const device = (id:string,paired:boolean,last_seen_at:string|null) => ({id,name:`${SAMPLE_NAME}-${id}`,organization_id:'org-1',platform:'Windows 11 x64',paired,last_seen_at,capabilities:{job_kinds:paired?['list','read','browser_open']:[]},revoked_at:null,created_at:date});
+const device = (id:string,paired:boolean,last_seen_at:string|null) => ({id,name:`${SAMPLE_NAME}-${id}`,organization_id:'org-1',platform:'Windows 11 x64',paired,last_seen_at,capabilities:{job_kinds:paired?['list','read','browser_open']:[]},agent_policy:{enabled:paired,control:'guarded',shortcuts:[],writes:'auto',commands:'safe',hours:null},revoked_at:null,created_at:date});
 const devices = [device('d1',true,new Date().toISOString()),device('d2',true,new Date().toISOString()),device('offline',true,date),device('unpaired',false,null)];
 if(params.get('mac_update')==='1')devices[0].platform='darwin x64';
 if(params.get('browser_control')==='1')devices[0].capabilities.job_kinds.push('browser_task');
