@@ -8,7 +8,7 @@ import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
-import { dispatchLaptopBrowserCommand } from './laptop-bridge';
+import { dispatchLaptopBrowserCommand, executePreparedLaptopAction, isLaptopActionConfirmation, isLaptopActionRejection, prepareLaptopAutomation, type PreparedLaptopAction } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
 export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
@@ -30,7 +30,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const live=useRef(false); const epoch=useRef(0); const turn=useRef<VoiceTurn|null>(null);
   const resumeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const busy=useRef(false);const mutedRef=useRef(false);const handsFreeRef=useRef(false);
-  const convo=useRef<string|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
+  const convo=useRef<string|null>(null);const pendingComputer=useRef<PreparedLaptopAction|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
   const listenRef=useRef(()=>{}); const tRef=useRef(t);tRef.current=t;
   const canTalk=typeof MediaRecorder!=='undefined' && typeof navigator!=='undefined' && !!navigator.mediaDevices?.getUserMedia;
   const valid=(id:number)=>live.current&&scopeRef.current===scope&&epoch.current===id;
@@ -41,7 +41,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     stopListen.current=()=>{};sendListen.current=()=>{};
   };
   useEffect(()=>{
-    live.current=true;clear();convo.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
+    live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
     const id=epoch.current;
     if(orgId&&userId)void listAgents(orgId).then(agents=>{
       if(valid(id))setCeo(agents.find(a=>a.enabled&&(a.type==='ceo'||a.slug.startsWith('ceo')))??null);
@@ -94,21 +94,44 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     const active=newTurn(id);active.phase('thinking');
     setInterim('');setLines(lines=>[...lines,{who:'me',text:message}]);
     try{
+      const directReply=async(content:string)=>{
+        setLines(lines=>[...lines,{who:'ceo',text:content}]);
+        if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
+        const spoken=await speak(orgId,content,lang,{turn:active});
+        if(!valid(id))return;
+        busy.current=false;
+        if(spoken.status==='completed'){setState('idle');resume(id,300);}
+        else{
+          handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');
+          if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}
+        }
+      };
       if(canComputer){
+        // A fresh direct computer command wins over an older pending confirmation.
+        const prepared=await voiceDeadline(signal=>prepareLaptopAutomation(orgId,message,lang,signal),active.signal,20_000);
+        if(!valid(id)||!active.current())return;
+        if(prepared.handled){
+          pendingComputer.current=prepared.status==='confirm'&&prepared.action?prepared.action:null;
+          await directReply(prepared.reply??voiceMessages(lang).server);
+          return;
+        }
+        if(pendingComputer.current&&isLaptopActionConfirmation(message)){
+          const action=pendingComputer.current;pendingComputer.current=null;
+          const remote=await voiceDeadline(signal=>executePreparedLaptopAction(action,lang,signal,{orgId}),active.signal,55_000);
+          if(!valid(id)||!active.current())return;
+          await directReply(remote.reply??voiceMessages(lang).server);
+          return;
+        }
+        if(pendingComputer.current&&isLaptopActionRejection(message)){
+          pendingComputer.current=null;
+          await directReply(lang==='el'?'Εντάξει — ακύρωσα την ενέργεια και δεν την ανέθεσα σε άλλον agent.':'Okay — I cancelled the action and did not delegate it.');
+          return;
+        }
         const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
         if(!valid(id)||!active.current())return;
         if(remote.handled){
-          const content=remote.reply??voiceMessages(lang).server;
-          setLines(lines=>[...lines,{who:'ceo',text:content}]);
-          if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
-          const spoken=await speak(orgId,content,lang,{turn:active});
-          if(!valid(id))return;
-          busy.current=false;
-          if(spoken.status==='completed'){setState('idle');resume(id,300);}
-          else{
-            handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');
-            if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}
-          }
+          pendingComputer.current=null;
+          await directReply(remote.reply??voiceMessages(lang).server);
           return;
         }
       }
