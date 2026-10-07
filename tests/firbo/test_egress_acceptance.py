@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
+import socket
 import ssl
+import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from datetime import datetime, timezone
 from email.message import Message
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -235,6 +241,219 @@ class AcceptanceTests(unittest.TestCase):
                 0.01,
                 factory,
             )
+
+    def test_delayed_watchdog_cannot_admit_a_late_response(self):
+        clock = [0.0]
+
+        class DelayedTimer:
+            def __init__(self, *_args):
+                pass
+
+            def start(self):
+                pass
+
+            def cancel(self):
+                pass
+
+            def join(self):
+                pass
+
+        class Connection:
+            sock = FakeSocket(b"synthetic-certificate")
+
+            def request(self, *_args, **_kwargs):
+                pass
+
+            def getresponse(self):
+                response = FakeResponse(401, b'{"error":"unauthorized"}')
+                original_read = response.read
+
+                def read(limit):
+                    clock[0] = 2.0
+                    return original_read(limit)
+
+                response.read = read
+                return response
+
+            def close(self):
+                pass
+
+        with (
+            patch.object(acceptance.threading, "Timer", DelayedTimer),
+            patch.object(acceptance.time, "monotonic", side_effect=lambda: clock[0]),
+            self.assertRaisesRegex(
+                acceptance.AcceptanceError, "acceptance_deadline_exceeded"
+            ),
+        ):
+            acceptance._post(
+                "https://egress.firboai.app/v1/mcp",
+                None,
+                1.0,
+                lambda *_args, **_kwargs: Connection(),
+            )
+
+    def test_invalid_total_duration_cannot_publish_a_four_probe_receipt(self):
+        clock = [0.0]
+        original_post = acceptance._post
+
+        def late_post(*args, **kwargs):
+            result = original_post(*args, **kwargs)
+            clock[0] += 8.0
+            return result
+
+        connections = FakeConnections()
+        with (
+            patch.object(acceptance, "_post", side_effect=late_post),
+            self.assertRaisesRegex(
+                acceptance.AcceptanceError, "acceptance_deadline_exceeded"
+            ),
+        ):
+            acceptance.acceptance_receipt(
+                self.release,
+                self.environment,
+                monotonic=lambda: clock[0],
+                connection_factory=connections,
+            )
+        self.assertEqual(len(connections.calls), 4)
+
+
+class LocalTLSDeadlineTests(unittest.TestCase):
+    """Real socket reads must respect the receipt probe's overall deadline."""
+
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        cert = Path(self.temporary.name) / "cert.pem"
+        key = Path(self.temporary.name) / "key.pem"
+        subprocess.run(
+            [
+                "openssl",
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-keyout",
+                str(key),
+                "-out",
+                str(cert),
+                "-days",
+                "1",
+                "-subj",
+                "/CN=egress.firboai.app",
+                "-addext",
+                "subjectAltName=DNS:egress.firboai.app",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        self.client_context = ssl.create_default_context(cafile=str(cert))
+        self.stopped = threading.Event()
+        self.mode = "body"
+        self.requests = []
+        self.detached = []
+        outer = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                body = self.rfile.read(int(self.headers["Content-Length"]))
+                outer.requests.append((self.path, body))
+                try:
+                    self.wfile.write(b"HTTP/1.1 401 Unauthorized\r\n")
+                    if outer.mode == "headers":
+                        for _ in range(15):
+                            self.wfile.write(b"X-Synthetic: drip\r\n")
+                            self.wfile.flush()
+                            if outer.stopped.wait(0.025):
+                                return
+                    payload = b'{"error":"unauthorized"}'
+                    self.wfile.write(
+                        b"Content-Type: application/json\r\nCache-Control: no-store\r\n"
+                        b"Connection: close\r\nContent-Length: "
+                        + str(len(payload)).encode()
+                        + b"\r\n\r\n"
+                    )
+                    for character in payload:
+                        self.wfile.write(bytes([character]))
+                        self.wfile.flush()
+                        if outer.mode == "body" and outer.stopped.wait(0.025):
+                            return
+                except OSError:
+                    pass
+                finally:
+                    self.close_connection = True
+
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(cert, key)
+        self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.close_server)
+
+    def close_server(self):
+        self.stopped.set()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(2)
+
+    def factory(self, host, port, *, timeout, context):
+        self.assertEqual(host, "egress.firboai.app")
+        self.assertEqual(port, 443)
+        self.assertTrue(context.check_hostname)
+        outer = self
+
+        class Connection(http.client.HTTPSConnection):
+            def connect(self):
+                raw = socket.create_connection(
+                    outer.server.server_address, self.timeout
+                )
+                self.sock = outer.client_context.wrap_socket(
+                    raw, server_hostname=self.host
+                )
+
+            def getresponse(self):
+                response = super().getresponse()
+                outer.detached.append(self.sock is None)
+                return response
+
+        return Connection(host, timeout=timeout)
+
+    def test_real_tls_body_drip_is_interrupted_after_connection_handoff(self):
+        started = time.monotonic()
+        with self.assertRaisesRegex(
+            acceptance.AcceptanceError, "acceptance_deadline_exceeded"
+        ):
+            acceptance._post(
+                "https://egress.firboai.app/v1/mcp", None, 0.15, self.factory
+            )
+        self.assertLess(time.monotonic() - started, 0.40)
+        self.assertEqual(self.detached, [True])
+        self.assertEqual(self.requests, [("/v1/mcp", b"{}")])
+
+    def test_real_tls_header_drip_is_interrupted(self):
+        self.mode = "headers"
+        started = time.monotonic()
+        with self.assertRaisesRegex(
+            acceptance.AcceptanceError, "acceptance_deadline_exceeded"
+        ):
+            acceptance._post(
+                "https://egress.firboai.app/v1/page", None, 0.15, self.factory
+            )
+        self.assertLess(time.monotonic() - started, 0.35)
+        self.assertEqual(self.requests, [("/v1/page", b"{}")])
+
+    def test_real_tls_valid_response_keeps_exact_receipt(self):
+        self.mode = "fast"
+        result = acceptance._post(
+            "https://egress.firboai.app/v1/mcp", None, 2, self.factory
+        )
+        acceptance._expected(result, 401, b'{"error":"unauthorized"}')
+        self.assertEqual(result["attempts"], 1)
+        self.assertEqual(self.detached, [True])
 
 
 if __name__ == "__main__":
