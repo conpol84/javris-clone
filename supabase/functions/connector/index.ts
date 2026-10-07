@@ -390,7 +390,6 @@ Deno.serve(async (req) => {
         .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
       if (cancelError) return json(503, { error: 'save_failed' });
       if (!cancelled) return json(409, { error: 'state_conflict' });
-      await audit(job.organization_id, 'connector.job_cancelled', job.id, { device_id: job.device_id, phase: 'queued' });
       return json(200, { ok: true, stop_requested: false });
     }
 
@@ -402,7 +401,6 @@ Deno.serve(async (req) => {
         .eq('id', job.id).eq('status', 'running').is('cancel_requested_at', null).select('id').maybeSingle();
       if (stopError) return json(503, { error: 'save_failed' });
       if (!requested) return json(409, { error: 'state_conflict' });
-      await audit(job.organization_id, 'connector.job_stop_requested', job.id, { device_id: job.device_id, phase: 'running' });
       return json(200, { ok: true, stop_requested: true, duplicate: false });
     }
 
