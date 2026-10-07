@@ -14,6 +14,7 @@ import { agentColor, STATE_KEY, type AgentState } from '../../lib/company/status
 import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/locales/en';
 import type { AgentRow, Autonomy, ToolPolicy } from '../../lib/company/types';
+import { agentBehaviorLabels } from '../../lib/company/agent-behavior-labels';
 
 const POLICIES: ToolPolicy[] = ['allow', 'approval', 'block'];
 
@@ -48,10 +49,12 @@ export function AgentDrawer({
 }) {
   const i18n = useI18n();
   const { t, fmt } = i18n;
+  const behavior = agentBehaviorLabels[i18n.lang];
   const label = agentLabel(agent, i18n);
   const color = agentColor(agent.type, agent.slug);
   const [budget, setBudget] = useState(agent.monthly_budget_usd?.toString() ?? '');
   const [model, setModel] = useState(agent.model ?? 'auto');
+  const [instructions, setInstructions] = useState(agent.owner_instructions ?? '');
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [removing, setRemoving] = useState(false);
   const suggestion = autonomySuggestion(stats, agent.autonomy);
@@ -67,6 +70,7 @@ export function AgentDrawer({
   const [draftScope, setDraftScope] = useState(scopeKey);
   const shownModel = draftScope === scopeKey ? model : agent.model ?? 'auto';
   const shownBudget = draftScope === scopeKey ? budget : agent.monthly_budget_usd?.toString() ?? '';
+  const shownInstructions = draftScope === scopeKey ? instructions : agent.owner_instructions ?? '';
   const scope = useRef({ key: scopeKey, orgId, generation: 0 });
   if (scope.current.key !== scopeKey) scope.current = { key: scopeKey, orgId, generation: scope.current.generation + 1 };
   const generation = scope.current.generation;
@@ -74,8 +78,8 @@ export function AgentDrawer({
   useEffect(() => {
     if (priorOrg.current !== orgId) onClose();
     priorOrg.current = orgId;
-    setBudget(agent.monthly_budget_usd?.toString() ?? ''); setModel(agent.model ?? 'auto'); setConfirmRemove(false); setRemoving(false); setDraftScope(scopeKey);
-  }, [orgId, agent.id, agent.model, agent.monthly_budget_usd]); // eslint-disable-line react-hooks/exhaustive-deps
+    setBudget(agent.monthly_budget_usd?.toString() ?? ''); setModel(agent.model ?? 'auto'); setInstructions(agent.owner_instructions ?? ''); setConfirmRemove(false); setRemoving(false); setDraftScope(scopeKey);
+  }, [orgId, agent.id, agent.model, agent.monthly_budget_usd, agent.owner_instructions]); // eslint-disable-line react-hooks/exhaustive-deps
   // Free companies always run on Firbo's free models (server rule), so the model choice is locked there instead of pretending.
   const freePlan = plan?.plan.id === 'free';
   const ownAllowed = planHas(plan, 'byo_keys');
@@ -101,6 +105,13 @@ export function AgentDrawer({
     const v = budget.trim() === '' ? null : Number(budget);
     if (v !== null && (!Number.isFinite(v) || v < 0)) return toast.error(t('drawer.budgetInvalid'));
     void run(() => updateAgent(agent.id, { monthly_budget_usd: v }), t('drawer.budgetSaved'));
+  };
+
+  const saveInstructions = () => {
+    if (!canManage || draftScope !== scopeKey) return;
+    const value = instructions.trim().slice(0, 4000);
+    setInstructions(value);
+    void run(() => updateAgent(agent.id, { owner_instructions: value }), behavior.saved);
   };
 
   const saveModel = () => {
@@ -139,7 +150,24 @@ export function AgentDrawer({
       </div>
       {label.description && <p className="fb-muted mb-4 text-sm">{label.description}</p>}
 
-      <div className="fb-eyebrow mb-2">{t('drawer.autonomy')}</div>
+      <div className="fb-eyebrow mb-2">{behavior.title}</div>
+      <p className="fb-dim mb-2 text-xs">{behavior.help}</p>
+      <textarea
+        className="fb-input min-h-[110px]"
+        maxLength={4000}
+        value={shownInstructions}
+        disabled={!canManage}
+        placeholder={behavior.placeholder}
+        aria-label={behavior.title}
+        onChange={(e) => setInstructions(e.target.value)}
+      />
+      <div className="mt-2 flex justify-end">
+        <button className="fb-btn fb-btn--ghost" disabled={!canManage} onClick={saveInstructions}>
+          {behavior.save}
+        </button>
+      </div>
+
+      <div className="fb-eyebrow mb-2 mt-5">{t('drawer.autonomy')}</div>
       <div role="radiogroup" aria-label={t('drawer.autonomyAria')} className="grid gap-2">
         {AUTONOMY_LEVELS.map((lvl) => {
           const on = agent.autonomy === lvl.id;
