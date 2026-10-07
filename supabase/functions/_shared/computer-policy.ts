@@ -9,7 +9,9 @@ export type Verdict = 'auto' | 'approve' | 'deny';
 export interface ComputerPolicy {
   /** Master switch: AI employees may use this computer at all. Off until the owner turns it on. */
   enabled: boolean;
-  /** Apps opened without asking; any other app needs approval. */
+  /** Guarded keeps the generic employee approval gate. Full is an explicit owner override for this device. */
+  control: 'guarded' | 'full';
+  /** Apps opened without asking; any other app needs approval unless full control is on. */
   apps: string[];
   /** macOS Shortcuts run without asking; any other shortcut needs approval. */
   shortcuts: string[];
@@ -23,7 +25,7 @@ export interface ComputerPolicy {
 
 export const DEFAULT_APPS = ['Safari', 'Google Chrome', 'Finder', 'Notes', 'Mail', 'Calendar', 'Preview', 'TextEdit',
   'Numbers', 'Pages', 'Keynote', 'Microsoft Excel', 'Microsoft Word', 'Visual Studio Code'];
-export const DEFAULT_POLICY: ComputerPolicy = { enabled: false, apps: DEFAULT_APPS, shortcuts: [], writes: 'auto', commands: 'safe', hours: null };
+export const DEFAULT_POLICY: ComputerPolicy = { enabled: false, control: 'guarded', apps: DEFAULT_APPS, shortcuts: [], writes: 'auto', commands: 'safe', hours: null };
 
 export const APP_NAME = /^[\p{L}\p{N}][\p{L}\p{N} ._&+'()-]{0,59}$/u;
 const list = (v: unknown, max: number) => (Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string').map(x => x.trim()).filter(x => APP_NAME.test(x)))].slice(0, max) : null);
@@ -38,6 +40,7 @@ export function cleanPolicy(value: unknown): ComputerPolicy {
   const from = hour(h?.from), to = hour(h?.to);
   return {
     enabled: v.enabled === true,
+    control: v.control === 'full' ? 'full' : 'guarded',
     apps: list(v.apps, 40) ?? DEFAULT_APPS,
     shortcuts: list(v.shortcuts, 40) ?? [],
     writes: ['auto', 'ask', 'off'].includes(v.writes as string) ? v.writes as ComputerPolicy['writes'] : 'auto',
@@ -85,12 +88,13 @@ export function decideComputer(kind: ComputerKind, params: Record<string, unknow
       // The computer shows the plan and asks its owner before it runs; clicks, typing and uploads ask again.
       return { verdict: 'auto', reason: 'reviewed_on_the_computer' };
     case 'open_app':
+      if (policy.control === 'full') return { verdict: 'auto', reason: 'owner_full_control' };
       return has(policy.apps, params.app) ? { verdict: 'auto', reason: 'allowed_app' } : { verdict: 'approve', reason: 'app_not_on_list' };
     case 'shortcut':
       return has(policy.shortcuts, params.name) ? { verdict: 'auto', reason: 'allowed_shortcut' } : { verdict: 'approve', reason: 'shortcut_not_on_list' };
     case 'write':
       if (policy.writes === 'off') return { verdict: 'deny', reason: 'writing_off' };
-      if (params.overwrite === true) return { verdict: 'approve', reason: 'overwrites_a_file' };
+      if (params.overwrite === true && policy.control !== 'full') return { verdict: 'approve', reason: 'overwrites_a_file' };
       return policy.writes === 'auto' ? { verdict: 'auto', reason: 'new_file_in_allowed_folder' } : { verdict: 'approve', reason: 'writing_needs_approval' };
     case 'exec': {
       const command = String(params.command ?? '');
@@ -111,7 +115,7 @@ export function decideForEmployee(kind: ComputerKind, params: Record<string, unk
   const owner = decideComputer(kind, params, policy, now);
   if (owner.verdict === 'deny') return owner;
   if (employee.suggestOnly && !(owner.verdict === 'auto' && (kind === 'list' || kind === 'read'))) return { verdict: 'suggest', reason: 'employee_may_only_suggest' };
-  if (owner.verdict === 'auto' && employee.askFirst) return { verdict: 'approve', reason: 'employee_must_ask' };
+  if (owner.verdict === 'auto' && employee.askFirst && policy.control !== 'full') return { verdict: 'approve', reason: 'employee_must_ask' };
   return owner;
 }
 
