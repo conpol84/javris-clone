@@ -49,6 +49,10 @@ function fixture(options={}) {
     if(op!=='select'){
       state.writes.push(info);
       if(table==='messages')return{data:options.messageError?null:{id:'saved',...payload},error:options.messageError?{message:'db failure'}:null};
+      if(table==='tasks'&&op==='update'&&payload.result?.reconcile_required===true) {
+        if(options.reconciliationWriteThrows)throw new Error('transport unavailable');
+        return {data:options.reconciliationWriteConflict?null:{id:TASK,organization_id:ORG,status:'running',run_claim:CLAIM,result:payload.result},error:options.reconciliationWriteError?{message:'database unavailable'}:null};
+      }
       if(table==='tasks'&&op==='update')return{data:options.claimLost&&payload.status==='running'?null:{id:TASK},error:options.resultError&&payload.result?{message:'db failure'}:null};
       if(table==='usage_events')return{data:null,error:options.usageError?{message:'db failure'}:null};
       if(table==='approvals')return{data:null,error:options.approvalError?{message:'db failure'}:null};
@@ -66,6 +70,7 @@ function fixture(options={}) {
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
       return{data:options.foreignAgent?null:{...agent,...(selection?.includes('autonomy')&&state.rpcs?.some(r=>r.fn==='claim_task_run')?{autonomy:options.freshAutonomy??agent.autonomy,enabled:options.freshAgentEnabled??agent.enabled}:{})},error:null};
     }
+    if(table==='tasks'&&selection==='id,organization_id,status,run_claim,result'&&options.reconciliationReadConflict)return{data:{...task,status:'completed',run_claim:null},error:null};
     if(table==='tasks')return{data:options.missingTask?null:{...task,...(selection?.includes('run_claim')?{status:'running',run_claim:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
     if(table==='connector_devices'){
       const initialPolicy={enabled:true,apps:['Safari'],shortcuts:[],writes:'auto',commands:'safe',hours:null};
@@ -718,7 +723,7 @@ test('agent-runner: missing server usage is ambiguous and blocks publication or 
   assert.equal(response.status,503);assert.equal(body.error,'reconciliation_required');assert.equal(body.retry_safe,false);
   assert.equal(state.calls.filter(c=>String(c.url).startsWith('https://box-jarvis.example')&&String(c.url).endsWith('/chat/completions')).length,1);
   assert.ok(state.rpcs.some(r=>r.fn==='firbo_mark_inference_ambiguous'));
-  assert.ok(!state.writes.some(w=>w.table==='tasks'));
+  assert.ok(state.writes.filter(w=>w.table==='tasks').every(w=>Object.keys(w.payload).length===1&&w.payload.result?.reconcile_required===true));
 });
 test('agent-runner: denied server reservation makes no server inference request', async () => {
   const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
@@ -835,4 +840,40 @@ test('employees work inside Mac apps with one approved AppleScript, never as a m
   const src = await read(new URL('../../supabase/functions/agent-runner/index.ts', import.meta.url), 'utf8');
   assert.match(src, /run osascript -e/);
   assert.match(src, /never put a script or a computer job in the final "actions" list/);
+});
+
+for (const [lane,options] of [
+  ['model',{gatewayFailure:true}],
+  ['search',{tools:[{tool_name:'web_search',enabled:true,policy:'allow'}],gatewaySearchFailure:true}],
+]) {
+  test(`agent-runner: ${lane} ambiguity exposes review state without clearing claim or liability`,async()=>{
+    const previous={report:'Preserved report',execution_receipts:[{id:'existing'}]};
+    const {state,response,body}=await invoke('agent-runner',{...options,result:previous});
+    assert.equal(response.status,503);assert.equal(body.retry_safe,false);assert.equal(body.reconciliation_saved,true);
+    const writes=state.writes.filter(w=>w.table==='tasks'&&w.op==='update');
+    assert.equal(writes.length,1);
+    const write=writes[0];
+    assert.deepEqual(Object.keys(write.payload),['result']);
+    assert.equal(write.payload.result.report,previous.report);
+    assert.deepEqual(write.payload.result.execution_receipts,previous.execution_receipts);
+    assert.equal(write.payload.result.reconcile_required,true);
+    assert.equal(write.payload.result.verified_success,false);
+    for(const pair of [['id',TASK],['organization_id',ORG],['status','running'],['run_claim',CLAIM],['result',JSON.stringify(previous)]])
+      assert.ok(write.filters.some(([key,value])=>key===pair[0]&&JSON.stringify(value)===JSON.stringify(pair[1])));
+    assert.ok(!state.rpcs.some(r=>['publish_task_run','firbo_release_inference'].includes(r.fn)));
+  });
+}
+test('agent-runner: reconciliation marker refuses changed claims and reports failed storage',async()=>{
+  for(const failure of ['reconciliationReadConflict','reconciliationWriteConflict','reconciliationWriteError','reconciliationWriteThrows']) {
+    const {state,response,body}=await invoke('agent-runner',{gatewayFailure:true,[failure]:true});
+    assert.equal(response.status,503);assert.equal(body.retry_safe,false);assert.equal(body.reconciliation_saved,false);
+    assert.ok(!state.rpcs.some(r=>['publish_task_run','firbo_release_inference'].includes(r.fn)));
+    if(failure==='reconciliationReadConflict')assert.ok(!state.writes.some(w=>w.table==='tasks'));
+  }
+});
+test('agent-runner: null-result reconciliation uses an exact null predicate',async()=>{
+  const {state,body}=await invoke('agent-runner',{gatewayFailure:true});
+  assert.equal(body.reconciliation_saved,true);
+  const write=state.writes.find(w=>w.table==='tasks'&&w.op==='update');
+  assert.ok(write.filters.some(([key,value])=>key==='result'&&value===null));
 });

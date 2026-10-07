@@ -19,6 +19,6 @@
     {"path":"_shared/page-egress.ts","source_path":"supabase/functions/_shared/page-egress.ts","sha256":"58f1dc32dbd73e20e0a1e40bd2b15f9a98a4afbc77707b61fe82440860b2e2b0","bytes":3079},
     {"path":"_shared/runner-inference-accounting.ts","source_path":"supabase/functions/_shared/runner-inference-accounting.ts","sha256":"e8668d0ae49c6219db03b494d7443c2361fac8e8577743086e16004bfbd9d85d","bytes":8969},
     {"path":"_shared/server-execution.ts","source_path":"supabase/functions/_shared/server-execution.ts","sha256":"977e84737337593e575b7c09cd5d9542e45e905de7d54fa690e8babb2430f62e","bytes":4675},
-    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"3e5284e027bf28213f7d9fde7558a3d43e3923d14467881fd67eaff63e50a881","bytes":76046}
+    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"3a5e15f2388bb1d3e44dd5a273ffaa083b4b66f283a8bdbafd2706de57af3417","bytes":78237}
   ]
 }
