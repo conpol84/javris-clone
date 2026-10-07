@@ -8,7 +8,7 @@ import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
-import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, parseDirectComputerCommand, parseOwnerDecision, type DirectComputerProposal } from './laptop-bridge';
+import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
 export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
@@ -103,18 +103,30 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       else{handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}}
     };
     try{
+      const proposal=parseDirectComputerCommand(message),decision=parseOwnerDecision(message);
+      const computerRequest=!!proposal||isComputerControlRequest(message);
+      if(computerRequest&&!canComputer){
+        pendingComputer.current=null;
+        await sayDirect(lang==='el'?'Ο έλεγχος υπολογιστή απαιτεί Owner/Admin. Δεν μπήκε εργασία στην ουρά.':'Computer control requires Owner/Admin. No job was queued.');return;
+      }
       if(canComputer){
-        const proposal=parseDirectComputerCommand(message),decision=parseOwnerDecision(message);
-        if(proposal){
-          if(decision==='reject'){pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
-          if(decision==='approve'){
-            pendingComputer.current=null;
-            const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
-            if(!valid(id)||!active.current())return;
-            await sayDirect(remote.reply);return;
+        if(computerRequest&&decision==='reject'){
+          pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;
+        }
+        if(computerRequest&&(!proposal||decision!=='approve')){
+          const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal?.kind??'browser_task',lang,signal),active.signal,24_000);
+          if(!valid(id)||!active.current())return;
+          if(!readiness.ready||!proposal){
+            pendingComputer.current=null;await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;
           }
-          pendingComputer.current=proposal;
-          await sayDirect(lang==='el'?`Θα εκτελέσω στο Polis1984: ${proposal.description}. Το εγκρίνεις;`:`I will run this on Polis1984: ${proposal.description}. Do you approve?`);return;
+          pendingComputer.current={...proposal,deviceId:readiness.deviceId};
+          await sayDirect(lang==='el'?`Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`:`I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);return;
+        }
+        if(proposal&&decision==='approve'){
+          pendingComputer.current=null;
+          const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
+          if(!valid(id)||!active.current())return;
+          await sayDirect(remote.reply);return;
         }
         if(pendingComputer.current&&decision){
           const pending=pendingComputer.current;pendingComputer.current=null;

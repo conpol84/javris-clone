@@ -1,0 +1,45 @@
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+
+const fixture=vi.hoisted(()=>({index:0,refIndex:0,states:[] as unknown[],refs:[] as {current:any}[],effects:[] as (()=>void|(()=>void))[],setters:[] as ReturnType<typeof vi.fn>[]}));
+const prepare=vi.hoisted(()=>vi.fn());const dispatch=vi.hoisted(()=>vi.fn());const sendChat=vi.hoisted(()=>vi.fn());const listen=vi.hoisted(()=>vi.fn());
+vi.mock('react',async original=>({...await original<typeof import('react')>(),
+ useState:()=>{const i=fixture.index++;const setter=vi.fn();fixture.setters[i]=setter;return[fixture.states[i],setter]},
+ useRef:(initial:unknown)=>{const i=fixture.refIndex++;return fixture.refs[i]??(fixture.refs[i]={current:initial})},
+ useEffect:(callback:()=>void|(()=>void))=>fixture.effects.push(callback),useCallback:(callback:unknown)=>callback,
+}));
+vi.mock('./data',()=>({listAgents:async()=>[],createConversation:vi.fn(),loadOrgSummary:vi.fn()}));
+vi.mock('./runner',async original=>({...await original<typeof import('./runner')>(),sendChat}));
+vi.mock('./voice',()=>({unlockAudio:vi.fn(),speak:async()=>({status:'completed'}),listenSmart:listen}));
+vi.mock('./laptop-bridge',async original=>({...await original<typeof import('./laptop-bridge')>(),prepareDirectComputerCommand:prepare,dispatchDirectComputerCommand:dispatch}));
+import {useCeoSession} from './useCeoSession';
+
+function session(canComputer=true){
+ fixture.index=0;fixture.refIndex=0;fixture.effects=[];
+ fixture.states=[JSON.stringify(['org','owner','el',true,canComputer]),{id:'ceo',type:'ceo',slug:'ceo'},'idle',[],'',true,false,'',[]];
+ const hook=useCeoSession('org','owner','el',key=>key,'briefing',true,canComputer);
+ fixture.effects[0]();fixture.refs[6].current=true;return hook;
+}
+beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'Δεν μπήκε εργασία στην ουρά.'})});
+afterEach(()=>vi.unstubAllGlobals());
+it('Command/Talk incomplete request reads capabilities and never asks an LLM to queue it',async()=>{
+ const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
+ expect(prepare).toHaveBeenCalledWith('org','browser_task','el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Δεν μπήκε εργασία');
+});
+it('refuses incomplete owner-control requests for a non-admin writer',async()=>{
+ const hook=session(false);await hook.ask('run AppleScript on Polis1984');expect(prepare).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+});
+it('honours one Go for the same ready device and fences a readiness result after Stop',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Chosen Mac',deviceId:'d8'});dispatch.mockResolvedValue({reply:'confirmed'});
+ const hook=session();await hook.ask('open Safari');await hook.ask('go nai kanta');
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toMatchObject({deviceId:'d8',params:{app:'Safari'}});expect(sendChat).not.toHaveBeenCalled();
+ let release!:(value:any)=>void;prepare.mockImplementation(()=>new Promise(resolve=>{release=resolve}));
+ const asking=hook.ask('open Safari');await Promise.resolve();await Promise.resolve();hook.stop();release({ready:true,deviceName:'Late Mac',deviceId:'late'});await asking;
+ expect(dispatch).toHaveBeenCalledOnce();expect(fixture.refs[9].current).toBeNull();
+});
+it('spoken final text uses the same control lane',async()=>{
+ vi.stubGlobal('MediaRecorder',class{});vi.stubGlobal('navigator',{mediaDevices:{getUserMedia:vi.fn()}});
+ listen.mockImplementation((_org,_lang,callbacks)=>{callbacks.final('Μπορείς να ανοίξεις το Mac και να βάλεις τραγούδια από YouTube;');return{cancel:vi.fn(),send:vi.fn()}});
+ const hook=session();hook.listen();await Promise.resolve();await Promise.resolve();await Promise.resolve();
+ expect(prepare).toHaveBeenCalledOnce();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+});

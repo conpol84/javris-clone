@@ -14,9 +14,22 @@ export type DirectComputerProposal={
  kind:'browser_task'|'open_app';
  params:Record<string,unknown>;
  description:string;
+ deviceId?:string;
 };
 
 const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^\p{L}\p{N}\s-]+/gu,' ').replace(/\s+/g,' ').trim();
+
+/** An incomplete control request stays in the computer lane. It must not become
+ * a model-authored AppleScript, delegated task or imaginary queue receipt. */
+export function isComputerControlRequest(input:string){
+ if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
+ const plain=plainText(input);
+ const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|safari|chrome|youtube|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*)(?:\s|$)/u.test(plain);
+ // Research and instructions about controlling a computer are ordinary work.
+ if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
+ return target&&action;
+}
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
@@ -54,13 +67,13 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
   const query=youtubeQuery(text);
   if(query){
    const url=`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
-   return{kind:'browser_task',description:`YouTube: ${query} → first result`,params:{timeout_ms:120000,steps:[
+   return{kind:'browser_task',description:`YouTube: ${query} → open first result (playback unverified)`,params:{timeout_ms:120000,steps:[
     {action:'open',url},
     {action:'click',selector:'ytd-video-renderer:first-of-type a#video-title'},
    ]}};
   }
  }
- if(/(?:^|\s)(open|launch|start|anoikse|anikse|ανοιξε|ανοιξ)(?:\s|$)/u.test(plain)){
+ if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.includes(a)))return{kind:'open_app',description:`Open ${app}`,params:{app}};
  }
  return null;
@@ -69,6 +82,31 @@ function directReady(d:DeviceRow,kind:DirectComputerProposal['kind'],now:number)
  const p=policyOf(d),k=d.capabilities?.job_kinds??[];
  return d.paired&&!d.revoked_at&&isOnline(d,now)&&p.enabled&&p.control==='full'&&d.capabilities?.full_control===true&&k.includes(kind);
 }
+function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],selected:string|null,now:number,lang:string){
+ const greek=lang==='el';
+ const eligible=rows.filter(d=>d.paired&&!d.revoked_at);
+ // A stored owner selection must never silently turn into another computer.
+ const candidates=selected?eligible.filter(d=>d.id===selected):eligible;
+ const ready=candidates.filter(d=>directReady(d,kind,now));
+ const device=ready.length===1?ready[0]:null;
+ if(device)return{ready:true as const,device};
+ if(!selected&&eligible.length>1)return{ready:false as const,status:'device_required',reply:greek?'Διάλεξε το Voice laptop στους Υπολογιστές. Δεν μπήκε εργασία στην ουρά.':'Choose the Voice laptop in Computers. No job was queued.'};
+ const online=candidates.find(d=>isOnline(d,now));
+ if(online)return{ready:false as const,status:'upgrade_required',reply:greek?`Το ${online.name} είναι online, αλλά δεν έχει ενεργό τοπικό Full Control για αυτή την ενέργεια. Δεν μπήκε εργασία στην ουρά. Δες τις δυνατότητες στους Υπολογιστές. Για browser tasks, έλεγξε πρώτα τη συμβατότητα macOS: το Catalina 10.15 δεν υποστηρίζεται από τον τρέχοντα browser updater.`:`${online.name} is online, but local Full Control for this action is unavailable. No job was queued. Check its capabilities in Computers. For browser tasks, check macOS compatibility first: Catalina 10.15 is unsupported by the current browser updater.`};
+ return{ready:false as const,status:'failed',reply:greek?'Ο επιλεγμένος υπολογιστής δεν είναι διαθέσιμος με Full Control. Δεν μπήκε εργασία στην ουρά.':'The selected computer is unavailable for Full Control. No job was queued.'};
+}
+
+/** Read only, before offering approval. Dispatch rechecks the same selection. */
+export async function prepareDirectComputerCommand(orgId:string,kind:DirectComputerProposal['kind'],lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number}){
+ const rows=await(deps?.loadDevices??listDevices)(orgId);
+ if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+ const s=deps?.storage===undefined?storage():deps.storage;
+ const state=directSelection(rows,kind,getVoiceLaptop(orgId,s),(deps?.now??Date.now)(),lang);
+ return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name}:state;
+}
+export const incompleteComputerReply=(lang:string)=>lang==='el'
+ ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'
+ :'No job was queued. Give an exact command, for example “Open Safari” or “YouTube search Nikos Oikonomopoulos”. The browser plan opens a result; it does not verify sustained playback, a screenshot or AppleScript execution.';
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
  loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>
@@ -77,13 +115,9 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
  let jobId:string|undefined;
  try{
   const rows=await load(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-  const selected=getVoiceLaptop(orgId,s),ready=rows.filter(d=>directReady(d,proposal.kind,now()));
-  const device=ready.find(d=>d.id===selected)??(ready.length===1?ready[0]:null);
-  if(!device){
-   const online=rows.filter(d=>d.paired&&!d.revoked_at&&isOnline(d,now()));
-   if(online.length)return{handled:true,status:'upgrade_required',reply:greek?'Το Mac είναι online, αλλά ο νέος Full Control Connector δεν είναι ενεργός ακόμη. Άνοιξε Computers → Polis1984 → Λήψη Mac updater και τρέξ’ τον μία φορά. Μετά θα εκτελώ browser clicks και apps χωρίς δεύτερο Inbox approval.':'The Mac is online, but the new Full Control Connector is not active yet. Open Computers → Polis1984 → Download Mac updater and run it once. Then I can execute browser clicks and apps without a second Inbox approval.'};
-   return{handled:true,status:'failed',reply:greek?'Δεν υπάρχει online Mac με Full Control.':'No Full Control Mac is online.'};
-  }
+  const selected=proposal.deviceId??getVoiceLaptop(orgId,s),selection=directSelection(rows,proposal.kind,selected,now(),lang);
+  if(!selection.ready)return{handled:true,status:selection.status,reply:selection.reply};
+  const device=selection.device;
   if(device.id!==selected)setVoiceLaptop(orgId,device.id,s);
   const job=await queue(device.id,proposal.kind,proposal.params,true);jobId=job.job_id;
   const deadline=now()+45_000;
@@ -97,7 +131,7 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    await sleep(650,signal);
   }
   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-  return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η ενέργεια ξεκίνησε στο ${device.name}, αλλά δεν έχει επιβεβαιωθεί ακόμη.`:`The action started on ${device.name}, but it is not confirmed yet.`};
+  return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η εργασία ${job.job_id} μπήκε στην ουρά για ${device.name}, αλλά η εκτέλεση δεν έχει επιβεβαιωθεί ακόμη.`:`Job ${job.job_id} was queued for ${device.name}; execution is not confirmed yet.`};
  }catch(error){
   if(error instanceof DOMException&&error.name==='AbortError'){if(jobId)await cancel(jobId).catch(()=>{});throw error;}
   return{handled:true,status:'failed',reply:greek?'Το Mac δεν μπόρεσε να εκτελέσει την ενέργεια.':'The Mac could not execute the action.'};
