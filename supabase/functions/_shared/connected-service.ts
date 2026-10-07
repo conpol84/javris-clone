@@ -9,7 +9,8 @@ const hash=async(s:string)=>Array.from(new Uint8Array(await crypto.subtle.digest
 const pkce=async(s:string)=>btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const publicConfig=(env:Env)=>{
   const primary=originOnly(env('APP_URL')??'https://firboai.app');
-  const origins=[primary,...(env('FIRBO_APP_ORIGINS')??'').split(',').map(s=>s.trim()).filter(Boolean).map(originOnly)];
+  const configured=(env('FIRBO_APP_ORIGINS')??'').split(',').map(s=>s.trim()).filter(Boolean).map(originOnly);
+  const origins=[...new Set([primary,'https://firboai.app','https://javris.firboai.app',...configured])];
   const redirect=originOnly(env('SUPABASE_URL')??'')+'/functions/v1/integrations';
   return{primary,origins,redirect};
 };
