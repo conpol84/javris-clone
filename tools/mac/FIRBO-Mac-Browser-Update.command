@@ -50,7 +50,11 @@ for firbo_file in firbo-connector.mjs firbo-browser.mjs; do
   install -m 600 "$firbo_stage/$firbo_file" "$HOME/Downloads/$firbo_file"
 done
 echo "Previous files are kept in $firbo_backup"
+read -r -p 'Enable FIRBO Full Control for apps, allowed files and reviewed browser work? [y/N] ' firbo_full
+case "$firbo_full" in
+  y|Y|yes|YES) node "$HOME/Downloads/firbo-connector.mjs" full-control ;;
+  *) echo 'Full Control was not enabled. Existing local permissions remain.' ;;
+esac
 echo 'Starting the updated Connector. Keep this terminal open.'
-echo 'If browser_disabled appears, enable browser opening locally with:'
-echo 'node "$HOME/Downloads/firbo-connector.mjs" allow-browser'
-node "$HOME/Downloads/firbo-connector.mjs" run --browser-site "$firbo_site"
+echo 'Press Ctrl+C at any time to request Stop.'
+node "$HOME/Downloads/firbo-connector.mjs" run --browser-site "$firbo_site" --browser-site "https://javris.firboai.app"
