@@ -878,7 +878,7 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   try {
     const res = await callFn('pair', { code: normalized, platform: `${os.platform()} ${os.arch()}` });
     if (typeof res?.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, fullControl: args.fullControl === true, ...(args.allowApps === true ? { allowApps: true } : {}) };
+    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, ...(args.fullControl === true ? { fullControl: true } : {}), ...(args.allowApps === true ? { allowApps: true } : {}) };
     try {
       await handle.writeFile(JSON.stringify(cfg, null, 2));
       await handle.sync();
