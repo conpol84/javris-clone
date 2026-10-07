@@ -92,5 +92,7 @@ test('remote Stop aborts actual local work and delivers one durable interruption
   assert.ok(actions.includes('control'));
   assert.ok(actions.includes('report'));
   assert.ok(events.includes('remote_stop_received'));
-  assert.deepEqual(result.local_states, [{ phase: 'acked', count: 1 }]);
+  assert.equal(result.local_states.length, 1);
+  assert.equal(result.local_states[0].phase, 'acked');
+  assert.equal(result.local_states[0].count, 1);
 });
