@@ -122,7 +122,6 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           if(!valid(id)||!active.current())return;
           await sayDirect(remote.reply);return;
         }
-        if(canComputer){
         const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
         if(!valid(id)||!active.current())return;
         if(remote.handled){await sayDirect(remote.reply??voiceMessages(lang).server);return;}
