@@ -36,10 +36,10 @@ function text(node: ReactNode): string {
   return typeof node === 'string' ? node : '';
 }
 const skill: SkillRow = { id: 'skill-1', slug: 'deep-research', agent_id: null, name: 'Research', instructions: 'Read reliable evidence first.', description: '', source: 'library', enabled: true, created_at: '' };
-function page(role = 'owner', values: { skills?: SkillRow[]; name?: string; instructions?: string; editing?: SkillRow | null; busy?: boolean } = {}) {
+function page(role = 'owner', values: { skills?: SkillRow[]; target?: string; name?: string; instructions?: string; editing?: SkillRow | null; busy?: boolean } = {}) {
   fixture.role = role; fixture.index = 0;
   fixture.refIndex = 0; fixture.refs = [{ current: true }, { current: 0 }, { current: false }]; fixture.effects = [];
-  fixture.states = [values.skills ?? [skill], [], '', values.name ?? '', values.instructions ?? '', values.busy ?? false, values.editing ?? null, false, false];
+  fixture.states = [values.skills ?? [skill], [], values.target ?? '', values.name ?? '', values.instructions ?? '', values.busy ?? false, values.editing ?? null, false, false];
   return SkillsWorkspace();
 }
 const remove = (tree: ReactNode) => elements(tree).find(e => e.props['aria-label'] === 'Remove: Research')!;
@@ -77,10 +77,21 @@ describe('actual Skills page controls', () => {
     workspace.updateSkill.mockResolvedValue(skill);
     const tree = page('owner', { name: 'New name', instructions: 'Updated precise instructions.', editing: skill });
     elements(tree).find(e => e.type === 'form')!.props.onSubmit?.({ preventDefault: vi.fn() });
-    expect(workspace.updateSkill).toHaveBeenCalledWith('org-1', 'skill-1', { name: 'New name', instructions: 'Updated precise instructions.', description: '' });
+    expect(workspace.updateSkill).toHaveBeenCalledWith('org-1', 'skill-1', { name: 'New name', instructions: 'Updated precise instructions.', description: '', agentId: null });
     expect(workspace.addSkill).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(notices.success).toHaveBeenCalledWith(SKILLS_COPY.en.saved));
   });
+  it('persists reassignment of an installed skill to another employee', async () => {
+    const reassigned = { ...skill, agent_id: 'agent-2' };
+    workspace.updateSkill.mockResolvedValue(reassigned);
+    const tree = page('owner', { target: 'agent-2', name: skill.name, instructions: skill.instructions, editing: skill });
+    elements(tree).find(e => e.type === 'form')!.props.onSubmit?.({ preventDefault: vi.fn() });
+    expect(workspace.updateSkill).toHaveBeenCalledWith('org-1', 'skill-1', {
+      name: skill.name, instructions: skill.instructions, description: '', agentId: 'agent-2',
+    });
+    await vi.waitFor(() => expect(notices.success).toHaveBeenCalledWith(SKILLS_COPY.en.saved));
+  });
+
   it('blocks a second install even if a disabled Installed button handler is forced', () => {
     const tree = page();
     const installed = elements(tree).find(e => e.type === 'button' && text(e) === 'Installed')!;
@@ -98,6 +109,7 @@ describe('actual Skills page controls', () => {
     const tree = page();
     elements(tree).find(e => e.type === 'button' && text(e).trim() === 'Edit')!.props.onClick?.();
     expect(fixture.setters[6]).toHaveBeenCalledWith(skill);
+    expect(fixture.setters[2]).toHaveBeenCalledWith('');
     expect(fixture.setters[3]).toHaveBeenCalledWith(skill.name);
     expect(fixture.setters[4]).toHaveBeenCalledWith(skill.instructions);
   });

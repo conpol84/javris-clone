@@ -83,16 +83,16 @@ export function SkillsWorkspace() {
     e.preventDefault();
     if (!user || !name.trim() || instructions.trim().length < 10) return;
     const save = editing
-      ? () => updateSkill(orgId, editing.id, { name, instructions, description: editing.description ?? '' })
+      ? () => updateSkill(orgId, editing.id, { name, instructions, description: editing.description ?? '', agentId: target || null })
       : () => addSkill(orgId, user.id, { name, instructions, agentId: target || null });
-    void act(save, editing ? copy.saved : c('sDone'), () => { setEditing(null); setName(''); setInstructions(''); });
+    void act(save, editing ? copy.saved : c('sDone'), () => { setEditing(null); setName(''); setInstructions(''); setTarget(''); });
   };
   const edit = (s: SkillRow) => {
     if (!alive.current || !canManage || busy || loading || loadError) return;
-    setEditing(s); setName(s.name); setInstructions(s.instructions);
+    setEditing(s); setName(s.name); setInstructions(s.instructions); setTarget(s.agent_id ?? '');
   };
   const remove = (s: SkillRow) => act(() => deleteSkill(orgId, s.id), copy.removed, () => {
-    if (editing?.id === s.id) { setEditing(null); setName(''); setInstructions(''); }
+    if (editing?.id === s.id) { setEditing(null); setName(''); setInstructions(''); setTarget(''); }
   });
 
   return (
@@ -159,11 +159,19 @@ export function SkillsWorkspace() {
             {canManage && (
               <form onSubmit={custom} className="fb-glass fb-col gap-2 p-4">
                 <div className="fb-eyebrow">{editing ? copy.editTitle : c('sCustom')}</div>
-                {editing && <p className="fb-dim text-[12px]">{agentName(editing.agent_id)}</p>}
+                {editing && (
+                  <label className="fb-col gap-1 text-[12px]">
+                    <span className="fb-dim">{copy.assign}</span>
+                    <select className="fb-input" value={target} onChange={e => setTarget(e.target.value)} aria-label={copy.assign}>
+                      <option value="">{c('sTeam')}</option>
+                      {agents.map(a => <option key={a.id} value={a.id}>{agentLabel(a, i18n).name}</option>)}
+                    </select>
+                  </label>
+                )}
                 <input className="fb-input" aria-label={copy.name} value={name} onChange={e => setName(e.target.value)} placeholder={c('kName')} maxLength={80} />
                 <textarea className="fb-input min-h-[110px] py-2" aria-label={copy.instructions} value={instructions} onChange={e => setInstructions(e.target.value)} placeholder={c('sInstr')} maxLength={4000} />
                 <div className="flex justify-end gap-2">
-                  {editing && <button type="button" className="fb-btn fb-btn--ghost" disabled={busy} onClick={() => { setEditing(null); setName(''); setInstructions(''); }}>{copy.cancel}</button>}
+                  {editing && <button type="button" className="fb-btn fb-btn--ghost" disabled={busy} onClick={() => { setEditing(null); setName(''); setInstructions(''); setTarget(''); }}>{copy.cancel}</button>}
                   <button className="fb-btn fb-btn--primary" disabled={busy || loading || loadError || !name.trim() || instructions.trim().length < 10}>{editing ? copy.save : <><Plus size={14} /> {c('sInstall')}</>}</button>
                 </div>
               </form>
