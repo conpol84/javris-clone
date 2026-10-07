@@ -1,6 +1,8 @@
 // Keyless web search and page reading for agents, used when the gateway has no search provider configured
 // (or returns nothing). DuckDuckGo's HTML page for web results, Google News / Bing News RSS for recent news, Wikipedia for background.
-// Page reading fetches public http(s) pages only: private, local and metadata addresses are refused at every redirect.
+// Page reading uses the pinned egress service: private, local and metadata addresses are refused at every HTTPS redirect.
+
+import { boundedPageText, pageEgressFetch } from './page-egress.ts';
 
 export interface SearchHit { title: string; url: string; snippet: string; date?: string }
 export interface TavilySearchReceipt { text: string; credits: number }
@@ -197,33 +199,20 @@ export function isPublicHost(hostname: string): boolean {
   return true;
 }
 
-/** Text of a public web page (max ~1 MB read, 3 redirects), or throws. */
+/** Text of a public HTTPS page read by the pinned page-egress service, or throws. */
 export async function readPageDirect(rawUrl: string, fetcher: Fetcher = fetch, signal?: AbortSignal): Promise<string> {
-  let url = rawUrl;
-  for (let hop = 0; hop < 4; hop++) {
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password || !isPublicHost(u.hostname)) throw new Error('page_not_allowed');
-    const res = await fetcher(u.toString(), { redirect: 'manual', headers: { 'user-agent': UA, accept: 'text/html,text/plain' },
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(10_000)]) : AbortSignal.timeout(10_000) });
-    if (res.status >= 300 && res.status < 400) {
-      const next = res.headers.get('location');
-      if (!next) throw new Error('page_redirect_without_location');
-      url = new URL(next, u).toString();
-      continue;
-    }
-    if (!res.ok) throw new Error(`page_http_${res.status}`);
-    const type = (res.headers.get('content-type') ?? '').toLowerCase();
-    if (type && !/text\/(html|plain)|application\/xhtml/.test(type)) throw new Error('page_not_text');
-    const body = (await res.text()).slice(0, 1_000_000);
-    const cleaned = body
-      .replace(/<(script|style|noscript|svg|nav|footer|header|form)[\s\S]*?<\/\1>/gi, ' ')
-      .replace(/<!--[\s\S]*?-->/g, ' ');
-    const title = text(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(cleaned)?.[1] ?? '');
-    const main = /<(article|main)[\s\S]*?<\/\1>/i.exec(cleaned)?.[0] ?? cleaned;
-    const content = text(main);
-    return `${title ? `${title}\n` : ''}${content}`.slice(0, 6000);
-  }
-  throw new Error('page_too_many_redirects');
+  const res = await pageEgressFetch(rawUrl, fetcher, signal);
+  if (!res.ok) throw new Error(`page_http_${res.status}`);
+  const type = (res.headers.get('content-type') ?? '').toLowerCase();
+  if (type && !/text\/(html|plain)|application\/xhtml/.test(type)) throw new Error('page_not_text');
+  const body = await boundedPageText(res);
+  const cleaned = body
+    .replace(/<(script|style|noscript|svg|nav|footer|header|form)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<!--[\s\S]*?-->/g, ' ');
+  const title = text(/<title[^>]*>([\s\S]*?)<\/title>/i.exec(cleaned)?.[1] ?? '');
+  const main = /<(article|main)[\s\S]*?<\/\1>/i.exec(cleaned)?.[0] ?? cleaned;
+  const content = text(main);
+  return `${title ? `${title}\n` : ''}${content}`.slice(0, 6000);
 }
 
 /** Links listed in search results ("1. Title - https://..."), first come first, without repeats. */
