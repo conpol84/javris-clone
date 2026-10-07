@@ -5,8 +5,35 @@ import type { DeviceRow, JobRow } from './computers';
 const now=Date.parse('2026-10-04T10:00:00Z');
 const device=(id:string,name='Laptop',full=false):DeviceRow=>({id,name,platform:'darwin x64',paired:true,last_seen_at:new Date(now-1000).toISOString(),capabilities:full?{job_kinds:['browser_open','browser_task','open_app'],full_control:true}:{job_kinds:['browser_open']},agent_policy:full?{enabled:true,control:'full',apps:['Microsoft Word'],shortcuts:[],writes:'auto',commands:'safe',hours:null}:null,revoked_at:null,created_at:''});
 const memory=()=>{const map=new Map<string,string>();return{getItem:(k:string)=>map.get(k)??null,setItem:(k:string,v:string)=>map.set(k,v),removeItem:(k:string)=>map.delete(k)}};
+const vpsRead='Διάβασε από τον VPS το αρχείο:\n/home/jarvis/.openjarvis/firbo-acceptance-7e50xgua/report.md\n\nΔείξε το πραγματικό περιεχόμενό του και την απόδειξη εκτέλεσης της ανάγνωσης. Μην δημιουργήσεις ή αλλάξεις αρχεία. Αν δεν έχεις πρόσβαση, ανέφερε ακριβώς τι εμποδίζει την ανάγνωση.';
 
 describe('website to laptop browser bridge',()=>{
+ it.each([
+  vpsRead,
+  'Read /home/jarvis/.openjarvis/firbo-acceptance-7e50xgua/report.md from the VPS',
+  'Open /home/jarvis/.openjarvis/report.md on the VPS',
+  'open ./reports/report.md',
+  'open C:\\reports\\report.md',
+  'open report.md',
+  'Read https://example.com/open/report.md and summarize it',
+  'Research example.com',
+  'open http://example.com',
+ ])('does not interpret file paths or embedded verbs as browser commands: %s',input=>{
+  expect(parseLaptopBrowserCommand(input)).toBeNull();
+ });
+ it('leaves the actual VPS request for server chat without device discovery or queueing',async()=>{
+  let discovered=0,queued=0;
+  const out=await dispatchLaptopBrowserCommand('org',vpsRead,'en',undefined,{
+   loadDevices:async()=>{discovered++;return[]},queue:async()=>{queued++;return{job_id:'unexpected'}},
+  });
+  expect(out).toEqual({handled:false});expect(discovered).toBe(0);expect(queued).toBe(0);
+ });
+ it.each([
+  ['open example.com','https://example.com/'],
+  ['open https://example.com/report.md','https://example.com/report.md'],
+  ['Άνοιξε το https://example.com/open/report.md','https://example.com/open/report.md'],
+  ['browse "example.com/news"','https://example.com/news'],
+ ])('preserves explicit browser destinations: %s',(input,url)=>expect(parseLaptopBrowserCommand(input)?.url).toBe(url));
  it('parses an explicit Greek browser command without an LLM',()=>expect(parseLaptopBrowserCommand('Άνοιξε το browser στο example.com')?.url).toBe('https://example.com/'));
  it('keeps ordinary conversation as chat',()=>expect(parseLaptopBrowserCommand('Πες μου τι έγινε σήμερα')).toBeNull());
  it('uses a public start page when browser is requested without a destination',()=>expect(parseLaptopBrowserCommand('άνοιξε το browser εδώ')?.url).toBe('https://www.google.com/'));

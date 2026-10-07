@@ -8,7 +8,23 @@ export function setVoiceLaptop(org:string,device:string|null,s:StorageLike|null=
 export const browserReadyDevices=(rows:DeviceRow[],now=Date.now())=>rows.filter(d=>canOpenBrowser(d)&&isOnline(d,now));
 export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return ready.find(d=>d.id===selected)??(ready.length===1?ready[0]:null)}
 function safeUrl(raw:string){let value=raw.trim().replace(/[),.;!?]+$/,'');if(!value)return null;if(!/^https:\/\//i.test(value))value='https://'+value;try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||!u.hostname||u.hostname==='localhost'||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)||u.hostname.includes(':'))return null;return u.href}catch{return null}}
-export function parseLaptopBrowserCommand(input:string){if(typeof input!=='string'||!input.trim()||input.length>500)return null;const text=input.trim(),plain=text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();const action=/(open|launch|browse|search|ανοιξ|ψαξ|αναζητ)/iu.test(plain);const target=/(browser|chrome|laptop|computer|φυλλομετρητ|λαπτοπ|υπολογιστ)/iu.test(plain);const direct=text.match(/https:\/\/[^\s]+/i)?.[0]??text.match(/(?:[a-z0-9](?:[a-z0-9-]{0,62})\.)+[a-z]{2,63}(?:\/[^\s]*)?/i)?.[0]??'';if(!action||(!target&&!direct))return null;const url=direct?safeUrl(direct):'https://www.google.com/';return url?{url,host:new URL(url).hostname}:null}
+export function parseLaptopBrowserCommand(input:string){
+ if(typeof input!=='string'||!input.trim()||input.length>500)return null;
+ const tokens=input.trim().split(/\s+/).map(token=>token.replace(/^["'`(\[]+|["'`),.;!?\]]+$/g,''));
+ // Paths and URL components are data, never action words (e.g. .openjarvis).
+ const isPath=(token:string)=>/^(?:\/|\.\.?\/|~\/|[a-z]:[\\/]|file:)/i.test(token)||(!/^https?:\/\//i.test(token)&&token.includes('\\'));
+ const isAddress=(token:string)=>/^https?:\/\//i.test(token)||/^(?:[a-z0-9](?:[a-z0-9-]{0,62})\.)+[a-z]{2,63}(?:[/?#][^\s]*)?$/i.test(token);
+ const words=tokens.filter(token=>!isPath(token)&&!isAddress(token)).join(' ').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+ const action=/(?:^|[^\p{L}\p{N}_])(?:open|launch|browse|search|ανοιξ\p{L}*|ψαξ\p{L}*|αναζητ\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(words);
+ const target=/(?:^|[^\p{L}\p{N}_])(?:browser|chrome|laptop|computer|φυλλομετρητ\p{L}*|λαπτοπ|υπολογιστ\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(words);
+ const direct=tokens.find(token=>!isPath(token)&&isAddress(token)&&(
+  /^https?:\/\//i.test(token)||!/\.(?:md|txt|json|py|ts|csv|pdf|docx|xlsx|pptx|log|toml|ya?ml)$/i.test(token)
+ ));
+ if(!action||(!target&&!direct))return null;
+ if(direct&&/^http:\/\//i.test(direct))return null;
+ const url=direct?safeUrl(direct):'https://www.google.com/';
+ return url?{url,host:new URL(url).hostname}:null;
+}
 
 export type DirectComputerProposal={
  kind:'browser_task'|'open_app';
