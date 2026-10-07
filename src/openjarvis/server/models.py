@@ -29,6 +29,10 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     # Opt-in runtime receipts; never inferred from the model's answer text.
     firbo_include_execution: bool = False
+    # Root-issued exact-action grant; no boolean or model-authored approval.
+    firbo_native_approval: Optional[str] = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     tools: Optional[List[Dict[str, Any]]] = None
 
 
