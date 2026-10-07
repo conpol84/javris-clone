@@ -43,7 +43,7 @@ function fixture(options={}) {
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
   const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
-  const agent={id:AGENT,name:'Test agent',type:options.agentType??'custom',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
+  const agent={id:AGENT,name:'Test agent',type:options.agentType??'custom',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
   const execute=(table,op,payload,filters,selection,single=false)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
@@ -633,6 +633,23 @@ test('agent-runner: two 👎 on recent reports move an economy agent up to the q
   const liked=await invoke('agent-runner',{feedback:[{rating:-1,note:null},{rating:1,note:null}],plan:'pro'});
   assert.notEqual(JSON.parse(liked.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).model,'firbo-quality');
 });
+test('agent-runner: explicit slide counts are enforced in the actual generation prompt', async () => {
+  const {state,response}=await invoke('agent-runner',{plan:'pro',taskTitle:'Presentation for the board: Q3 sales — 10 slides'});
+  assert.equal(response.status,200);
+  const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+  assert.match(chat.messages[0].content,/exactly 10 slides/);
+});
+
+test('owner personal instructions reach both task work and direct chat', async () => {
+  for (const name of ['agent-runner','agent-chat']) {
+    const {state,response}=await invoke(name,{ownerInstructions:'Start with the decision. Use comparison tables. Never repeat the same point.'});
+    assert.equal(response.status,200);
+    const chat=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body);
+    assert.match(chat.messages[0].content,/OWNER INSTRUCTIONS FOR YOUR WORKING STYLE/);
+    assert.match(chat.messages[0].content,/Start with the decision/);
+  }
+});
+
 test('agent-runner: a presentation starts on the quality route (paid plans), with the slide standard', async () => {
   const {state,response}=await invoke('agent-runner',{plan:'pro',taskTitle:'Presentation for the board: Q3 sales'});
   assert.equal(response.status,200);
