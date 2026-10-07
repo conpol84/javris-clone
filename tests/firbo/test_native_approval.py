@@ -412,6 +412,59 @@ def test_rollout_readiness_failure_restores_originals(controller, monkeypatch):
         assert module.digest((package / name).read_bytes()) == expected
 
 
+def test_rollout_preserves_hardlinked_read_only_baselines(controller, monkeypatch):
+    module, package, _, backups = controller
+    assert module.READ_ONLY_BASELINES == {
+        "tools/_stubs.py",
+        "tools/shell_exec.py",
+        "cli/serve.py",
+    }
+    snapshots = []
+    for name in module.READ_ONLY_BASELINES:
+        path = package / name
+        alias = path.with_suffix(".cache")
+        os.link(path, alias)
+        snapshots.append((path, alias, path.stat(), path.read_bytes()))
+    monkeypatch.setattr(module, "restart_and_verify", lambda: None)
+    module.install()
+    module.rollback(next(backups.iterdir()))
+    for path, alias, before, raw in snapshots:
+        for entry in (path, alias):
+            after = entry.stat()
+            assert after.st_ino == before.st_ino
+            assert after.st_nlink == 2
+            assert after.st_mode == before.st_mode
+            assert after.st_mtime_ns == before.st_mtime_ns
+            assert entry.read_bytes() == raw
+
+
+@pytest.mark.parametrize("kind", ["installed", "staged", "changed", "symlink"])
+def test_rollout_hardlink_exception_stays_narrow(controller, monkeypatch, kind):
+    module, package, staged, backups = controller
+    if kind == "installed":
+        path = package / "server/routes.py"
+    elif kind == "staged":
+        path = staged / "routes.py"
+    else:
+        path = package / "tools/_stubs.py"
+    alias = path.with_suffix(".cache")
+    os.link(path, alias)
+    if kind == "changed":
+        alias.write_text("# unreviewed installed source\n")
+    elif kind == "symlink":
+        path.unlink()
+        path.symlink_to(alias)
+    before = alias.read_bytes()
+    monkeypatch.setattr(
+        module, "restart_and_verify", lambda: pytest.fail("unexpected restart")
+    )
+    with pytest.raises((ValueError, OSError)):
+        module.install()
+    assert alias.read_bytes() == before
+    assert not list(backups.iterdir())
+    assert not (package / "server/native_approval.py").exists()
+
+
 def test_rollout_unknown_code_is_preserved(controller, monkeypatch):
     module, package, _, backups = controller
     path = package / "server/routes.py"

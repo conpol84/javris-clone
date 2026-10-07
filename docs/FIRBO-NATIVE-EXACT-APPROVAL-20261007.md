@@ -70,6 +70,17 @@ policy relaxation or rerun of an ambiguous provider request is part of this fix.
 
 ## Validation and remaining work
 
+Owner rollout follow-up: the first installation stopped before replacement at
+`unexpected_file`. Read-only metadata showed two hard links on the three untouched
+baseline modules (`tools/_stubs.py`, `tools/shell_exec.py`, `cli/serve.py`); all
+replacement targets and staged files had one link. The installer now permits
+multiple links only when reading these three exact paths for the unchanged
+SHA-256 baseline check. It never writes to or breaks their links. Staging,
+replacement targets, backups and approval grants retain single-link checks.
+Regression tests use actual hard links and verify unchanged aliases/inodes/bytes
+after install/rollback, plus rejection of altered baselines, symlinks and
+hardlinked replacement/staged files. This source fix is not live acceptance.
+
 Focused tests exercise real executor/handler behavior, actual disposable shell
 work, malformed/expired/wrong-owner grants, alternate arguments, replay and
 concurrency, normal-request denial, restoration after errors, existing policy,

@@ -25,6 +25,9 @@ PACKAGE = Path("/home/jarvis/.openjarvis/.venv/lib/python3.13/site-packages/open
 APPROVAL_ROOT = Path("/run/firbo-native-approval")
 BACKUPS = Path("/var/backups")
 SERVICE = "openjarvis.service"
+READ_ONLY_BASELINES = frozenset(
+    {"tools/_stubs.py", "tools/shell_exec.py", "cli/serve.py"}
+)
 BASELINES = {
     "tools/_stubs.py": (
         "8f4f1f19ed26ee1d897abaa9e0b7bdbd134f96f7c7a3649b8e93fb3dbd0799b2"
@@ -65,13 +68,13 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
-def read_regular(path):
+def read_regular(path, *, allow_hardlinks=False):
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         info = os.fstat(fd)
         require(
             stat.S_ISREG(info.st_mode)
-            and info.st_nlink == 1
+            and (info.st_nlink == 1 or (allow_hardlinks and info.st_nlink > 1))
             and info.st_size <= 512000,
             "unexpected_file",
         )
@@ -295,8 +298,14 @@ def install():
         compile(raw, name, "exec")
         staged[name] = raw
     for name, expected in BASELINES.items():
+        # These three installed modules are only hashed, never replaced/backed
+        # up by this installer. Shared inodes are safe to read; all writable
+        # targets and staged/backup files retain the single-link requirement.
+        installed = read_regular(
+            PACKAGE / name, allow_hardlinks=name in READ_ONLY_BASELINES
+        )
         require(
-            digest(read_regular(PACKAGE / name)) in {expected, BUNDLE.get(name)},
+            digest(installed) in {expected, BUNDLE.get(name)},
             "unknown_installed_code",
         )
     added = PACKAGE / "server/native_approval.py"
