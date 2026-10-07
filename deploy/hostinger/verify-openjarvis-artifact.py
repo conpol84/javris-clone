@@ -165,10 +165,20 @@ def verify(api, directory, owner, env, runtime, nonce):
         and "confirmation" in str(row.get("output", "")).lower()
         for row in tool_rows
     )
-    # Python fallback labels stdout; the native implementation returns raw stdout.
-    outcome["write_receipt_verified"] = receipt(
-        created, "shell_exec", expected_sha
-    ) or receipt(created, "shell_exec", "=== STDOUT ===\n" + expected_sha)
+    # Accept only the three known successful shell_exec renderings:
+    # 1) direct/raw stdout, 2) Python subprocess fallback, 3) Rust backend.
+    # The Rust tool includes the exit code and explicit stdout/stderr sections;
+    # do not loosen this into substring matching because prose is not evidence.
+    rust_stdout = (
+        "Exit code: 0\n--- stdout ---\n"
+        + expected_sha
+        + "\n\n--- stderr ---"
+    )
+    outcome["write_receipt_verified"] = (
+        receipt(created, "shell_exec", expected_sha)
+        or receipt(created, "shell_exec", "=== STDOUT ===\n" + expected_sha)
+        or receipt(created, "shell_exec", rust_stdout)
+    )
     if not outcome["write_receipt_verified"] or not outcome["write_request_id"]:
         return {**outcome, "reason": "write_receipt_unverified_no_retry"}
     read = ask(
