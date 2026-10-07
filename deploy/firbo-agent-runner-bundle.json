@@ -16,9 +16,9 @@
     {"path":"_shared/inference-accounting.ts","source_path":"supabase/functions/_shared/inference-accounting.ts","sha256":"9a43adb9ce4da34894cfdc70ea8964b15dc14cd343bc051bed03e4c930d6bdc8","bytes":5636},
     {"path":"_shared/model-json.ts","source_path":"supabase/functions/_shared/model-json.ts","sha256":"d9b0429070828ad3e844451ecac2fccf0d14a3e6b3de2e8bb65fc7fd29196be4","bytes":3458},
     {"path":"_shared/own-keys.ts","source_path":"supabase/functions/_shared/own-keys.ts","sha256":"369f680a22f1ea694cbcb50f3e229f804405e9fad4afc01ccb6f1f7191d8eff9","bytes":4992},
-    {"path":"_shared/page-egress.ts","source_path":"supabase/functions/_shared/page-egress.ts","sha256":"2dd7031eb51124bf168d582ab4c846321bdf4770ad7fbae32f55935742935074","bytes":2808},
+    {"path":"_shared/page-egress.ts","source_path":"supabase/functions/_shared/page-egress.ts","sha256":"58f1dc32dbd73e20e0a1e40bd2b15f9a98a4afbc77707b61fe82440860b2e2b0","bytes":3079},
     {"path":"_shared/runner-inference-accounting.ts","source_path":"supabase/functions/_shared/runner-inference-accounting.ts","sha256":"e8668d0ae49c6219db03b494d7443c2361fac8e8577743086e16004bfbd9d85d","bytes":8969},
     {"path":"_shared/server-execution.ts","source_path":"supabase/functions/_shared/server-execution.ts","sha256":"977e84737337593e575b7c09cd5d9542e45e905de7d54fa690e8babb2430f62e","bytes":4675},
-    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"ec065babe3e3ade54cf788693362900e2e7f01d3331053d5b22901d71d9597c0","bytes":75770}
+    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"3e5284e027bf28213f7d9fde7558a3d43e3923d14467881fd67eaff63e50a881","bytes":76046}
   ]
 }

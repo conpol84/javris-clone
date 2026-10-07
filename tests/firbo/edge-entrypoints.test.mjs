@@ -685,7 +685,7 @@ test('agent-runner: the calculator power is offered and its exact result is fed 
   assert.match(JSON.parse(chats[0].init.body).messages[0].content,/"action": "calculator"/);
   assert.ok(JSON.parse(chats[1].init.body).messages.some(m=>/1200 \* 0\.24 = 288/.test(m.content)));
 });
-const serverEnv={OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise',FIRBO_SERVER_PRICE_IN_PER_M:'2',FIRBO_SERVER_PRICE_OUT_PER_M:'4',FIRBO_SERVER_MAX_OUTPUT_TOKENS:'8192'};
+const serverEnv={FIRBO_SERVER_EXECUTION_ENABLED:'on',OPENJARVIS_URL:'https://admin-jarvis.example/jarvis',OPENJARVIS_API_KEY:'admin-key',OPENJARVIS_SANDBOX_URL:'https://box-jarvis.example/jarvis-box',OPENJARVIS_SANDBOX_API_KEY:'box-key',FIRBO_SERVER_AGENT_PLANS:'pro,business,enterprise',FIRBO_SERVER_PRICE_IN_PER_M:'2',FIRBO_SERVER_PRICE_OUT_PER_M:'4',FIRBO_SERVER_MAX_OUTPUT_TOKENS:'8192'};
 const serverReplies=()=>['{"action":"server_task","input":"print(sum(range(10)))"}',JSON.stringify({summary:'45',report:'45',actions:[]})];
 test('suggest-only employees cannot execute through either OpenJarvis server', async () => {
   for (const extra of [{ autonomy: 'suggest' }, { freshAutonomy: 'suggest' }, { freshAgentEnabled: false }]) {
@@ -704,6 +704,7 @@ test('agent-runner: a customer company gets only the sandboxed server agent, nev
   assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')));
   const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
   assert.equal(box.init.headers.authorization,'Bearer box-key');
+  assert.equal(JSON.parse(box.init.body).max_tokens,8192);
   const usage=state.writes.find(w=>w.table==='usage_events'&&w.payload.model==='openjarvis:firbo-quality');
   assert.ok(usage);assert.equal(usage.payload.input_tokens,30);assert.equal(usage.payload.output_tokens,5);assert.equal(usage.payload.cost_usd,0.00008);
   assert.equal(box.init.headers['x-firbo-request-id'],usage.payload.inference_request_id);
@@ -731,6 +732,29 @@ test('agent-runner: server execution is not offered without explicit pricing bou
   const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
     chatReplies:serverReplies(),plan:'pro',env});
   assert.equal(response.status,200);assert.ok(!state.calls.some(c=>/jarvis/.test(String(c.url))));
+});
+test('runner recovery cannot enable configured VPS execution without release acceptance', async () => {
+  for (const enabled of [undefined, '', 'off', 'true', 'ON']) {
+    const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+      chatReplies:serverReplies(),plan:'pro',env:{...serverEnv,FIRBO_SERVER_EXECUTION_ENABLED:enabled}});
+    assert.equal(response.status,200);
+    assert.ok(!state.calls.some(c=>/jarvis/.test(String(c.url))));
+    assert.ok(!state.rpcs.some(r=>r.fn==='firbo_reserve_runner_inference'&&String(r.args.p_route).startsWith('openjarvis:')));
+    const first=state.calls.find(c=>String(c.url).endsWith('/chat/completions'));
+    assert.doesNotMatch(JSON.parse(first.init.body).messages[0].content,/\"action\": \"server_task\"/);
+  }
+});
+test('enabled VPS execution rejects zero or invalid billed pricing before any server call', async () => {
+  for (const changed of [
+    {FIRBO_SERVER_PRICE_IN_PER_M:'0'}, {FIRBO_SERVER_PRICE_OUT_PER_M:'0'},
+    {FIRBO_SERVER_PRICE_IN_PER_M:'-1'}, {FIRBO_SERVER_PRICE_OUT_PER_M:'NaN'},
+    {FIRBO_SERVER_MAX_OUTPUT_TOKENS:'0'},
+  ]) {
+    const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'code_interpreter',enabled:true,policy:'allow'}],
+      chatReplies:serverReplies(),plan:'pro',env:{...serverEnv,...changed}});
+    assert.equal(response.status,200);
+    assert.ok(!state.calls.some(c=>/jarvis/.test(String(c.url))));
+  }
 });
 test('agent-runner feeds actual server tool failures back to the employee', async () => {
   const execution={contract:'openjarvis-execution/v1',mode:'agent',tool_count:1,failed_count:1,

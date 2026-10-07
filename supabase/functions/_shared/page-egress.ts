@@ -10,6 +10,9 @@ const MAX_RESPONSE_BYTES = 1_000_000;
 
 function serviceConfiguration(): { endpoint: string; token: string } {
   const deno = (globalThis as any).Deno;
+  // A complete runner bundle can recover ordinary tasks before the separately
+  // deployed transport is accepted. Merely having URL/token values is not a release.
+  if (deno?.env?.get?.('FIRBO_PAGE_EGRESS_ENABLED') !== 'on') throw new Error('page_egress_unavailable');
   const endpoint = deno?.env?.get?.('FIRBO_PAGE_EGRESS_URL') ?? '';
   const token = deno?.env?.get?.('FIRBO_PAGE_EGRESS_TOKEN') ?? '';
   let url: URL;

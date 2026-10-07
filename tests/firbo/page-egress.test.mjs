@@ -7,7 +7,16 @@ after(() => { globalThis.Deno = originalDeno; });
 
 const endpoint = 'https://egress.example.test/v1/page';
 const token = 'synthetic-page-service-token-32-characters';
-const env = { FIRBO_PAGE_EGRESS_URL: endpoint, FIRBO_PAGE_EGRESS_TOKEN: token };
+const env = { FIRBO_PAGE_EGRESS_URL: endpoint, FIRBO_PAGE_EGRESS_TOKEN: token, FIRBO_PAGE_EGRESS_ENABLED: 'on' };
+
+test('configured page transport stays closed until its independent release is enabled', async () => {
+  for (const enabled of [undefined, '', 'off', 'true', 'ON']) {
+    globalThis.Deno = { env: { get: key => ({ ...env, FIRBO_PAGE_EGRESS_ENABLED: enabled })[key] } };
+    let calls = 0;
+    await assert.rejects(pageEgressFetch('https://news.example.com/a', async () => { calls++; }), /page_egress_unavailable/);
+    assert.equal(calls, 0);
+  }
+});
 
 test('missing or malformed configuration cannot dispatch the target directly', async () => {
   for (const changed of [
