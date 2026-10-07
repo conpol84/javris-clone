@@ -11,7 +11,7 @@ function query(data: unknown = null, error: { code?: string; message?: string } 
   };
 }
 const content = { name: ' My Skill ', instructions: ' Read the evidence first. ' };
-const saved = { id: 'skill-1', name: 'My Skill', instructions: 'Read the evidence first.' };
+const saved = { id: 'skill-1', name: 'My Skill', instructions: 'Read the evidence first.', agent_id: null };
 
 describe('skill writes and confirmed outcomes', () => {
   beforeEach(() => vi.clearAllMocks());
@@ -51,7 +51,15 @@ describe('skill writes and confirmed outcomes', () => {
     const write = query(saved); from.mockReturnValue(write);
     await expect(updateSkill('org-1', 'skill-1', content)).resolves.toEqual(saved);
     expect(write.eq.mock.calls).toEqual([['organization_id', 'org-1'], ['id', 'skill-1']]);
-    expect(write.update).toHaveBeenCalledWith({ name: 'My Skill', instructions: 'Read the evidence first.', description: '' });
+    expect(write.update).toHaveBeenCalledWith({ name: 'My Skill', instructions: 'Read the evidence first.', description: '', agent_id: null });
+  });
+  it('verifies the returned employee when reassigning a skill', async () => {
+    const reassigned = { ...saved, agent_id: 'employee-2' };
+    const write = query(reassigned); from.mockReturnValue(write);
+    await expect(updateSkill('org-1', 'skill-1', { ...content, agentId: 'employee-2' })).resolves.toEqual(reassigned);
+    expect(write.update).toHaveBeenCalledWith({ name: 'My Skill', instructions: 'Read the evidence first.', description: '', agent_id: 'employee-2' });
+    from.mockReturnValue(query({ ...saved, agent_id: 'employee-1' }));
+    await expect(updateSkill('org-1', 'skill-1', { ...content, agentId: 'employee-2' })).rejects.toThrow('skill_not_changed');
   });
   it('rejects RLS-filtered edits and stale returned content', async () => {
     from.mockReturnValue(query(null));
