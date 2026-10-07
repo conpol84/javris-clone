@@ -752,7 +752,8 @@ export function localCapabilities(cfg) {
   if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && cfg?.browserSites?.length) kinds.push('browser_task');
   if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
   // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
-  return Array.isArray(cfg?.roots) && cfg.roots.length ? { job_kinds: kinds, roots: cfg.roots.slice(0, 8) } : { job_kinds: kinds };
+  const base = { job_kinds: kinds, ...(cfg?.fullControl === true ? { full_control: true } : {}) };
+  return Array.isArray(cfg?.roots) && cfg.roots.length ? { ...base, roots: cfg.roots.slice(0, 8) } : base;
 }
 const retryableConnection = error => error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
 
