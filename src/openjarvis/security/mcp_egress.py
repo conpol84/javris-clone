@@ -231,9 +231,21 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
             raise EgressDenied("redirect_denied")
         if res.getheader("Content-Encoding", "identity").lower() != "identity":
             raise EgressDenied("encoding_denied")
-        length = res.getheader("Content-Length")
+        lengths = res.headers.get_all("Content-Length") or []
+        transfers = res.headers.get_all("Transfer-Encoding") or []
+        if (
+            len(lengths) > 1
+            or len(transfers) > 1
+            or (transfers and lengths)
+            or (transfers and transfers[0].lower() != "chunked")
+        ):
+            raise EgressDenied("response_framing_denied")
+        length = lengths[0] if lengths else None
         if length is not None and (
-            not length.isdecimal() or int(length) > MAX_RESPONSE
+            not 1 <= len(length) <= 6
+            or not length.isascii()
+            or not length.isdecimal()
+            or int(length) > MAX_RESPONSE
         ):
             raise EgressDenied("response_too_large")
         chunks, size = [], 0
@@ -246,6 +258,10 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
             if size > MAX_RESPONSE:
                 raise EgressDenied("response_too_large")
             chunks.append(chunk)
+        # read1() permits EOF before Content-Length without IncompleteRead.
+        # Never reframe a partial upstream body as a complete successful reply.
+        if length is not None and size != int(length):
+            raise EgressDenied("response_incomplete")
         content_type = res.getheader("Content-Type", "application/json")
         if not re.fullmatch(r"[\x20-\x7e]{1,150}", content_type):
             raise EgressDenied("headers_denied")
@@ -260,6 +276,8 @@ def forward_mcp(envelope: dict, allowed_origins: frozenset[str]):
     except (OSError, http.client.HTTPException) as exc:
         if conn.expired.is_set() or time.monotonic() >= deadline:
             raise TimeoutError("egress_timeout") from exc
+        if isinstance(exc, http.client.IncompleteRead):
+            raise EgressDenied("response_incomplete") from exc
         raise
     finally:
         conn.stop_deadline()
