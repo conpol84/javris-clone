@@ -17,12 +17,12 @@ destinations; explicit HTTPS URLs ending in those extensions remain supported.
 
 ## Tested / Passed
 
-38 focused bridge/session tests pass. The owner's exact Greek prompt remains
+39 focused bridge/session tests pass. The owner's exact Greek prompt remains
 ordinary server chat, without device discovery or a laptop queue operation.
 The actual CEO session hook calls sendChat and renders its response. English,
 Greek, Windows/relative paths and embedded URL verbs have regressions, while
 explicit browser commands retain their behavior. Full frontend suite: 62 files,
-593 tests passed. TypeScript and production Vite build passed. Existing chunk
+594 tests passed. TypeScript and production Vite build passed. Existing chunk
 size/dynamic-import warnings remain non-failing.
 
 ## Failed / Remains

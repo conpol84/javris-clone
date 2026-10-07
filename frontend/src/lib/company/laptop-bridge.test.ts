@@ -17,6 +17,7 @@ describe('website to laptop browser bridge',()=>{
   'open report.md',
   'Read https://example.com/open/report.md and summarize it',
   'Research example.com',
+  'open http://example.com',
  ])('does not interpret file paths or embedded verbs as browser commands: %s',input=>{
   expect(parseLaptopBrowserCommand(input)).toBeNull();
  });

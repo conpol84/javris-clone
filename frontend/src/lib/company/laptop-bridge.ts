@@ -21,6 +21,7 @@ export function parseLaptopBrowserCommand(input:string){
   /^https?:\/\//i.test(token)||!/\.(?:md|txt|json|py|ts|csv|pdf|docx|xlsx|pptx|log|toml|ya?ml)$/i.test(token)
  ));
  if(!action||(!target&&!direct))return null;
+ if(direct&&/^http:\/\//i.test(direct))return null;
  const url=direct?safeUrl(direct):'https://www.google.com/';
  return url?{url,host:new URL(url).hostname}:null;
 }
