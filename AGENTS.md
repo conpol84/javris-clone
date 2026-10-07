@@ -9,3 +9,9 @@ concrete reason. Verify the current branch and live state before release.
 Never force-push or discard another session's changes. Merge newer work from
 both active branches, inspect overlapping changes, and test the combined tree.
 Keep PR #13 CI-only; never merge it into main.
+
+When more than one chat is active, read the latest coordination comments on
+GitHub Issue #52 before editing or releasing. Follow
+`docs/FIRBO-RELEASE-COORDINATION.md`: declare a narrow file scope, use a separate
+worktree, and reconcile new heads before a single designated release owner acts.
+Do not infer agreement merely from posting a claim or seeing another worktree.

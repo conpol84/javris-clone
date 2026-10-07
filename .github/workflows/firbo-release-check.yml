@@ -1,0 +1,28 @@
+name: Firbo shared release reconciliation
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - 'AGENTS.md'
+      - 'docs/FIRBO-RELEASE-COORDINATION.md'
+      - 'tools/firbo-release-check.mjs'
+      - 'tests/firbo/release-check.test.mjs'
+      - 'supabase/functions/**'
+      - 'frontend/public/firbo-*.mjs'
+      - 'frontend/public/FIRBO-Mac-Browser-Update.command'
+      - '.github/workflows/firbo-release-check.yml'
+permissions:
+  contents: read
+jobs:
+  release-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Reject stale heads, incomplete bundles and mismatched deployments
+        run: node --test tests/firbo/release-check.test.mjs
+      - name: Enumerate every committed critical Edge dependency
+        run: node tools/firbo-release-check.mjs --source "$GITHUB_SHA" --source-only
