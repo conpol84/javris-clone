@@ -73,6 +73,21 @@ describe('actual Skills page controls', () => {
     expect(workspace.addSkill).toHaveBeenCalledWith('org-1', 'self', { name: 'My custom skill', instructions: 'Read our company rules before answering.', agentId: null });
     await vi.waitFor(() => expect(notices.success).toHaveBeenCalledWith(WORKSPACE_COPY.en.sDone));
   });
+  it.each(['superpowers-delivery', 'ui-ux-pro-max-review', 'last30days-research', 'humanizer-editing'])('installs the selected %s card only on owner action into the selected company and employee', async slug => {
+    fixture.orgId = 'selected-firbo-org'; fixture.userId = 'selected-owner';
+    workspace.addSkill.mockResolvedValue(skill);
+    const tree = page('owner', { skills: [], target: 'selected-employee' });
+    expect(workspace.addSkill).not.toHaveBeenCalled();
+    const card = elements(tree).find(e => e.type === 'li' && e.key === slug)!;
+    expect(card).toBeDefined();
+    expect(text(card)).toContain('Installation does not grant new permissions.');
+    elements(card).find(e => e.type === 'button')!.props.onClick?.();
+    expect(workspace.addSkill).toHaveBeenCalledExactlyOnceWith('selected-firbo-org', 'selected-owner', expect.objectContaining({
+      slug, agentId: 'selected-employee', source: 'library', instructions: expect.stringContaining('never report execution without a real result'),
+    }));
+    await vi.waitFor(() => expect(workspace.listSkills).toHaveBeenCalledWith('selected-firbo-org'));
+    expect(notices.success).toHaveBeenCalledWith(WORKSPACE_COPY.en.sDone);
+  });
   it('saves edits to the installed skill rather than inserting a second one', async () => {
     workspace.updateSkill.mockResolvedValue(skill);
     const tree = page('owner', { name: 'New name', instructions: 'Updated precise instructions.', editing: skill });

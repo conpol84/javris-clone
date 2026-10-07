@@ -1,3 +1,5 @@
+import { SELECTED_SKILL_LIBRARY } from './selectedSkillLibrary';
+
 // Ready-made skills (OpenJarvis's skills library, adapted for business work). The instructions are given to the
 // AI employee in English; it still writes in the company's language. Names and blurbs are shown in the user's language.
 export interface LibrarySkill {
@@ -60,6 +62,7 @@ export const SKILL_LIBRARY: LibrarySkill[] = ([
     instructions: 'Read the release notes, acceptance criteria and accessible evidence supplied. Build a table of changed, tested, passed, failed and remaining, with a source reference for each. Distinguish source changes, preview and production. Do not infer that deployment happened or all tests passed from a plan, green page or older commit. End with specific blockers and the next acceptance action.' },
   { slug: 'practical-plan', names: n('Practical action plan', 'Πρακτικό πλάνο ενεργειών', 'Plan de acción práctico', 'Plano de ação prático', 'Praktischer Aktionsplan', 'Plan d’action pratique', '实用行动计划', 'خطة عمل عملية'), requiredTools: ['knowledge_search'],
     instructions: 'Use the company goal, constraints and supplied facts to produce a manageable action plan. For each step specify owner if known, prerequisite, expected result and how to check completion. Mark unknown costs and dates rather than inventing them. Separate advice and draft actions from actions actually executed. Finish with the first action that can be completed using the available tools.' },
+  ...SELECTED_SKILL_LIBRARY,
 ] satisfies LibrarySkill[]).map(s => ({ ...s, instructions: `${s.instructions}\n\nUse only tools and connections enabled for this employee. Installation does not grant new permissions. If a required capability is unavailable, report what is blocked and provide a useful draft. External actions follow the employee\'s approval policy; never report execution without a real result.` }));
 
 export const skillName = (s: LibrarySkill, lang: string) => s.names[lang] ?? s.names.en;
