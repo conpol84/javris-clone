@@ -50,7 +50,7 @@ export async function createOrganization(name: string): Promise<string> {
 export async function listAgents(orgId: string): Promise<AgentRow[]> {
   const { data, error } = await requireClient()
     .from('agents')
-    .select('id, name, slug, type, description, model, enabled, autonomous, autonomy, monthly_budget_usd, persona, agent_tools(id, tool_name, enabled, policy)')
+    .select('id, name, slug, type, description, owner_instructions, model, enabled, autonomous, autonomy, monthly_budget_usd, persona, agent_tools(id, tool_name, enabled, policy)')
     .eq('organization_id', orgId)
     .order('created_at');
   return fail(error, data) as unknown as AgentRow[];
@@ -283,7 +283,7 @@ export async function loadUsageSince(orgId: string, days: number): Promise<Usage
 // ------------------------------------------------------------- agents & policy
 export async function updateAgent(
   agentId: string,
-  patch: Partial<{ enabled: boolean; autonomy: Autonomy; monthly_budget_usd: number | null; model: string; system_prompt: string; name: string; persona: Record<string, number> }>,
+  patch: Partial<{ enabled: boolean; autonomy: Autonomy; monthly_budget_usd: number | null; model: string; system_prompt: string; owner_instructions: string; name: string; persona: Record<string, number> }>,
 ): Promise<void> {
   const { error } = await requireClient().from('agents').update(patch).eq('id', agentId);
   fail(error, null);

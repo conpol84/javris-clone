@@ -8,8 +8,9 @@ import { ServiceAccessPanel } from '../gateway/ServiceAccessPanel';
 import { ServerToolCheck } from './ServerToolCheck';
 import { serverExecution } from '../../../../supabase/functions/_shared/server-execution';
 
-// The server agent's own dashboard (behind a Caddy password on the VPS).
-const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://jarvis.firboai.app';
+// Normal Firbo-authenticated entrypoint. The legacy VPS dashboard may still exist
+// separately, but users should not need a browser Basic-Auth prompt to reach Jarvis.
+const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://javris.firboai.app/coding';
 
 interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string; runtime?: unknown }
 interface Turn { q: string; a: string; meta: string; error?: boolean; execution?: unknown }

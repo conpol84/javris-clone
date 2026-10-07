@@ -54,6 +54,7 @@ function compactForFree(i: { agent: any; org: any; profile: Record<string, strin
   const build = (snapChars: number, turns: number) => {
     const system = [
       clipTo(i.agent.system_prompt || `You are ${i.agent.name}, an AI employee.`, 260),
+      i.agent.owner_instructions ? `Owner style: ${clipTo(i.agent.owner_instructions, 500)}` : '',
       `Company: ${clipTo(i.org?.name, 60)}.${i.profile.goal ? ` Goal: ${clipTo(i.profile.goal, 120)}.` : ''}`,
       i.voice && snapChars > 0 ? clipTo(i.snapshot, snapChars) : '',
       `Reply in ${LANG_NAME[i.lang] ?? 'English'} unless the teammate writes in another language. ${i.voice ? 'Spoken conversation: answer in one to three short natural sentences, no markdown or lists. Use only the company data above and never invent numbers.' : 'Be concise.'}`,
@@ -114,7 +115,7 @@ Deno.serve(async (req) => {
   if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
   if (!convo.agent_id) return json(422, { error: 'no_agent' });
   const admin = createClient(url, service);
-  const { data: agent } = await admin.from('agents').select('id, name, type, system_prompt, model, temperature, enabled, monthly_budget_usd')
+  const { data: agent } = await admin.from('agents').select('id, name, type, system_prompt, owner_instructions, model, temperature, enabled, monthly_budget_usd')
     .eq('id', convo.agent_id).eq('organization_id', convo.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
@@ -190,6 +191,7 @@ Deno.serve(async (req) => {
   ].join('\n');
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
+    ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current request):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
     ...(knowledgeBlock ? [knowledgeBlock] : []),

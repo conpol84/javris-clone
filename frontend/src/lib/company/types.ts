@@ -33,6 +33,7 @@ export interface AgentRow {
   slug: string;
   type: string;
   description: string | null;
+  owner_instructions?: string | null;
   model: string;
   enabled: boolean;
   autonomous: boolean;

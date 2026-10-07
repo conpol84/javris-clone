@@ -242,8 +242,13 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
     if (cfg.allowBrowser !== true || cfg.allowBrowserControl !== true) throw new Error('browser_control_disabled');
     const { executeBrowserPlan } = await import('./firbo-browser.mjs');
     return executeBrowserPlan(p, cfg, {signal,
-      // Never inherit --auto for browser control. A remote step cannot approve itself.
-      confirm:(kind, detail, stop)=>confirmLocally({...cfg,auto:false}, `${kind}: ${JSON.stringify(detail)}`, stop),
+      // Full Control may skip duplicate local prompts for the reviewed browser plan,
+      // actions and captures. Actual non-GET/HEAD network mutations still require
+      // a local confirmation and sensitive credential fields remain blocked.
+      confirm:(kind, detail, stop)=>confirmLocally(
+        {...cfg,auto:cfg.fullControl===true && kind!=='browser_request'},
+        `${kind}: ${JSON.stringify(detail)}`, stop
+      ),
       onProgress:progress=>console.log(`Firbo browser: ${JSON.stringify(progress)}`),
       readFile:async(target,limit)=>{
         const handle=await openRegular(await jobPath(target,roots,cfg),false,false);
@@ -747,7 +752,8 @@ export function localCapabilities(cfg) {
   if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && cfg?.browserSites?.length) kinds.push('browser_task');
   if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
   // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
-  return Array.isArray(cfg?.roots) && cfg.roots.length ? { job_kinds: kinds, roots: cfg.roots.slice(0, 8) } : { job_kinds: kinds };
+  const base = { job_kinds: kinds, ...(cfg?.fullControl === true ? { full_control: true } : {}) };
+  return Array.isArray(cfg?.roots) && cfg.roots.length ? { ...base, roots: cfg.roots.slice(0, 8) } : base;
 }
 const retryableConnection = error => error?.status === 429 || error?.status >= 500 || ['connector_unreachable', 'connector_timeout'].includes(error?.message);
 
@@ -872,7 +878,7 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   try {
     const res = await callFn('pair', { code: normalized, platform: `${os.platform()} ${os.arch()}` });
     if (typeof res?.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, ...(args.allowApps === true ? { allowApps: true } : {}) };
+    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, ...(args.fullControl === true ? { fullControl: true } : {}), ...(args.allowApps === true ? { allowApps: true } : {}) };
     try {
       await handle.writeFile(JSON.stringify(cfg, null, 2));
       await handle.sync();
@@ -909,6 +915,7 @@ export function parseArgs(argv) {
     else if (a === '--allow-exec') out.allowExec = true;
     else if (a === '--allow-browser') out.allowBrowser = true;
     else if (a === '--allow-apps') out.allowApps = true;
+    else if (a === '--full-control') out.fullControl = true;
     else if (a === '--browser-site') {
       const site=argv[++i]; if(!site||site.startsWith('--'))throw new Error('invalid_browser_plan');
       (out.browserSites ??= []).push(site);
@@ -924,12 +931,12 @@ async function main() {
   const [cmd, arg] = args._;
   if (cmd === 'run' || cmd === 'pair') requireDurableNode();
   if (cmd === 'pair') {
-    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser] [--allow-apps]');
+    if (!arg) throw new Error('Usage: node firbo-connector.mjs pair <CODE> [--allow <folder>] [--allow-write] [--allow-exec] [--allow-browser] [--allow-apps] [--full-control]');
     const { cfg, deviceName } = await pairConnector(arg, args);
     const { roots } = cfg;
     console.log(`Paired as "${deviceName}".`);
     console.log(roots.length ? `Allowed folders: ${roots.join(', ')}` : 'Browser-only connection: file and shell access are off.');
-    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Apps/Shortcuts: ${cfg.allowApps ? 'allowed' : 'off'}   Ask for write/exec: ${cfg.auto ? 'no' : 'yes'}`);
+    console.log(`Writing files: ${cfg.allowWrite ? 'allowed' : 'off'}   Running commands: ${cfg.allowExec ? 'allowed' : 'off'}   Browser opening: ${cfg.allowBrowser ? 'allowed' : 'off'}   Apps/Shortcuts: ${cfg.allowApps ? 'allowed' : 'off'}   Local Full Control: ${cfg.fullControl ? 'on' : 'off'}`);
     console.log('Now run:  node firbo-connector.mjs run');
     return;
   }
@@ -942,6 +949,27 @@ async function main() {
   }
   if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then pair with --allow <folder> and/or --allow-browser.');
   // Change one local permission without pairing again. Each one is your decision on this computer, not Firbo's.
+  if (cmd === 'full-control') {
+    const enabled = arg !== 'off';
+    cfg.fullControl = enabled;
+    if (enabled) {
+      cfg.allowBrowser = true;
+      cfg.allowApps = true;
+      cfg.allowWrite = true;
+      cfg.auto = true;
+      if (!Array.isArray(cfg.roots) || cfg.roots.length === 0) {
+        cfg.roots = [await fs.realpath(path.join(os.homedir(), 'Documents'))];
+      }
+      console.log('Firbo Full Control is ON for owner-approved file, app and browser work. Shell execution remains separately controlled.');
+    } else {
+      cfg.fullControl = false;
+      cfg.auto = false;
+      console.log('Firbo Full Control is OFF. Existing local capabilities remain, with local prompts restored.');
+    }
+    await fs.writeFile(CONFIG, JSON.stringify(cfg, null, 2), { mode: 0o600 });
+    console.log('Restart with: node firbo-connector.mjs run');
+    return;
+  }
   const SETTINGS = {
     'allow-browser': ['allowBrowser', 'Website/voice browser opening is now allowed.'],
     'allow-apps': ['allowApps', 'AI employees may now open apps and run your Shortcuts (macOS). Shortcuts still ask unless "auto" is on.'],
@@ -968,7 +996,7 @@ async function main() {
     console.log(JSON.stringify({ ...cfg, token: '(hidden)' }, null, 2));
     return;
   }
-  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | allow-browser | allow-apps | allow-write | allow-exec | auto [off] | add-folder <folder> | forget');
+  if (cmd !== 'run') throw new Error('Commands: pair <CODE> | run | status | full-control [off] | allow-browser | allow-apps | allow-write | allow-exec | auto [off] | add-folder <folder> | forget');
   if(args.browserSites?.length){
     const { browserOrigin, verifyBrowserRuntime }=await import('./firbo-browser.mjs');
     if(!cfg.allowBrowser)throw new Error('browser_disabled');

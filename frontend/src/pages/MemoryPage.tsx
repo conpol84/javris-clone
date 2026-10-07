@@ -25,6 +25,7 @@ export function MemoryPage() {
   const [items, setItems] = useState<MemoryRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [text, setText] = useState('');
+  const [textAgent, setTextAgent] = useState('');
   const [type, setType] = useState<MemoryType>('instruction');
   const [importance, setImportance] = useState(0.7);
   const [busy, setBusy] = useState(false);
@@ -66,7 +67,7 @@ export function MemoryPage() {
     if (!user || !text.trim() || busy) return;
     setBusy(true);
     try {
-      await addMemory(orgId, user.id, { content: text, type, importance });
+      await addMemory(orgId, user.id, { content: text, type, importance, agentId: textAgent || null });
       setText('');
       toast.success(t('mem.added'));
       await load();
@@ -164,6 +165,12 @@ export function MemoryPage() {
               <div className="fb-eyebrow">{t('mem.add')}</div>
               <textarea className="fb-input" rows={3} maxLength={1000} value={text} onChange={(e) => setText(e.target.value)} placeholder={t('mem.placeholder')} aria-label={t('mem.placeholder')} />
               <div className="flex flex-wrap items-center gap-2">
+                <select className="fb-input" value={textAgent} onChange={(e) => setTextAgent(e.target.value)} aria-label={t('mem.uploadFor')}>
+                  <option value="">{t('mem.uploadEveryone')}</option>
+                  {agents.filter((a) => a.enabled).map((a) => (
+                    <option key={a.id} value={a.id}>{agentLabel(a, i18n).name}</option>
+                  ))}
+                </select>
                 <select className="fb-input" value={type} onChange={(e) => setType(e.target.value as MemoryType)} aria-label={t('mem.typeLabel')}>
                   {MEMORY_TYPES.map((k) => (
                     <option key={k} value={k}>{t(`mem.type.${k}` as TKey)}</option>

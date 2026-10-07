@@ -4,6 +4,8 @@ import { toast } from 'sonner';
 import { policyOf, setAgentPolicy, type ComputerPolicy, type DeviceRow } from '../../lib/company/computers';
 import { connectorCommands, type ComputerPlatform } from '../../lib/company/computer-setup';
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
+import { useI18n } from '../../i18n/I18nProvider';
+import { agentAccessLabels } from '../../lib/company/agent-access-labels';
 
 const list = (text: string) => [...new Set(text.split(',').map(x => x.trim()).filter(Boolean))].slice(0, 40);
 const HOURS = Array.from({ length: 25 }, (_, h) => h);
@@ -11,6 +13,8 @@ const HOURS = Array.from({ length: 25 }, (_, h) => h);
 /** The owner's rules for AI employees on one computer: on/off, apps, files, commands and working hours. */
 export function AgentAccessPanel({ device, platform, onSaved }: { device: DeviceRow; platform: ComputerPlatform; onSaved: () => void }) {
   const c = useWorkspaceCopy();
+  const { lang } = useI18n();
+  const full = agentAccessLabels[lang];
   const [p, setP] = useState<ComputerPolicy>(() => policyOf(device));
   const [apps, setApps] = useState(() => policyOf(device).apps.join(', '));
   const [shortcuts, setShortcuts] = useState(() => policyOf(device).shortcuts.join(', '));
@@ -48,6 +52,14 @@ export function AgentAccessPanel({ device, platform, onSaved }: { device: Device
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={p.enabled} onChange={e => setP({ ...p, enabled: e.target.checked })} /> {c('xOn')}
       </label>
+      <label className="fb-col gap-1 text-sm">
+        <span className="fb-dim text-xs">{full.control}</span>
+        <select className="fb-input" value={p.control} disabled={!p.enabled} onChange={e => setP({ ...p, control: e.target.value as ComputerPolicy['control'] })}>
+          <option value="guarded">{full.guarded}</option>
+          <option value="full">{full.full}</option>
+        </select>
+      </label>
+      {p.enabled && p.control === 'full' && <p className="text-xs" style={{ color: 'var(--fb-warn)' }}>{full.fullHelp}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="fb-col gap-1 text-sm sm:col-span-2">
           <span className="fb-dim text-xs">{c('xApps')}</span>
@@ -71,11 +83,11 @@ export function AgentAccessPanel({ device, platform, onSaved }: { device: Device
           <select className="fb-input" style={{ width: 'auto' }} value={p.hours.to} onChange={e => setP({ ...p, hours: { ...p.hours!, to: Number(e.target.value) } })}>{HOURS.slice(1).map(h => <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>)}</select>
         </>}
       </div>
-      {p.enabled && missing.length > 0 && (
+      {p.enabled && (missing.length > 0 || p.control === 'full') && (
         <div className="fb-col gap-1 text-xs">
-          <p>{c('xLocal')}</p>
+          <p>{p.control === 'full' ? full.localFull : c('xLocal')}</p>
           <a className="fb-btn fb-btn--ghost self-start" href="/firbo-connector.mjs" download><Download size={14} /> firbo-connector.mjs</a>
-          {[...missing, cmd.run].map(line => <code key={line} className="fb-input block overflow-x-auto whitespace-nowrap p-2 font-mono" style={{ height: 'auto' }}>{line}</code>)}
+          {(p.control === 'full' ? [cmd.fullControl, cmd.run] : [...missing, cmd.run]).map(line => <code key={line} className="fb-input block overflow-x-auto whitespace-nowrap p-2 font-mono" style={{ height: 'auto' }}>{line}</code>)}
         </div>
       )}
       <p className="fb-dim text-xs">{c('xPower')}</p>

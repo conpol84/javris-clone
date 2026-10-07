@@ -5,6 +5,7 @@ import { devicePresence } from './computer-state';
 /** What AI employees may do on a computer (same shape as the server's computer-policy.ts). */
 export interface ComputerPolicy {
   enabled: boolean;
+  control: 'guarded' | 'full';
   apps: string[];
   shortcuts: string[];
   writes: 'auto' | 'ask' | 'off';
@@ -14,7 +15,7 @@ export interface ComputerPolicy {
 export const DEFAULT_APPS = ['Safari', 'Google Chrome', 'Finder', 'Notes', 'Mail', 'Calendar', 'Preview', 'TextEdit', 'Numbers', 'Pages', 'Keynote', 'Microsoft Excel', 'Microsoft Word', 'Visual Studio Code'];
 export function policyOf(d: DeviceRow): ComputerPolicy {
   const p = (d.agent_policy ?? {}) as Partial<ComputerPolicy>;
-  return { enabled: p.enabled === true, apps: Array.isArray(p.apps) ? p.apps : DEFAULT_APPS, shortcuts: Array.isArray(p.shortcuts) ? p.shortcuts : [],
+  return { enabled: p.enabled === true, control: p.control === 'full' ? 'full' : 'guarded', apps: Array.isArray(p.apps) ? p.apps : DEFAULT_APPS, shortcuts: Array.isArray(p.shortcuts) ? p.shortcuts : [],
     writes: p.writes ?? 'auto', commands: p.commands ?? 'safe', hours: p.hours ?? null };
 }
 
@@ -24,7 +25,7 @@ export interface DeviceRow {
   platform: string | null;
   paired: boolean;
   last_seen_at: string | null;
-  capabilities: { job_kinds?: string[]; roots?: string[] } | null;
+  capabilities: { job_kinds?: string[]; roots?: string[]; full_control?: boolean } | null;
   agent_policy?: Record<string, unknown> | null;
   revoked_at: string | null;
   created_at: string;

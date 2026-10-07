@@ -6,6 +6,7 @@ import type { TaskResult } from '../../lib/company/types';
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
 import { isPresentation, parseSlides } from '../../lib/company/slides';
 import { SlideDeck } from './SlideDeck';
+import { ReportSpeakButton } from './ReportSpeakButton';
 
 const STEP_ICON = { web_search: Search, read_page: Globe, memory_search: BookOpen, think: Brain, calculator: Calculator, weather: CloudSun, exchange_rate: Coins,
   knowledge_search: Library, generate_image: ImagePlus, analyze_image: ScanEye, server_task: Server } as const;
@@ -33,6 +34,7 @@ export function ReportView({ result, compact = false }: { result: TaskResult; co
   const steps = result.steps ?? [];
   return (
     <div className="fb-col gap-3">
+      {report && <ReportSpeakButton report={report} />}
       {steps.length > 0 && (
         <div>
           <div className="fb-eyebrow mb-1">{t('report.steps', { count: steps.length })}</div>

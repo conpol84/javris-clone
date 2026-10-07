@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectDeliverable, needsPolish, slidesIn, deliverableInstructions } from '../../supabase/functions/_shared/deliverables.ts';
+import { detectDeliverable, needsPolish, slidesIn, deliverableInstructions, requestedSlideCount } from '../../supabase/functions/_shared/deliverables.ts';
 
 test('the work product is recognised from the task, in several languages', () => {
   assert.equal(detectDeliverable('Φτιάξε παρουσίαση για τους επενδυτές'), 'presentation');
@@ -38,4 +38,17 @@ test('the title decides: an analysis that will become slides later is still a re
   assert.equal(detectDeliverable('Ανάλυση ανταγωνισμού: εφαρμογές player trading', 'Το αποτέλεσμα θα γίνει μετά παρουσίαση για τη διοίκηση.'), 'report');
   assert.equal(detectDeliverable('Q4 για τη διοίκηση', 'Φτιάξε παρουσίαση 10 διαφανειών'), 'presentation');
   assert.equal(detectDeliverable('Παρουσίαση: ανάλυση αγοράς'), 'presentation');
+});
+
+test('an explicit slide count becomes an exact generation and polish contract', () => {
+  assert.equal(requestedSlideCount('Presentation: Q4 — 10 slides'), 10);
+  assert.equal(requestedSlideCount('Παρουσίαση', 'Φτιάξε 12 διαφάνειες για τη διοίκηση'), 12);
+  assert.equal(requestedSlideCount('Deck', 'presentation with 8 slides'), 8);
+  assert.equal(requestedSlideCount('Presentation', 'make it concise'), null);
+  assert.equal(requestedSlideCount('Presentation', '100 slides'), null);
+  assert.match(deliverableInstructions('presentation', 10), /exactly 10 slides/);
+  const eight = Array.from({ length: 8 }, (_, i) => `# Slide ${i + 1}\n- point`).join('\n---\n');
+  const ten = Array.from({ length: 10 }, (_, i) => `# Slide ${i + 1}\n- point`).join('\n---\n');
+  assert.equal(needsPolish('presentation', eight, 10), true);
+  assert.equal(needsPolish('presentation', ten, 10), false);
 });

@@ -21,11 +21,24 @@ export function detectDeliverable(title: string, description = ''): Deliverable 
   return 'report';
 }
 
+const SLIDE_WORD = String.raw`(?:slides?|slide[ -]?deck|διαφ(?:άνειες|ανειες|ανειών|ανειων)|σλάιντ|presentaci[oó]n|diapositivas?|apresenta[cç][aã]o|folien|diapositives?|幻灯片|شرائح)`;
+
+/** Explicit slide count requested by the owner, bounded to a realistic deck size. */
+export function requestedSlideCount(title: string, description = ''): number | null {
+  const text = `${title} ${description}`;
+  const before = new RegExp(`\\b(\\d{1,2})\\s*[-–—]?\\s*${SLIDE_WORD}`, 'i').exec(text);
+  const after = new RegExp(`${SLIDE_WORD}\\s*(?:of|με|de|com|mit|avec|共|من)?\\s*(\\d{1,2})\\b`, 'i').exec(text);
+  const raw = Number(before?.[1] ?? after?.[1] ?? NaN);
+  return Number.isSafeInteger(raw) && raw >= 3 && raw <= 30 ? raw : null;
+}
+
 /** The standard the report field must meet, added to the employee's instructions. */
-export function deliverableInstructions(kind: Deliverable): string {
+export function deliverableInstructions(kind: Deliverable, slideCount: number | null = null): string {
   if (kind === 'presentation') {
     return [
-      'DELIVERABLE: a presentation. The "report" field must be the slides themselves, 8 to 12 slides, in markdown:',
+      slideCount
+        ? `DELIVERABLE: a presentation. The "report" field must contain exactly ${slideCount} slides in markdown — not fewer and not more:`
+        : 'DELIVERABLE: a presentation. The "report" field must be the slides themselves, 8 to 12 slides, in markdown:',
       '- Separate slides with a line containing only ---',
       '- Each slide starts with "# " and a short, specific title (a message, not a label: "Online sales grew 18% in Q3", not "Sales").',
       '- Then 3 to 5 concise bullet points with concrete facts, figures, names and dates from your material. No paragraphs on slides.',
@@ -59,20 +72,20 @@ export function slidesIn(report: string): string[] {
 }
 
 /** True when a draft is below the standard of its deliverable, so one improvement pass is worth it. */
-export function needsPolish(kind: Deliverable, report: string): boolean {
+export function needsPolish(kind: Deliverable, report: string, slideCount: number | null = null): boolean {
   const text = report.trim();
-  if (kind === 'presentation') return slidesIn(text).length < 6;
+  if (kind === 'presentation') return slideCount ? slidesIn(text).length !== slideCount : slidesIn(text).length < 6;
   if (kind === 'memo') return text.length < 250;
   const headings = (text.match(/^#{1,3}\s/gm) ?? []).length;
   return text.length < 1800 || headings < 3;
 }
 
 /** System prompt for the improvement pass: same facts, the full professional standard. */
-export function polishSystem(kind: Deliverable, languageName: string): string {
+export function polishSystem(kind: Deliverable, languageName: string, slideCount: number | null = null): string {
   return [
     'You are a senior editor at a top consulting firm. Rewrite the DRAFT below into the finished deliverable.',
     'Use ONLY the facts, figures and links in the DRAFT and the MATERIAL; never add new facts, numbers or links. You may add structure, analysis of what the facts mean for the company, and clear recommendations.',
-    deliverableInstructions(kind),
+    deliverableInstructions(kind, slideCount),
     `Write in ${languageName}. Reply with ONLY one JSON object: {"summary": string (max 300 chars), "report": string, "actions": []}.`,
   ].join('\n\n');
 }

@@ -31,7 +31,7 @@ curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
 (
   cd "$firbo_stage"
   shasum -a 256 -c <<'HASHES'
-bb64b0b4b919d209b3808b8aebf3e3d03a94264a974ce6a6d96276c08e864b5b  firbo-connector.mjs
+ae0744fdb28c19baaa0aa40232ab38f7b7c825ca3c3eaa8d37e33c70288c5381  firbo-connector.mjs
 2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3  firbo-browser.mjs
 HASHES
 )
@@ -50,7 +50,11 @@ for firbo_file in firbo-connector.mjs firbo-browser.mjs; do
   install -m 600 "$firbo_stage/$firbo_file" "$HOME/Downloads/$firbo_file"
 done
 echo "Previous files are kept in $firbo_backup"
+read -r -p 'Enable FIRBO Full Control for apps, allowed files and reviewed browser work? [y/N] ' firbo_full
+case "$firbo_full" in
+  y|Y|yes|YES) node "$HOME/Downloads/firbo-connector.mjs" full-control ;;
+  *) echo 'Full Control was not enabled. Existing local permissions remain.' ;;
+esac
 echo 'Starting the updated Connector. Keep this terminal open.'
-echo 'If browser_disabled appears, enable browser opening locally with:'
-echo 'node "$HOME/Downloads/firbo-connector.mjs" allow-browser'
-node "$HOME/Downloads/firbo-connector.mjs" run --browser-site "$firbo_site"
+echo 'Press Ctrl+C at any time to request Stop.'
+node "$HOME/Downloads/firbo-connector.mjs" run --browser-site "$firbo_site" --browser-site "https://javris.firboai.app"

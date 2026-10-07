@@ -14,9 +14,10 @@ describe('existing Mac browser update', () => {
       expect(html).not.toContain('<button');
     }
   });
-  it('does not carry the notice across selection of an unpaired, revoked, ready or non-Mac device', () => {
-    for (const change of [{ paired: false }, { revoked_at: '2026-10-06' }, { platform: 'Windows 11 x64' }, { platform: null }, { capabilities: { job_kinds: ['browser_task'] } }]) {
+  it('does not carry the notice across selection of an unpaired, revoked, fully ready or non-Mac device', () => {
+    for (const change of [{ paired: false }, { revoked_at: '2026-10-06' }, { platform: 'Windows 11 x64' }, { platform: null }, { capabilities: { job_kinds: ['browser_task'], full_control: true } }]) {
       expect(renderToStaticMarkup(<MacBrowserUpdate device={{ ...device, ...change }} lang="en" />)).toBe('');
     }
+    expect(renderToStaticMarkup(<MacBrowserUpdate device={{ ...device, capabilities: { job_kinds: ['browser_task'] } }} lang="en" />)).toContain('data-testid="mac-browser-update"');
   });
 });
