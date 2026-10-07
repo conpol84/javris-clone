@@ -17,17 +17,57 @@ import {
   Loader2,
   ScrollText,
   Database,
+  Building2,
+  LogOut,
+  Sparkles,
+  LayoutDashboard,
+  Box,
+  Waypoints,
+  Users,
+  Inbox,
+  ListChecks,
+  History,
+  Clock3,
+  Plug,
+  Shield,
+  Mic,
+  Store,
+  Award,
+  Brain,
+  Library,
+  Workflow,
+  CreditCard,
+  Layers,
+  Terminal,
+  Orbit,
 } from 'lucide-react';
+import { COMPANY_ENABLED } from '../../lib/company/client';
+import type { TKey } from '../../i18n/locales/en';
+import { LogoMark } from '../brand/Logo';
+import { LanguageSwitcher } from '../brand/LanguageSwitcher';
+import { OrgSwitcher } from '../company/OrgSwitcher';
+import { usePlatformAdmin } from '../../lib/company/admin';
+import { useI18n } from '../../i18n/I18nProvider';
+import { CHAT_PATH } from '../../lib/company/routes';
+import { useCommand } from '../command/CommandHost';
+import { useCompanyAuth } from '../../lib/company/AuthProvider';
+import { usePendingCount } from '../../lib/company/usePendingCount';
 import { ConversationList } from './ConversationList';
 import { useAppStore } from '../../lib/store';
 
 export function Sidebar() {
   const navigate = useNavigate();
+  const isPlatformAdmin = usePlatformAdmin();
   const location = useLocation();
   const [searchQuery, setSearchQuery] = useState('');
 
   const sidebarOpen = useAppStore((s) => s.sidebarOpen);
   const toggleSidebar = useAppStore((s) => s.toggleSidebar);
+  const setSidebarOpen = useAppStore((s) => s.setSidebarOpen);
+  const { current, user, signOut } = useCompanyAuth();
+  const command = useCommand();
+  const { t } = useI18n();
+  const pending = usePendingCount(current?.organization.id ?? '');
   const createConversation = useAppStore((s) => s.createConversation);
   const selectedModel = useAppStore((s) => s.selectedModel);
   const serverInfo = useAppStore((s) => s.serverInfo);
@@ -45,20 +85,54 @@ export function Sidebar() {
   const handleNewChat = () => {
     // Don't create a new chat if the current one is empty
     if (messages.length === 0) {
-      navigate('/');
+      navigate(CHAT_PATH);
       return;
     }
     createConversation(selectedModel);
-    navigate('/');
+    navigate(CHAT_PATH);
   };
 
-  const navItems = [
-    { path: '/', icon: MessageSquare, label: 'Chat' },
-    { path: '/dashboard', icon: BarChart3, label: 'Dashboard' },
-    { path: '/data-sources', icon: Database, label: 'Data Sources' },
-    { path: '/agents', icon: Bot, label: 'Agents' },
-    { path: '/logs', icon: ScrollText, label: 'Logs' },
-    { path: '/settings', icon: Settings, label: 'Settings' },
+  type NavItem = { path: string; icon: typeof Bot; label: string; badge?: number };
+  const workspace: NavItem[] = COMPANY_ENABLED
+    ? [
+        { path: '/', icon: LayoutDashboard, label: t('nav.commandCenter') },
+        { path: '/office', icon: Box, label: t('nav.office') },
+        { path: '/studio', icon: Orbit, label: t('nav.studio') },
+        { path: '/ceo', icon: Mic, label: t('nav.ceo') },
+        { path: '/missions', icon: Rocket, label: t('nav.missions') },
+        { path: '/shifts', icon: Clock3, label: t('nav.shifts') },
+        { path: '/chat', icon: MessageSquare, label: t('nav.chat') },
+        { path: '/team', icon: Users, label: t('nav.team') },
+        { path: '/memory', icon: Brain, label: t('nav.memory') },
+        { path: '/knowledge', icon: Library, label: t('nav.knowledge') },
+        { path: '/skills', icon: Sparkles, label: t('nav.skills') },
+        { path: '/workflows', icon: Workflow, label: t('nav.workflows') },
+        { path: '/reviews', icon: Award, label: t('nav.reviews') },
+        { path: '/store', icon: Store, label: t('nav.store') },
+        { path: '/inbox', icon: Inbox, label: t('nav.inbox'), badge: pending },
+        { path: '/tasks', icon: ListChecks, label: t('nav.tasks') },
+        { path: '/activity', icon: History, label: t('nav.activity') },
+        { path: '/people', icon: Building2, label: t('nav.people') },
+        { path: '/analytics', icon: BarChart3, label: t('nav.analytics') },
+        { path: '/computers', icon: Monitor, label: t('nav.computers') },
+        { path: '/coding', icon: Terminal, label: t('nav.coding') },
+        { path: '/hub', icon: Layers, label: t('nav.hub') },
+        { path: '/integrations', icon: Plug, label: t('nav.integrations') },
+        { path: '/billing', icon: CreditCard, label: t('nav.billing') },
+        { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
+      ]
+    : [];
+  // Company workspace: only pages that work in the hosted product. The legacy local-assistant pages stay for the desktop build.
+  const navItems: NavItem[] = COMPANY_ENABLED
+    ? [...workspace, ...(isPlatformAdmin ? [{ path: '/admin', icon: Shield, label: t('nav.admin') }] : []), { path: '/settings', icon: Settings, label: t('nav.settings') }]
+    : [
+    ...workspace,
+    { path: CHAT_PATH, icon: MessageSquare, label: t('nav.chat') },
+    { path: '/dashboard', icon: BarChart3, label: COMPANY_ENABLED ? t('nav.analytics') : 'Dashboard' },
+    { path: '/data-sources', icon: Database, label: t('nav.dataSources') },
+    { path: '/agents', icon: Bot, label: COMPANY_ENABLED ? t('nav.runtime') : 'Agents' },
+    { path: '/logs', icon: ScrollText, label: t('nav.logs') },
+    { path: '/settings', icon: Settings, label: t('nav.settings') },
     { path: '/get-started', icon: Rocket, label: 'Get Started' },
   ];
 
@@ -68,7 +142,7 @@ export function Sidebar() {
       {!sidebarOpen && (
         <button
           onClick={toggleSidebar}
-          className="fixed top-3 left-3 z-30 p-2 rounded-lg transition-colors cursor-pointer"
+          className="fixed top-3 start-3 z-30 p-2 rounded-lg transition-colors cursor-pointer"
           style={{ color: 'var(--color-text-secondary)', background: 'var(--color-bg-secondary)' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'var(--color-bg-secondary)')}
@@ -87,12 +161,18 @@ export function Sidebar() {
           background: 'var(--color-sidebar)',
           backdropFilter: 'blur(20px)',
           WebkitBackdropFilter: 'blur(20px)',
-          borderRight: sidebarOpen ? '1px solid var(--color-border)' : 'none',
+          borderInlineEnd: sidebarOpen ? '1px solid var(--color-border)' : 'none',
         }}
       >
         <div className="flex flex-col h-full w-[260px]">
           {/* Header */}
-          <div className="flex items-center justify-between px-3 pt-3 pb-2">
+          <button type="button" aria-label="Firbo AI" onClick={() => navigate('/')} className="flex cursor-pointer items-center gap-2 px-4 pt-3.5 text-start">
+            <LogoMark size={22} />
+            <span className="text-sm font-semibold tracking-tight" style={{ color: 'var(--color-text)' }}>
+              Firbo <span style={{ color: 'var(--color-accent)' }}>AI</span>
+            </span>
+          </button>
+          <div className="flex items-center justify-between px-3 pt-2 pb-2">
             <button
               onClick={toggleSidebar}
               className="p-2 rounded-lg transition-colors cursor-pointer"
@@ -109,25 +189,42 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title={`Theme: ${settings.theme} (click for ${nextTheme})`}
+                title={t('settings.themeToggle', { theme: t(`settings.theme.${settings.theme}` as TKey) })}
               >
                 <ThemeIcon size={16} />
               </button>
               <button
-                onClick={handleNewChat}
+                onClick={COMPANY_ENABLED ? () => command.open() : handleNewChat}
                 className="p-2 rounded-lg transition-colors cursor-pointer"
                 style={{ color: 'var(--color-text-secondary)' }}
                 onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--color-bg-tertiary)')}
                 onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-                title="New chat"
+                title={COMPANY_ENABLED ? t('nav.newCommand') : 'New chat'}
               >
                 <Plus size={18} />
               </button>
             </div>
           </div>
 
+          {COMPANY_ENABLED && (
+            <>
+              <button
+                onClick={() => command.open()}
+                className="mx-3 mb-2 flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors cursor-pointer"
+                style={{ background: 'var(--color-accent-subtle)', color: 'var(--color-text)', border: '1px solid var(--color-border)' }}
+              >
+                <Sparkles size={15} style={{ color: 'var(--color-accent)' }} />
+                <span className="flex-1 truncate text-start">{t('nav.newCommand')}</span>
+                <kbd className="rounded px-1.5 py-0.5 font-mono text-[10px]" dir="ltr" style={{ background: 'var(--color-bg-tertiary)', color: 'var(--color-text-tertiary)' }}>
+                  ⌘K
+                </kbd>
+              </button>
+              <OrgSwitcher />
+            </>
+          )}
+
           {/* Model badge */}
-          <button
+          {!COMPANY_ENABLED && (<button
             onClick={() => setCommandPaletteOpen(true)}
             className="mx-3 mb-2 flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors cursor-pointer"
             style={{
@@ -166,10 +263,10 @@ export function Sidebar() {
                 ⌘K
               </kbd>
             )}
-          </button>
+          </button>)}
 
           {/* Search */}
-          <div className="px-3 mb-2">
+          {!COMPANY_ENABLED && (<div className="px-3 mb-2">
             <div
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm"
               style={{ background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)' }}
@@ -184,22 +281,29 @@ export function Sidebar() {
                 style={{ color: 'var(--color-text)' }}
               />
             </div>
-          </div>
+          </div>)}
 
           {/* Conversation list */}
-          <div className="flex-1 overflow-y-auto px-2">
-            <ConversationList searchQuery={searchQuery} />
-          </div>
+          {!COMPANY_ENABLED ? (
+            <div className="flex-1 overflow-y-auto px-2">
+              <ConversationList searchQuery={searchQuery} />
+            </div>
+          ) : (
+            <div className="flex-1" />
+          )}
 
           {/* Bottom nav */}
-          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5" style={{ borderTop: '1px solid var(--color-border)' }}>
+          <nav className="px-2 pb-3 pt-2 flex flex-col gap-0.5 overflow-y-auto" style={{ borderTop: '1px solid var(--color-border)', maxHeight: '62%' }}>
             {navItems.map((item) => {
               const isActive = location.pathname === item.path;
               return (
                 <button
                   key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-left cursor-pointer"
+                  onClick={() => {
+                    navigate(item.path);
+                    if (window.innerWidth < 768) setSidebarOpen(false);
+                  }}
+                  className="relative flex items-center gap-3 px-3 py-2 rounded-lg text-sm transition-colors w-full text-start cursor-pointer"
                   style={{
                     background: isActive ? 'var(--color-accent-subtle)' : 'transparent',
                     color: isActive ? 'var(--color-text)' : 'var(--color-text-secondary)',
@@ -215,7 +319,7 @@ export function Sidebar() {
                   {isActive && (
                     <span
                       aria-hidden="true"
-                      className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
+                      className="absolute start-0 top-1.5 bottom-1.5 w-[2px] rounded-full"
                       style={{
                         background: 'var(--color-accent)',
                         boxShadow: '0 0 8px var(--color-accent-glow)',
@@ -224,10 +328,29 @@ export function Sidebar() {
                   )}
                   <item.icon size={16} style={isActive ? { color: 'var(--color-accent)' } : undefined} />
                   {item.label}
+                  {item.badge ? (
+                    <span dir="ltr" className="ms-auto min-w-[20px] rounded-full px-1.5 text-center text-[11px] font-semibold" style={{ background: 'var(--color-accent)', color: 'var(--color-on-accent)' }}>
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  ) : null}
                 </button>
               );
             })}
           </nav>
+          <div className="flex items-center justify-between gap-2 px-3 pb-3">
+            <LanguageSwitcher className="min-w-0 flex-1" />
+            {COMPANY_ENABLED && (
+              <button
+                onClick={() => void signOut()}
+                className="flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs transition-colors cursor-pointer"
+                style={{ color: 'var(--color-text-secondary)' }}
+                title={user?.email ?? t('common.signOut')}
+                aria-label={t('common.signOut')}
+              >
+                <LogOut size={16} className="rtl:-scale-x-100" />
+              </button>
+            )}
+          </div>
         </div>
       </aside>
     </>

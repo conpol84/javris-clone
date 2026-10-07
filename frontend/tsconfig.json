@@ -21,5 +21,5 @@
     }
   },
   "include": ["src"],
-  "exclude": ["src/components/Desktop"]
+  "exclude": ["src/components/Desktop", "src/lib/company/connector.test.ts"]
 }

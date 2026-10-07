@@ -1,0 +1,18 @@
+/* Existing holographic identity, with usable controls and the full transcript. */
+[data-firbo-voice], [data-firbo-voice] :is(section,header,form,li,header>*,.grid>*,.flex>*) { min-inline-size: 0; }
+[data-firbo-voice] :is(h1,h2,p,[role='status'],li,.fb-eyebrow) { overflow-wrap: anywhere; }
+[data-firbo-voice] li.fb-row { display: block; white-space: pre-wrap; }
+[data-firbo-voice] form input { min-inline-size: 0; }
+[data-firbo-voice='ceo'] .fb-voice-stage { min-block-size:560px; }
+@media(max-width:767px) {
+  [data-firbo-voice] :is(button,input[type='text']) { min-block-size: 44px; }
+  [data-firbo-voice] .fb-btn { white-space: normal; height: auto; overflow-wrap: anywhere; }
+  [data-firbo-voice] form input { font-size:16px; }
+  [data-firbo-voice='ceo'] .fb-voice-stage { min-block-size: 380px; }
+  [data-firbo-voice='ceo'] .fb-voice-stage>.absolute.top-4 { max-inline-size: calc(100% - 2rem); }
+  [data-firbo-voice='ceo'] .fb-voice-stage>.absolute.end-4.top-4 { inset-block-start: 4.5rem; }
+  [data-firbo-voice='ceo'] .fb-voice-stage>[role='status'] { inset-block-start: 8rem; }
+  [data-firbo-voice='talk'] .absolute.bottom-4 { flex-wrap: wrap; column-gap: 0.75rem; }
+  [data-firbo-voice='talk'] [role='tablist'] { flex-wrap: wrap; }
+  [data-firbo-voice='talk'] [role='tab'] { min-block-size:44px; white-space: normal; }
+}

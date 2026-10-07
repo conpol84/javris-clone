@@ -1,0 +1,60 @@
+name: Firbo actual local-model install and useful draft
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','src/openjarvis/server/local_tts.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
+  pull_request:
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
+    paths: ['deploy/hostinger/local_model_rollout.py','src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','src/openjarvis/server/local_tts.py','frontend/src/components/gateway/LocalComputePanel.tsx','tests/firbo/local*','tests/firbo/test_local_rollout.py','.github/workflows/firbo-local-model.yml']
+permissions:
+  contents: read
+concurrency:
+  group: firbo-local-model-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Isolated runtime and installer contracts
+        run: |
+          python3 -m venv /tmp/firbo-local-python
+          /tmp/firbo-local-python/bin/pip install -r tests/firbo/requirements.txt
+          mkdir -p /tmp/firbo-local-evidence
+          set -o pipefail
+          /tmp/firbo-local-python/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_capacity.py tests/firbo/test_local_rollout.py | tee /tmp/firbo-local-evidence/python.txt
+      - name: Real Ollama weights, API-only install, repeat and both rollbacks
+        run: sudo --preserve-env=GITHUB_ACTIONS,GITHUB_REPOSITORY python3 tests/firbo/local_model_docker.py
+      - name: Install pinned npm in a runner-writable prefix
+        run: |
+          npm install --global --prefix "$RUNNER_TEMP/firbo-npm" npm@11.19.0
+          echo "$RUNNER_TEMP/firbo-npm/bin" >> "$GITHUB_PATH"
+      - run: npm ci
+        working-directory: frontend
+      - name: Full frontend tests/types and actual-page workbench build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
+          npx --no-install vite build --config vite.pages.config.ts
+      - name: Real browser and local-draft panel
+        run: |
+          /tmp/firbo-local-python/bin/pip install playwright==1.57.0
+          /tmp/firbo-local-python/bin/python -m playwright install --with-deps chromium
+          (cd frontend && npx --no-install vite preview --config vite.pages.config.ts --host 127.0.0.1 --port 5211) >/tmp/firbo-local-vite.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5211/ >/dev/null && break; sleep 1; done
+          /tmp/firbo-local-python/bin/python tests/firbo/local_compute_browser.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-local-model-evidence
+          path: |
+            /tmp/firbo-local-evidence/
+            /tmp/firbo-local-vite.log
+          retention-days: 7

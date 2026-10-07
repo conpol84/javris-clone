@@ -1,0 +1,4 @@
+/* Real production styles; explicit sources because the fixture root is separate. */
+@import "../../../frontend/src/index.css";
+@source "../../../frontend/src";
+@source "./entry.tsx";

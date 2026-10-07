@@ -1,0 +1,77 @@
+name: Firbo connected devices and four-provider adapters
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['frontend/**','supabase/functions/**','tests/firbo/connections/**','deploy/schema/**','.github/workflows/firbo-connected-world.yml']
+  pull_request:
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8, main]
+    paths: ['frontend/**','supabase/functions/**','tests/firbo/connections/**','deploy/schema/**','.github/workflows/firbo-connected-world.yml']
+permissions:
+  contents: read
+concurrency:
+  group: firbo-world-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  connections:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.6
+        env:
+          POSTGRES_PASSWORD: firbo_ci_only
+          POSTGRES_DB: firbo_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d firbo_test" --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Provider/permission contract tests and complete frontend regression
+        working-directory: frontend
+        run: |
+          npm test
+          npx --no-install tsc -b
+          npm run build:tauri
+          npx --no-install vite build --config vite.world.config.ts
+      - name: Real disposable PostgreSQL privilege and atomicity checks
+        env: {PGPASSWORD: firbo_ci_only}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d firbo_test -v ON_ERROR_STOP=1 -f tests/firbo/connections/postgres-fixture.sql
+          psql -h localhost -U postgres -d firbo_test -v ON_ERROR_STOP=1 -f deploy/schema/firbo_connections.sql
+          mkdir -p /tmp/firbo-world-evidence
+          psql -h localhost -U postgres -d firbo_test -v ON_ERROR_STOP=1 -f tests/firbo/connections/postgres-assertions.sql | tee /tmp/firbo-world-evidence/postgres-results.txt
+      - name: Verify the committed CLI-generated migration and preserve exact evidence
+        run: |
+          set -euo pipefail
+          FILE=supabase/migrations/20261003221256_firbo_connected_services.sql
+          cmp deploy/schema/firbo_connections.sql "$FILE"
+          cp "$FILE" /tmp/firbo-world-evidence/
+          echo "FIRBO_CANDIDATE_MIGRATION=$FILE"
+      - name: Install isolated browser test dependencies
+        run: |
+          python3 -m venv /tmp/firbo-world-python
+          /tmp/firbo-world-python/bin/pip install playwright==1.57.0
+          /tmp/firbo-world-python/bin/python -m playwright install --with-deps chromium
+      - name: Real screens with synthetic accounts and device responses only
+        run: |
+          set -euo pipefail
+          (cd frontend && npx --no-install vite preview --config vite.world.config.ts --host 127.0.0.1 --port 5213) >/tmp/firbo-world-vite.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5213/ >/dev/null && break; sleep 1; done
+          /tmp/firbo-world-python/bin/python tests/firbo/connections/verify.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-connected-world-evidence
+          path: |
+            /tmp/firbo-world-evidence/
+            /tmp/firbo-world-vite.log
+          retention-days: 7

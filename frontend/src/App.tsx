@@ -1,13 +1,10 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Routes, Route } from 'react-router';
+import { Routes, Route, Navigate } from 'react-router';
 import { Layout } from './components/Layout';
-import { ChatPage } from './pages/ChatPage';
-import { DashboardPage } from './pages/DashboardPage';
-import { SettingsPage } from './pages/SettingsPage';
-import { GetStartedPage } from './pages/GetStartedPage';
-import { AgentsPage } from './pages/AgentsPage';
-import { DataSourcesPage } from './pages/DataSourcesPage';
-import { LogsPage } from './pages/LogsPage';
+import { COMPANY_ENABLED } from './lib/company/client';
+import { CompanyAuthProvider } from './lib/company/AuthProvider';
+import { LocaleSync } from './components/company/LocaleSync';
+import { AuthGate } from './components/company/AuthGate';
 import { CommandPalette } from './components/CommandPalette';
 import { SetupScreen } from './components/SetupScreen';
 import { Toaster } from './components/ui/sonner';
@@ -16,8 +13,46 @@ import { fetchModels, fetchServerInfo, fetchSavings, submitSavings, isTauri } fr
 import { OptInModal } from './components/OptInModal';
 import { UpdateChecker } from './components/Desktop/UpdateChecker';
 import { track, hashId } from './lib/analytics';
+import { LEADERBOARD_ENABLED } from './lib/supabase';
+import { lazyPage } from './lib/lazyPage';
 
-export default function App() {
+const ChatPage = lazyPage(() => import('./pages/ChatPage'), 'ChatPage');
+const DashboardPage = lazyPage(() => import('./pages/DashboardPage'), 'DashboardPage');
+const SettingsPage = lazyPage(() => import('./pages/SettingsPage'), 'SettingsPage');
+const GetStartedPage = lazyPage(() => import('./pages/GetStartedPage'), 'GetStartedPage');
+const AgentsPage = lazyPage(() => import('./pages/AgentsPage'), 'AgentsPage');
+const DataSourcesPage = lazyPage(() => import('./pages/DataSourcesPage'), 'DataSourcesPage');
+const LogsPage = lazyPage(() => import('./pages/LogsPage'), 'LogsPage');
+const TasksPage = lazyPage(() => import('./pages/TasksPage'), 'TasksPage');
+const CommandCenterPage = lazyPage(() => import('./pages/CommandCenterPage'), 'CommandCenterPage');
+const OfficePage = lazyPage(() => import('./pages/OfficePage'), 'OfficePage');
+const GatewayPage = lazyPage(() => import('./pages/GatewayPage'), 'GatewayPage');
+const TeamPage = lazyPage(() => import('./pages/TeamPage'), 'TeamPage');
+const InboxPage = lazyPage(() => import('./pages/InboxPage'), 'InboxPage');
+const ActivityPage = lazyPage(() => import('./pages/ActivityPage'), 'ActivityPage');
+const PeoplePage = lazyPage(() => import('./pages/PeoplePage'), 'PeoplePage');
+const FirboSettingsPage = lazyPage(() => import('./pages/FirboSettingsPage'), 'FirboSettingsPage');
+const AdminPage = lazyPage(() => import('./pages/AdminPage'), 'AdminPage');
+const AnalyticsPage = lazyPage(() => import('./pages/AnalyticsPage'), 'AnalyticsPage');
+const ShiftsPage = lazyPage(() => import('./pages/ShiftsPage'), 'ShiftsPage');
+const MissionsPage = lazyPage(() => import('./pages/MissionsPage'), 'MissionsPage');
+const CeoPage = lazyPage(() => import('./pages/CeoPage'), 'CeoPage');
+const StorePage = lazyPage(() => import('./pages/StorePage'), 'StorePage');
+const ReviewsPage = lazyPage(() => import('./pages/ReviewsPage'), 'ReviewsPage');
+const MemoryPage = lazyPage(() => import('./pages/MemoryPage'), 'MemoryPage');
+const KnowledgePage = lazyPage(() => import('./pages/KnowledgePage'), 'KnowledgePage');
+const SkillsPage = lazyPage(() => import('./pages/SkillsPage'), 'SkillsPage');
+const WorkflowsPage = lazyPage(() => import('./pages/WorkflowsPage'), 'WorkflowsPage');
+const BillingPage = lazyPage(() => import('./pages/BillingPage'), 'BillingPage');
+const HubPage = lazyPage(() => import('./pages/HubPage'), 'HubPage');
+const CodingPage = lazyPage(() => import('./pages/CodingPage'), 'CodingPage');
+const ComputersPage = lazyPage(() => import('./pages/ComputersPage'), 'ComputersPage');
+const StudioPage = lazyPage(() => import('./pages/StudioPage'), 'StudioPage');
+const IntegrationsPage = lazyPage(() => import('./pages/IntegrationsPage'), 'IntegrationsPage');
+const AgentChatPage = lazyPage(() => import('./pages/AgentChatPage'), 'AgentChatPage');
+const CompaniesPage = lazyPage(() => import('./pages/CompaniesPage'), 'CompaniesPage');
+
+function AuthedApp() {
   const [setupDone, setSetupDone] = useState(!isTauri());
   const handleSetupReady = useCallback(() => {
     setSetupDone(true);
@@ -51,8 +86,10 @@ export default function App() {
   useEffect(() => {
     const root = document.documentElement;
     root.classList.remove('dark', 'light');
-    if (settings.theme === 'dark') root.classList.add('dark');
-    else if (settings.theme === 'light') root.classList.add('light');
+    // Firbo is designed dark-first: only an explicit "light" choice leaves it.
+    const theme = settings.theme === 'system' && COMPANY_ENABLED ? 'dark' : settings.theme;
+    if (theme === 'dark') root.classList.add('dark');
+    else if (theme === 'light') root.classList.add('light');
   }, [settings.theme]);
 
   // Sync overlay conversations into the main app
@@ -64,8 +101,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [importOverlay]);
 
-  // Fetch models on mount
+  // Fetch models on mount (legacy local-assistant backend: not used by the hosted workspace)
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchModels()
       .then((m) => {
         setModels(m);
@@ -76,11 +114,13 @@ export default function App() {
 
   // Fetch server info
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     fetchServerInfo().then(setServerInfo).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll savings and optionally share to Supabase
   useEffect(() => {
+    if (COMPANY_ENABLED) return;
     const refresh = () =>
       fetchSavings()
         .then((data) => {
@@ -119,7 +159,7 @@ export default function App() {
 
   // Show opt-in modal on first visit
   useEffect(() => {
-    if (!optInModalSeen) {
+    if (LEADERBOARD_ENABLED && !optInModalSeen) {
       setOptInModalOpen(true);
       markOptInModalSeen();
     }
@@ -160,7 +200,7 @@ export default function App() {
   // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if (!COMPANY_ENABLED && (e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
         setCommandPaletteOpen(!commandPaletteOpen);
       }
@@ -183,20 +223,63 @@ export default function App() {
       <UpdateChecker />
       <Routes>
         <Route element={<Layout />}>
-          <Route index element={<ChatPage />} />
-          <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="settings" element={<SettingsPage />} />
-          <Route path="get-started" element={<GetStartedPage />} />
-          <Route path="data-sources" element={<DataSourcesPage />} />
-          <Route path="agents" element={<AgentsPage />} />
-          <Route path="logs" element={<LogsPage />} />
+          <Route index element={COMPANY_ENABLED ? <CommandCenterPage /> : <ChatPage />} />
+          <Route path="chat" element={COMPANY_ENABLED ? <AgentChatPage /> : <ChatPage />} />
+          <Route path="office" element={<OfficePage />} />
+          <Route path="gateway" element={<GatewayPage />} />
+          <Route path="analytics" element={COMPANY_ENABLED ? <AnalyticsPage /> : <Navigate to="/" replace />} />
+          <Route path="integrations" element={COMPANY_ENABLED ? <IntegrationsPage /> : <Navigate to="/" replace />} />
+          <Route path="admin" element={COMPANY_ENABLED ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="studio" element={COMPANY_ENABLED ? <StudioPage /> : <Navigate to="/" replace />} />
+          <Route path="computers" element={COMPANY_ENABLED ? <ComputersPage /> : <Navigate to="/" replace />} />
+          <Route path="coding" element={COMPANY_ENABLED ? <CodingPage /> : <Navigate to="/" replace />} />
+          <Route path="hub" element={COMPANY_ENABLED ? <HubPage /> : <Navigate to="/" replace />} />
+          <Route path="billing" element={COMPANY_ENABLED ? <BillingPage /> : <Navigate to="/" replace />} />
+          <Route path="memory" element={COMPANY_ENABLED ? <MemoryPage /> : <Navigate to="/" replace />} />
+          <Route path="knowledge" element={COMPANY_ENABLED ? <KnowledgePage /> : <Navigate to="/" replace />} />
+          <Route path="skills" element={COMPANY_ENABLED ? <SkillsPage /> : <Navigate to="/" replace />} />
+          <Route path="workflows" element={COMPANY_ENABLED ? <WorkflowsPage /> : <Navigate to="/" replace />} />
+          <Route path="reviews" element={COMPANY_ENABLED ? <ReviewsPage /> : <Navigate to="/" replace />} />
+          <Route path="store" element={COMPANY_ENABLED ? <StorePage /> : <Navigate to="/" replace />} />
+          <Route path="ceo" element={COMPANY_ENABLED ? <CeoPage /> : <Navigate to="/" replace />} />
+          <Route path="missions" element={COMPANY_ENABLED ? <MissionsPage /> : <Navigate to="/" replace />} />
+          <Route path="shifts" element={COMPANY_ENABLED ? <ShiftsPage /> : <Navigate to="/" replace />} />
+          <Route path="companies" element={COMPANY_ENABLED ? <CompaniesPage /> : <Navigate to="/" replace />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="activity" element={<ActivityPage />} />
+          <Route path="people" element={<PeoplePage />} />
+          <Route path="login" element={<Navigate to="/" replace />} />
+          <Route path="signup" element={<Navigate to="/" replace />} />
+          {/* The local-assistant pages need the desktop backend; in the hosted workspace they land on the Command Center. */}
+          <Route path="dashboard" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DashboardPage />} />
+          <Route path="settings" element={COMPANY_ENABLED ? <FirboSettingsPage /> : <SettingsPage />} />
+          <Route path="get-started" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <GetStartedPage />} />
+          <Route path="data-sources" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <DataSourcesPage />} />
+          <Route path="agents" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <AgentsPage />} />
+          <Route path="logs" element={COMPANY_ENABLED ? <Navigate to="/" replace /> : <LogsPage />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="tasks" element={<TasksPage />} />
+          <Route path="company" element={<Navigate to="/tasks" replace />} />
         </Route>
       </Routes>
       <Toaster position="bottom-right" />
-      {commandPaletteOpen && <CommandPalette />}
+      {!COMPANY_ENABLED && commandPaletteOpen && <CommandPalette />}
       {optInModalOpen && (
         <OptInModal onClose={() => setOptInModalOpen(false)} />
       )}
     </>
+  );
+}
+
+/** Public site + login gate first; the app (and its backend calls) only mounts after sign-in. */
+export default function App() {
+  return (
+    <CompanyAuthProvider>
+      <LocaleSync />
+      <AuthGate>
+        <AuthedApp />
+      </AuthGate>
+    </CompanyAuthProvider>
   );
 }

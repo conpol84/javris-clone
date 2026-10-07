@@ -27,6 +27,8 @@ class ChatCompletionRequest(BaseModel):
     temperature: float = 0.7
     max_tokens: int = 1024
     stream: bool = False
+    # Opt-in runtime receipts; never inferred from the model's answer text.
+    firbo_include_execution: bool = False
     tools: Optional[List[Dict[str, Any]]] = None
 
 
@@ -72,6 +74,7 @@ class ChatCompletionResponse(BaseModel):
     choices: List[Choice] = Field(default_factory=list)
     usage: UsageInfo = Field(default_factory=UsageInfo)
     complexity: Optional[ComplexityInfo] = None
+    execution: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------
