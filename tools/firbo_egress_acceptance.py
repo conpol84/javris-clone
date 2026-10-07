@@ -16,6 +16,7 @@ import ipaddress
 import json
 import os
 import re
+import socket
 import ssl
 import sys
 import threading
@@ -108,6 +109,7 @@ def _post(
     timeout: float,
     connection_factory: ConnectionFactory = http.client.HTTPSConnection,
 ) -> dict:
+    deadline = time.monotonic() + timeout
     parsed = urlsplit(url)
     context = ssl.create_default_context()
     connection = connection_factory(
@@ -117,16 +119,31 @@ def _post(
         context=context,
     )
     response = None
+    transport_socket = None
     expired = threading.Event()
 
     def expire() -> None:
         expired.set()
+        # HTTPConnection can relinquish its socket to HTTPResponse after headers.
+        # Closing the connection alone then does nothing; close() also cannot
+        # interrupt a buffered reader that still owns the underlying descriptor.
+        for sock in (transport_socket, connection.sock):
+            if sock is not None:
+                try:
+                    sock.shutdown(socket.SHUT_RDWR)
+                except (AttributeError, OSError):
+                    pass
         connection.close()
 
-    timer = threading.Timer(timeout, expire)
+    def check_deadline() -> None:
+        if expired.is_set() or time.monotonic() >= deadline:
+            _fail("acceptance_deadline_exceeded")
+
+    timer = threading.Timer(max(0.0, deadline - time.monotonic()), expire)
     timer.daemon = True
     timer.start()
     try:
+        check_deadline()
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -136,11 +153,14 @@ def _post(
         if token is not None:
             headers["Authorization"] = "Bearer " + token
         connection.request("POST", parsed.path, body=PROBE_BODY, headers=headers)
-        sock = connection.sock
+        transport_socket = connection.sock
+        check_deadline()
+        sock = transport_socket
         certificate = sock.getpeercert(binary_form=True) if sock is not None else None
         if not certificate:
             _fail("tls_receipt_missing")
         response = connection.getresponse()
+        check_deadline()
         if 300 <= response.status < 400:
             _fail("redirect_denied")
         lengths = response.headers.get_all("Content-Length") or []
@@ -157,9 +177,10 @@ def _post(
         ):
             _fail("response_contract_invalid")
         body = response.read(MAX_RESPONSE + 1)
+        check_deadline()
         if len(body) != int(lengths[0]):
             _fail("response_contract_invalid")
-        return {
+        result = {
             "status": response.status,
             "body_sha256": _sha256(body),
             "tls_peer_sha256": _sha256(certificate),
@@ -170,7 +191,7 @@ def _post(
     except (OSError, TimeoutError, ssl.SSLError, http.client.HTTPException):
         _fail(
             "acceptance_deadline_exceeded"
-            if expired.is_set()
+            if expired.is_set() or time.monotonic() >= deadline
             else "tls_or_transport_failed"
         )
     finally:
@@ -179,6 +200,10 @@ def _post(
         if response is not None:
             response.close()
         connection.close()
+    # Cleanup can overlap a late timer callback. Never publish a receipt after
+    # its deadline, even if the OS or scheduler delivered the watchdog late.
+    check_deadline()
+    return result
 
 
 def _expected(probe: dict, status: int, body: bytes) -> None:
@@ -237,7 +262,7 @@ def acceptance_receipt(
     checked = now or datetime.now(timezone.utc)
     if checked.tzinfo is None:
         _fail("clock_invalid")
-    return {
+    receipt = {
         "schema": "firbo-egress-acceptance/v1",
         "checked_at": checked.astimezone(timezone.utc)
         .replace(microsecond=0)
@@ -260,6 +285,9 @@ def acceptance_receipt(
             },
         },
     }
+    if monotonic() - started >= TOTAL_TIMEOUT:
+        _fail("acceptance_deadline_exceeded")
+    return receipt
 
 
 def _write_output(path: Path | None, receipt: dict) -> None:
