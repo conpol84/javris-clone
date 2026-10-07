@@ -20,8 +20,8 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
- if(/\b(no|nope|cancel|stop|oxi|οχι|μην|min)\b/u.test(plain))return'reject';
- if(/\b(yes|yeah|yep|approve|approved|proceed|go ahead|do it|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα)\b/u.test(plain))return'approve';
+ if(/(?:^|\s)(no|nope|cancel|stop|oxi|οχι|μην|min)(?:\s|$)/u.test(plain))return'reject';
+ if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα)(?:\s|$)/u.test(plain))return'approve';
  return null;
 }
 function youtubeQuery(text:string){
@@ -55,7 +55,7 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
    ]}};
   }
  }
- if(/\b(open|launch|start|anoikse|anikse|ανοιξ)\b/u.test(plain)){
+ if(/(?:^|\s)(open|launch|start|anoikse|anikse|ανοιξε|ανοιξ)(?:\s|$)/u.test(plain)){
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.includes(a)))return{kind:'open_app',description:`Open ${app}`,params:{app}};
  }
  return null;
