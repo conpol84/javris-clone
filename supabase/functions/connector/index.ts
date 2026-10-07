@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
     return json(200, { token, device_name: dev.name });
   }
 
-  if (action === 'poll' || action === 'report' || action === 'capabilities') {
+  if (action === 'poll' || action === 'report' || action === 'capabilities' || action === 'control') {
     const token = str(body.token, 100);
     if (!/^[a-f0-9]{64}$/.test(token)) return json(401, { error: 'unauthorized' });
     const { data: sec, error: secretError } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
@@ -171,9 +171,28 @@ Deno.serve(async (req) => {
       if (capabilityError) return json(503, { error: 'capability_save_failed' });
       return json(200, {
         protocol: 'firbo-connector/v2', report_ack: 'sha256-v1',
-        result_max_bytes: 140_000, queued_cancel_only: true,
-        remote_stop: false, automatic_interrupted_reexecution: false,
+        result_max_bytes: 140_000, queued_cancel_only: false,
+        remote_stop: true, running_stop: 'cancel-request-v1',
+        automatic_interrupted_reexecution: false,
         accepted_job_kinds: [...DEVICE_JOB_KINDS],
+      });
+    }
+
+    if (action === 'control') {
+      const jobId = str(body.job_id, 60);
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return json(400, { error: 'bad_request' });
+      const { data: job, error: controlError } = await admin.from('connector_jobs')
+        .select('id,status,cancel_requested_at')
+        .eq('id', jobId).eq('device_id', dev.id).eq('organization_id', dev.organization_id).maybeSingle();
+      if (controlError) return json(503, { error: 'control_unavailable' });
+      if (!job) return json(404, { error: 'not_found' });
+      await admin.from('connector_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', dev.id);
+      return json(200, {
+        ok: true,
+        job_id: job.id,
+        status: job.status,
+        stop: job.status === 'running' && !!job.cancel_requested_at,
+        terminal: ['done','error','cancelled'].includes(job.status),
       });
     }
 
@@ -359,17 +378,35 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'cancel_job') {
-    const { data: job } = await admin.from('connector_jobs').select('id, organization_id, status').eq('id', str(body.job_id, 60)).maybeSingle();
+    const { data: job } = await admin.from('connector_jobs').select('id, organization_id, device_id, status, cancel_requested_at').eq('id', str(body.job_id, 60)).maybeSingle();
     if (!job) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(job.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
-    // A queued job may be claimed between the read and the update. No matched row
-    // means no cancellation; never return success for a running or changed job.
-    const { data: cancelled, error: cancelError } = await admin.from('connector_jobs')
-      .update({ status: 'cancelled', finished_at: new Date().toISOString() })
-      .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
-    if (cancelError) return json(503, { error: 'save_failed' });
-    if (!cancelled) return json(409, { error: 'state_conflict' });
-    return json(200, { ok: true });
+
+    if (job.status === 'queued') {
+      // A queued job may be claimed between the read and the update. No matched row
+      // means no cancellation; never claim success for work that already started.
+      const { data: cancelled, error: cancelError } = await admin.from('connector_jobs')
+        .update({ status: 'cancelled', finished_at: new Date().toISOString() })
+        .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
+      if (cancelError) return json(503, { error: 'save_failed' });
+      if (!cancelled) return json(409, { error: 'state_conflict' });
+      await audit(job.organization_id, 'connector.job_cancelled', job.id, { device_id: job.device_id, phase: 'queued' });
+      return json(200, { ok: true, stop_requested: false });
+    }
+
+    if (job.status === 'running') {
+      if (job.cancel_requested_at) return json(200, { ok: true, stop_requested: true, duplicate: true });
+      const requestedAt = new Date().toISOString();
+      const { data: requested, error: stopError } = await admin.from('connector_jobs')
+        .update({ cancel_requested_at: requestedAt })
+        .eq('id', job.id).eq('status', 'running').is('cancel_requested_at', null).select('id').maybeSingle();
+      if (stopError) return json(503, { error: 'save_failed' });
+      if (!requested) return json(409, { error: 'state_conflict' });
+      await audit(job.organization_id, 'connector.job_stop_requested', job.id, { device_id: job.device_id, phase: 'running' });
+      return json(200, { ok: true, stop_requested: true, duplicate: false });
+    }
+
+    return json(409, { error: 'state_conflict' });
   }
 
   return json(400, { error: 'bad_request' });
