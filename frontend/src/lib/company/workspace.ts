@@ -109,11 +109,16 @@ export async function addSkill(orgId: string, userId: string, s: SkillInput): Pr
   if (!data?.id) throw new Error('skill_not_changed');
   return data as SkillRow;
 }
-export async function updateSkill(orgId: string, id: string, s: Pick<SkillInput, 'name' | 'instructions' | 'description'>): Promise<SkillRow> {
+export async function updateSkill(orgId: string, id: string, s: Pick<SkillInput, 'name' | 'instructions' | 'description' | 'agentId'>): Promise<SkillRow> {
   const content = skillContent(s);
-  const { data, error } = await requireClient().from('skills').update(content).eq('organization_id', orgId).eq('id', id).select(SKILL_FIELDS).maybeSingle();
+  const agentId = s.agentId || null;
+  const { data, error } = await requireClient().from('skills')
+    .update({ ...content, agent_id: agentId })
+    .eq('organization_id', orgId).eq('id', id).select(SKILL_FIELDS).maybeSingle();
   skillError(error);
-  if (data?.id !== id || data.name !== content.name || data.instructions !== content.instructions) throw new Error('skill_not_changed');
+  if (data?.id !== id || data.name !== content.name || data.instructions !== content.instructions || data.agent_id !== agentId) {
+    throw new Error('skill_not_changed');
+  }
   return data as SkillRow;
 }
 export async function setSkillEnabled(orgId: string, id: string, enabled: boolean) {
