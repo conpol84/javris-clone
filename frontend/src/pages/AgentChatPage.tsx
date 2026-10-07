@@ -17,7 +17,7 @@ import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
 import { voiceMessages } from '../lib/company/voiceMessages';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
-import { dispatchDirectComputerCommand, parseDirectComputerCommand, parseOwnerDecision, type DirectComputerProposal } from '../lib/company/laptop-bridge';
+import { dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 
 /** Continuous chat with any AI employee, with saved history. */
@@ -170,7 +170,8 @@ export function AgentChatPage() {
         const proposal = parseDirectComputerCommand(msg);
         const decision = parseOwnerDecision(msg);
         const pending = pendingComputer.current;
-        if (proposal || (pending && decision)) {
+        const computerRequest = !!proposal || isComputerControlRequest(msg);
+        if (computerRequest || (pending && decision)) {
           const directMessage = (content: string) => {
             const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
             setMessages((m) => [...m.filter((x) => x.id !== temp.id), temp, assistant]);
@@ -183,19 +184,28 @@ export function AgentChatPage() {
               : `I will not delegate this to an agent. Polis1984 computer control is available only to Owner/Admin; your current role is ${role}.`);
             return;
           }
-          const chosen = proposal ?? pending!;
           if (decision === 'reject') {
             pendingComputer.current = null;
             directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
             return;
           }
-          if (proposal && decision !== 'approve') {
-            pendingComputer.current = proposal;
-            directMessage(lang === 'el'
-              ? `Θα εκτελέσω στο Polis1984: ${proposal.description}. Το εγκρίνεις;`
-              : `I will run this on Polis1984: ${proposal.description}. Do you approve?`);
+          if (computerRequest && (!proposal || decision !== 'approve')) {
+            const controller = new AbortController();
+            computerRun.current = controller; setComputerRunning(true);
+            let readiness;
+            try {
+              readiness = await prepareDirectComputerCommand(orgId, proposal?.kind ?? 'browser_task', lang, controller.signal);
+            } finally {
+              if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
+            }
+            if (voiceScopeRef.current !== scopeAtSend) return;
+            pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId } : null;
+            directMessage(!readiness.ready ? readiness.reply : !proposal ? incompleteComputerReply(lang) : lang === 'el'
+              ? `Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`
+              : `I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);
             return;
           }
+          const chosen = proposal ?? pending!;
           pendingComputer.current = null;
           const controller = new AbortController();
           computerRun.current = controller; setComputerRunning(true);
