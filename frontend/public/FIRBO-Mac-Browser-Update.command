@@ -18,7 +18,7 @@ fi
 firbo_site="${1:-https://firboai.app}"
 echo 'Stop the old Connector with Ctrl+C in its terminal first.'
 echo "This run will allow browser tasks only for: $firbo_site"
-echo 'Each browser plan and sensitive action still asks for local approval.'
+echo 'Full Control runs the owner-approved browser plan without duplicate prompts; credentials, private networks and destructive/system actions stay blocked.'
 read -r -p 'Continue with the existing pairing? [y/N] ' firbo_answer
 case "$firbo_answer" in y|Y|yes|YES) ;; *) exit 0 ;; esac
 
@@ -31,8 +31,8 @@ curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 \
 (
   cd "$firbo_stage"
   shasum -a 256 -c <<'HASHES'
-ae0744fdb28c19baaa0aa40232ab38f7b7c825ca3c3eaa8d37e33c70288c5381  firbo-connector.mjs
-2166612cec8fa1cc9b8e45433623a09625c4058e884e9a0a23f5c530df1d37a3  firbo-browser.mjs
+3f6fb470629750c2c003caa3a3a96eed8b414b1d82c0dbd81f48db29c28ee4ad  firbo-connector.mjs
+d0c2a419dde6e3af2369279073390d84cbd29b0a321f3accaa623fa6ad47a083  firbo-browser.mjs
 HASHES
 )
 node --check "$firbo_stage/firbo-connector.mjs"

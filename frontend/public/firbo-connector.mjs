@@ -749,7 +749,7 @@ export function localCapabilities(cfg) {
   if (cfg?.allowWrite === true && cfg?.roots?.length) kinds.push('write');
   if (cfg?.allowExec === true && cfg?.roots?.length) kinds.push('exec');
   if (cfg?.allowBrowser === true) kinds.push('browser_open');
-  if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && cfg?.browserSites?.length) kinds.push('browser_task');
+  if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && (cfg?.fullControl === true || cfg?.browserSites?.length)) kinds.push('browser_task');
   if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
   // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
   const base = { job_kinds: kinds, ...(cfg?.fullControl === true ? { full_control: true } : {}) };
@@ -867,7 +867,8 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   if (!/^[A-Z0-9]{8,20}$/.test(normalized)) throw new Error('invalid_pairing_code');
   const roots = [];
   for (const root of args.allow ?? []) roots.push(await fs.realpath(path.resolve(expand(root))));
-  if (!roots.length && args.allowBrowser !== true && args.allowApps !== true) throw new Error('no_folder_allowed');
+  if (!roots.length && args.fullControl === true) roots.push(await fs.realpath(path.join(os.homedir(), 'Documents')));
+  if (!roots.length && args.allowBrowser !== true && args.allowApps !== true && args.fullControl !== true) throw new Error('no_folder_allowed');
   const pending = `${configPath}.${randomUUID()}.pending`;
   let handle;
   try {
@@ -878,7 +879,7 @@ export async function pairConnector(code, args = {}, { configPath = CONFIG, call
   try {
     const res = await callFn('pair', { code: normalized, platform: `${os.platform()} ${os.arch()}` });
     if (typeof res?.token !== 'string' || !/^[a-f0-9]{64}$/.test(res.token)) throw new Error('connector_invalid_response');
-    const cfg = { token: res.token, roots, allowWrite: args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.allowBrowser === true, auto: args.auto === true, ...(args.fullControl === true ? { fullControl: true } : {}), ...(args.allowApps === true ? { allowApps: true } : {}) };
+    const cfg = { token: res.token, roots, allowWrite: args.fullControl === true || args.allowWrite === true, allowExec: args.allowExec === true, allowBrowser: args.fullControl === true || args.allowBrowser === true, auto: args.fullControl === true || args.auto === true, ...(args.fullControl === true ? { fullControl: true, allowBrowserControl: true, allowApps: true } : {}), ...(args.allowApps === true ? { allowApps: true } : {}) };
     try {
       await handle.writeFile(JSON.stringify(cfg, null, 2));
       await handle.sync();
@@ -954,6 +955,7 @@ async function main() {
     cfg.fullControl = enabled;
     if (enabled) {
       cfg.allowBrowser = true;
+      cfg.allowBrowserControl = true;
       cfg.allowApps = true;
       cfg.allowWrite = true;
       cfg.auto = true;
@@ -1003,7 +1005,7 @@ async function main() {
     cfg.browserSites=args.browserSites.map(browserOrigin);
     cfg.allowBrowserControl=true;
     await verifyBrowserRuntime();
-    console.log(`Browser task sites for this run: ${cfg.browserSites.join(', ')}. Local approval remains required; close the controlled window or press Ctrl+C to stop.`);
+    console.log(cfg.fullControl ? `Browser task sites seeded for this run: ${cfg.browserSites.join(', ')}. Full Control accepts owner-approved public HTTPS plan sites; press Ctrl+C to Stop.` : `Browser task sites for this run: ${cfg.browserSites.join(', ')}. Local approval remains required; close the controlled window or press Ctrl+C to stop.`);
   }
   console.log('Firbo Connector: local consent and folder rules remain active. Ctrl+C requests Stop.');
   console.log('Pending results are stored privately on this computer, UNENCRYPTED, until acknowledged.');

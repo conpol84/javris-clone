@@ -28,17 +28,18 @@ export function browserOrigin(value) {
 }
 
 /** Closed schema. A page or queued job cannot widen the locally selected sites. */
-export function validateBrowserPlan(raw, localSites) {
+export function validateBrowserPlan(raw, localSites, ownerFullControl=false) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || Object.keys(raw).some(k => !['steps', 'timeout_ms'].includes(k))) fail();
-  if (!Array.isArray(localSites) || !localSites.length || localSites.length > 12) throw new Error('browser_control_disabled');
-  const sites = new Set(localSites.map(s => { if (s !== browserOrigin(s)) fail(); return s; }));
+  if (!ownerFullControl && (!Array.isArray(localSites) || !localSites.length || localSites.length > 12)) throw new Error('browser_control_disabled');
+  if (ownerFullControl && Array.isArray(localSites) && localSites.length > 12) fail();
+  const sites = new Set((Array.isArray(localSites)?localSites:[]).map(s => { if (s !== browserOrigin(s)) fail(); return s; }));
   const timeout = raw.timeout_ms ?? 120_000;
   if (!Number.isInteger(timeout) || timeout < 1000 || timeout > 300_000 || !Array.isArray(raw.steps) || !raw.steps.length || raw.steps.length > 20) fail();
   const steps = raw.steps.map(s => {
     if (!s || typeof s !== 'object' || Array.isArray(s) || !BROWSER_ACTIONS.includes(s.action)) fail();
     const keys = {open:['url'], read:[], snapshot:[], screenshot:['path'], click:['selector'], fill:['selector','text'], scroll:['pixels'], upload:['selector','path'], download:['url','path']}[s.action];
     if (Object.keys(s).some(k => k !== 'action' && !keys.includes(k)) || keys.some(k => !Object.hasOwn(s, k))) fail();
-    if (keys.includes('url') && !sites.has(browserOrigin(s.url))) throw new Error('browser_site_denied');
+    if (keys.includes('url')) { const origin=browserOrigin(s.url); if (!ownerFullControl && !sites.has(origin)) throw new Error('browser_site_denied'); sites.add(origin); }
     // Only CSS locators; no arbitrary Playwright selector engine or frame traversal.
     if (keys.includes('selector') && (!bounded(s.selector, 200) || />>|(?:^|\s)(?:text|xpath|id|data-testid)=/i.test(s.selector))) fail();
     if (keys.includes('path') && !bounded(s.path, 500)) fail();
@@ -119,11 +120,12 @@ export async function executeBrowserPlan(raw, cfg, {
     reviewQueue=next.catch(()=>{});return next;
   };
   if (cfg.allowBrowser !== true || cfg.allowBrowserControl !== true) throw new Error('browser_control_disabled');
-  const plan = validateBrowserPlan(raw, cfg.browserSites);
+  const ownerFullControl=cfg?.fullControl===true;
+  const plan = validateBrowserPlan(raw, cfg.browserSites, ownerFullControl);
   if (plan.steps.some(s=>s.action==='upload') && (!cfg.roots?.length || !readFile)) throw new Error('browser_file_denied');
   if (plan.steps.some(s=>s.action==='download'||s.action==='screenshot') && (!cfg.allowWrite || !cfg.roots?.length || !writeFile)) throw new Error('browser_file_denied');
   check(signal);
-  if (!await confirm('browser_plan', {steps:plan.steps, sites:plan.sites, timeout_ms:plan.timeout_ms, max_cost:0,
+  if (!await confirm('browser_plan', {steps:plan.steps, sites:plan.sites, owner_full_control:ownerFullControl, timeout_ms:plan.timeout_ms, max_cost:0,
     disclosure:'Page text and accessibility snapshots return to your Firbo company. A screenshot can contain sensitive visible content and is saved only to the locally selected allowed path. Capture steps ask again. Credentials are never filled or exported.'}, signal)) throw new Error('declined_on_this_computer');
   check(signal);
   const stop = new AbortController(), abort = ()=>stop.abort();
@@ -148,17 +150,22 @@ export async function executeBrowserPlan(raw, cfg, {
         ensure();
         const req=route.request();
         if (++requests>200) throw new Error('browser_request_limit');
-        if (!plan.sites.includes(browserOrigin(req.url()))) throw new Error('browser_site_denied');
+        const requestOrigin=browserOrigin(req.url());
+        if (!ownerFullControl && !plan.sites.includes(requestOrigin)) throw new Error('browser_site_denied');
         if (!['GET','HEAD'].includes(req.method())) {
-          // Actual writes are locally reviewed, even if a page tries to disguise
-          // publishing/payment as a routine click. --auto never approves these.
-          if (!MUTATIONS.has(activeAction) || !await confirm('browser_request', {
+          // Full Control is not a blanket write grant. Only a same-origin
+          // mutation emitted during the already-approved click/fill/upload
+          // step may proceed without a second prompt.
+          let sameOrigin=false;
+          try { sameOrigin=browserOrigin(page.url())===requestOrigin; } catch {}
+          const ownerApprovedSameOrigin=ownerFullControl&&sameOrigin&&MUTATIONS.has(activeAction);
+          if (!ownerApprovedSameOrigin && (!MUTATIONS.has(activeAction) || !await confirm('browser_request', {
             url:req.url(),method:req.method(),body_sha256:hash(req.postDataBuffer()??Buffer.alloc(0)),
             body_preview:(req.postData()??'').slice(0,2000),
-          },stop.signal)) throw new Error('browser_write_denied');
+          },stop.signal))) throw new Error('browser_write_denied');
         }
         ensure();
-        const out=await transport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:plan.sites},{signal:stop.signal});
+        const out=await transport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:ownerFullControl?[requestOrigin]:plan.sites},{signal:stop.signal});
         transferred+=out.body.length;
         if (transferred>20*MAX_BYTES) throw new Error('browser_transfer_too_large');
         const headers={};
@@ -178,7 +185,7 @@ export async function executeBrowserPlan(raw, cfg, {
     page.on('close', ()=>{if(!finished)abort();});
     for (const [index,s] of plan.steps.entries()) {
       ensure();
-      if (s.action!=='open' && !plan.sites.includes(browserOrigin(page.url()))) throw new Error('browser_site_denied');
+      if (s.action!=='open' && !ownerFullControl && !plan.sites.includes(browserOrigin(page.url()))) throw new Error('browser_site_denied');
       activeAction=s.action;
       if (MUTATIONS.has(s.action) && !await confirm('browser_action', {url:page.url(),step:s},stop.signal)) throw new Error('declined_on_this_computer');
       if (CAPTURES.has(s.action) && !await confirm('browser_capture', {

@@ -8,7 +8,7 @@ import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
-import { dispatchLaptopBrowserCommand } from './laptop-bridge';
+import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, parseDirectComputerCommand, parseOwnerDecision, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
 export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
@@ -30,7 +30,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const live=useRef(false); const epoch=useRef(0); const turn=useRef<VoiceTurn|null>(null);
   const resumeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const busy=useRef(false);const mutedRef=useRef(false);const handsFreeRef=useRef(false);
-  const convo=useRef<string|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
+  const convo=useRef<string|null>(null);const pendingComputer=useRef<DirectComputerProposal|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
   const listenRef=useRef(()=>{}); const tRef=useRef(t);tRef.current=t;
   const canTalk=typeof MediaRecorder!=='undefined' && typeof navigator!=='undefined' && !!navigator.mediaDevices?.getUserMedia;
   const valid=(id:number)=>live.current&&scopeRef.current===scope&&epoch.current===id;
@@ -41,7 +41,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     stopListen.current=()=>{};sendListen.current=()=>{};
   };
   useEffect(()=>{
-    live.current=true;clear();convo.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
+    live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
     const id=epoch.current;
     if(orgId&&userId)void listAgents(orgId).then(agents=>{
       if(valid(id))setCeo(agents.find(a=>a.enabled&&(a.type==='ceo'||a.slug.startsWith('ceo')))??null);
@@ -85,7 +85,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     resumeTimer.current=setTimeout(()=>{if(valid(id)&&handsFreeRef.current&&!busy.current)listenRef.current();},delay);
   };
   const stop=()=>{
-    clear();setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
+    pendingComputer.current=null;clear();setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
   };
   const ask=async(message:string)=>{
     if(!ceo||!userId||!canWrite||!message.trim()||busy.current||loadedScope!==scope)return;
@@ -93,24 +93,38 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     const id=++epoch.current;busy.current=true;unlockAudio();
     const active=newTurn(id);active.phase('thinking');
     setInterim('');setLines(lines=>[...lines,{who:'me',text:message}]);
+    const sayDirect=async(content:string)=>{
+      setLines(lines=>[...lines,{who:'ceo',text:content}]);
+      if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
+      const spoken=await speak(orgId,content,lang,{turn:active});
+      if(!valid(id))return;
+      busy.current=false;
+      if(spoken.status==='completed'){setState('idle');resume(id,300);}
+      else{handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}}
+    };
     try{
       if(canComputer){
+        const proposal=parseDirectComputerCommand(message),decision=parseOwnerDecision(message);
+        if(proposal){
+          if(decision==='approve'){
+            pendingComputer.current=null;
+            const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
+            if(!valid(id)||!active.current())return;
+            await sayDirect(remote.reply);return;
+          }
+          pendingComputer.current=proposal;
+          await sayDirect(lang==='el'?`Θα εκτελέσω στο Polis1984: ${proposal.description}. Το εγκρίνεις;`:`I will run this on Polis1984: ${proposal.description}. Do you approve?`);return;
+        }
+        if(pendingComputer.current&&decision){
+          const pending=pendingComputer.current;pendingComputer.current=null;
+          if(decision==='reject'){await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
+          const remote=await dispatchDirectComputerCommand(orgId,pending,lang,active.signal);
+          if(!valid(id)||!active.current())return;
+          await sayDirect(remote.reply);return;
+        }
         const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
         if(!valid(id)||!active.current())return;
-        if(remote.handled){
-          const content=remote.reply??voiceMessages(lang).server;
-          setLines(lines=>[...lines,{who:'ceo',text:content}]);
-          if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
-          const spoken=await speak(orgId,content,lang,{turn:active});
-          if(!valid(id))return;
-          busy.current=false;
-          if(spoken.status==='completed'){setState('idle');resume(id,300);}
-          else{
-            handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');
-            if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}
-          }
-          return;
-        }
+        if(remote.handled){await sayDirect(remote.reply??voiceMessages(lang).server);return;}
       }
       if(!convo.current){
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
