@@ -362,3 +362,27 @@ html { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
 .fb-report th, .fb-report td { border: 1px solid var(--fb-border); padding: 0.35em 0.6em; text-align: start; vertical-align: top; }
 .fb-report th { color: var(--fb-text, #e8eef8); background: rgba(255,255,255,0.04); }
 .fb-report hr { border: 0; border-top: 1px solid var(--fb-border); margin: 1em 0; }
+
+
+/* Legacy OpenJarvis surfaces hosted inside Firbo.
+   Scope the old --color-* tokens to the same navy/cyan system without changing
+   their state, APIs, or component structure. */
+.fb-root.fb-legacy {
+  --color-bg: var(--fb-bg);
+  --color-bg-secondary: rgba(12, 22, 40, 0.72);
+  --color-bg-tertiary: rgba(15, 27, 48, 0.88);
+  --color-surface: rgba(9, 17, 31, 0.74);
+  --color-border: var(--fb-border);
+  --color-border-subtle: rgba(148, 180, 220, 0.09);
+  --color-text: var(--fb-text);
+  --color-text-secondary: var(--fb-muted);
+  --color-text-tertiary: var(--fb-dim);
+  --color-accent: var(--fb-accent);
+  --color-accent-purple: var(--fb-accent-2);
+  --color-accent-subtle: rgba(0, 212, 255, 0.12);
+  --color-success: var(--fb-ok);
+  --color-warning: var(--fb-warn);
+  --color-error: var(--fb-err);
+  --color-disabled-bg: rgba(255, 255, 255, 0.045);
+  --color-on-accent: #021118;
+}

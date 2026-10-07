@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -474,7 +475,7 @@ export function GetStartedPage() {
   const context = useMemo(detectContext, []);
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-16">
         {context === 'hosted' && <HostedView />}
         {context === 'desktop' && <DesktopView />}
