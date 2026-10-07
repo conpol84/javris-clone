@@ -19,7 +19,7 @@ describe('workspace copy', () => {
 describe('practical skill catalogue', () => {
   it('keeps every skill localized and declares only tools implemented by the company loop', () => {
     const tools = new Set(['web_search', 'read_page', 'memory_search', 'knowledge_search', 'server_task', 'calculator', 'weather', 'exchange_rate', 'analyze_image', 'generate_image']);
-    expect(SKILL_LIBRARY.length).toBe(24);
+    expect(SKILL_LIBRARY.length).toBe(28);
     expect(new Set(SKILL_LIBRARY.map(s => s.slug)).size).toBe(SKILL_LIBRARY.length);
     for (const skill of SKILL_LIBRARY) {
       expect(Object.keys(skill.names).sort()).toEqual(Object.keys(SKILLS_COPY).sort());
