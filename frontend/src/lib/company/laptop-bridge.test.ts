@@ -48,6 +48,11 @@ describe('CEO direct Full Control',()=>{
   expect(parseOwnerDecision('ksekina')).toBe('approve');
   expect(parseOwnerDecision('ξεκίνα')).toBe('approve');
   expect(parseOwnerDecision('όχι, μην το κάνεις')).toBe('reject');
+  expect(parseOwnerDecision('oxi kanto esi')).toBe('approve');
+  expect(parseOwnerDecision('όχι, κάν’ το εσύ')).toBe('approve');
+  expect(parseOwnerDecision('no, do it yourself')).toBe('approve');
+  expect(parseOwnerDecision('μην το κάνεις, κάντο εσύ')).toBe('reject');
+  expect(parseOwnerDecision('do not do it yourself')).toBe('reject');
  });
  it('does not delegate when the Mac is online but still runs the old connector',async()=>{
   const out=await dispatchDirectComputerCommand('org',{kind:'open_app',params:{app:'Microsoft Word'},description:'Open Word'},'el',undefined,{
@@ -67,12 +72,31 @@ describe('CEO direct Full Control',()=>{
   expect(queued.kind).toBe('browser_task');expect(queued.confirm).toBe(true);expect(out.status).toBe('done');
  });
  it('requests remote Stop if the owner stops a running direct action',async()=>{
-  const ac=new AbortController();let cancelled='';
+  const ac=new AbortController();let cancelled='';let cancels=0;
   const proposal=parseDirectComputerCommand('YouTube search Mazonaki and play first result')!;
   const running=dispatchDirectComputerCommand('org',proposal,'en',ac.signal,{
    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984',true)],
-   queue:async()=>({job_id:'j3'}),loadJobs:async()=>{ac.abort();return[]},cancel:async id=>{cancelled=id},sleep:async()=>{},
+   queue:async()=>({job_id:'j3'}),loadJobs:async()=>{ac.abort();return[{id:'j3',device_id:'d1',kind:'browser_task',params:proposal.params,status:'done',result:{completed:true},error:null,created_at:'',finished_at:''} as JobRow]},cancel:async id=>{cancelled=id;cancels++},sleep:async()=>{},
   });
-  await expect(running).rejects.toMatchObject({name:'AbortError'});expect(cancelled).toBe('j3');
+  await expect(running).rejects.toMatchObject({name:'AbortError'});expect(cancelled).toBe('j3');expect(cancels).toBe(1);
+ });
+ it('rejects done rows without the matching operation result',async()=>{
+  for(const kind of ['browser_task','open_app'] as const){
+   const proposal={kind,params:{app:'Microsoft Word'},description:'command'};
+   const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984',true)],queue:async()=>({job_id:'j4'}),
+    loadJobs:async()=>[{id:'j4',device_id:'d1',kind,params:proposal.params,status:'done',result:{},error:null,created_at:'',finished_at:''} as JobRow],sleep:async()=>{},
+   });
+   expect(out.status).toBe('failed');expect(out.reply).not.toContain('Done on');
+  }
+ });
+ it('accepts an app launch only for the requested app on the selected device',async()=>{
+  const proposal={kind:'open_app' as const,params:{app:'Microsoft Word'},description:'Open Word'};
+  for(const [deviceId,app,status] of [['d1','Microsoft Word','done'],['d2','Microsoft Word','failed'],['d1','Safari','failed']]){
+   const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984',true)],queue:async()=>({job_id:'j5'}),
+    loadJobs:async()=>[{id:'j5',device_id:deviceId,kind:'open_app',params:proposal.params,status:'done',result:{opened:true,app},error:null,created_at:'',finished_at:''} as JobRow],sleep:async()=>{},
+   });expect(out.status).toBe(status);
+  }
  });
 });
