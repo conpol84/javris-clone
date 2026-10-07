@@ -21,6 +21,7 @@ export function MacBrowserUpdate({ device, lang }: { device: Pick<DeviceRow, 'pa
     <p className="fb-muted mt-2 text-sm">{steps}</p>
     <a className="fb-btn fb-btn--ghost mt-3" href="/FIRBO-Mac-Browser-Update.command" download="FIRBO-Mac-Browser-Update.command">{download}</a>
     <pre className="fb-input mt-3 whitespace-pre-wrap break-all p-3 font-mono text-xs" dir="ltr">{'bash "$HOME/Downloads/FIRBO-Mac-Browser-Update.command"'}</pre>
+    <p className="fb-dim mt-2 text-xs" dir="ltr">firboai.app · javris.firboai.app</p>
     <p className="fb-dim mt-2 text-xs">{consent}</p>
   </aside>;
 }
