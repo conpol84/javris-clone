@@ -199,6 +199,15 @@ const OAUTH: Record<string, OAuthCfg> = {
 };
 const clientOf = (g: OAuthCfg['group']) => ({ id: Deno.env.get(`${g}_CLIENT_ID`) ?? '', secret: Deno.env.get(`${g}_CLIENT_SECRET`) ?? '' });
 const APP_URL = () => (Deno.env.get('APP_URL') ?? 'https://firboai.app').replace(/\/+$/, '');
+const APP_ORIGINS = () => [...new Set([
+  APP_URL(),
+  'https://firboai.app',
+  'https://javris.firboai.app',
+  ...(Deno.env.get('FIRBO_APP_ORIGINS') ?? '').split(',').map(x => x.trim()).filter(Boolean),
+])].filter(raw => {
+  try { const u=new URL(raw); return u.protocol==='https:' && !u.username && !u.password && !u.port && u.pathname==='/' && !u.search && !u.hash; }
+  catch { return false; }
+});
 const REDIRECT = () => `${Deno.env.get('SUPABASE_URL')}/functions/v1/integrations`;
 
 async function hmacKey(): Promise<CryptoKey> {
@@ -270,6 +279,10 @@ const PROVIDERS: Record<string, Provider> = {
       if (!/^\d{5,}:[A-Za-z0-9_-]{30,}$/.test(token) || !/^(-?\d{3,20}|@[A-Za-z0-9_]{4,64})$/.test(chat)) return null;
       return { secret: { token }, config: { chat_id: chat } };
     },
+    verify: async (s, c) => {
+      await ok(await fetch(`https://api.telegram.org/bot${s.token}/getMe`, { signal: sig() }));
+      await ok(await fetch(`https://api.telegram.org/bot${s.token}/getChat`, { method: 'POST', headers: J, body: JSON.stringify({ chat_id: c.chat_id }), signal: sig() }));
+    },
     send: async (s, c, t) => ok(await fetch(`https://api.telegram.org/bot${s.token}/sendMessage`, { method: 'POST', headers: J, body: JSON.stringify({ chat_id: c.chat_id, text: t.slice(0, 3500) }), signal: sig() })),
   },
   ntfy: {
@@ -296,6 +309,9 @@ const PROVIDERS: Record<string, Provider> = {
       const phone = str(f.phone_number_id, 30);
       const to = str(f.to, 20).replace(/[^\d]/g, '');
       return token.length > 20 && /^\d{5,25}$/.test(phone) && /^\d{7,15}$/.test(to) ? { secret: { token }, config: { phone_number_id: phone, to } } : null;
+    },
+    verify: async (s, c) => {
+      await ok(await fetch(`https://graph.facebook.com/v20.0/${c.phone_number_id}?fields=id,display_phone_number,verified_name`, { headers: bearer(s.token), signal: sig() }));
     },
     send: async (s, c, t) =>
       await ok(await fetch(`https://graph.facebook.com/v20.0/${c.phone_number_id}/messages`, { method: 'POST', headers: { ...J, authorization: `Bearer ${s.token}` }, body: JSON.stringify({ messaging_product: 'whatsapp', to: c.to, type: 'text', text: { body: t.slice(0, 3500) } }), signal: sig() })),
@@ -943,9 +959,10 @@ async function saveLegacyIntegration(admin: ReturnType<typeof createClient>, inp
 /** Browser comes back here from the provider with ?code&state. Only a state we signed (company, person, app, 10 minutes) is accepted. */
 async function oauthCallback(req: Request): Promise<Response> {
   const q = new URL(req.url).searchParams;
-  const back = (p: string) => new Response(null, { status: 302, headers: { location: `${APP_URL()}/integrations?${p}` } });
-  if (q.get('error')) return back(`oauth_error=${encodeURIComponent((q.get('error') ?? '').slice(0, 40))}`);
   const st = await readState(q.get('state') ?? '');
+  const returnOrigin=st && typeof st.r==='string' && APP_ORIGINS().includes(st.r) ? st.r : APP_URL();
+  const back = (p: string) => new Response(null, { status: 302, headers: { location: `${returnOrigin}/integrations?${p}` } });
+  if (q.get('error')) return back(`oauth_error=${encodeURIComponent((q.get('error') ?? '').slice(0, 40))}`);
   const code = q.get('code');
   if (!st || !code || typeof st.k !== 'string') return back('oauth_error=bad_state');
   const cfg = OAUTH[st.k];
@@ -1073,7 +1090,9 @@ Deno.serve(async (req) => {
     const { count } = await admin.from('integrations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId);
     const { data: cap } = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'integrations' });
     if ((count ?? 0) >= Number(cap ?? 2)) return json(429, { error: 'plan_limit' });
-    const state = await signState({ o: orgId, u: user.id, k: kind, n: name, c: extra, exp: Date.now() + 10 * 60_000 });
+    const requestOrigin=req.headers.get('origin') ?? APP_URL();
+    if(!APP_ORIGINS().includes(requestOrigin)) return json(403,{error:'origin_not_allowed'});
+    const state = await signState({ o: orgId, u: user.id, k: kind, n: name, c: extra, r: requestOrigin, exp: Date.now() + 10 * 60_000 });
     const params = new URLSearchParams({ client_id: client.id, redirect_uri: REDIRECT(), response_type: 'code', scope: cfg.scopes, state, ...(cfg.extraAuth ?? {}) });
     return json(200, { url: `${cfg.auth}?${params}` });
   }
@@ -1091,8 +1110,9 @@ Deno.serve(async (req) => {
     const { data: cap } = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'integrations' });
     if ((count ?? 0) >= Number(cap ?? 2)) return json(429, { error: 'plan_limit' });
     try {
-      if (provider.messaging) await provider.send(parsed.secret, parsed.config, `✅ ${name}: Firbo AI is connected.`);
-      else await provider.verify!(parsed.secret, parsed.config);
+      if (provider.verify) await provider.verify(parsed.secret, parsed.config);
+      else if (provider.messaging) await provider.send(parsed.secret, parsed.config, `✅ ${name}: Firbo AI is connected.`);
+      else throw new Error('provider_failed');
     } catch (err) {
       return json(502, { error: providerFailure(err, 'test_failed') });
     }
