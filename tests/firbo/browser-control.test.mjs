@@ -14,6 +14,7 @@ test('browser control requires separate local sites and never follows browser-on
   await assert.rejects(executeBrowserPlan(plan(),cfg),/declined_on_this_computer/);
   assert.deepEqual(localCapabilities({roots:[],allowBrowser:true}),{job_kinds:['browser_open']});
   assert.deepEqual(localCapabilities(cfg),{job_kinds:['browser_open','browser_task']});
+  assert.deepEqual(localCapabilities({roots:['Documents'],allowBrowser:true,allowBrowserControl:true,fullControl:true,allowApps:true}),{job_kinds:process.platform==='darwin'?['list','read','browser_open','browser_task','open_app','shortcut']:['list','read','browser_open','browser_task'],full_control:true,roots:['Documents']});
   assert.deepEqual(parseArgs(['run','--browser-site',origin]).browserSites,[origin]);
 });
 for(const value of ['file:///etc/passwd','javascript:alert(1)','http://example.com','https://user:pass@example.com','https://127.0.0.1','https://0x7f000001','https://2130706433','https://[::1]','https://x.local','https://example.com:4433']){
@@ -24,6 +25,7 @@ test('closed schema prevents injected scripts, timeouts, actions and file paths 
     assert.throws(()=>validateBrowserPlan(raw,[origin]));
   }
   assert.equal(validateBrowserPlan(plan({action:'fill',selector:'#search',text:'hello\nworld'}),[origin]).max_cost,0);
+  assert.equal(validateBrowserPlan({steps:[{action:'open',url:'https://www.youtube.com/results?search_query=test'},{action:'click',selector:'ytd-video-renderer:first-of-type a#video-title'}],timeout_ms:120000},[],true).sites[0],'https://www.youtube.com');
   assert.equal(validateBrowserPlan(plan({action:'snapshot'}),[origin]).steps[1].action,'snapshot');
   assert.equal(validateBrowserPlan(plan({action:'screenshot',path:'evidence.png'}),[origin]).steps[1].path,'evidence.png');
   assert.throws(()=>validateBrowserPlan(plan({action:'screenshot',path:'evidence.png',full_page:true}),[origin]));
@@ -158,4 +160,22 @@ test('actual endpoint denies cross-company ownership and stale devices',async()=
  state.rows.organization_members[0].organization_id=ORG;
  for(const date of ['invalid','2000-01-01T00:00:00Z']){state.rows.connector_devices[0].last_seen_at=date;assert.equal((await invoke(request)).status,409);}
  assert.equal(state.rows.connector_jobs.length,0);
+});
+
+test('owner Full Control allows public HTTPS subresources but keeps guarded mode closed',async()=>{
+  const external='https://cdn.example.org/app.js';
+  const guarded=fakeBrowser({requestURL:external});let guardedSent=0;
+  await assert.rejects(executeBrowserPlan(plan(),cfg,{chromium:guarded.chromium,confirm:async()=>true,transport:async()=>{guardedSent++;return syntheticTransport();}}),/browser_site_denied/);
+  assert.equal(guardedSent,0);
+  const full=fakeBrowser({requestURL:external});let fullSent=0;
+  const out=await executeBrowserPlan(plan(),{...cfg,browserSites:[],fullControl:true},{chromium:full.chromium,confirm:async()=>true,transport:async req=>{fullSent++;assert.deepEqual(req.sites,[external.replace('/app.js','')]);return syntheticTransport();}});
+  assert.equal(out.completed,true);assert.equal(fullSent,1);
+});
+test('owner Full Control auto-allows an approved same-origin POST from a click but not ordinary background POST',async()=>{
+  const click=fakeBrowser({method:'POST'});let sent=0;
+  const out=await executeBrowserPlan(plan({action:'click',selector:'button'}),{...cfg,fullControl:true},{chromium:click.chromium,confirm:async()=>true,transport:async()=>{sent++;return syntheticTransport();}});
+  assert.equal(out.completed,true);assert.equal(sent,2);
+  const background=fakeBrowser({method:'POST'});let denied=0;
+  await assert.rejects(executeBrowserPlan(plan(),{...cfg,fullControl:true},{chromium:background.chromium,confirm:async()=>true,transport:async()=>{denied++;return syntheticTransport();}}),/browser_write_denied/);
+  assert.equal(denied,0);
 });
