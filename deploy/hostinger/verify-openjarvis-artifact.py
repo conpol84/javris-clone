@@ -24,6 +24,84 @@ from pathlib import Path
 ROOT = Path("/home/jarvis/.openjarvis")
 SERVICE = "openjarvis.service"
 MAX_BYTES = 4096
+WRITER_ROOT = Path("/run/firbo-native-approval")
+
+
+def prepare_writer(directory, owner, content):
+    """Stage code only. The approved service tool must create the actual report."""
+    if os.geteuid() != 0 or owner <= 0 or len(content) > MAX_BYTES:
+        raise ValueError("invalid_writer_setup")
+    source = (
+        "import hashlib, os, stat\n"
+        f"if os.geteuid() != {owner!r} or os.geteuid() == 0:\n"
+        "    raise SystemExit('wrong_execution_user')\n"
+        f"data = {content!r}\n"
+        f"directory = {str(directory)!r}\n"
+        "parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)\n"
+        "try:\n"
+        "    info = os.fstat(parent)\n"
+        f"    if info.st_uid != {owner!r} or stat.S_IMODE(info.st_mode) != 0o700:\n"
+        "        raise SystemExit('unexpected_report_directory')\n"
+        "    fd = os.open('report.md', os.O_WRONLY | os.O_CREAT | os.O_EXCL | "
+        "os.O_NOFOLLOW, 0o600, dir_fd=parent)\n"
+        "    with os.fdopen(fd, 'wb') as output:\n"
+        "        output.write(data)\n"
+        "        output.flush()\n"
+        "        os.fsync(output.fileno())\n"
+        "finally:\n"
+        "    os.close(parent)\n"
+        "print(hashlib.sha256(data).hexdigest())\n"
+    ).encode()
+    compile(source, "acceptance_writer", "exec")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    root = os.open(WRITER_ROOT, flags)
+    writers = -1
+    try:
+        info = os.fstat(root)
+        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o755:
+            raise ValueError("unexpected_writer_root")
+        created = False
+        try:
+            os.mkdir("writers", 0o711, dir_fd=root)
+            created = True
+        except FileExistsError:
+            pass
+        writers = os.open("writers", flags, dir_fd=root)
+        if created:
+            os.fchmod(writers, 0o711)
+        info = os.fstat(writers)
+        if info.st_uid != 0 or stat.S_IMODE(info.st_mode) != 0o711:
+            raise ValueError("unexpected_writer_directory")
+        name = uuid.uuid4().hex[:16] + ".py"
+        fd = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o400,
+            dir_fd=writers,
+        )
+        with os.fdopen(fd, "wb") as output:
+            output.write(source)
+            output.flush()
+            os.fsync(output.fileno())
+            os.fchmod(output.fileno(), 0o444)
+        path = WRITER_ROOT / "writers" / name
+        print(
+            json.dumps(
+                {
+                    "prepared_writer": str(path),
+                    "writer_sha256": hashlib.sha256(source).hexdigest(),
+                    "report_path": str(directory / "report.md"),
+                    "report_preview": content.decode(),
+                    "report_created_by_setup": False,
+                }
+            ),
+            flush=True,
+        )
+        return path
+    finally:
+        if writers >= 0:
+            os.close(writers)
+        os.close(root)
 
 
 def receipt(result, name, expected):
@@ -125,6 +203,9 @@ def verify(api, directory, owner, env, runtime, nonce, approval_issuer=None):
     command = shlex.join(
         [str(api.PYTHON), "-B", "-c", program, str(path), content.hex()]
     )
+    if approval_issuer is not None:
+        writer = prepare_writer(directory, owner, content)
+        command = shlex.join([str(api.PYTHON), "-B", str(writer)])
 
     def ask(prompt, approval_arguments=None):
         body = {
@@ -167,9 +248,17 @@ def verify(api, directory, owner, env, runtime, nonce, approval_issuer=None):
     outcome["approval_blocked"] = isinstance(tool_rows, list) and any(
         isinstance(row, dict)
         and row.get("success") is False
-        and "confirmation" in str(row.get("output", "")).lower()
+        and any(
+            text in str(row.get("output", "")).lower()
+            for text in ("confirmation", "execution denied by user")
+        )
         for row in tool_rows
     )
+    if isinstance(execution, dict):
+        outcome["write_execution_summary"] = {
+            key: execution.get(key)
+            for key in ("contract", "mode", "tool_count", "failed_count", "truncated")
+        }
     # Accept only the three known successful shell_exec renderings:
     # 1) direct/raw stdout, 2) Python subprocess fallback, 3) Rust backend.
     # The Rust tool includes the exit code and explicit stdout/stderr sections;

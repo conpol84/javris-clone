@@ -70,6 +70,26 @@ policy relaxation or rerun of an ambiguous provider request is part of this fix.
 
 ## Validation and remaining work
 
+Owner evidence at 19:32 UTC isolates a later denial: the approved 1113-character
+command became 1111 characters in model output, first difference at index604.
+Timeout/directory matched; grant was reserved and request completed within its
+expiry. The report is absent. Duplicate inference trace entries do not establish
+two actual tool executions. The exact comparator correctly rejected the change.
+
+Approved acceptance now prepares a root-owned read-only writer under the existing
+approval root, in a root-owned0711 directory. Only its short exact Python command
+is included in the agent prompt. The operator sees the report preview and writer
+hash before consenting. Preparation creates code, never report.md: the writer
+refuses UID0, requires the exact service UID and0700 output directory, and creates
+the report exclusively through a no-follow directory descriptor. The service
+cannot edit/delete/replace the protected writer. Exact grant matching, expiry,
+single use, original receipt/read-back/hash checks and no-retry remain intact.
+No installed runtime change, restart or old-request replay is needed. Required
+root/service CI checks the short-command write/read flow and actual ownership,
+denies root execution, service tampering and output symlink substitution. Live
+acceptance is still pending. A concise write receipt summary now accompanies
+failures, and the generic execution-denied result counts as approval_blocked.
+
 Owner confirmed installation at 18:27 UTC, with exact three-module read-back and
 backup `/var/backups/firbo-native-approval-d71oqodw`. The subsequent verifier
 stopped before consent/grant/model dispatch with `UnsupportedOperation`: Python

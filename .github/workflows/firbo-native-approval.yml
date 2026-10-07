@@ -36,4 +36,4 @@ jobs:
           ruff check src/openjarvis/server/native_approval.py src/openjarvis/server/models.py src/openjarvis/server/routes.py deploy/hostinger/native-approval-control.py deploy/hostinger/verify-openjarvis-artifact.py tests/firbo/test_native_approval.py
           ruff format --check src/openjarvis/server/native_approval.py src/openjarvis/server/models.py src/openjarvis/server/routes.py deploy/hostinger/native-approval-control.py deploy/hostinger/verify-openjarvis-artifact.py tests/firbo/test_native_approval.py
       - name: Actual root and unprivileged service separation
-        run: sudo env PYTHONPATH=src FIRBO_REQUIRE_UID_TEST=1 "$(command -v python)" -m pytest tests/firbo/test_native_approval.py -k real_root_service_uid_separation -q -rs
+        run: sudo env PYTHONPATH=src FIRBO_REQUIRE_UID_TEST=1 "$(command -v python)" -m pytest tests/firbo/test_native_approval.py tests/firbo/test_artifact_acceptance.py -k 'real_root_service_uid_separation or real_root_writer' -q -rs
