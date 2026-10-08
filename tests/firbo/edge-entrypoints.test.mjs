@@ -155,7 +155,7 @@ function fixture(options={}) {
       let op='select',payload,selection;const filters=[];
       const b={
         select(s){selection=s;return b;},insert(p){op='insert';payload=p;return b;},update(p){op='update';payload=p;return b;},
-        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},gte(){return b;},or(){return b;},order(){return b;},limit(){return b;},
+        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},contains(){return b;},gte(){return b;},or(v){filters.push(['or',v]);return b;},order(){return b;},limit(){return b;},
         maybeSingle(){return Promise.resolve(execute(table,op,payload,filters,selection,true));},single(){return b.maybeSingle();},
         then(resolve,reject){return Promise.resolve(execute(table,op,payload,filters,selection,false)).then(resolve,reject);},
       };return b;
@@ -876,4 +876,58 @@ test('agent-runner: null-result reconciliation uses an exact null predicate',asy
   assert.equal(body.reconciliation_saved,true);
   const write=state.writes.find(w=>w.table==='tasks'&&w.op==='update');
   assert.ok(write.filters.some(([key,value])=>key==='result'&&value===null));
+});
+
+
+test('model learning remains an unverified proposal and never inserts a memory fact', async () => {
+  const invented='The company has ten million euros of audited revenue';
+  const {state,response}=await invoke('agent-runner',{noActions:true,chatReplies:[JSON.stringify({summary:'Draft',report:FULL_REPORT,actions:[],learned:[invented]})]});
+  assert.equal(response.status,200);
+  assert.equal(state.writes.filter(w=>w.table==='memories').length,0);
+  const saved=state.writes.find(w=>w.table==='tasks'&&w.payload.result)?.payload.result;
+  assert.deepEqual(saved.learning,{status:'unverified',proposals:[invented]});
+});
+
+
+test('runner context excludes old learned, expired and deleted claims while preserving manual memory', async () => {
+  const owner='Owner approved product costs twenty euros';
+  const unverified='Invented profit is ten million euros';
+  const {state,response}=await invoke('agent-runner',{memories:[
+    {content:owner,memory_type:'fact',metadata:{}},
+    {content:unverified,memory_type:'fact',metadata:{source:'learned'}},
+    {content:'Expired false policy',memory_type:'fact',expires_at:'2000-01-01T00:00:00Z'},
+    {content:'Deleted false policy',memory_type:'fact',metadata:{deleted_at:false}},
+  ]});
+  assert.equal(response.status,200);
+  const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+  assert.ok(prompt.includes(owner));
+  assert.ok(!prompt.includes(unverified));
+  assert.ok(!prompt.includes('Expired false policy'));
+  assert.ok(!prompt.includes('Deleted false policy'));
+  const read=state.reads.find(r=>r.table==='memories');
+  assert.ok(read.filters.some(([k,v])=>k==='organization_id'&&v===ORG));
+  assert.ok(read.filters.some(([k,v])=>k==='or'&&v===`agent_id.is.null,agent_id.eq.${AGENT}`));
+  assert.equal(state.writes.filter(w=>w.table==='memories').length,0);
+});
+
+test('actual runner memory-search tool withholds learned/deleted/expired claims', async () => {
+  const owner='Owner approved product cost is twenty euros';
+  const chatReplies=[JSON.stringify({action:'memory_search',input:'product cost'}),JSON.stringify({summary:'Draft',report:FULL_REPORT,actions:[]})];
+  const {state,response}=await invoke('agent-runner',{tools:[{tool_name:'memory_search',enabled:true,policy:'allow'}],chatReplies,memories:[
+    {content:owner,memory_type:'fact',metadata:{}},
+    {content:'Invented profit is ten million',memory_type:'fact',metadata:{source:'learned'}},
+    {content:'Expired product cost',memory_type:'fact',expires_at:'2000-01-01T00:00:00Z'},
+    {content:'Deleted product cost',memory_type:'fact',metadata:{deleted_at:''}},
+  ]});
+  assert.equal(response.status,200);
+  const saved=state.writes.find(w=>w.table==='tasks'&&w.payload.result)?.payload.result;
+  const step=saved.steps.find(s=>s.action==='memory_search');
+  assert.ok(step,'actual loop tool must execute');
+  assert.equal(step.ok,true);
+  assert.ok(step.out.includes(owner));
+  assert.ok(!/Invented|Expired|Deleted/.test(step.out));
+  for(const read of state.reads.filter(r=>r.table==='memories')){
+    assert.ok(read.filters.some(([k,v])=>k==='organization_id'&&v===ORG));
+    assert.ok(read.filters.some(([k,v])=>k==='or'&&v===`agent_id.is.null,agent_id.eq.${AGENT}`));
+  }
 });

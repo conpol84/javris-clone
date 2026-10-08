@@ -8,7 +8,7 @@ import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages, tavilySearchWithUsage } from '../_shared/free-search.ts';
-import { learnedFacts, memoryBlocks, pulseBlock } from '../_shared/company-pulse.ts';
+import { learnedFacts, memoryBlocks, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
 import {
   calculatorTool,
   weatherTool,
@@ -463,8 +463,8 @@ Deno.serve(async (req) => {
   };
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', task.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
-  const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata').eq('organization_id', task.organization_id)
-    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
+  const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id)
+    .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
   const memory = memoryBlocks(memRows ?? []);
   // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
   const skillsContext = companySkillContext(skillRows, `${task.title ?? ''} ${task.description ?? ''}`);
@@ -524,7 +524,7 @@ Deno.serve(async (req) => {
     'Never invent facts, names, figures, dates or links. Use only what you were given or found; when you could not find something, say so.',
     `Write everything in ${LANG_NAME[lang]}. Today is ${new Date().toISOString().slice(0, 10)}; when the task asks for recent news, look for items from the last weeks.`,
     ...(standard ? [standard] : []),
-    `Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown: the actual work product), "actions": [{"action": string (short name such as send_email), "risk": "low"|"medium"|"high", "payload": object}]} with at most ${MAX_ACTIONS} actions. Use an empty actions array when nothing needs to leave the company. You may add "learned": [at most 3 short facts about the company, its customers or its work that will help next time]; leave it out when there is nothing durable to remember.`,
+    `Reply with ONLY a JSON object: {"summary": string (max 300 chars), "report": string (markdown: the actual work product), "actions": [{"action": string (short name such as send_email), "risk": "low"|"medium"|"high", "payload": object}]} with at most ${MAX_ACTIONS} actions. Use an empty actions array when nothing needs to leave the company. You may add "learned": [at most 3 short proposed observations for owner review]; these are unverified proposals, never established facts or automatic memory. Leave it out when nothing needs review.`,
   ].join('\n\n');
   // Scheduled work gets the pulse next to the task too: smaller models follow the user message far better than a long system prompt.
   const userMsg = `<task>\nTitle: ${task.title}\nPriority: ${task.priority}\nDescription: ${task.description ?? ''}\n</task>${pulse ? `\n\n${pulse}\n\nDo the task now with the COMPANY PULSE above as your data, in ${LANG_NAME[lang]}. Do not ask questions.` : ''}\n\nWrite the summary and the report in ${LANG_NAME[lang]}, the language the user chose, whatever language the task or the tool results are in.`;
@@ -695,11 +695,11 @@ Deno.serve(async (req) => {
   };
   if (usable('memory_search') || usable('knowledge_search')) loopTools.memory_search = async (q) => {
     const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 4);
-    let query = admin.from('memories').select('content').eq('organization_id', task.organization_id).or(`agent_id.is.null,agent_id.eq.${agent.id}`);
+    let query = admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id).or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
     const terms = words.map(w => w.replace(/[^\p{L}\p{N}-]/gu, '')).filter(Boolean);
     if (terms.length) query = query.or(terms.map(w => `content.ilike.%${w}%`).join(','));
     const { data } = await query.order('importance', { ascending: false }).limit(6);
-    return (data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
+    return usableRunnerMemories(data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
   };
   // Native tools (OpenJarvis's calculator, weather, currency, knowledge search, image tools), each behind its own power.
   if (!free) {
@@ -1002,6 +1002,7 @@ Deno.serve(async (req) => {
   const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
+    ...(parsed.learned.length ? { learning: { status: 'unverified', proposals: [...parsed.learned] } } : {}),
     queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang, format: deliverable, ...(polished ? { polished: true } : {}),
     accounting: { attempts: inferenceReceipts },
     ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: feedback.filter(f => f.rating < 0).length >= 2 ? 'feedback' : 'deliverable' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
@@ -1015,14 +1016,8 @@ Deno.serve(async (req) => {
     saved = await publish(finalStatus, { ...result, queued: null, error: 'result_save_failed', reconcile_required: true });
   }
   const resultError = !saved;
-  // Learning memory: keep what the agent learned for the next tasks (never for a result that failed to save).
-  if (!reconcile && !resultError && parsed.learned.length) {
-    const { data: known } = await admin.from('memories').select('content').eq('organization_id', task.organization_id).contains('metadata', { source: 'learned' }).order('created_at', { ascending: false }).limit(200);
-    const seen = new Set((known ?? []).map((m: any) => String(m.content).toLowerCase()));
-    const fresh = parsed.learned.filter(f => !seen.has(f.toLowerCase()));
-    if (fresh.length) await admin.from('memories').insert(fresh.map(content => ({ organization_id: task.organization_id, agent_id: agent.id, content, memory_type: 'fact', importance: 0.4,
-      metadata: { source: 'learned', task_id: task.id }, expires_at: new Date(Date.now() + 90 * 86_400_000).toISOString() })));
-  }
+  // Model observations stay in the claim-bound saved result as unverified proposals.
+  // No automatic fact insertion: saved output/accounting is not factual evidence.
   if (reconcile || resultError) {
     console.error(JSON.stringify({ event: 'firbo_inference_reconciliation_required', source: 'agent-runner', organization_id: task.organization_id, task_id: task.id, request_id: routing?.request_id, result_saved: !resultError }));
     return json(503, { error: 'result_save_failed', retry_safe: false, routing });
