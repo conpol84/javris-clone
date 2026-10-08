@@ -5,12 +5,14 @@ on:
     paths:
       - 'deploy/worker/**'
       - 'tests/firbo/test_private_app_worker.py'
+      - 'tests/firbo/test_private_worker_preflight.py'
       - '.github/workflows/firbo-private-app-worker.yml'
   push:
     branches: [claude/gifted-dijkstra-rph5j8]
     paths:
       - 'deploy/worker/**'
       - 'tests/firbo/test_private_app_worker.py'
+      - 'tests/firbo/test_private_worker_preflight.py'
       - '.github/workflows/firbo-private-app-worker.yml'
 permissions:
   contents: read
@@ -28,5 +30,7 @@ jobs:
         with: {python-version: '${{ matrix.python }}'}
       - name: Real SQLite/HTTP worker, isolation and cancellation
         run: python -m unittest discover -s tests/firbo -p test_private_app_worker.py -v
+      - name: Read-only installation preflight
+        run: python -m unittest discover -s tests/firbo -p test_private_worker_preflight.py -v
       - name: Syntax validation
-        run: python -m py_compile deploy/worker/firbo_worker.py
+        run: python -m py_compile deploy/worker/firbo_worker.py deploy/worker/preflight.py
