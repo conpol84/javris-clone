@@ -121,7 +121,11 @@ export async function startLocalCapture({ directory, durationMs = MAX_DURATION_M
     if (req.method === 'GET' && req.url === '/alive') return respond(200, '{"ok":true}');
     if (req.method === 'POST' && req.url === '/cancel' && req.headers.origin === origin) {
       stopped = true;
-      if (artifact) { await fs.unlink(artifact.path).catch(() => {}); artifact = null; }
+      if (artifact) {
+        try { await fs.unlink(artifact.path); }
+        catch (error) { if (error.code !== 'ENOENT') return respond(500, '{"error":"local_delete_failed"}'); }
+        artifact = null;
+      }
       respond(200, '{"cancelled":true}');
       return;
     }

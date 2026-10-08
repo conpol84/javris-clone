@@ -30,6 +30,9 @@ the owner must select a private folder and verify ACLs during real-device accept
 The file is unencrypted. Stop and discard deletes it; normal successful recording
 remains until the owner deletes it. This is an original FIRBO module, not a full
 remote desktop or continuous camera feed.
+If the browser cannot reach the local server or the filesystem refuses deletion,
+the recording may remain in that folder; successful deletion is not claimed on
+a failed request. Check the local folder before considering cleanup complete.
 
 ## Tested / passed
 

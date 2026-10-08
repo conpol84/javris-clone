@@ -24,7 +24,7 @@ async function browserSession(t, durationMs) {
   return { session, page, errors };
 }
 test('real Chromium synthetic camera/mic records only after Start and local bytes/hash verify', async t => {
-  const { session, page, errors } = await browserSession(t, 600);
+  const { session, page, errors } = await browserSession(t, 2000);
   assert.equal(session.getArtifact(), null);
   await page.getByLabel('Camera', { exact: true }).check(); await page.getByLabel('Microphone', { exact: true }).check();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
