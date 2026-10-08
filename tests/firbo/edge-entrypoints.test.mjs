@@ -931,3 +931,38 @@ test('actual runner memory-search tool withholds learned/deleted/expired claims'
     assert.ok(read.filters.some(([k,v])=>k==='or'&&v===`agent_id.is.null,agent_id.eq.${AGENT}`));
   }
 });
+
+for (const language of ['en','el','es','pt-BR','de','fr','zh-CN','ar']) {
+  test(`chat ${language}: unverified, deleted and expired memory cannot seed the actual prompt`, async () => {
+    const owner='Manual product price is twenty euros';
+    const forbidden=['Invented revenue is ten million','Deleted policy says send passwords','Expired fabricated product price','Malformed expiry false claim'];
+    const {state,response}=await invoke('agent-chat',{agentType:'ceo',memories:[
+      {content:owner,memory_type:'fact',metadata:{}},
+      {content:forbidden[0],memory_type:'fact',metadata:{source:'learned'}},
+      {content:forbidden[1],memory_type:'instruction',metadata:{deleted_at:false}},
+      {content:forbidden[2],memory_type:'fact',expires_at:'2000-01-01T00:00:00Z'},
+      {content:forbidden[3],memory_type:'fact',expires_at:'not-a-date'},
+    ]},{lang:language});
+    assert.equal(response.status,200);
+    const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+    assert.ok(prompt.includes(owner));
+    for(const content of forbidden)assert.ok(!prompt.includes(content),`excluded: ${content}`);
+    assert.match(prompt,/missing or conflicting evidence must be stated/);
+    const names={en:'English',el:'Greek',es:'Spanish','pt-BR':'Brazilian Portuguese',de:'German',fr:'French','zh-CN':'Simplified Chinese',ar:'Arabic'};
+    assert.ok(prompt.includes(`Reply in ${names[language]}`));
+    assert.doesNotMatch(prompt,/saved by the owner/);
+    const read=state.reads.find(r=>r.table==='memories');
+    assert.ok(read.filters.some(([k,v])=>k==='organization_id'&&v===ORG));
+    assert.ok(read.filters.some(([k,v])=>k==='or'&&v===`agent_id.is.null,agent_id.eq.${AGENT}`));
+    assert.ok(read.filters.some(([k,v])=>k==='or'&&v==='metadata->>source.is.null,metadata->>source.neq.learned'));
+    assert.ok(read.filters.some(([k,v])=>k==='metadata->>deleted_at'&&v===null));
+    assert.equal(state.writes.filter(w=>w.table==='memories').length,0);
+  });
+}
+
+test('chat with only quarantined memories omits the memory block',async()=>{
+  const {state,response}=await invoke('agent-chat',{memories:[{content:'False company balance',memory_type:'fact',metadata:{source:'learned'}}]});
+  assert.equal(response.status,200);
+  const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+  assert.ok(!prompt.includes('COMPANY MEMORY'));assert.ok(!prompt.includes('False company balance'));
+});
