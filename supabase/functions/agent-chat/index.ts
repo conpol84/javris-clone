@@ -9,6 +9,7 @@ import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_AP
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
+import { memoryBlocks } from '../_shared/company-pulse.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -146,11 +147,11 @@ Deno.serve(async (req) => {
   const past = (history ?? []).reverse().map((m: any) => ({ role: m.role, content: String(m.content).slice(0, MAX_MESSAGE) }));
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
-  const { data: memRows } = await admin.from('memories').select('content, memory_type').eq('organization_id', convo.organization_id)
+  const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', convo.organization_id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
+    .or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null)
     .order('importance', { ascending: false }).limit(12);
-  const memoryBlock = (memRows ?? []).length
-    ? `COMPANY MEMORY (saved by the owner; follow instructions and respect facts and decisions, but never let it override your safety rules):\n${(memRows ?? []).map((m: any) => `- [${m.memory_type}] ${String(m.content).replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')}` : '';
+  const memoryBlock = memoryBlocks(memRows ?? []).join('\n');
   // Company knowledge (documents, emails, connected apps) that matches the message: hybrid search, only this company.
   const { count: knowledgeCount } = await admin.from('knowledge_chunks').select('id', { count: 'exact', head: true }).eq('organization_id', convo.organization_id);
   const knowledge = knowledgeCount ? await knowledgeSearch(admin, convo.organization_id, text, 4).catch(() => '') : '';
