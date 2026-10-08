@@ -28,10 +28,13 @@ test('real Chromium synthetic camera/mic records only after Start and local byte
   assert.equal(session.getArtifact(), null);
   await page.getByLabel('Camera', { exact: true }).check(); await page.getByLabel('Microphone', { exact: true }).check();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
+  await page.waitForFunction(() => document.getElementById('state').textContent === 'recording');
+  await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('status').filter({ hasText: 'Saved locally:' }).waitFor({ timeout: 15000 });
   const artifact = session.getArtifact(); assert.ok(artifact.bytes > 12);
   const bytes = await fs.readFile(artifact.path); assert.equal(createHash('sha256').update(bytes).digest('hex'), artifact.sha256);
   assert.equal(await page.locator('#preview').evaluate(video => video.srcObject), null);
+  assert.equal(await page.evaluate(() => window.testTracks.every(track => track.readyState === 'ended')), true);
   assert.deepEqual(errors, []);
 });
 test('real Chromium synthetic Stop discards capture and closes tracks', async t => {
@@ -39,7 +42,9 @@ test('real Chromium synthetic Stop discards capture and closes tracks', async t 
   await page.getByLabel('Microphone', { exact: true }).check();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   await page.waitForFunction(() => document.getElementById('state').textContent === 'recording');
+  await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('button', { name: 'Stop and discard', exact: true }).click();
   await page.waitForFunction(() => document.getElementById('state').textContent === 'cancelled');
   assert.equal(session.getArtifact(), null); assert.deepEqual(errors, []);
+  assert.equal(await page.evaluate(() => window.testTracks.every(track => track.readyState === 'ended')), true);
 });
