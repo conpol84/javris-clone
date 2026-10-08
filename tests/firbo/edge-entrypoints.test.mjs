@@ -966,3 +966,41 @@ test('chat with only quarantined memories omits the memory block',async()=>{
   const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
   assert.ok(!prompt.includes('COMPANY MEMORY'));assert.ok(!prompt.includes('False company balance'));
 });
+
+const ROLE_EXPECTATIONS={
+  ceo:'CEO: separate proposals, delegated work and verified results',
+  research:'Research: cite only sources actually supplied or read',
+  finance:'Finance: show inputs, units, currency, period and calculation',
+  developer:'Developer: distinguish proposed code, saved changes, tests actually run and deployed behavior',
+  sales:'Sales: use supplied company/product facts',
+  marketing:'Marketing: ground product claims in supplied facts',
+  operations:'Operations: separate plans, queued actions and verified execution',
+  custom:'Custom: stay within the configured job and available evidence',
+};
+const ROLE_LANGUAGES={en:'English',el:'Greek',es:'Spanish','pt-BR':'Brazilian Portuguese',de:'German',fr:'French','zh-CN':'Simplified Chinese',ar:'Arabic'};
+for(const handler of ['agent-chat','agent-runner'])for(const [role,expected] of Object.entries(ROLE_EXPECTATIONS))for(const [lang,name] of Object.entries(ROLE_LANGUAGES)){
+  test(`${handler} ${role}/${lang}: verified database role binds evidence instructions`,async()=>{
+    const {state,response}=await invoke(handler,{agentType:role},{lang,agent_type:'ceo',role:'ceo'});
+    assert.equal(response.status,200);
+    const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+    assert.ok(prompt.includes(expected));
+    assert.match(prompt,/When evidence is missing, say unknown/);
+    assert.match(prompt,/Never fabricate sources, figures or execution receipts/);
+    assert.ok(prompt.includes(name));
+    const read=state.reads.find(r=>r.table==='agents');
+    assert.ok(read.selection.split(/,\s*/).includes('type'),'server selects authoritative role');
+    assert.ok(read.filters.some(([k,v])=>k==='organization_id'&&v===ORG));
+    assert.equal(state.writes.filter(w=>w.table==='memories').length,0);
+  });
+}
+
+test('compact local chat keeps finance evidence rules within its request bound',async()=>{
+  const {state,response}=await invoke('agent-chat',{agentType:'finance',monthlyBudget:0,env:{FIRBO_ALLOW_LOCAL_CHAT:'on',FIRBO_FREE_ORGANIZATIONS:ORG,FIRBO_TEXT_ROUTING_MODE:'legacy'}},{lang:'el',voice:true});
+  assert.equal(response.status,200);
+  const call=state.calls.find(c=>String(c.url).includes('/firbo/free/'));
+  assert.ok(call);
+  const request=JSON.parse(call.init.body);
+  assert.match(request.messages[0].content,/Finance: show inputs, units and calculations; missing values are unknown/);
+  assert.match(request.messages[0].content,/Never claim sent\/saved\/done without matching execution evidence/);
+  assert.ok(new TextEncoder().encode(JSON.stringify(request.messages)).length<=2700);
+});

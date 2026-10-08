@@ -10,6 +10,7 @@ import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
 import { memoryBlocks } from '../_shared/company-pulse.ts';
+import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -56,6 +57,7 @@ function compactForFree(i: { agent: any; org: any; profile: Record<string, strin
     const system = [
       clipTo(i.agent.system_prompt || `You are ${i.agent.name}, an AI employee.`, 260),
       i.agent.owner_instructions ? `Owner style: ${clipTo(i.agent.owner_instructions, 500)}` : '',
+      roleEvidenceInstructions(i.agent.type, true),
       `Company: ${clipTo(i.org?.name, 60)}.${i.profile.goal ? ` Goal: ${clipTo(i.profile.goal, 120)}.` : ''}`,
       i.voice && snapChars > 0 ? clipTo(i.snapshot, snapChars) : '',
       `Reply in ${LANG_NAME[i.lang] ?? 'English'} unless the teammate writes in another language. ${i.voice ? 'Spoken conversation: answer in one to three short natural sentences, no markdown or lists. Use only the company data above and never invent numbers.' : 'Be concise.'}`,
@@ -192,6 +194,7 @@ Deno.serve(async (req) => {
   ].join('\n');
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
+    roleEvidenceInstructions(agent.type),
     ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current request):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
