@@ -25,9 +25,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       manifest: {
-        name: 'OpenJarvis',
-        short_name: 'Jarvis',
-        description: 'On-device AI assistant',
+        name: 'Firbo AI',
+        short_name: 'Firbo AI',
+        description: 'AI command center for your company',
         theme_color: '#161618',
         background_color: '#161618',
         display: 'standalone',
@@ -38,6 +38,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
         navigateFallbackDenylist: [/^\/v1\//, /^\/health/, /^\/dashboard/, /^\/api\//],
       },
     }),

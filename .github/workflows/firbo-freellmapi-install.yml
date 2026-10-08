@@ -1,0 +1,47 @@
+name: Firbo FreeLLMAPI Docker installation
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - deploy/hostinger/install-freellmapi.py
+      - deploy/hostinger/compose.freellmapi.yaml
+      - .github/workflows/firbo-freellmapi-install.yml
+permissions:
+  contents: read
+jobs:
+  disposable-vps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Install pinned image and disposable gateway stand-ins
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/tashfeenahmed/freellmapi@sha256:543cedc189d589c69a46018552ae60e38f5685ed7ef62ff4a591fbb5bcb3fc1a
+          docker network create hostinger_default
+          for service in firbo-api firbo-omniroute firbo-caddy firbo-redis; do
+            docker run -d --name "$service" --network hostinger_default alpine:3.22 sleep 600
+          done
+      - name: Run actual installer with only the hostname gate substituted
+        run: |
+          sudo python3 - <<'PY'
+          import importlib.util
+          from unittest.mock import patch
+          spec = importlib.util.spec_from_file_location('installer', 'deploy/hostinger/install-freellmapi.py')
+          installer = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(installer)
+          with patch.object(installer.socket, 'gethostname', return_value='srv2027143'):
+              installer.main()
+              try:
+                  installer.main()
+              except RuntimeError as error:
+                  assert 'existing_install_directory_preserved' in str(error)
+              else:
+                  raise AssertionError('repeat install must preserve existing credentials')
+          PY
+      - name: Verify non-root process, authentication and internal network
+        run: |
+          set -euo pipefail
+          test "$(docker exec firbo-freellmapi id -u)" = 1000
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/models)" = 401
+          docker exec firbo-omniroute wget -q -O /dev/null http://freellmapi:3001/api/ping

@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { motion } from 'motion/react';
 import { useAppStore } from '../lib/store';
@@ -822,7 +823,7 @@ export function SyncStatusDisplay({
       </div>
       {hasSynced && connectorId === 'slack' && (
         <div style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginTop: 4 }}>
-          Tip: invite the bot to channels with /invite @OpenJarvis, then re-sync
+          Tip: invite the bot to channels with /invite @Firbo AI, then re-sync
         </div>
       )}
       {syncError && (
@@ -1354,11 +1355,11 @@ const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
     setupSteps: [
       '1. Go to api.slack.com/apps \u2192 click "Create New App" \u2192 choose "From an app manifest"',
       '2. Select your workspace. When asked for the manifest format, choose JSON. Then paste the manifest below (click "Copy" to copy it):',
-      'COPYABLE:{"display_information":{"name":"OpenJarvis"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"OpenJarvis","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}',
+      'COPYABLE:{"display_information":{"name":"Firbo AI"},"features":{"app_home":{"home_tab_enabled":true,"messages_tab_enabled":true,"messages_tab_read_only_enabled":false},"bot_user":{"display_name":"Firbo AI","always_online":true}},"oauth_config":{"scopes":{"bot":["chat:write","im:write","im:read","im:history","mpim:read","mpim:history","users:read","channels:read","channels:history","channels:join","groups:read","groups:history","app_mentions:read"]}},"settings":{"event_subscriptions":{"bot_events":["message.im"]},"socket_mode_enabled":true}}',
       '3. Click "Next" \u2192 review the summary \u2192 click "Create". Then go to "Install App" in the left sidebar \u2192 click "Install to Workspace" \u2192 click "Allow"',
       '4. In the left sidebar, click "OAuth & Permissions". Copy the "Bot User OAuth Token" (starts with xoxb-...)',
       '5. In the left sidebar, click "Basic Information" \u2192 scroll to "App-Level Tokens" \u2192 click "Generate Token and Scopes" \u2192 name it "socket" \u2192 click "Add Scope" \u2192 select "connections:write" \u2192 click "Generate" \u2192 copy the token (starts with xapp-...)',
-      '6. (Optional) Still in "Basic Information", scroll to "Display Information" \u2192 upload the OpenJarvis icon as the app icon',
+      '6. (Optional) Still in "Basic Information", scroll to "Display Information" \u2192 upload the Firbo AI icon as the app icon',
       '7. Paste both tokens below and click Connect',
     ],
     fields: [
@@ -1366,7 +1367,7 @@ const MESSAGING_CHANNELS: MessagingChannelConfig[] = [
       { key: 'app_token', label: 'App Token', placeholder: 'xapp-...', type: 'password', required: true },
     ],
     activeLabel: () => 'Connected to Slack',
-    howToUse: () => 'Open Slack and DM @OpenJarvis to talk to your agent.',
+    howToUse: () => 'Open Slack and DM @Firbo AI to talk to your agent.',
   },
 ];
 
@@ -2150,7 +2151,7 @@ function MemorySection() {
                 <div className="flex items-center gap-3 mt-2">
                   <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium" style={{
                     background: r.score > 0.5
-                      ? 'rgba(74, 222, 128, 0.1)'
+                      ? 'rgba(0, 212, 255, 0.1)'
                       : r.score > 0.2
                         ? 'var(--color-accent-amber-subtle)'
                         : 'var(--color-bg-tertiary)',
@@ -2338,7 +2339,7 @@ export function DataSourcesPage() {
   ];
 
   return (
-    <div className="flex-1 overflow-y-auto px-6 py-10">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto px-6 py-10">
       <div className="max-w-5xl mx-auto">
       <header className="mb-6">
         <h1 className="text-lg font-semibold" style={{ color: 'var(--color-text)' }}>

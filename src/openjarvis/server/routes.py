@@ -167,11 +167,17 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         and (not request_body.stream or bool(getattr(agent, "_tools", None)))
     )
 
+    if request_body.firbo_native_approval and (
+        not use_server_agent or request_body.stream or request_body.tools
+    ):
+        raise HTTPException(status_code=400, detail="approval_route_not_supported")
+
     # Inject memory context into messages before dispatching
     config = getattr(request.app.state, "config", None)
     memory_backend = getattr(request.app.state, "memory_backend", None)
     if (
-        config is not None
+        not request_body.firbo_native_approval
+        and config is not None
         and config.agent.context_from_memory
         and request_body.messages
     ):
@@ -339,15 +345,22 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
     # worker thread so a slow/wedged non-streaming request can't stall the
     # event loop and every other concurrent request with it.
     if use_server_agent:
-        response = await asyncio.to_thread(
-            _handle_agent,
-            agent,
-            model,
-            request_body,
-            complexity_info,
-            trace_store=getattr(request.app.state, "trace_store", None),
-            bus=getattr(request.app.state, "bus", None),
-        )
+        from openjarvis.server.native_approval import ApprovalDenied
+
+        try:
+            response = await asyncio.to_thread(
+                _handle_agent,
+                agent,
+                model,
+                request_body,
+                complexity_info,
+                trace_store=getattr(request.app.state, "trace_store", None),
+                bus=getattr(request.app.state, "bus", None),
+            )
+        except ApprovalDenied:
+            raise HTTPException(
+                status_code=403, detail="native_approval_denied"
+            ) from None
     else:
         bus = getattr(request.app.state, "bus", None)
         response = await asyncio.to_thread(
@@ -622,7 +635,9 @@ def _handle_agent(
     # Locked for the full override-run-restore cycle (#759): only the
     # override/restore lines racing wouldn't be enough, since agent.run()
     # itself reads self._model throughout the call.
-    with _get_agent_model_lock(agent):
+    from openjarvis.server.native_approval import approved_request
+
+    with _get_agent_model_lock(agent), approved_request(agent, req):
         original_model = agent._model
         if model:
             agent._model = model
@@ -668,7 +683,43 @@ def _handle_agent(
         ],
         usage=usage,
         complexity=complexity_info,
+        execution=(
+            _execution_receipt(result.tool_results)
+            if req.firbo_include_execution
+            else None
+        ),
     )
+
+
+def _execution_receipt(results) -> dict:
+    """Bounded runtime evidence; exclude arguments and internal metadata.
+
+    A successful tool result is the tool's report, not independent verification
+    of a saved artifact or external side effect. Keep failures visible even when
+    the final model answer claims success. This does not persist a job ledger.
+    """
+    tools = []
+    remaining = 24000
+    for result in results[:24]:
+        content = result.content if isinstance(result.content, str) else ""
+        output = content[: min(2000, remaining)]
+        remaining -= len(output)
+        tools.append(
+            {
+                "name": str(result.tool_name)[:120],
+                "success": result.success is True,
+                "output": output,
+                "truncated": len(output) < len(content),
+            }
+        )
+    return {
+        "contract": "openjarvis-execution/v1",
+        "mode": "agent",
+        "tool_count": len(results),
+        "failed_count": sum(result.success is not True for result in results),
+        "tools": tools,
+        "truncated": len(results) > len(tools) or any(t["truncated"] for t in tools),
+    }
 
 
 async def _handle_agent_stream(
@@ -1373,6 +1424,8 @@ async def reset_telemetry():
 @router.get("/v1/info")
 async def server_info(request: Request):
     """Return server configuration: model, agent, engine."""
+    from openjarvis.server.runtime_inventory import agent_runtime_inventory
+
     agent = getattr(request.app.state, "agent", None)
     agent_id = getattr(agent, "agent_id", None) if agent else None
     # Fall back to configured agent name if agent didn't instantiate
@@ -1382,6 +1435,7 @@ async def server_info(request: Request):
         "model": getattr(request.app.state, "model", ""),
         "agent": agent_id,
         "engine": getattr(request.app.state, "engine_name", ""),
+        "runtime": agent_runtime_inventory(agent),
     }
 
 

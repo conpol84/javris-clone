@@ -1,0 +1,12 @@
+{
+  "schema": "firbo-egress-bundle/v1",
+  "source": "5bea5475dfefd33cdb9156f77817dbcc3786578c",
+  "files": [
+    {"kind":"service","path":"src/openjarvis/security/mcp_egress.py","sha256":"315d41090acd2893e295c7dd0ba4701f67e07dee4de46948fcf7a4e3d2e627da","bytes":10639},
+    {"kind":"service","path":"src/openjarvis/server/firbo_mcp_egress.py","sha256":"1c675055d6213be7be8529e5d8847d5a91f1a75c7577a9cf36fe0eeb4dab0ed4","bytes":8452},
+    {"kind":"edge","path":"supabase/functions/_shared/mcp-egress.ts","sha256":"ac62e66a92e90133f538b276c24b6a1ba52b6877f9de835254f5c7dde9e52805","bytes":1540},
+    {"kind":"service","path":"src/openjarvis/security/page_egress.py","sha256":"fe4050b4087d3605ca844b4627f7726b1c16b541fa9499073427a8e0f21e032f","bytes":10383},
+    {"kind":"service","path":"src/openjarvis/server/firbo_page_egress.py","sha256":"5aea41b4e681942cac1bdd3107e04becc47b8e037573016e3dbe61265ac270d3","bytes":7423},
+    {"kind":"edge","path":"supabase/functions/_shared/page-egress.ts","sha256":"58f1dc32dbd73e20e0a1e40bd2b15f9a98a4afbc77707b61fe82440860b2e2b0","bytes":3079}
+  ]
+}

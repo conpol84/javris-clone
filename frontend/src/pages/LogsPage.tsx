@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useRef, useEffect } from 'react';
 import { Copy, Trash2 } from 'lucide-react';
 import { useAppStore } from '../lib/store';
@@ -30,7 +31,7 @@ export function LogsPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden px-6 py-10">
+    <div className="fb-root fb-legacy flex-1 flex flex-col overflow-hidden px-6 py-10">
       <div className="max-w-4xl mx-auto w-full flex flex-col flex-1 overflow-hidden">
         <header className="mb-6 shrink-0">
           <div className="flex items-center justify-between gap-3">

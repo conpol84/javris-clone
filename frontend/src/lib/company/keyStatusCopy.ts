@@ -1,0 +1,13 @@
+const en = { loadingPlan: 'Checking company plan…', loadingKeys: 'Checking connected providers…', planError: 'The company plan could not be checked.', keysError: 'Connected provider status could not be checked.', retry: 'Retry', waiting: 'Provider changes are available after the company plan and connections are checked.' };
+type Copy = typeof en;
+export const KEY_STATUS_COPY: Record<string, Copy> = {
+  en,
+  el: { loadingPlan: 'Έλεγχος εταιρικού πακέτου…', loadingKeys: 'Έλεγχος συνδεδεμένων παρόχων…', planError: 'Δεν ήταν δυνατός ο έλεγχος του εταιρικού πακέτου.', keysError: 'Δεν ήταν δυνατός ο έλεγχος των συνδεδεμένων παρόχων.', retry: 'Νέα προσπάθεια', waiting: 'Οι αλλαγές παρόχων είναι διαθέσιμες μετά τον έλεγχο πακέτου και συνδέσεων.' },
+  es: { loadingPlan: 'Comprobando el plan de la empresa…', loadingKeys: 'Comprobando los proveedores conectados…', planError: 'No se pudo comprobar el plan de la empresa.', keysError: 'No se pudo comprobar el estado de los proveedores conectados.', retry: 'Reintentar', waiting: 'Los proveedores se pueden cambiar tras comprobar el plan y las conexiones.' },
+  'pt-BR': { loadingPlan: 'Verificando o plano da empresa…', loadingKeys: 'Verificando os provedores conectados…', planError: 'Não foi possível verificar o plano da empresa.', keysError: 'Não foi possível verificar os provedores conectados.', retry: 'Tentar novamente', waiting: 'Os provedores podem ser alterados após a verificação do plano e das conexões.' },
+  de: { loadingPlan: 'Unternehmensplan wird geprüft…', loadingKeys: 'Verbundene Anbieter werden geprüft…', planError: 'Der Unternehmensplan konnte nicht geprüft werden.', keysError: 'Der Status verbundener Anbieter konnte nicht geprüft werden.', retry: 'Erneut versuchen', waiting: 'Anbieter können nach der Prüfung von Plan und Verbindungen geändert werden.' },
+  fr: { loadingPlan: 'Vérification du forfait de l’entreprise…', loadingKeys: 'Vérification des fournisseurs connectés…', planError: 'Impossible de vérifier le forfait de l’entreprise.', keysError: 'Impossible de vérifier les fournisseurs connectés.', retry: 'Réessayer', waiting: 'Les fournisseurs peuvent être modifiés après vérification du forfait et des connexions.' },
+  'zh-CN': { loadingPlan: '正在检查公司套餐…', loadingKeys: '正在检查已连接的服务商…', planError: '无法检查公司套餐。', keysError: '无法检查已连接服务商的状态。', retry: '重试', waiting: '检查公司套餐和连接后才可更改服务商。' },
+  ar: { loadingPlan: 'جارٍ التحقق من خطة الشركة…', loadingKeys: 'جارٍ التحقق من المزوّدين المتصلين…', planError: 'تعذّر التحقق من خطة الشركة.', keysError: 'تعذّر التحقق من حالة المزوّدين المتصلين.', retry: 'إعادة المحاولة', waiting: 'تتوفر تغييرات المزوّدين بعد التحقق من خطة الشركة والاتصالات.' },
+};
+export const keyStatusCopy = (lang: string): Copy => KEY_STATUS_COPY[lang] ?? en;

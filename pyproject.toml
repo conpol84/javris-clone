@@ -291,6 +291,10 @@ select = ["E", "F", "I", "W"]
 # research_loop.py carries long prompt strings too (documented in CLAUDE.md);
 # the ignore was missing here.
 "src/openjarvis/agents/research_loop.py" = ["E501"]
+# Firbo verification fixtures contain long synthetic URLs, browser selectors and
+# protocol payloads; keep semantic/F/I linting strict but do not force those
+# test vectors to be split solely for the 88-character presentation limit.
+"tests/firbo/**/*.py" = ["E501"]
 
 [dependency-groups]
 dev = [

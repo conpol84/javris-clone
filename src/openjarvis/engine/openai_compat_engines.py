@@ -16,6 +16,9 @@ _ENGINES = {
     "uzu": ("UzuEngine", "http://localhost:8000", ""),
     "apple_fm": ("AppleFmEngine", "http://localhost:8079", "/v1"),
     "lemonade": ("LemonadeEngine", "http://localhost:13305", "/v1"),
+    # OmniRoute AI gateway: one OpenAI-compatible endpoint that routes and
+    # falls back across many upstream providers. Auth via OMNIROUTE_API_KEY.
+    "omniroute": ("OmniRouteEngine", "http://localhost:20128", "/v1"),
 }
 
 for _key, (_cls_name, _default_host, _api_prefix) in _ENGINES.items():
