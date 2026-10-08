@@ -13,7 +13,7 @@ const { chromium } = require(require.resolve('playwright', { paths: [process.env
 async function browserSession(t, durationMs) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'firbo-media-page-'));
   const session = await startLocalCapture({ directory: root, durationMs });
-  const browser = await chromium.launch({ headless: true, args: ['--use-fake-device-for-media-stream'] });
+  const browser = await chromium.launch({ channel: 'chromium', headless: true, args: ['--use-fake-device-for-media-stream'] });
   const context = await browser.newContext();
   await context.grantPermissions(['camera', 'microphone'], { origin: session.origin });
   await context.route('**/*', route => route.request().url().startsWith(session.origin + '/') ? route.continue() : route.abort());
