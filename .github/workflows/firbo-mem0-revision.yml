@@ -23,7 +23,7 @@ jobs:
           POSTGRES_DB: firbo_mem0_revision
         ports: ['5432:5432']
         options: >-
-          --health-cmd 'pg_isready -U postgres -d firbo_mem0_revision'
+          --health-cmd "pg_isready -U postgres -d firbo_mem0_revision"
           --health-interval 5s --health-timeout 5s --health-retries 12
     env:
       DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/firbo_mem0_revision
