@@ -56,9 +56,18 @@ function rowChecked(row: unknown): row is AuthoritativeMemory {
 /** Metadata for a future indexer. Never replaces or writes the authoritative row. */
 export async function memoryIndexReference(row: AuthoritativeMemory): Promise<MemoryReference> {
   if (!rowChecked(row)) throw new Error('memory_row_invalid');
+  // PostgreSQL/PostgREST can spell the same instant with another UTC offset or
+  // fractional precision. Bind the instant in one UTC millisecond format, not
+  // its wire spelling. Future SQL revision checks use the same bounded format.
+  const instant = (value: string) => {
+    const canonical = new Date(value).toISOString();
+    if (!/^(?!0000)\d{4}-/.test(canonical)) throw new Error('memory_timestamp_invalid');
+    return canonical;
+  };
   // Include actual content: updated_at alone is insufficient for user corrections.
   const material = JSON.stringify([
-    row.id, row.organization_id, row.agent_id, row.content, row.updated_at, row.expires_at,
+    row.id, row.organization_id, row.agent_id, row.content, instant(row.updated_at),
+    row.expires_at === null ? null : instant(row.expires_at),
   ]);
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(material));
   return {
