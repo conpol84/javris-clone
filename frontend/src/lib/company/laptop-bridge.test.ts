@@ -62,6 +62,43 @@ describe('website to laptop browser bridge',()=>{
 });
 
 describe('CEO direct Full Control',()=>{
+ it('keeps the exact approved device, parameters and description across discovery awaits',async()=>{
+  const proposal={kind:'open_app' as const,params:{app:'Microsoft Word'},description:'Open Word',deviceId:'d1'};
+  let queued:any;
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   storage:memory(),now:()=>now,loadDevices:async()=>{proposal.params.app='Safari';proposal.deviceId='d2';proposal.description='Open Safari';return[device('d1','Approved',true),device('d2','Other',true)]},
+   queue:async(deviceId,kind,params)=>(queued={deviceId,kind,params},{job_id:'exact'}),
+   loadJobs:async()=>[{id:'exact',device_id:'d1',kind:'open_app',params:{app:'Microsoft Word'},status:'done',result:{opened:true,app:'Microsoft Word'},error:null,created_at:'',finished_at:''} as JobRow],
+  });
+  expect(queued).toEqual({deviceId:'d1',kind:'open_app',params:{app:'Microsoft Word'}});expect(out.status).toBe('done');expect(out.reply).toContain('Open Word');
+ });
+ it('rejects completed rows for different parameters or a requested Stop',async()=>{
+  const proposal=parseDirectComputerCommand('YouTube search Mazonaki and play first result')!;
+  for(const mismatch of ['params','stop']){
+   const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Laptop',true)],queue:async()=>({job_id:'exact'}),
+    loadJobs:async()=>[{id:'exact',device_id:'d1',kind:'browser_task',params:mismatch==='params'?{steps:[{action:'open',url:'https://example.com/'}]}:proposal.params,cancel_requested_at:mismatch==='stop'?'2026-10-08T00:00:00Z':null,status:'done',result:{completed:true},error:null,created_at:'',finished_at:''} as JobRow],
+   });expect(out.status).toBe('failed');expect(out.reply).not.toContain('Done on');
+  }
+ });
+ it('compares JSON objects independently of property order and isolates queue input mutation',async()=>{
+  const proposal={kind:'open_app' as const,params:{app:'Microsoft Word',metadata:{a:1,b:2}},description:'Open Word'};
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Laptop',true)],queue:async(_d,_k,params)=>{params.app='Safari';return{job_id:'exact'}},
+   loadJobs:async()=>[{id:'exact',device_id:'d1',kind:'open_app',params:{metadata:{b:2,a:1},app:'Microsoft Word'},status:'done',result:{opened:true,app:'Microsoft Word'},error:null,created_at:'',finished_at:''} as JobRow],
+  });expect(out.status).toBe('done');expect(proposal.params.app).toBe('Microsoft Word');
+ });
+ it('rejects non-JSON approved parameters before discovery or queueing',async()=>{
+  for(const params of [{app:'Word',extra:undefined},{app:'Word',n:NaN},{app:'Word',callback:()=>{}},{app:'Word',value:BigInt(1)}]){
+   let discovered=0,queued=0;
+   const out=await dispatchDirectComputerCommand('org',{kind:'open_app',params,description:'Open Word'},'en',undefined,{loadDevices:async()=>{discovered++;return[device('d1','Laptop',true)]},queue:async()=>{queued++;return{job_id:'never'}}});
+   expect(out.status).toBe('failed');expect(discovered).toBe(0);expect(queued).toBe(0);
+  }
+ });
+ it.each(['win32 x64','linux x64'])('does not misreport a %s capability blocker as Catalina',async platform=>{
+  const out=await prepareDirectComputerCommand('org','browser_task','en',undefined,{storage:memory(),now:()=>now,loadDevices:async()=>[{...device('d1','Owner computer'),platform}]});
+  expect(out.ready).toBe(false);if(!out.ready){expect(out.reply).toContain('No job was queued');expect(out.reply).not.toMatch(/Catalina|macOS/);}
+ });
  it('recognises YouTube search/play and app-open commands without an LLM',()=>{
   const y=parseDirectComputerCommand('anikse to youtube kai vale mazonaki sto serchto proto tragoudi kane play');
   expect(y?.kind).toBe('browser_task');expect(JSON.stringify(y?.params)).toContain('Mazonaki'.toLowerCase().slice(0,4));
@@ -163,3 +200,4 @@ describe('owner transcript control requests and readiness',()=>{
   expect(proposal.description).toContain('playback unverified');
  });
 });
+
