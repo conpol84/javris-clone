@@ -31,7 +31,7 @@ test('real Chromium synthetic camera/mic records only after Start and local byte
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   try { await page.waitForFunction(() => ['recording','failed','cancelled'].includes(document.getElementById('state').textContent), { timeout: 10000 }); }
   catch (error) { throw new Error('Capture did not start: ' + await page.locator('#state').textContent() + '; ' + JSON.stringify(errors), { cause: error }); }
-  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors));
+  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors) + ' ' + await page.locator('#state').getAttribute('data-failure'));
   await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('status').filter({ hasText: 'Saved locally:' }).waitFor({ timeout: 15000 });
   const artifact = session.getArtifact(); assert.ok(artifact.bytes > 12);
@@ -46,7 +46,7 @@ test('real Chromium synthetic Stop discards capture and closes tracks', async t 
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
   try { await page.waitForFunction(() => ['recording','failed','cancelled'].includes(document.getElementById('state').textContent), { timeout: 10000 }); }
   catch (error) { throw new Error('Capture did not start: ' + await page.locator('#state').textContent() + '; ' + JSON.stringify(errors), { cause: error }); }
-  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors));
+  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors) + ' ' + await page.locator('#state').getAttribute('data-failure'));
   await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('button', { name: 'Stop and discard', exact: true }).click();
   await page.waitForFunction(() => document.getElementById('state').textContent === 'cancelled');

@@ -49,7 +49,7 @@ export function captureController({ getUserMedia, createRecorder, upload, onStat
       };
       recorder.start(250); onState('recording');
       timer = schedule(() => { if (!cancelled && recorder.state !== 'inactive') recorder.stop(); }, durationMs);
-    } catch (error) { unschedule(timer); stopTracks(); if (!cancelled) { cancelled = true; onState('failed'); } throw error; }
+    } catch (error) { unschedule(timer); stopTracks(); if (!cancelled) { cancelled = true; onState('failed', error.name + ': ' + error.message); } throw error; }
   };
   return { start, cancel };
 }
@@ -81,7 +81,7 @@ const controller = captureController({ durationMs: ${durationMs},
   const receipt = await response.json();
   status.textContent = 'Saved locally: ' + receipt.bytes + ' bytes; SHA256 ' + receipt.sha256;
  },
- onState: value => { if (value !== 'saved') status.textContent = value; if (['saved','cancelled','failed'].includes(value)) document.getElementById('preview').srcObject = null; }
+ onState: (value, detail) => { if (value !== 'saved') status.textContent = value; if (detail) status.dataset.failure = detail; if (['saved','cancelled','failed'].includes(value)) document.getElementById('preview').srcObject = null; }
 });
 function cancel() { controller.cancel(); abort.abort(); start.disabled = true; void fetch('/cancel', { method: 'POST', headers: { Authorization: 'Bearer ' + token }, keepalive: true }).catch(() => {}); }
 start.onclick = () => { start.disabled = true; controller.start({ camera: document.getElementById('camera').checked, microphone: document.getElementById('microphone').checked }).catch(() => {}); };
