@@ -8,7 +8,7 @@ import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages, tavilySearchWithUsage } from '../_shared/free-search.ts';
-import { learnedFacts, memoryBlocks, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
+import { learnedFacts, learningProvenance, memoryBlocks, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import {
   calculatorTool,
@@ -1003,8 +1003,10 @@ Deno.serve(async (req) => {
   // Computer steps that need the owner come first; the database accepts at most five approvals per run.
   const approvalsOut = [...computerApprovals, ...queue.map(action => ({ action: action.action, payload: action.payload, risk: action.risk }))].slice(0, 5);
   let finalStatus = reconcile ? 'blocked' : approvalsOut.length ? 'awaiting_approval' : 'completed';
+  const learning = await learningProvenance(parsed.learned, { organization_id: task.organization_id, agent_id: agent.id,
+    task_id: task.id, run_claim: claimed.run_claim, requested_by: user.id, report: parsed.report });
   const result: Record<string, unknown> = { ai_generated: true, summary: parsed.summary, report: parsed.report, actions: marked,
-    ...(parsed.learned.length ? { learning: { status: 'unverified', proposals: [...parsed.learned] } } : {}),
+    ...(learning ? { learning } : {}),
     queued: reconcile ? null : approvalsOut.length, dropped, powers_used: powers, steps: steps.map(st => ({ action: st.action, input: st.input, ok: st.ok, ...(st.out ? { out: st.out } : {}) })), calls, model, tokens: { input: inTok, output: outTok }, cost_usd: cost, lang, format: deliverable, ...(polished ? { polished: true } : {}),
     accounting: { attempts: inferenceReceipts },
     ran_at: new Date().toISOString(), routing, loop: loopTrace, ...(upgraded ? { routed_up: feedback.filter(f => f.rating < 0).length >= 2 ? 'feedback' : 'deliverable' } : escalated ? { routed_up: 'invalid_reply' } : {}), ...(reconcile ? { error: 'result_save_failed', reconcile_required: true } : {}) };
