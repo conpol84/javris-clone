@@ -64,9 +64,11 @@ export function splitIntoNotes(text: string, maxLen = 900, maxNotes = MEMORY_FIL
   return notes.slice(0, maxNotes);
 }
 
-export async function deleteMemory(id: string): Promise<void> {
-  const { error } = await requireClient().from('memories').delete().eq('id', id);
+export async function deleteMemory(orgId: string, id: string): Promise<void> {
+  if (!orgId || !id) throw new Error('memory_scope_required');
+  const { data, error } = await requireClient().from('memories').delete().eq('organization_id', orgId).eq('id', id).select('id');
   if (error) throw new Error(error.message);
+  if (!data || data.length !== 1 || data[0].id !== id) throw new Error('memory_not_changed');
 }
 
 /** The memories an agent actually reads: the same rule the runner uses (company-wide or its own, most important first). */
@@ -76,3 +78,4 @@ export function memoriesReadBy<T extends { id: string; agent_id: string | null; 
     .sort((a, b) => b.importance - a.importance)
     .slice(0, limit);
 }
+
