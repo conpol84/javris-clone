@@ -2,7 +2,7 @@ name: Firbo server execution receipts
 on:
   pull_request:
     branches: [claude/gifted-dijkstra-rph5j8]
-    paths: ['src/openjarvis/server/**', 'src/openjarvis/engine/_openai_compat.py', 'tests/engine/test_omniroute_tool_contract.py', 'deploy/hostinger/*openjarvis*.py', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-server-execution.yml']
+    paths: ['src/openjarvis/server/**', 'src/openjarvis/engine/_openai_compat.py', 'tests/engine/test_omniroute_tool_contract.py', 'deploy/hostinger/*openjarvis*.py', 'deploy/hostinger/server-output-budget.py', 'supabase/functions/**', 'frontend/**', 'tests/firbo/**', '.github/workflows/firbo-server-execution.yml']
 permissions:
   contents: read
 jobs:
@@ -18,6 +18,7 @@ jobs:
           /tmp/firbo-receipts/bin/pip install -r tests/firbo/requirements.txt
           /tmp/firbo-receipts/bin/pip install tomlkit==0.15.1
           PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_execution_receipt.py tests/firbo/test_server_runtime_inventory.py tests/firbo/test_engine_updater.py tests/firbo/test_runtime_tool_repair.py tests/firbo/test_artifact_acceptance.py
+          PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_server_output_budget.py tests/firbo/test_server_output_budget_rollout.py
           PYTHONPATH=src /tmp/firbo-receipts/bin/python -m pytest -q -c /dev/null --confcutdir=tests/engine tests/engine/test_omniroute_tool_contract.py
   bridge-and-panel:
     runs-on: ubuntu-latest

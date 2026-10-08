@@ -314,6 +314,7 @@ def test_controller_bundle_matches_reviewed_runtime():
         "server/routes.py",
         "server/models.py",
         "server/native_approval.py",
+        "server/output_budget.py",
     }
     for name, expected in module.BUNDLE.items():
         assert module.digest((base / "src/openjarvis" / name).read_bytes()) == expected

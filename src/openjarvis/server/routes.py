@@ -29,6 +29,12 @@ from openjarvis.server.models import (
     StreamChoice,
     UsageInfo,
 )
+from openjarvis.server.output_budget import (
+    OutputBudgetError,
+    agent_output_budget,
+    requested_budget,
+    supports_budget,
+)
 
 router = APIRouter()
 
@@ -167,6 +173,15 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
         and (not request_body.stream or bool(getattr(agent, "_tools", None)))
     )
 
+    try:
+        output_budget = requested_budget(request_body)
+    except OutputBudgetError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if output_budget is not None and (
+        not use_server_agent or request_body.stream or not supports_budget(agent)
+    ):
+        raise HTTPException(status_code=400, detail="unsupported_output_budget_route")
+
     if request_body.firbo_native_approval and (
         not use_server_agent or request_body.stream or request_body.tools
     ):
@@ -273,7 +288,7 @@ async def chat_completions(request_body: ChatCompletionRequest, request: Request
             )
             # Bump max_tokens when complexity suggests more than what
             # the client requested — never reduce below the request value.
-            if suggested > request_body.max_tokens:
+            if suggested > request_body.max_tokens and output_budget is None:
                 request_body.max_tokens = suggested
         except Exception:
             logging.getLogger("openjarvis.server").debug(
@@ -642,13 +657,20 @@ def _handle_agent(
         if model:
             agent._model = model
         try:
-            if trace_store is not None:
-                from openjarvis.traces.collector import TraceCollector
+            with agent_output_budget(agent, req) as budget:
+                if trace_store is not None:
+                    from openjarvis.traces.collector import TraceCollector
 
-                collector = TraceCollector(agent, store=trace_store, bus=bus)
-                result = collector.run(input_text, context=ctx)
-            else:
-                result = agent.run(input_text, context=ctx)
+                    collector = TraceCollector(agent, store=trace_store, bus=bus)
+                    result = collector.run(input_text, context=ctx)
+                else:
+                    result = agent.run(input_text, context=ctx)
+                if budget is not None:
+                    # Agent metadata may omit continuation/structured-mode usage.
+                    # Use all observed generation receipts, never guessed zeros.
+                    result.metadata.update(budget.usage())
+        except OutputBudgetError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from None
         finally:
             agent._model = original_model
 
@@ -1436,6 +1458,16 @@ async def server_info(request: Request):
         "agent": agent_id,
         "engine": getattr(request.app.state, "engine_name", ""),
         "runtime": agent_runtime_inventory(agent),
+        "output_budget": {
+            "contract": "firbo-native-output-budget/v1",
+            "supported": supports_budget(agent),
+            "requires": [
+                "firbo_include_execution",
+                "explicit_max_tokens",
+                "non_streaming",
+            ],
+            "input_budget": False,
+        },
     }
 
 
