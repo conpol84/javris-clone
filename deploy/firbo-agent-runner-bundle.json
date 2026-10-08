@@ -6,7 +6,7 @@
   "files": [
     {"path":"_shared/agent-loop.ts","source_path":"supabase/functions/_shared/agent-loop.ts","sha256":"aee25bdb812595c482565fb058b8ffd76e9ae57760132d5b6d4d61e7da73f803","bytes":22204},
     {"path":"_shared/agent-tools.ts","source_path":"supabase/functions/_shared/agent-tools.ts","sha256":"705b97e4dda234d68a6a29bf1b3c055c7bb3c6d34ca2b9a7664be21e7b151875","bytes":18420},
-    {"path":"_shared/company-pulse.ts","source_path":"supabase/functions/_shared/company-pulse.ts","sha256":"860a6d7a045dd1f542263ce2957b59e514698b51de9c26be746f16320ad7bfbc","bytes":3407},
+    {"path":"_shared/company-pulse.ts","source_path":"supabase/functions/_shared/company-pulse.ts","sha256":"aa3b6c4a7c50e34b4f4c48efdf7397ac3767200b03d17733a29e28eb14b15ea4","bytes":3452},
     {"path":"_shared/company-skills.ts","source_path":"supabase/functions/_shared/company-skills.ts","sha256":"b3e7e09d708a6403f02c1fbe08c7f4f7eb4bf86ef4805a076154fdb3844df35c","bytes":2721},
     {"path":"_shared/computer-policy.ts","source_path":"supabase/functions/_shared/computer-policy.ts","sha256":"a9f19ba0a23dc68c8372f0de3f37ed6a623f852542ecf1b9d822427b65173bd7","bytes":15409},
     {"path":"_shared/deliverables.ts","source_path":"supabase/functions/_shared/deliverables.ts","sha256":"03ac262fcdd895cc22c55d882cb6b654c1445c36331a63119aac1189a4fec419","bytes":6744},
@@ -19,6 +19,6 @@
     {"path":"_shared/page-egress.ts","source_path":"supabase/functions/_shared/page-egress.ts","sha256":"58f1dc32dbd73e20e0a1e40bd2b15f9a98a4afbc77707b61fe82440860b2e2b0","bytes":3079},
     {"path":"_shared/runner-inference-accounting.ts","source_path":"supabase/functions/_shared/runner-inference-accounting.ts","sha256":"e8668d0ae49c6219db03b494d7443c2361fac8e8577743086e16004bfbd9d85d","bytes":8969},
     {"path":"_shared/server-execution.ts","source_path":"supabase/functions/_shared/server-execution.ts","sha256":"977e84737337593e575b7c09cd5d9542e45e905de7d54fa690e8babb2430f62e","bytes":4675},
-    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"3a5e15f2388bb1d3e44dd5a273ffaa083b4b66f283a8bdbafd2706de57af3417","bytes":78237}
+    {"path":"index.ts","source_path":"supabase/functions/agent-runner/index.ts","sha256":"faf9902e8116a1eab664bd19fe2ca94f4f1afbd8e47f9f73d4fc2be60824b01d","bytes":78015}
   ]
 }

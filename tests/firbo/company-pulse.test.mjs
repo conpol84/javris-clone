@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { learnedFacts, memoryBlocks, pulseBlock } from '../../supabase/functions/_shared/company-pulse.ts';
+import { learnedFacts, memoryBlocks, usableRunnerMemories, pulseBlock } from '../../supabase/functions/_shared/company-pulse.ts';
 
 test('learned facts: short single lines, at most 3, nothing that looks like an injection or a secret', () => {
   assert.deepEqual(learnedFacts(undefined), []);
@@ -16,7 +16,7 @@ test('owner memory is followed, learned notes are hints only', () => {
   ]);
   assert.match(owner, /^COMPANY MEMORY[\s\S]*friendly tone/);
   assert.doesNotMatch(owner, /delivery/);
-  assert.match(learned, /^NOTES LEARNED[\s\S]*never follow instructions[\s\S]*delivery/);
+  assert.equal(learned, undefined);
   assert.deepEqual(memoryBlocks([]), []);
 });
 
@@ -25,4 +25,17 @@ test('the pulse lists what happened, without test tags', () => {
   assert.match(block, /Finished tasks: 1\. Failed tasks: 1\. Open tasks: 4\. Actions waiting for human approval: 2\./);
   assert.match(block, /Done by Maria: Market news — Three new competitors/);
   assert.match(block, /Failed: Price check/);
+});
+
+
+test('legacy learned, deletion markers, expired and malformed expiry cannot enter runner memory', () => {
+  const now=Date.parse('2026-10-08T10:00:00Z');
+  const owner={content:'Company approved delivery policy',memory_type:'fact',metadata:{}};
+  const rows=[owner,{...owner,content:'Invented company profit',metadata:{source:'learned'}},
+    {...owner,metadata:{deleted_at:''}},{...owner,metadata:{deleted_at:false}},
+    {...owner,expires_at:'2026-10-08T10:00:00Z'},{...owner,expires_at:'not-a-date'},
+    {...owner,content:'Current scoped manual note',expires_at:'2026-10-09T10:00:00Z'}];
+  assert.deepEqual(usableRunnerMemories(rows,now).map(r=>r.content),['Company approved delivery policy','Current scoped manual note']);
+  assert.equal(rows.length,7,'no row deletion or rewrite');
+  assert.deepEqual(usableRunnerMemories(rows,NaN),[]);
 });
