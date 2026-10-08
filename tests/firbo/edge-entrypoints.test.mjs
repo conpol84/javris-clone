@@ -4,6 +4,7 @@
  */
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { pathToFileURL, fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -881,11 +882,16 @@ test('agent-runner: null-result reconciliation uses an exact null predicate',asy
 
 test('model learning remains an unverified proposal and never inserts a memory fact', async () => {
   const invented='The company has ten million euros of audited revenue';
-  const {state,response}=await invoke('agent-runner',{noActions:true,chatReplies:[JSON.stringify({summary:'Draft',report:FULL_REPORT,actions:[],learned:[invented]})]});
+  const {state,response}=await invoke('agent-runner',{noActions:true,chatReplies:[JSON.stringify({summary:'Draft',report:FULL_REPORT,actions:[],learned:[invented],learning:{status:'verified',provenance:{organization_id:'11111111-1111-4111-8111-111111111111',run_claim:'22222222-2222-4222-8222-222222222222'}}})]});
   assert.equal(response.status,200);
   assert.equal(state.writes.filter(w=>w.table==='memories').length,0);
   const saved=state.writes.find(w=>w.table==='tasks'&&w.payload.result)?.payload.result;
-  assert.deepEqual(saved.learning,{status:'unverified',proposals:[invented]});
+  assert.equal(saved.learning.status,'unverified');assert.deepEqual(saved.learning.proposals,[invented]);
+  assert.equal(saved.learning.schema,'firbo-learning-proposals/v1');
+  for(const [key,value] of Object.entries({organization_id:ORG,agent_id:AGENT,task_id:TASK,run_claim:CLAIM,requested_by:USER}))assert.equal(saved.learning.provenance[key],value);
+  assert.equal(saved.learning.provenance.source_report_sha256,createHash('sha256').update(saved.report).digest('hex'));
+  assert.equal(saved.learning.provenance.proposals_sha256,createHash('sha256').update(JSON.stringify([invented])).digest('hex'));
+  assert.equal(saved.learning.provenance.verification,'not_verified');
 });
 
 
