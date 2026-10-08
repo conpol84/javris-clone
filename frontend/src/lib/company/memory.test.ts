@@ -1,5 +1,36 @@
-import { describe, expect, it } from 'vitest';
-import { memoriesReadBy, splitIntoNotes } from './memory';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { deleteMemory, memoriesReadBy, splitIntoNotes } from './memory';
+
+const database = vi.hoisted(() => ({ from: vi.fn(), remove: vi.fn(), eq: vi.fn(), select: vi.fn() }));
+vi.mock('./client', () => ({ requireClient: () => ({ from: database.from }) }));
+
+describe('scoped memory deletion', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const query = { delete: database.remove, eq: database.eq, select: database.select };
+    database.from.mockReturnValue(query); database.remove.mockReturnValue(query); database.eq.mockReturnValue(query);
+    database.select.mockResolvedValue({ data: [{ id: 'memory-a' }], error: null });
+  });
+  it('requires both company and memory ID before any database request', async () => {
+    await expect(deleteMemory('', 'memory-a')).rejects.toThrow('memory_scope_required');
+    await expect(deleteMemory('org-a', '')).rejects.toThrow('memory_scope_required');
+    expect(database.from).not.toHaveBeenCalled();
+  });
+  it('adds the company predicate and requires exactly the deleted row read-back', async () => {
+    await deleteMemory('org-a', 'memory-a');
+    expect(database.from).toHaveBeenCalledExactlyOnceWith('memories');
+    expect(database.eq.mock.calls).toEqual([['organization_id', 'org-a'], ['id', 'memory-a']]);
+    expect(database.select).toHaveBeenCalledExactlyOnceWith('id');
+  });
+  it.each([null, [], [{ id: 'another-memory' }], [{ id: 'memory-a' }, { id: 'memory-a' }]].map(data => ({ data })))('does not report a zero/foreign/ambiguous result as deleted: $data', async ({ data }) => {
+    database.select.mockResolvedValue({ data, error: null });
+    await expect(deleteMemory('org-a', 'memory-a')).rejects.toThrow('memory_not_changed');
+  });
+  it('retains database permission failure', async () => {
+    database.select.mockResolvedValue({ data: null, error: { message: 'permission denied' } });
+    await expect(deleteMemory('org-a', 'memory-a')).rejects.toThrow('permission denied');
+  });
+});
 
 const m = (id: string, agent: string | null, importance: number) => ({ id, agent_id: agent, importance });
 
@@ -47,3 +78,4 @@ describe('splitIntoNotes (files uploaded to memory)', () => {
     expect(splitIntoNotes('one\r\n\r\ntwo')).toEqual(['one two']);
   });
 });
+
