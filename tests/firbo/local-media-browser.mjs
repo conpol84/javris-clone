@@ -19,6 +19,7 @@ async function browserSession(t, durationMs) {
   await context.route('**/*', route => route.request().url().startsWith(session.origin + '/') ? route.continue() : route.abort());
   const page = await context.newPage(); const errors = [];
   page.on('pageerror', error => errors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
   await page.goto(session.url);
   t.after(async () => { await browser.close(); await session.close(); await fs.rm(root, { recursive: true, force: true }); });
   return { session, page, errors };
@@ -28,7 +29,9 @@ test('real Chromium synthetic camera/mic records only after Start and local byte
   assert.equal(session.getArtifact(), null);
   await page.getByLabel('Camera', { exact: true }).check(); await page.getByLabel('Microphone', { exact: true }).check();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  await page.waitForFunction(() => document.getElementById('state').textContent === 'recording');
+  try { await page.waitForFunction(() => ['recording','failed','cancelled'].includes(document.getElementById('state').textContent), { timeout: 10000 }); }
+  catch (error) { throw new Error('Capture did not start: ' + await page.locator('#state').textContent() + '; ' + JSON.stringify(errors), { cause: error }); }
+  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors));
   await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('status').filter({ hasText: 'Saved locally:' }).waitFor({ timeout: 15000 });
   const artifact = session.getArtifact(); assert.ok(artifact.bytes > 12);
@@ -41,7 +44,9 @@ test('real Chromium synthetic Stop discards capture and closes tracks', async t 
   const { session, page, errors } = await browserSession(t, 15000);
   await page.getByLabel('Microphone', { exact: true }).check();
   await page.getByRole('button', { name: 'Start recording', exact: true }).click();
-  await page.waitForFunction(() => document.getElementById('state').textContent === 'recording');
+  try { await page.waitForFunction(() => ['recording','failed','cancelled'].includes(document.getElementById('state').textContent), { timeout: 10000 }); }
+  catch (error) { throw new Error('Capture did not start: ' + await page.locator('#state').textContent() + '; ' + JSON.stringify(errors), { cause: error }); }
+  assert.equal(await page.locator('#state').textContent(), 'recording', JSON.stringify(errors));
   await page.locator('#preview').evaluate(video => { window.testTracks = video.srcObject.getTracks(); });
   await page.getByRole('button', { name: 'Stop and discard', exact: true }).click();
   await page.waitForFunction(() => document.getElementById('state').textContent === 'cancelled');
