@@ -1,0 +1,23 @@
+name: Firbo role evidence instructions
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - 'supabase/functions/agent-chat/**'
+      - 'supabase/functions/agent-runner/**'
+      - 'supabase/functions/_shared/agent-role-evidence.ts'
+      - 'tests/firbo/edge-entrypoints.test.mjs'
+      - '.github/workflows/firbo-role-evidence.yml'
+permissions:
+  contents: read
+jobs:
+  actual-role-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - name: Actual scoped role and language prompts plus complete bundle
+        run: node --experimental-strip-types --test tests/firbo/company-pulse.test.mjs tests/firbo/edge-entrypoints.test.mjs tests/firbo/agent-runner-bundle.test.mjs
