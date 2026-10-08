@@ -24,11 +24,11 @@ export function captureController({ getUserMedia, createRecorder, upload, onStat
   const start = async ({ camera = false, microphone = false } = {}) => {
     if (used || cancelled) throw new Error('session_used');
     if (typeof camera !== 'boolean' || typeof microphone !== 'boolean' || (!camera && !microphone)) throw new Error('select_media');
-    used = true; onState('permission');
+    used = true; let phase = 'permission'; onState('permission');
     try {
       stream = await getUserMedia({ video: camera ? { width: { ideal: 640, max: 640 }, height: { ideal: 480, max: 480 } } : false, audio: microphone });
       if (cancelled) { stopTracks(); return; }
-      recorder = createRecorder(stream);
+      phase = 'recorder'; recorder = createRecorder(stream);
       recorder.ondataavailable = event => {
         if (cancelled || !event.data?.size) return;
         bytes += event.data.size;
@@ -47,9 +47,9 @@ export function captureController({ getUserMedia, createRecorder, upload, onStat
           if (!cancelled) onState('saved');
         } catch { if (!cancelled) { cancelled = true; onState('failed'); } }
       };
-      recorder.start(250); onState('recording');
+      phase = 'start'; recorder.start(250); onState('recording');
       timer = schedule(() => { if (!cancelled && recorder.state !== 'inactive') recorder.stop(); }, durationMs);
-    } catch (error) { unschedule(timer); stopTracks(); if (!cancelled) { cancelled = true; onState('failed', error.name + ': ' + error.message); } throw error; }
+    } catch (error) { unschedule(timer); stopTracks(); if (!cancelled) { cancelled = true; onState('failed', phase + ': ' + error.name + ': ' + error.message); } throw error; }
   };
   return { start, cancel };
 }
@@ -70,10 +70,9 @@ const controller = captureController({ durationMs: ${durationMs},
  getUserMedia: c => navigator.mediaDevices.getUserMedia(c),
  createRecorder: stream => {
   document.getElementById('preview').srcObject = stream;
-  const types = stream.getVideoTracks().length ? ['video/webm;codecs=vp8,opus','video/webm','video/mp4'] : ['audio/webm;codecs=opus','audio/webm','audio/mp4'];
-  const mimeType = types.find(t => MediaRecorder.isTypeSupported(t));
-  if (!mimeType) throw new Error('recorder_unsupported');
-  return new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 1000000, audioBitsPerSecond: 96000 });
+  // Let the browser select its supported encoder/container for these tracks.
+  // A positive isTypeSupported result does not guarantee an explicit codec starts.
+  return new MediaRecorder(stream);
  },
  upload: async blob => {
   const response = await fetch('/capture', { method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': blob.type }, body: blob, signal: abort.signal });
@@ -113,7 +112,7 @@ export async function startLocalCapture({ directory, durationMs = MAX_DURATION_M
     if (req.method === 'GET' && req.url === '/session/' + token) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store',
         'Referrer-Policy': 'no-referrer', 'X-Content-Type-Options': 'nosniff',
-        'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
+        'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; connect-src 'self'; media-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`,
         'Permissions-Policy': 'camera=(self), microphone=(self), display-capture=()' });
       return res.end(page(token, nonce, durationMs));
     }
