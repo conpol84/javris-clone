@@ -5,7 +5,7 @@ on:
     paths:
       - frontend/public/firbo-media.mjs
       - tests/firbo/local-media-capture.test.mjs
-      - tests/firbo/local-media-browser.test.mjs
+      - tests/firbo/local-media-browser.mjs
       - .github/workflows/firbo-local-media.yml
       - docs/FIRBO-LOCAL-MEDIA-20261008.md
   workflow_dispatch:
@@ -35,4 +35,4 @@ jobs:
           node-version: '22.22.0'
       - run: npm ci --prefix tools/firbo-browser-runtime --no-audit --no-fund
       - run: tools/firbo-browser-runtime/node_modules/.bin/playwright install --with-deps chromium
-      - run: node --test tests/firbo/local-media-browser.test.mjs
+      - run: node --test tests/firbo/local-media-browser.mjs
