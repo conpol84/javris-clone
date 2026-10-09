@@ -211,6 +211,7 @@ Deno.serve(async (req) => {
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at, user_id').eq('organization_id', convo.organization_id)
+    .eq('user_id', user.id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null)
     .order('importance', { ascending: false }).limit(12);
