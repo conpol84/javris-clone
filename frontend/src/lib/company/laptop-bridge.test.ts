@@ -260,3 +260,30 @@ describe('explicit owner device target',()=>{
   expect(out.ready).toBe(false);if(!out.ready)expect(out.reply).toContain('has local Full Control');
  });
 });
+
+
+describe('CEO device-intent regression: positive task with negative guardrails',()=>{
+ const observedGoal="Εκτέλεσε αυτή την εργασία αποκλειστικά στον υπολογιστή My shell (Debian). Άνοιξε browser, επισκέψου το https://example.com και διάβασε την κύρια επικεφαλίδα. Επέστρεψε το πραγματικό URL, την επικεφαλίδα, το job ID, τη συσκευή που εκτέλεσε την εργασία και το τελικό execution receipt. Μην αλλάξεις σε Mac ή άλλον worker. Μη δηλώσεις επιτυχία χωρίς πραγματική παρατήρηση.";
+ it('does not cancel an action because its trailing safeguards say Μην / Μη',()=>{
+  expect(parseOwnerDecision(observedGoal)).toBeNull();
+  expect(parseOwnerDecision('Open the browser on Debian. Do not switch to Mac.')).toBeNull();
+  expect(parseOwnerDecision('Άνοιξε browser στο Debian, μην αλλάξεις συσκευή.')).toBeNull();
+  expect(parseOwnerDecision('do not open Microsoft Word')).toBe('reject');
+  expect(parseOwnerDecision('μην ανοίξεις Microsoft Word')).toBe('reject');
+  expect(parseOwnerDecision('Όχι, μην το κάνεις')).toBe('reject');
+ });
+ it('retains the explicitly targeted My shell identity and exact full goal',()=>{
+  const proposal=parseDirectComputerCommand(observedGoal);
+  expect(isComputerControlRequest(observedGoal)).toBe(true);
+  expect(proposal).toMatchObject({kind:'desktop_task',target:'my shell',description:observedGoal,params:{goal:observedGoal}});
+  expect(parseDirectComputerCommand('Run this task exclusively on computer My shell (Debian). Open browser and read example.com.')?.target).toBe('my shell');
+  expect(parseDirectComputerCommand('from mac open chrome')?.target).toBe('mac');
+  expect(parseDirectComputerCommand('write on mac in the browser search field')?.target).toBeUndefined();
+ });
+ it('answers an incomplete website-capability question via computer readiness, not invented work',()=>{
+  for(const question of ['μπορείς να μπεις σε ένα website ?', 'mporis na mpis se ena website ?', 'Can you visit a website?']){
+   expect(isComputerControlRequest(question)).toBe(true);
+   expect(parseDirectComputerCommand(question)).toBeNull();
+  }
+ });
+});
