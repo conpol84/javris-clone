@@ -173,7 +173,13 @@ export async function speak(orgId: string, text: string, lang: string, options: 
       if (!turn.current()) return { status:'cancelled', source, truncated };
       const status = error instanceof FunctionsHttpError ? error.context.status : 0;
       // Do not bypass authentication/budget/rate limits or repeat a partially spoken reply.
-      if (dark || options.allowBrowserFallback === false || [401,402,403,429].includes(status) || (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
+      // A failed server (5xx) must not leave the CEO silent when local browser
+      // speech is available. Preserve explicit no-fallback, auth/budget/rate
+      // denials and the never-repeat-a-partially-spoken-answer guarantee.
+      const serverUnavailable = status >= 500 && status <= 599;
+      if ((dark && !serverUnavailable) || options.allowBrowserFallback === false ||
+          [401,402,403,429].includes(status) ||
+          (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
       source = 'browser'; turn.phase('preparing', 'browser'); await browserSpeech(clean, lang, turn);
     }
     if (!turn.current()) return { status:'cancelled', source, truncated };
