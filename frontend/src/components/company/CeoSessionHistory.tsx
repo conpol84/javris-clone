@@ -23,7 +23,7 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
  const copy=labels[lang]??labels.en;
  const [query,setQuery]=useState('');
  const [expanded,setExpanded]=useState(false);
- const [open,setOpen]=useState(()=>typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches);
+ const [open,setOpen]=useState(()=>typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 1024px)').matches);
  const visible=useMemo(()=>{
   const needle=query.trim().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
   const filtered=needle?sessions.filter(s=>[s.title,s.preview].join(' ').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().includes(needle)):sessions;
