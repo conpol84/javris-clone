@@ -34,7 +34,8 @@ function elements(node: ReactNode): Element[] {
 }
 function page(text = 'yes', running = false) {
   fixture.index = 0; fixture.refIndex = 0; fixture.effects = [];
-  fixture.states = [[{ id: 'ceo', slug: 'ceo', type: 'ceo', name: 'CEO' }], [{ id: 'chat', agent_id: 'ceo' }], [], text, false, false, false, '', false, running, true];
+  // Explicitly muted synthetic CEO; independent state indexes track actual running jobs.
+  fixture.states = [[{ id: 'ceo', slug: 'ceo', type: 'ceo', name: 'CEO' }], [{ id: 'chat', agent_id: 'ceo' }], [], text, false, false, false, '', false, false, running, null, true];
   return AgentChatPage();
 }
 beforeEach(() => {
@@ -65,7 +66,7 @@ it('runs the same pending action for no, do it yourself without delegating', asy
   const proposal = { kind: 'open_app', params: { app: 'Microsoft Word' }, description: 'Open Word' };
   fixture.refs[1].current = proposal; dispatch.mockResolvedValue({ reply: 'confirmed' });
   await elements(page('no, do it yourself')).find(e => e.type === 'form')!.props.onSubmit?.({ preventDefault: vi.fn() });
-  expect(dispatch).toHaveBeenCalledOnce(); expect(dispatch).toHaveBeenCalledWith('org', proposal, 'en', expect.any(AbortSignal));
+  expect(dispatch).toHaveBeenCalledOnce(); expect(dispatch).toHaveBeenCalledWith('org', proposal, 'en', expect.any(AbortSignal), expect.objectContaining({onProgress:expect.any(Function)}));
   expect(fixture.refs[1].current).toBeNull();
 });
 it('never dispatches an explicit rejected app command', async () => {
@@ -124,7 +125,7 @@ it.each(['open browser','open Microsoft Word','Open YouTube and play Μαζων�
  expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();const pending=fixture.refs[1].current;
  const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].content).toContain('Do you approve?');
  await elements(page('approve')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
- expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',pending,'en',expect.any(AbortSignal));expect(pending).not.toHaveProperty('ownerFullControlRequired');expect(fixture.refs[1].current).toBeNull();
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',pending,'en',expect.any(AbortSignal),expect.objectContaining({onProgress:expect.any(Function)}));expect(pending).not.toHaveProperty('ownerFullControlRequired');expect(fixture.refs[1].current).toBeNull();
 });
 
 it('keeps a missing central Full Control marker guarded even with native desktop capability',async()=>{
