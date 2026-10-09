@@ -148,6 +148,9 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     clearTimeout(resumeTimer.current);stopListen.current();
     const id=++epoch.current;busy.current=true;unlockAudio();
     const active=newTurn(id);active.phase('thinking');
+    // Surface a durable progress signal if inference/tool calls take unusually long.
+    // This does not imply the task has completed or fabricate a CEO answer.
+    const progressTimer=setTimeout(()=>{if(valid(id)&&active.current())note(lang==='el'?'Ο CEO επεξεργάζεται ακόμη το αίτημα. Μπορείς να πατήσεις Stop.':'CEO is still processing. You can press Stop.');},12_000);
     setInterim('');setLines(lines=>[...lines,{who:'me',text:message}]);
     const sayDirect=async(content:string)=>{
       setLines(lines=>[...lines,{who:'ceo',text:content}]);
@@ -264,6 +267,8 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       // never sees an endless unanswered "thinking" state after a failure.
       setLines(lines=>[...lines,{who:'ceo',text:detail}]);
       toast.error(detail);
+    } finally {
+      clearTimeout(progressTimer);
     }
   };
   const listen=()=>{
