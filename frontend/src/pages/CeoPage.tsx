@@ -187,7 +187,7 @@ export function CeoPage() {
                 </li>
               ))}
             </ul>
-            <form onSubmit={submit} className="flex min-w-0 gap-2">
+            <form data-ceo-composer="true" onSubmit={submit} className="flex min-w-0 gap-2">
               <input className="fb-input min-w-0 flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
               <button className="fb-btn fb-btn--primary" type="submit" disabled={!canWrite || !text.trim() || state === 'thinking'} aria-label={t('ceo.send')}>
                 <Send size={15} />
