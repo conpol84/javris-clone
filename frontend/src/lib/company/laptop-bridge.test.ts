@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseVoiceLaptop, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, prepareDirectComputerCommand, setVoiceLaptop } from './laptop-bridge';
+import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, prepareDirectComputerCommand, setVoiceLaptop } from './laptop-bridge';
 import type { DeviceRow, JobRow } from './computers';
 
 const now=Date.parse('2026-10-04T10:00:00Z');
@@ -454,4 +454,13 @@ describe('truthful CEO computer progress and safe read-only recovery',()=>{
   expect(executions).toBe(1);
   expect(out).toMatchObject({status:'failed',job_id:'job-ui-failure'});
  });
+});
+
+it('labels real worker phases in Greek and English without promising completion',()=>{
+ const base={jobId:'15992c52-e6c3-4623-8e71-21206d863175',deviceName:'My shell',elapsedSeconds:13} as const;
+ expect(computerProgressLabel({...base,stage:'queued'},'el')).toContain('περιμένει ανάληψη');
+ expect(computerProgressLabel({...base,stage:'running'},'el')).toContain('εκτελείται');
+ expect(computerProgressLabel({...base,stage:'running'},'en')).toContain('Waiting for verified results');
+ expect(computerProgressLabel({...base,stage:'status_unavailable'},'el')).toContain('Μην τη στείλεις ξανά');
+ expect(computerProgressLabel({...base,stage:'status_unavailable'},'en')).not.toContain('Done on');
 });
