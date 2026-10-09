@@ -37,7 +37,7 @@ Observe after every action. Do not declare success merely because a click/comman
 
 /** Called only after token/job/owner/tenant/plan authorization. The image is
  * ephemeral provider input; it is not written to messages, logs or job receipts. */
-export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:AbortSignal,env:(name:string)=>string|undefined) {
+export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:AbortSignal,env:(name:string)=>string|undefined,fetchImpl:typeof fetch=fetch) {
   const frame=body.frame;
   if(!frame||typeof frame.image!=='string'||frame.image.length>120000||!/^[A-Za-z0-9+/]+={0,2}$/.test(frame.image)
     ||!Number.isInteger(frame.width)||frame.width<1||frame.width>1280||!Number.isInteger(frame.height)||frame.height<1||frame.height>960
@@ -64,7 +64,7 @@ export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:
   if(signal.aborted){await releaseInference(db,reservation.requestId,'cancelled_before_provider');throw new Error('operation_stopped');}
   const started=Date.now();let accounted=false;
   try{
-    const response=await fetch(`${route.base}/chat/completions`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${route.key}`},body:JSON.stringify(payload),signal:AbortSignal.any([signal,AbortSignal.timeout(75000)])});
+    const response=await fetchImpl(`${route.base}/chat/completions`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${route.key}`},body:JSON.stringify(payload),signal:AbortSignal.any([signal,AbortSignal.timeout(75000)])});
     if(!response.ok)throw new Error('desktop_model_failed');
     // Limit streamed provider output before parsing.
     const reader=response.body?.getReader();if(!reader)throw new Error('desktop_model_failed');
