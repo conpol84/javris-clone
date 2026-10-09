@@ -193,6 +193,10 @@ const centralRequest=(orgId:string,proposal:DirectComputerProposal,action:'previ
  * retained only for isolated legacy executor tests, never as a runtime fallback. */
 export type DirectComputerReadiness={ready:true;deviceId:string;deviceName:string;nativeDesktop?:true;requestId?:string;ownerFullControl?:boolean}|{ready:false;status:string;reply:string};
 export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number;dispatcher?:typeof dispatchWorkerRequest}):Promise<DirectComputerReadiness>{
+ // The live dispatcher validates action parameters even for preview. A kind
+ // without a URL, browser plan or native goal is NOT a valid capability probe:
+ // ask for actionable details without a fabricated server/worker receipt.
+ if(typeof request==='string'&&!deps?.loadDevices&&!deps?.dispatcher)return{ready:false,status:'details_required',reply:incompleteComputerReply(lang)};
  const kind=typeof request==='string'?request:request.kind,target=typeof request==='string'?undefined:request.target,app=typeof request==='string'?undefined:request.params.app;
  if(deps?.loadDevices&&!deps.dispatcher){
   const selected=typeof request==='object'&&request.deviceId?request.deviceId:null;
@@ -210,8 +214,8 @@ export async function prepareDirectComputerCommand(orgId:string,request:DirectCo
  }catch(error){if(signal?.aborted||error instanceof DOMException&&error.name==='AbortError')throw new DOMException('Cancelled','AbortError');return dispatchFailure(lang,error);}
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
- ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'
- :'No job was queued. Give an exact command, for example “Open Safari” or “YouTube search Nikos Oikonomopoulos”. The browser plan opens a result; it does not verify sustained playback, a screenshot or AppleScript execution.';
+ ?'Δεν μπήκε εργασία στην ουρά. Δώσε συγκεκριμένο URL για το website, π.χ. «Άνοιξε https://example.com στον My shell», ή άλλη ακριβή εντολή. Το browser plan δεν αποδεικνύει από μόνο του αναπαραγωγή βίντεο ή screenshot.'
+ :'No job was queued. Give the specific website URL, for example “Open https://example.com on My shell”, or another exact instruction. A browser plan alone does not prove video playback or a screenshot.';
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
  loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest
