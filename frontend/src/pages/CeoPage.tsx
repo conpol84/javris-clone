@@ -65,7 +65,7 @@ export function CeoPage() {
   const name = ceo ? agentLabel(ceo, i18n).name : t('ceo.title');
 
   return (
-    <div data-firbo-voice="ceo" className="fb-root fb-col gap-4 p-4 pt-14 lg:p-6" style={{ minHeight: "100%" }}>
+    <div data-firbo-voice="ceo" className="fb-root fb-col min-w-0 gap-3 px-3 pb-4 pt-14 sm:p-4 sm:pt-14 lg:p-6" style={{ minHeight: "100%" }}>
       <header>
         <div className="fb-eyebrow">{t('ceo.eyebrow')}</div>
         <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
@@ -76,8 +76,8 @@ export function CeoPage() {
       {!ceo ? (
         <div className="fb-glass p-6 text-sm">{t('ceo.none')}</div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <section className="fb-glass fb-voice-stage relative overflow-hidden">
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-4">
+          <section className="fb-glass fb-voice-stage relative order-2 min-h-[210px] overflow-hidden lg:order-1">
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
               <CeoStage state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
@@ -113,7 +113,7 @@ export function CeoPage() {
             </div>
           </section>
 
-          <section className="fb-glass fb-col gap-3 p-4">
+          <section className="fb-glass fb-col order-1 min-w-0 gap-3 p-3 sm:p-4 lg:order-2">
             <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
               loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
               onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
@@ -168,18 +168,18 @@ export function CeoPage() {
                 <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{voiceLog.join('\n')}</pre>
               </details>
             )}
-            <ul className="fb-col flex-1 gap-2 overflow-y-auto" style={{ maxHeight: 320 }} aria-live="polite">
+            <ul className="fb-col min-h-[220px] min-w-0 flex-1 gap-2 overflow-x-hidden overflow-y-auto" style={{ maxHeight: 480 }} aria-live="polite">
               {lines.length === 0 && <li className="fb-dim text-sm">{t('ceo.empty')}</li>}
               {lines.map((l, i) => (
-                <li key={i} className="fb-row p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
+                <li key={i} className="fb-row min-w-0 break-words [overflow-wrap:anywhere] p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                   <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : name}</div>
                   {l.text}
                   <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app} />
                 </li>
               ))}
             </ul>
-            <form onSubmit={submit} className="flex gap-2">
-              <input className="fb-input flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
+            <form onSubmit={submit} className="flex min-w-0 gap-2">
+              <input className="fb-input min-w-0 flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
               <button className="fb-btn fb-btn--primary" type="submit" disabled={!canWrite || !text.trim() || state === 'thinking'} aria-label={t('ceo.send')}>
                 <Send size={15} />
               </button>
