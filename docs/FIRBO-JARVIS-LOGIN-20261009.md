@@ -78,3 +78,25 @@ and 1280 pixels without fabricating the browser's headers. The guarded
 `repair-dashboard-origin.py` changes only the known installed module version,
 keeps a private backup and verifies the served header and anonymous API denial.
 It does not reinstall login, change Caddy, or reset the administrator password.
+
+## Owner password recovery — 9 October 2026
+
+Owner applied cff6aca origin repair successfully: backup
+`/var/backups/firbo-login-origin-7kfim9qq`, `LOGIN_ORIGIN_FIXED`. Owner still
+cannot enter and explicitly requests a password reset. This supersedes the
+prior instruction to preserve the chosen password; do not reinstall login.
+
+Added `deploy/hostinger/reset-dashboard-password.py`: root/host/module guards,
+hidden interactive TTY input only, existing admin identity, fresh scrypt salt,
+private backup, atomic config replacement preserving ownership and other keys,
+admin-service restart and local/public login/dashboard/API/logout acceptance.
+A failed probe restores the previous config and restarts; never print password,
+cookies or API keys. No Caddy, gateway, box, device or model changes. This is
+terminal account recovery; a dashboard password-settings page is not added.
+
+Tests exercise the actual login middleware with Unicode/special-character new
+password, reject the old password, verify API/logout, private backups, refused
+symlink/short password, and restore the original on failed public acceptance.
+The prior native-X11 CI dropped a Greek character (`Μζωνάκης`); that issue
+remains separate and must not be hidden by a login workflow passing. No full
+computer-control, Mac worker, new dashboard or full-plan completion claim.

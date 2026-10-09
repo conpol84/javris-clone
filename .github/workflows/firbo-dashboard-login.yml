@@ -7,6 +7,7 @@ on:
       - 'src/openjarvis/server/app.py'
       - 'deploy/hostinger/install-dashboard-login.py'
       - 'deploy/hostinger/repair-dashboard-origin.py'
+      - 'deploy/hostinger/reset-dashboard-password.py'
       - 'tests/server/test_dashboard_login*.py'
       - '.github/workflows/firbo-dashboard-login.yml'
   workflow_dispatch:
