@@ -42,6 +42,11 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 // Only a leading/trailing device clause is routing intent. Mentions inside
 // page searches or text to type must not redirect an action to another device.
 function deviceClause(plain:string){
+ // A device named in the leading *owner command* is binding even when the
+ // sentence starts with "execute this task exclusively on ...". Never infer
+ // device targets from page text, quoted content, URLs or trailing restrictions.
+ const scoped=plain.match(/^(?:execute|run|εκτελε\p{L}*)\s+.{0,110}?\s+(?:exclusively|only|αποκλειστικα)\s+(?:on|στον|στο|ston|sto)\s+(?:(?:the|τον|το)\s+)?(?:computer|υπολογιστη|υπολογιστης)\s+(my shell|polis1984|mac mini|macbook|mac|debian|linux|windows)(?=\s|$)/u);
+ if(scoped)return{target:scoped[1],action:plain};
  const label='(mac mini|macbook|mac|debian|linux|windows|polis1984|my shell)';
  const clause='(?:from|on|using|apo|sto|ston|απο|στο|στον)\\s+(?:(?:my|the|το|τον)\\s+)?'+label;
  const prefix=plain.match(new RegExp('^'+clause+'\\s+','u'));
@@ -61,8 +66,8 @@ function targetMatches(d:DeviceRow,target:string){
 export function isComputerControlRequest(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
  const plain=plainText(input);
- const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη)(?:\s|$)/u.test(plain);
- const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*)(?:\s|$)/u.test(plain);
+ const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη|website|site|ιστοσελιδα|ιστοσελιδες)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
  // Research and instructions about controlling a computer are ordinary work.
  if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
  return target&&action;
@@ -70,14 +75,19 @@ export function isComputerControlRequest(input:string){
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
+ if(!plain)return null;
  if(/^(?:stop|pause) (?:youtube|the music|music|playback|the video|video)$/.test(plain))return null;
- // ‘No, do it yourself’ rejects delegation, not the pending computer action.
- const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
- const veto=/(?:^|\s)(cancel|stop|μην|min|do not|dont|don t)(?:\s|$)/u.test(plain);
+ // Only a leading, explicit veto cancels an owner action. A later "μην",
+ // "do not" or "don't" is often a *safety constraint* in a positive task:
+ // "Open example.com. Don't switch to Mac or claim success without evidence".
+ const veto=/^(?:(?:please|σε παρακαλω)\s+)?(?:cancel|stop|μην|μη|min|do not|dont|don t)(?:\s|$)/u.test(plain);
  if(veto)return'reject';
+ // "No, do it yourself" rejects delegation, not the pending action. An
+ // explicit leading veto always wins over later "κάντο εσύ".
+ const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
  if(self)return'approve';
- if(/(?:^|\s)(no|nope|cancel|stop|oxi|οχι|μην|min)(?:\s|$)/u.test(plain))return'reject';
- if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
+ if(/^(?:no|nope|oxi|οχι)(?:\s|$)/u.test(plain))return'reject';
+ if(/^(?:yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
  return null;
 }
 function youtubeQuery(text:string){
@@ -106,6 +116,11 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app},...target};
  }
  if(/^(?:open|launch|ανοιξε|anoikse|anikse|anixe)\s+(?:(?:the|το|to)\s+)?(?:browser|φυλλομετρητη)(?:\s+(?:here|εδω))?$/u.test(plain))return{kind:'browser_open',description:'Open browser',params:{url:'https://www.google.com/'},...target};
+ // An ability question without a destination is *not* authority to queue
+ // a vague desktop job. The control lane will probe real worker capabilities
+ // and request a specific URL instead of inventing an Operations handoff.
+ const websiteQuestion=/^(?:μπορεις|mporis|can you|are you able to)(?:\s+να)?\s+(?:μπεις|mpis|bis|visit|open|access)\s+(?:(?:σε|sto|to|a|an|the)\s+)*(?:ενα\s+)?(?:website|site|ιστοσελιδα)(?:\s|$)/u.test(plain);
+ if(websiteQuestion&&!/https?:\/\//i.test(text))return null;
  if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()},...target};
  if(/youtube/u.test(plain)&&/(search|serch|ψαξ|αναζητ|vale|βαλε|play|παιξ|pekse|proto|πρωτ|first)/u.test(plain)){
   const query=youtubeQuery(text);
