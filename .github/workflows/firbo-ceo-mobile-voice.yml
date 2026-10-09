@@ -1,0 +1,45 @@
+name: FIRBO CEO mobile and voice acceptance
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/firbo-ceo-mobile-voice.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firbo-ceo-acceptance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend-acceptance:
+    name: Frontend tests, voice regression and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout exact change
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install pinned npm
+        run: npm install --global npm@11.19.0
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run voice regression
+        run: npm test -- --run src/lib/company/voice.test.ts
+      - name: Run complete frontend suite
+        run: npm test
+      - name: Typecheck and production build
+        run: npm run build
