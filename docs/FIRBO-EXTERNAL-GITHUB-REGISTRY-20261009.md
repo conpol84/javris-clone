@@ -1,6 +1,8 @@
 # FIRBO — external GitHub tools registry and adoption gates
 Date: 2026-10-09 · subordinate to [Master Issue #52](https://github.com/conpol84/javris-clone/issues/52). **Never replace** the master plan or restart completed stages.
 
+Detailed independent Codebase Memory MCP source/security assessment from the other active chat: [FIRBO-CODEBASE-MEMORY-MCP-20261009.md](FIRBO-CODEBASE-MEMORY-MCP-20261009.md) (original draft PR #118, preserved with author ancestry). This broader registry and that focused assessment are complementary, not competing implementations.
+
 Owner request: retain every reviewed GitHub tool in a durable source-backed registry. This file records **what each project contributes, what evidence exists, what is not yet installed, and the admission gate**. All commit pins are source identities observed on 2026-10-09, not claims that those versions run on the FIRBO VPS, Debian, or Mac.
 
 | Upstream / immutable main pin | FIRBO role | Verified/adoption status and boundary |
