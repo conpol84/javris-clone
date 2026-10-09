@@ -194,7 +194,7 @@ export function AgentChatPage() {
               try{
                 await journalCeoComputerJob(active.id,remote.job_id,signal);
                 if(voiceScopeRef.current!==scopeAtSend)return;
-                void reloadList();
+                void reloadList().catch(()=>toast.error(t('chat.loadError')));
               }catch{
                 narrative+=lang==='el'?' (Η εργασία υπάρχει στους Υπολογιστές, αλλά δεν καταγράφηκε στο ιστορικό CEO.)'
                   :' (The job remains in Computers, but CEO chat history could not record it.)';
