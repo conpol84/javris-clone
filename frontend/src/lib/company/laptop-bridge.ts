@@ -45,7 +45,7 @@ function deviceClause(plain:string){
  // A device named in the leading *owner command* is binding even when the
  // sentence starts with "execute this task exclusively on ...". Never infer
  // device targets from page text, quoted content, URLs or trailing restrictions.
- const scoped=plain.match(/^(?:execute|run|εκτελε\p{L}*)\s+.{0,110}?\s+(?:exclusively|only|αποκλειστικα)\s+(?:on|στον|στο|ston|sto)\s+(?:(?:the|τον|το)\s+)?(?:computer|υπολογιστη|υπολογιστης)\s+(my shell|polis1984|mac mini|macbook|mac|debian|linux|windows)(?=\s|$)/u);
+ const scoped=plain.match(/^(?:execute|run|εκτελε\p{L}*)\s+(?:.{1,110}?\s+)?(?:exclusively|only|αποκλειστικα)\s+(?:on|στον|στο|ston|sto)\s+(?:(?:the|τον|το)\s+)?(?:computer|υπολογιστη|υπολογιστης)\s+(my shell|polis1984|mac mini|macbook|mac|debian|linux|windows)(?=\s|$)/u);
  if(scoped)return{target:scoped[1],action:plain};
  const label='(mac mini|macbook|mac|debian|linux|windows|polis1984|my shell)';
  const clause='(?:from|on|using|apo|sto|ston|απο|στο|στον)\\s+(?:(?:my|the|το|τον)\\s+)?'+label;
