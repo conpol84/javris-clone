@@ -67,6 +67,8 @@ export function CeoPage() {
     const m = text.trim();
     if (!m || state === 'thinking') return;
     setText('');
+    const field = e.currentTarget.querySelector('textarea');
+    if (field) field.style.height = '';
     void ask(m);
   };
 
@@ -187,8 +189,12 @@ export function CeoPage() {
                 </li>
               ))}
             </ul>
-            <form data-ceo-composer="true" onSubmit={submit} className="flex min-w-0 gap-2">
-              <input className="fb-input min-w-0 flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
+            <form data-ceo-composer="true" onSubmit={submit} className="flex min-w-0 items-end gap-2">
+              <textarea className="fb-input min-w-0 flex-1 resize-none leading-relaxed" rows={2} value={text} maxLength={4000} disabled={!canWrite}
+                onChange={(e) => setText(e.target.value)}
+                onInput={(e) => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 136) + 'px'; }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+                placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
               <button className="fb-btn fb-btn--primary" type="submit" disabled={!canWrite || !text.trim() || state === 'thinking'} aria-label={t('ceo.send')}>
                 <Send size={15} />
               </button>
