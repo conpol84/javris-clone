@@ -38,7 +38,7 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
        <MessageSquarePlus size={14}/>{copy.newChat}
      </button>
    </div>
-   <div id="firbo-ceo-history-list" hidden={!open} className="fb-col gap-2 min-w-0">
+   {open&&<div id="firbo-ceo-history-list" className="fb-col gap-2 min-w-0">
    {loading&&<span role="status" className="fb-dim text-xs">{copy.loading}</span>}
    {error&&<div role="alert" className="text-xs fb-muted">{copy.error} <button type="button" className="underline" onClick={onRetry}>{lang==='el'?'Ξανά':'Retry'}</button></div>}
    {!loading&&!error&&<>
@@ -65,6 +65,6 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
        {expanded?copy.showLess:`${copy.showAll} (${sessions.length})`}
      </button>}
    </>}
-   </div>
+   </div>}
  </section>;
 }
