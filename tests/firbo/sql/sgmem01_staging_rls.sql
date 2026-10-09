@@ -63,6 +63,8 @@ RESET ROLE;
 
 -- Execute the REAL migration tracked by the PR, not an illustrative copy.
 \ir ../../../supabase/migrations/20261009193000_sgmem01_private_memory_rls.sql
+-- Simulate a second deploy/reconciliation; policies and trigger must remain valid.
+\ir ../../../supabase/migrations/20261009193000_sgmem01_private_memory_rls.sql
 
 -- No broad legacy policies or permissive catch-all policies may remain.
 DO $test$
