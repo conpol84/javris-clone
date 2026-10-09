@@ -229,6 +229,17 @@ export interface DirectComputerProgress {
  stage:'queued'|'running'|'status_unavailable';
  elapsedSeconds:number;
 }
+export function computerProgressLabel(progress:DirectComputerProgress,lang:string):string {
+ const greek=lang==='el',device=progress.deviceName.slice(0,90),id=progress.jobId.slice(0,8);
+ if(progress.stage==='running')
+  return greek?`${device}: Η εργασία ${id} εκτελείται. Περιμένω επαληθευμένο αποτέλεσμα.`:
+   `${device}: Job ${id} is running. Waiting for verified results.`;
+ if(progress.stage==='status_unavailable')
+  return greek?`${device}: Δεν λαμβάνω κατάσταση για την εργασία ${id}. Μην τη στείλεις ξανά πριν ελέγξεις τους Υπολογιστές.`:
+   `${device}: Status unavailable for job ${id}. Do not resend before checking Computers.`;
+ return greek?`${device}: Η εργασία ${id} στάλθηκε και περιμένει ανάληψη.`:
+  `${device}: Job ${id} was queued; awaiting worker acknowledgement.`;
+}
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
  loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest;
