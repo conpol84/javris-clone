@@ -321,3 +321,26 @@ it('CEO terminal reply exposes actual worker, job id, observed heading and recei
  });
  expect(invalid.reply).toContain('not independently confirmed');
 });
+
+describe('handoff PR119 Greeklish verbs, resolved with exact owner device scope',()=>{
+ const phrase='re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser';
+ it('preserves the reviewed source request and binds only an exact company device',()=>{
+  expect(isComputerControlRequest(phrase)).toBe(true);
+  expect(parseOwnerDecision(phrase)).toBeNull();
+  expect(parseDirectComputerCommand(phrase)).toMatchObject({
+   kind:'desktop_task',description:phrase,target:'my shell',params:{goal:phrase}
+  });
+  // A company without a device called "My shell" will be denied by the
+  // central target matcher; there must never be a silent Mac substitution.
+ });
+ it.each(['pexe','paixe','paikse','pekse'])('accepts explicit owner YouTube Greeklish %s without delegating',verb=>{
+  const input=`on my shell ${verb} tragoudi tou mazonaki sto youtube`;
+  expect(isComputerControlRequest(input)).toBe(true);
+  expect(parseDirectComputerCommand(input)).toMatchObject({kind:'desktop_task',target:'my shell',params:{goal:input}});
+ });
+ it('retains safety veto and separates research from physical control',()=>{
+  expect(parseOwnerDecision('μην παίξεις το τραγούδι στο YouTube')).toBe('reject');
+  expect(isComputerControlRequest('Research music streaming trends on YouTube')).toBe(false);
+  expect(parseDirectComputerCommand('Research music streaming trends on YouTube')).toBeNull();
+ });
+});

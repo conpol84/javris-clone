@@ -8,6 +8,7 @@ import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
+import { isUnlockContinuation, resolveUnlockContinuation } from './computer-continuation';
 import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
@@ -103,13 +104,24 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       else{handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}}
     };
     try{
-      const proposal=parseDirectComputerCommand(message),decision=parseOwnerDecision(message);
-      const computerRequest=!!proposal||isComputerControlRequest(message);
+      const unlockNotice=isUnlockContinuation(message);
+      const recovered=unlockNotice&&canComputer
+        ?await voiceDeadline(signal=>resolveUnlockContinuation(orgId,userId,message,lang,signal),active.signal,24_000)
+        :null;
+      if(!valid(id)||!active.current())return;
+      const proposal=recovered?.recognized&&recovered.proposal?recovered.proposal:parseDirectComputerCommand(message);
+      // "ok now unlocked" is NOT a blanket approval for any older pending job.
+      const decision=unlockNotice?null:parseOwnerDecision(message);
+      const computerRequest=!!proposal||isComputerControlRequest(message)||unlockNotice;
       if(computerRequest&&!canComputer){
         pendingComputer.current=null;
         await sayDirect(lang==='el'?'Ο έλεγχος υπολογιστή απαιτεί Owner/Admin. Δεν μπήκε εργασία στην ουρά.':'Computer control requires Owner/Admin. No job was queued.');return;
       }
       if(canComputer){
+        if(unlockNotice&&recovered?.recognized&&!recovered.proposal){
+          pendingComputer.current=null;
+          await sayDirect(recovered.reply);return;
+        }
         if(computerRequest&&decision==='reject'){
           pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;
         }

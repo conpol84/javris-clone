@@ -1,8 +1,13 @@
 name: FIRBO CEO intent and worker routing regression
 on:
   pull_request:
-    branches: [codex/firbo-vps-dispatch-20261009]
+    branches: [codex/firbo-vps-dispatch-20261009, codex/firbo-ceo-intent-20261009]
     paths:
+      - 'frontend/src/lib/company/computer-continuation.ts'
+      - 'frontend/src/lib/company/computer-continuation.test.ts'
+      - 'frontend/src/lib/company/useCeoSession.ts'
+      - 'frontend/src/pages/AgentChatPage.tsx'
+      - 'docs/FIRBO-EXTERNAL-GITHUB-REGISTRY-20261009.md'
       - 'frontend/src/lib/company/laptop-bridge.ts'
       - 'frontend/src/lib/company/laptop-bridge.test.ts'
       - 'frontend/src/lib/company/useCeoSession.computer.test.ts'

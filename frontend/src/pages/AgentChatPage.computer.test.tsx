@@ -6,6 +6,7 @@ const dispatch = vi.hoisted(() => vi.fn());
 const prepare = vi.hoisted(() => vi.fn());
 const sendChat = vi.hoisted(() => vi.fn());
 const listen = vi.hoisted(() => vi.fn());
+const recover = vi.hoisted(() => vi.fn());
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(),
   useState: () => { const i = fixture.index++; const setter = vi.fn(); fixture.setters[i] = setter; return [fixture.states[i], setter]; },
   useRef: (initial: unknown) => fixture.refs[fixture.refIndex++] ?? { current: initial },
@@ -19,6 +20,7 @@ vi.mock('../lib/company/labels', () => ({ agentLabel: () => ({ name: 'CEO' }) })
 vi.mock('../lib/company/voice', () => ({ unlockAudio: vi.fn(), speak: vi.fn(), listenSmart: listen }));
 vi.mock('../lib/company/runner', async original => ({ ...await original<typeof import('../lib/company/runner')>(), sendChat }));
 vi.mock('../lib/company/laptop-bridge', async original => ({ ...await original<typeof import('../lib/company/laptop-bridge')>(), dispatchDirectComputerCommand: dispatch, prepareDirectComputerCommand: prepare }));
+vi.mock('../lib/company/computer-continuation', async original => ({...await original<typeof import('../lib/company/computer-continuation')>(),resolveUnlockContinuation:recover}));
 import { AgentChatPage } from './AgentChatPage';
 
 type Element = ReactElement<{ children?: ReactNode; 'aria-label'?: string; onClick?: () => void; onSubmit?: (e: { preventDefault: () => void }) => Promise<void> }>;
@@ -153,4 +155,36 @@ it('CEO chat keeps a named Debian target despite trailing Μην safety wording'
  expect(dispatch).toHaveBeenCalledOnce();
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'debian'});
  expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('CEO chat unlock message resumes the bounded owner Debian job rather than delegating to Research',async()=>{
+ const goal='open website youtube and search mazonakis and play the song ores mikres';
+ recover.mockResolvedValue({recognized:true,proposal:{kind:'desktop_task',description:goal,params:{goal},target:'My shell',deviceId:'d7'},reply:'retry'});
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Queued, receipt pending'});
+ await elements(page('ok tora einai unlock')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(recover).toHaveBeenCalledWith('org','owner','ok tora einai unlock','en',expect.any(AbortSignal));
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'My shell',deviceId:'d7',params:{goal},ownerFullControlRequired:true});
+ expect(sendChat).not.toHaveBeenCalled();
+});
+it('CEO chat states when no verified job can be resumed, with zero fake agent tasks',async()=>{
+ recover.mockResolvedValue({recognized:true,proposal:null,reply:'No recent verified task. No job was queued.'});
+ await elements(page('ok tora einai unlock')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(recover).toHaveBeenCalledOnce();expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).at(-1).content).toContain('No job was queued');
+});
+it('CEO chat recognises colloquial shell Greeklish playback without pretending it is Mac',async()=>{
+ const goal='re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Pending'});
+ await elements(page(goal)).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(recover).not.toHaveBeenCalled();expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d7',params:{goal}});
+ expect(sendChat).not.toHaveBeenCalled();
+});
+it('a non-owner cannot retrieve an old device job from an unlock notice',async()=>{
+ fixture.role='member';
+ await elements(page('ok tora einai unlock')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(recover).not.toHaveBeenCalled();expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
 });
