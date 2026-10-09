@@ -4,6 +4,7 @@ import type { HoloState } from '../../components/scenes/HologramScene';
 import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
 import { listCeoSessions, readCeoSession, type CeoSessionPreview } from './ceo-sessions';
+import { journalCeoComputerJob } from './ceo-device-journal';
 import { RunError, runErrorText, sendChat } from './runner';
 import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
@@ -157,6 +158,26 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       if(spoken.status==='completed'){setState('idle');resume(id,300);}
       else{handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}}
     };
+    const sayComputer=async(remote:{reply:string;status?:string;job_id?:string})=>{
+      let narrative=remote.reply;
+      if(remote.job_id&&['done','failed'].includes(remote.status??'')){
+        try{
+          if(!convo.current){
+            const created=await createConversation(orgId,userId,ceo.id);
+            if(!valid(id)||!active.current())return;
+            convo.current=created.id;setActiveSessionId(created.id);
+          }
+          await journalCeoComputerJob(convo.current,remote.job_id,active.signal);
+          if(!valid(id)||!active.current())return;
+          const items=await listCeoSessions(orgId,userId,ceo.id);
+          if(valid(id))setSessions(items);
+        }catch{
+          narrative+=lang==='el'?' (Η εργασία υπάρχει στους Υπολογιστές, αλλά δεν καταγράφηκε στο ιστορικό CEO.)'
+            :' (The job remains in Computers, but CEO chat history could not record it.)';
+        }
+      }
+      await sayDirect(narrative);
+    };
     try{
       const unlockNotice=isUnlockContinuation(message);
       const recovered=unlockNotice&&canComputer
@@ -189,7 +210,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
             pendingComputer.current=null;
             const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,active.signal);
             if(!valid(id)||!active.current())return;
-            await sayDirect(remote.reply);return;
+            await sayComputer(remote);return;
           }
           pendingComputer.current={...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId};
           await sayDirect(lang==='el'?`Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`:`I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);return;
@@ -198,18 +219,18 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           pendingComputer.current=null;
           const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
           if(!valid(id)||!active.current())return;
-          await sayDirect(remote.reply);return;
+          await sayComputer(remote);return;
         }
         if(pendingComputer.current&&decision){
           const pending=pendingComputer.current;pendingComputer.current=null;
           if(decision==='reject'){await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
           const remote=await dispatchDirectComputerCommand(orgId,pending,lang,active.signal);
           if(!valid(id)||!active.current())return;
-          await sayDirect(remote.reply);return;
+          await sayComputer(remote);return;
         }
         const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
         if(!valid(id)||!active.current())return;
-        if(remote.handled){await sayDirect(remote.reply??voiceMessages(lang).server);return;}
+        if(remote.handled){await sayComputer({reply:remote.reply??voiceMessages(lang).server,status:remote.status,job_id:remote.job_id});return;}
       }
       if(!convo.current){
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
