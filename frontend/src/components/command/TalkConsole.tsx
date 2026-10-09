@@ -1,6 +1,7 @@
 import { VoiceProfileControl } from '../voice/VoiceProfileControl';
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CeoActions } from '../company/CeoActions';
+import { CeoSessionHistory } from '../company/CeoSessionHistory';
 import { useNavigate } from 'react-router';
 import { Mic, Send, Square, Volume2, VolumeX, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -53,7 +54,8 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const canWrite = WRITER_ROLES.includes(role);
   const org = useOrgData(orgId, MANAGER_ROLES.includes(role), 10_000);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
-  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
+    sessions, activeSessionId, historyLoading, historyError, openSession, newSession, retryHistory } = session;
   const briefed = useRef(false);
   const [tab, setTab] = useState<'talk' | 'command'>('talk');
   const [text, setText] = useState('');
@@ -255,6 +257,9 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
 
               {tab === 'talk' ? (
                 <>
+                  <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} compact lang={lang} sessions={sessions} activeId={activeSessionId}
+                    loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
+                    onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('ceo.quickAria')}>
                     {QUICK.map((k) => (
                       <button key={k} className="fb-chip cursor-pointer" disabled={!canWrite || busyState} onClick={() => void ask(t(`ceo.q.${k}` as TKey))}>

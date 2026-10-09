@@ -75,7 +75,12 @@ function fixture(options={}) {
       return{data:null,error:null};
     }
     state.reads.push(info);
-    if(table==='conversations')return{data:options.missingConversation?null:{id:CONVO,organization_id:ORG,user_id:options.foreignConversation?'foreign':USER,agent_id:AGENT,title:'Test',status:'active'},error:null};
+    if(table==='conversations'){
+      // An authorized old-session LIST is a collection, unlike the current
+      // conversation maybeSingle. Keep its company/user/CEO query observable.
+      if(selection?.includes('updated_at'))return{data:options.pastCeoSessions??[],error:null};
+      return{data:options.missingConversation?null:{id:CONVO,organization_id:ORG,user_id:options.foreignConversation?'foreign':USER,agent_id:AGENT,title:'Test',status:'active'},error:null};
+    }
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
@@ -111,8 +116,16 @@ function fixture(options={}) {
           device_id:j.device_id,kind:j.kind,ok:true,report_sha256:'a'.repeat(64)}}:{})}));
       return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
     }
-    if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
-    if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
+    if(table==='usage_events')return{data:options.memberSpendRows??(options.spent?[{cost_usd:options.spent}]:[]),count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
+    if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
+    if(table==='messages'){
+      // Current chat history, old CEO snippets and exact job-ID lookup must
+      // match their distinct real Postgres query return types.
+      if(single&&filters.some(([k])=>k==='id'))return{data:options.existingJournalMessage??null,error:null};
+      const archived=filters.find(([k,v])=>k==='conversation_id'&&Array.isArray(v));
+      return{data:archived?options.pastCeoMessages??[]:options.messages??[],error:null};
+    }
+    if(table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
     if(table==='knowledge_chunks')return{data:null,count:options.knowledgeCount??0,error:null};
     if(table==='integrations'){
@@ -185,7 +198,7 @@ function fixture(options={}) {
       let op='select',payload,selection;const filters=[];
       const b={
         select(s){selection=s;return b;},insert(p){op='insert';payload=p;return b;},update(p){op='update';payload=p;return b;},
-        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},contains(){return b;},gte(){return b;},or(v){filters.push(['or',v]);return b;},order(){return b;},limit(){return b;},
+        eq(k,v){filters.push([k,v]);return b;},neq(k,v){filters.push(['neq:'+k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},contains(){return b;},gte(){return b;},or(v){filters.push(['or',v]);return b;},order(){return b;},limit(){return b;},
         maybeSingle(){return Promise.resolve(execute(table,op,payload,filters,selection,true));},single(){return b.maybeSingle();},
         then(resolve,reject){return Promise.resolve(execute(table,op,payload,filters,selection,false)).then(resolve,reject);},
       };return b;
@@ -1262,4 +1275,90 @@ test('compact local chat keeps finance evidence rules within its request bound',
   assert.match(request.messages[0].content,/Finance: show inputs, units and calculations; missing values are unknown/);
   assert.match(request.messages[0].content,/Never claim sent\/saved\/done without matching execution evidence/);
   assert.ok(new TextEncoder().encode(JSON.stringify(request.messages)).length<=2700);
+});
+
+
+test('CEO truly recalls a previous owned session but not another company member, using actual Edge handler',async()=>{
+ const past=[{id:'prev-1',organization_id:ORG,user_id:USER,agent_id:AGENT,title:'YouTube experiment',updated_at:'2026-10-09T16:30:00Z'},
+   {id:'prev-other-user',organization_id:ORG,user_id:'another-user',agent_id:AGENT,title:'YouTube secret',updated_at:'2026-10-09T16:31:00Z'}];
+ const {state,response}=await invoke('agent-chat',{agentType:'ceo',pastCeoSessions:past,pastCeoMessages:[
+   {conversation_id:'prev-1',role:'user',content:'Asked to play Mazonakis Ores Mikres on My shell',created_at:'2026-10-09T16:30:00Z'},
+   {conversation_id:'prev-1',role:'assistant',content:'Firefox screen stayed black; playback unverified.',created_at:'2026-10-09T16:31:00Z'},
+   {conversation_id:'prev-other-user',role:'user',content:'SECRET PRIVATE CEO CONVERSATION',created_at:'2026-10-09T16:32:00Z'}
+ ]},{message:'Remember YouTube Mazonakis music from our previous session?'});
+ assert.equal(response.status,200);
+ const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.match(prompt,/PAST CEO SESSIONS/);
+ assert.match(prompt,/Mazonakis Ores Mikres/);
+ assert.match(prompt,/Prior AI reply \(UNVERIFIED/);
+ assert.ok(!prompt.includes('SECRET PRIVATE CEO CONVERSATION'));
+ const read=state.reads.find(r=>r.table==='conversations'&&r.selection?.includes('updated_at'));
+ assert.ok(read.filters.some(([key,value])=>key==='organization_id'&&value===ORG));
+ assert.ok(read.filters.some(([key,value])=>key==='user_id'&&value===USER));
+ assert.ok(read.filters.some(([key,value])=>key==='agent_id'&&value===AGENT));
+});
+test('member CEO only sees own private notes, not another members memories or company financial totals',async()=>{
+ const ownerNote='My private approved research context';
+ const {state,response}=await invoke('agent-chat',{agentType:'ceo',role:'member',memberSpendRows:[{cost_usd:600}],memories:[
+   {content:ownerNote,memory_type:'fact',metadata:{},user_id:USER},
+   {content:'SECRET OTHER USERS PERSONAL CONTENT',memory_type:'user_preference',metadata:{},user_id:'another-user'},
+ ]});
+ assert.equal(response.status,200);
+ const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.ok(prompt.includes(ownerNote));
+ assert.ok(!prompt.includes('SECRET OTHER USERS PERSONAL CONTENT'));
+ assert.ok(prompt.includes('Company spend: not available for this role.'));
+ assert.ok(!prompt.includes('Spend this month: $600'));
+ const ownTask=state.reads.find(r=>r.table==='tasks'&&r.selection?.includes('assigned_agent_id'));
+ assert.ok(ownTask.filters.some(([k,v])=>k==='created_by'&&v===USER));
+});
+
+
+test('CEO journal writes only a verified terminal owner job from server ledger and never invokes LLM',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const {state,response,body}=await invoke('agent-chat',{
+  agentType:'ceo',computerTerminalReceipt:true,
+  existingComputerJobs:[{id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',
+   kind:'desktop_task',params:{goal:'Play Mazonakis Ores Mikres on YouTube'},dispatch_request:{goal:'Play Mazonakis Ores Mikres on YouTube'}}],
+  computerJobResult:{completed:false,summary:'Screen black due to lock. Playback was not confirmed.'},
+ },{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(response.status,200);assert.equal(body.journaled,true);
+ assert.equal(body.goal_observed,false);assert.equal(body.receipt_verified,true);
+ assert.equal(state.calls.length,0,'journal must not invoke model or execute worker');
+ const saved=state.writes.filter(x=>x.table==='messages'&&x.op==='insert');
+ assert.equal(saved.length,1);assert.equal(saved[0].payload.id,jobId);
+ assert.equal(saved[0].payload.conversation_id,CONVO);assert.equal(saved[0].payload.role,'assistant');
+ assert.match(saved[0].payload.content,/GOAL NOT VERIFIED/);
+ assert.match(saved[0].payload.content,/Mazonakis/);
+ assert.match(saved[0].payload.content,/terminal receipt: job\/device\/hash matched/);
+});
+test('CEO journal denies non-owner jobs, pending results and other users without generating chat content',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const base={agentType:'ceo',computerTerminalReceipt:true,existingComputerJobs:[
+  {id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',kind:'desktop_task',params:{goal:'Open YouTube'}}
+ ]};
+ for(const [label,options,code] of [
+  ['other user',{existingComputerJobs:[{...base.existingComputerJobs[0],created_by:'other-user'}]},404],
+  ['agent-origin',{existingComputerJobs:[{...base.existingComputerJobs[0],origin:'agent'}]},404],
+  ['job running',{computerJobStatus:'running'},409],
+  ['viewer',{role:'member'},403],
+  ['not CEO',{agentType:'custom'},403],
+ ]){
+  const {state,response}=await invoke('agent-chat',{...base,...options},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+  assert.equal(response.status,code,label);
+  assert.equal(state.writes.filter(x=>x.table==='messages').length,0,label);
+  assert.equal(state.calls.length,0,label);
+ }
+});
+test('CEO journal duplicate job is idempotent and cannot move its receipt into another session',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const base={agentType:'ceo',computerTerminalReceipt:true,existingComputerJobs:[{
+  id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',kind:'desktop_task',params:{goal:'YouTube'}
+ }]};
+ const first=await invoke('agent-chat',{...base,existingJournalMessage:{id:jobId,conversation_id:CONVO}},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(first.response.status,200);assert.equal(first.body.duplicate,true);
+ assert.equal(first.state.writes.filter(x=>x.table==='messages').length,0);
+ const second=await invoke('agent-chat',{...base,existingJournalMessage:{id:jobId,conversation_id:'another-conversation'}},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(second.response.status,409);assert.equal(second.body.error,'journal_belongs_to_another_conversation');
+ assert.equal(second.state.writes.filter(x=>x.table==='messages').length,0);
 });

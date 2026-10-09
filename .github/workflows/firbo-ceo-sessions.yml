@@ -1,0 +1,50 @@
+name: FIRBO CEO durable sessions and scoped recall
+on:
+  pull_request:
+    branches: [codex/firbo-unlock-continuity-cbm-20261009]
+    paths:
+      - 'frontend/src/lib/company/ceo-sessions*'
+      - 'frontend/src/lib/company/useCeoSession.ts'
+      - 'frontend/src/lib/company/useCeoSession.computer.test.ts'
+      - 'frontend/src/components/company/CeoSessionHistory*'
+      - 'frontend/src/pages/CeoPage.tsx'
+      - 'frontend/src/components/command/TalkConsole.tsx'
+      - 'supabase/functions/agent-chat/**'
+      - 'supabase/functions/_shared/ceo-session-recall.ts'
+      - 'tests/firbo/ceo-session-recall.test.mjs'
+      - '.github/workflows/firbo-ceo-sessions.yml'
+permissions:
+  contents: read
+concurrency:
+  group: firbo-ceo-sessions-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  frontend-and-recall:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Use reviewed npm
+        run: npm install --global npm@11.19.0
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Real frontend tests
+        run: npm test
+      - name: Native CEO recall isolation and retrieval tests
+        run: node --experimental-strip-types --test ../tests/firbo/ceo-session-recall.test.mjs
+      - name: Edge entrypoint contract
+        run: node --experimental-strip-types --test ../tests/firbo/edge-entrypoints.test.mjs
+      - name: Isolated Edge Function TypeScript contract
+        run: npx tsc --project ../tests/firbo/tsconfig.edge.json
+      - name: Typecheck and production frontend
+        run: npm run build:tauri

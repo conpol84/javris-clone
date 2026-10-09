@@ -3,6 +3,8 @@ import { toast } from 'sonner';
 import type { HoloState } from '../../components/scenes/HologramScene';
 import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
+import { listCeoSessions, readCeoSession, type CeoSessionPreview } from './ceo-sessions';
+import { journalCeoComputerJob } from './ceo-device-journal';
 import { RunError, runErrorText, sendChat } from './runner';
 import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
@@ -28,6 +30,10 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const [handsFree,setHandsFreeValue]=useState(false);
   const [voiceStatus,setVoiceStatus]=useState('');
   const [voiceLog,setVoiceLog]=useState<string[]>([]);
+  const [sessions,setSessions]=useState<CeoSessionPreview[]>([]);
+  const [activeSessionId,setActiveSessionId]=useState<string|null>(null);
+  const [historyLoading,setHistoryLoading]=useState(false);
+  const [historyError,setHistoryError]=useState(false);
   const live=useRef(false); const epoch=useRef(0); const turn=useRef<VoiceTurn|null>(null);
   const resumeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const busy=useRef(false);const mutedRef=useRef(false);const handsFreeRef=useRef(false);
@@ -43,10 +49,26 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   };
   useEffect(()=>{
     live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
+    setSessions([]);setActiveSessionId(null);setHistoryError(false);setHistoryLoading(true);
     const id=epoch.current;
-    if(orgId&&userId)void listAgents(orgId).then(agents=>{
-      if(valid(id))setCeo(agents.find(a=>a.enabled&&(a.type==='ceo'||a.slug.startsWith('ceo')))??null);
-    }).catch(()=>{if(valid(id))toast.error(tRef.current('chat.loadError'));});
+    if(orgId&&userId)void listAgents(orgId).then(async agents=>{
+      const found=agents.find(a=>a.enabled&&(a.type==='ceo'||a.slug.startsWith('ceo')))??null;
+      if(!valid(id))return;
+      if(!found){setHistoryLoading(false);setCeo(null);return;}
+      try{
+        const previews=await listCeoSessions(orgId,userId,found.id);
+        if(!valid(id))return;
+        if(previews.length){
+          const recovered=await readCeoSession(orgId,userId,found.id,previews[0].id);
+          if(!valid(id))return;
+          convo.current=previews[0].id;setActiveSessionId(previews[0].id);setLines(recovered);
+        }
+        setSessions(previews);setHistoryError(false);setCeo(found);
+      }catch{
+        if(valid(id)){setHistoryError(true);setCeo(found);toast.error(tRef.current('chat.loadError'));}
+      }finally{if(valid(id))setHistoryLoading(false);}
+    }).catch(()=>{if(valid(id)){setHistoryError(true);setHistoryLoading(false);toast.error(tRef.current('chat.loadError'));}});
+    else setHistoryLoading(false);
     return ()=>{live.current=false;clear();};
     // Translation labels are read via refs; language is part of the explicit scope.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -88,8 +110,41 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const stop=()=>{
     pendingComputer.current=null;clear();setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
   };
+  const newSession=()=>{
+    if(busy.current||historyLoading||historyError)return;
+    pendingComputer.current=null;clear();convo.current=null;setActiveSessionId(null);
+    setLines([]);setState('idle');setInterim('');setHistoryError(false);
+  };
+  const openSession=async(conversationId:string)=>{
+    if(!ceo||!userId||busy.current||historyLoading||!sessions.some(x=>x.id===conversationId))return;
+    pendingComputer.current=null;clear();setState('idle');setHistoryLoading(true);
+    const id=epoch.current;
+    try{
+      const recovered=await readCeoSession(orgId,userId,ceo.id,conversationId);
+      if(!valid(id))return;
+      convo.current=conversationId;setActiveSessionId(conversationId);setLines(recovered);setHistoryError(false);
+    }catch{if(valid(id)){setHistoryError(true);toast.error(tRef.current('chat.loadError'));}}
+    finally{if(valid(id))setHistoryLoading(false);}
+  };
+  const retryHistory=()=>{
+    if(busy.current||historyLoading)return;
+    // Reinitialize this personal scope without bypassing the scoped load.
+    setHistoryError(false);
+    if(!ceo||!userId)return;
+    setHistoryLoading(true);
+    const id=epoch.current;
+    void listCeoSessions(orgId,userId,ceo.id).then(async previews=>{
+      if(!valid(id))return;
+      if(previews.length){
+        const recovered=await readCeoSession(orgId,userId,ceo.id,previews[0].id);
+        if(!valid(id))return;
+        convo.current=previews[0].id;setActiveSessionId(previews[0].id);setLines(recovered);
+      }else{convo.current=null;setActiveSessionId(null);setLines([]);}
+      setSessions(previews);
+    }).catch(()=>{if(valid(id))setHistoryError(true);}).finally(()=>{if(valid(id))setHistoryLoading(false);});
+  };
   const ask=async(message:string)=>{
-    if(!ceo||!userId||!canWrite||!message.trim()||busy.current||loadedScope!==scope)return;
+    if(!ceo||!userId||!canWrite||!message.trim()||busy.current||historyLoading||historyError||loadedScope!==scope)return;
     clearTimeout(resumeTimer.current);stopListen.current();
     const id=++epoch.current;busy.current=true;unlockAudio();
     const active=newTurn(id);active.phase('thinking');
@@ -102,6 +157,26 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       busy.current=false;
       if(spoken.status==='completed'){setState('idle');resume(id,300);}
       else{handsFreeRef.current=false;setHandsFreeValue(false);clearTimeout(resumeTimer.current);setState('idle');if(spoken.status==='failed'){note(voiceMessages(lang).playback);toast.error(voiceMessages(lang).playback);}}
+    };
+    const sayComputer=async(remote:{reply:string;status?:string;job_id?:string})=>{
+      let narrative=remote.reply;
+      if(remote.job_id&&['done','failed'].includes(remote.status??'')){
+        try{
+          if(!convo.current){
+            const created=await createConversation(orgId,userId,ceo.id);
+            if(!valid(id)||!active.current())return;
+            convo.current=created.id;setActiveSessionId(created.id);
+          }
+          await journalCeoComputerJob(convo.current,remote.job_id,active.signal);
+          if(!valid(id)||!active.current())return;
+          const items=await listCeoSessions(orgId,userId,ceo.id);
+          if(valid(id))setSessions(items);
+        }catch{
+          narrative+=lang==='el'?' (Η εργασία υπάρχει στους Υπολογιστές, αλλά δεν καταγράφηκε στο ιστορικό CEO.)'
+            :' (The job remains in Computers, but CEO chat history could not record it.)';
+        }
+      }
+      await sayDirect(narrative);
     };
     try{
       const unlockNotice=isUnlockContinuation(message);
@@ -135,7 +210,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
             pendingComputer.current=null;
             const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,active.signal);
             if(!valid(id)||!active.current())return;
-            await sayDirect(remote.reply);return;
+            await sayComputer(remote);return;
           }
           pendingComputer.current={...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId};
           await sayDirect(lang==='el'?`Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`:`I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);return;
@@ -144,22 +219,22 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           pendingComputer.current=null;
           const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
           if(!valid(id)||!active.current())return;
-          await sayDirect(remote.reply);return;
+          await sayComputer(remote);return;
         }
         if(pendingComputer.current&&decision){
           const pending=pendingComputer.current;pendingComputer.current=null;
           if(decision==='reject'){await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
           const remote=await dispatchDirectComputerCommand(orgId,pending,lang,active.signal);
           if(!valid(id)||!active.current())return;
-          await sayDirect(remote.reply);return;
+          await sayComputer(remote);return;
         }
         const remote=await voiceDeadline(signal=>dispatchLaptopBrowserCommand(orgId,message,lang,signal),active.signal,24_000);
         if(!valid(id)||!active.current())return;
-        if(remote.handled){await sayDirect(remote.reply??voiceMessages(lang).server);return;}
+        if(remote.handled){await sayComputer({reply:remote.reply??voiceMessages(lang).server,status:remote.status,job_id:remote.job_id});return;}
       }
       if(!convo.current){
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
-        if(!valid(id)||!active.current())return;convo.current=created.id;
+        if(!valid(id)||!active.current())return;convo.current=created.id;setActiveSessionId(created.id);
       }
       const response=await voiceDeadline(signal=>sendChat(convo.current!,message,lang,true,signal),active.signal,95_000);
       if(!valid(id)||!active.current())return;
@@ -167,6 +242,9 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       if(typeof raw!=='string'||!raw.trim())throw new Error('invalid_chat_response');
       const {text:content,ask:handoff,task,meet,app}=parseHandoff(raw);
       setLines(lines=>[...lines,{who:'ceo',text:content,ask:handoff,task,meet,app}]);
+      // Refresh only this user's CEO previews after the server has persisted
+      // the completed chat turn. This never turns unverified device claims into memory.
+      void listCeoSessions(orgId,userId,ceo.id).then(items=>{if(valid(id))setSessions(items);}).catch(()=>{});
       if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
       const result=await speak(orgId,content,lang,{turn:active});
       if(!valid(id))return;
@@ -218,5 +296,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   };
   const scoped=loadedScope===scope;
   return {ceo:scoped?ceo:null,state:scoped?state:'idle' as HoloState,lines:scoped?lines:[],interim:scoped?interim:'',voiceStatus:scoped?voiceStatus:'',voiceLog:scoped?voiceLog:[],
-    sendNow:()=>sendListen.current(),muted,setMuted,handsFree:scoped&&handsFree,setHandsFree,canTalk,ask,listen,stop,briefing};
+    sendNow:()=>sendListen.current(),muted,setMuted,handsFree:scoped&&handsFree,setHandsFree,canTalk,ask,listen,stop,briefing,
+    sessions:scoped?sessions:[],activeSessionId:scoped?activeSessionId:null,historyLoading,historyError,
+    openSession,newSession,retryHistory};
 }

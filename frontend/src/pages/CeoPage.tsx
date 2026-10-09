@@ -1,6 +1,7 @@
 import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { CeoActions } from '../components/company/CeoActions';
+import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import type { Satellite } from '../components/scenes/HologramScene';
 import { CeoStage } from '../components/scenes/CeoStage';
@@ -40,7 +41,8 @@ export function CeoPage() {
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
-  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing } = session;
+  const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
+    sessions, activeSessionId, historyLoading, historyError, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
@@ -112,6 +114,9 @@ export function CeoPage() {
           </section>
 
           <section className="fb-glass fb-col gap-3 p-4">
+            <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
+              loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
+              onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
             <div className="flex flex-wrap gap-2">
               {(canTalk || state !== 'idle') &&
                 (state === 'listening' ? (
