@@ -46,13 +46,22 @@ export function AgentChatPage() {
       return false;
     }
   });
+  // A CEO is voice-first in both entrypoints; ordinary employees stay text-first.
+  // Persist CEO preference separately, honor a prior explicit shared voice choice.
+  const [ceoSpeakOn, setCeoSpeakOn] = useState(() => {
+    try {
+      const preferred = localStorage.getItem('firbo.ceo.speak');
+      if (preferred === '0' || preferred === '1') return preferred === '1';
+      return localStorage.getItem('firbo.chat.speak') !== '0';
+    } catch { return true; }
+  });
   const stopListen = useRef<() => void>(() => {});
   const pendingComputer = useRef<DirectComputerProposal | null>(null);
   const computerRun = useRef<AbortController | null>(null);
   const [computerRunning, setComputerRunning] = useState(false);
   const canTalk = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   const voiceTurn = useRef<VoiceTurn | null>(null);
-  const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
+  const speakOnRef = useRef(speakOn);
   const end = useRef<HTMLDivElement>(null);
   const activeId = params.get('c');
   const copy = useWorkspaceCopy();
@@ -71,6 +80,8 @@ export function AgentChatPage() {
   const nameOf = (a: AgentRow | null) => (a ? agentLabel(a, i18n).name : t('unassigned'));
   const activeAgent = agentOf(active?.agent_id ?? null);
   const activeIsCeo = !!activeAgent && (activeAgent.type === 'ceo' || activeAgent.slug.startsWith('ceo'));
+  const effectiveSpeakOn = activeIsCeo ? ceoSpeakOn : speakOn;
+  speakOnRef.current = effectiveSpeakOn;
 
   // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
   const [listLoaded, setListLoaded] = useState(false);
@@ -269,7 +280,7 @@ export function AgentChatPage() {
           return;
         }
       }
-      const out = await sendChat(active.id, msg, lang, speakOn);
+      const out = await sendChat(active.id, msg, lang, effectiveSpeakOn);
       if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
@@ -289,11 +300,13 @@ export function AgentChatPage() {
   };
 
   const toggleSpeak = () => {
-    const next = !speakOn;
-    speakOnRef.current = next; setSpeakOn(next);
+    const next = !effectiveSpeakOn;
+    speakOnRef.current = next;
+    if (activeIsCeo) setCeoSpeakOn(next);
+    else setSpeakOn(next);
     if (!next) voiceTurn.current?.cancel();
     try {
-      localStorage.setItem('firbo.chat.speak', next ? '1' : '0');
+      localStorage.setItem(activeIsCeo ? 'firbo.ceo.speak' : 'firbo.chat.speak', next ? '1' : '0');
     } catch {
       /* the choice just is not remembered */
     }
@@ -452,8 +465,8 @@ export function AgentChatPage() {
                 placeholder={interim || t('chat.placeholder', { agent: nameOf(activeAgent) })}
                 aria-label={t('chat.placeholder', { agent: nameOf(activeAgent) })}
               />
-              <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={speakOn} aria-label={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
-                {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={effectiveSpeakOn} aria-label={t(effectiveSpeakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(effectiveSpeakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
+                {effectiveSpeakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
               </button>
               {computerRunning && <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-label={t('ceo.stop')} onClick={() => computerRun.current?.abort()}><Square size={16} /> {t('ceo.stop')}</button>}
               {canTalk ? (
