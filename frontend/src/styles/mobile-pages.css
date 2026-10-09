@@ -69,6 +69,11 @@ main[data-firbo-route='/companies'] .fb-wide { width: 100%; }
 /* CEO-only mobile composer: the fixed thumb navigation must NEVER obscure typing.
    Keep transcript room so older replies remain readable; do not affect other routes. */
 @media (max-width: 767px) {
+  /* Backdrop-filter creates a fixed-position containing block in Chromium/Safari. */
+  main[data-firbo-route='/ceo'] section[data-ceo-chatpanel='true'] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
   main[data-firbo-route='/ceo'] form[data-ceo-composer='true'] {
     position: fixed;
     inset-inline: 12px;
