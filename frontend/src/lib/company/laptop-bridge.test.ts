@@ -447,7 +447,7 @@ describe('truthful CEO computer progress and safe read-only recovery',()=>{
    now:()=>now,loadDevices:async()=>[machine],
    queue:async()=>{executions++;return{job_id:'job-ui-failure'}},
    loadJobs:async()=>[{id:'job-ui-failure',device_id:machine.id,kind:'desktop_task',
-    params:proposal.params,status:'error',error:'desktop_capture_blank',
+    params:proposal.params,status:'error',error:'desktop_capture_blank',result:null,
     created_at:'',finished_at:''} as JobRow],
    onProgress:()=>{throw new Error('UI exception');}
   });
