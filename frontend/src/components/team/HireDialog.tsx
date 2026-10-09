@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
+import { AgencySpecialistDetails } from './AgencySpecialistDetails';
 import { AGENT_TEMPLATES, TEMPLATE_CATEGORIES, type AgentTemplate } from '../../lib/company/templates';
 import { hireAgent } from '../../lib/company/data';
 import { useI18n } from '../../i18n/I18nProvider';
@@ -52,6 +53,7 @@ export function HireDialog({
       {pick ? (
         <div className="fb-col gap-3">
           <div className="text-base font-semibold">{t('hire.confirm', { name: t(`tpl.${pick.slug}.name` as TKey) })}</div>
+          <AgencySpecialistDetails key={pick.slug} slug={pick.slug} expanded />
           <label className="fb-col gap-1 text-sm">
             <span className="fb-muted">{t('hire.instrLabel')}</span>
             <textarea className="fb-input" rows={5} maxLength={2000} value={instr} onChange={(e) => setInstr(e.target.value)} placeholder={t('hire.instrPh')} />

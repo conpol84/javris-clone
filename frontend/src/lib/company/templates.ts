@@ -1,4 +1,5 @@
 import type { Autonomy, ToolPolicy } from './types';
+import { withAgencySpecialist } from './agencySpecialists';
 
 export interface TemplateTool {
   tool: string;
@@ -21,7 +22,7 @@ const RULES =
 const t = (tool: string, policy?: ToolPolicy): TemplateTool => ({ tool, policy });
 
 /** Pre-built "employees". Tool names match the OpenJarvis ToolRegistry so the backend can enforce them. */
-export const AGENT_TEMPLATES: AgentTemplate[] = [
+export const AGENT_TEMPLATES: AgentTemplate[] = ([
   {
     slug: 'customer-support', name: 'Customer Support Agent', category: 'Operations', color: '#38bdf8',
     tagline: 'Answers tickets from your knowledge base and escalates what it cannot solve.',
@@ -292,7 +293,7 @@ export const AGENT_TEMPLATES: AgentTemplate[] = [
     prompt: 'You are the Autonomous Coder. Read the ticket, inspect the repository, make the smallest correct change, explain it and prepare a pull request. Never push to protected branches or deploy; everything that changes code waits for human review.' + RULES,
     tools: [t('think'), t('file_read'), t('git_status'), t('git_diff'), t('git_log'), t('file_write', 'approval'), t('apply_patch', 'approval'), t('git_commit', 'approval'), t('queue_action')],
   },
-];
+] satisfies AgentTemplate[]).map(withAgencySpecialist);
 
 export const TEMPLATE_CATEGORIES = ['Growth', 'Operations', 'Engineering', 'Intelligence', 'Finance & Legal'] as const;
 
