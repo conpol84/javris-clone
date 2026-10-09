@@ -1,13 +1,15 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CeoSessionHistory } from './CeoSessionHistory';
 
 const rows=[
  {id:'one',title:'Playback follow-up',preview:'My shell: screen locked; playback not verified',updated_at:'2026-10-09T16:33:00Z'},
  {id:'two',title:'Research planning',preview:'Research report complete with next actions',updated_at:'2026-10-08T09:30:00Z'}
 ];
-function html(lang='en',canCreate=true){
+afterEach(()=>vi.unstubAllGlobals());
+function html(lang='en',canCreate=true,desktop=false){
+ vi.stubGlobal('window',{matchMedia:()=>({matches:desktop})});
  return renderToStaticMarkup(createElement(CeoSessionHistory,{
   lang,sessions:rows,activeId:'one',loading:false,error:false,disabled:false,canCreate,
   onSelect:vi.fn(),onNew:vi.fn(),onRetry:vi.fn()
@@ -15,12 +17,19 @@ function html(lang='en',canCreate=true){
 }
 describe('personal CEO preview UI',()=>{
  it('renders actual per-session title, latest transcript preview and current session distinction',()=>{
-  const markup=html();
+  const markup=html('en',true,true);
   for(const value of ['Previous CEO conversations','Playback follow-up','screen locked','Research planning','Research report complete','Current']){
    expect(markup).toContain(value);
   }
   expect(markup).toContain('data-ceo-session-history="true"');
   expect(markup).toContain('aria-current="true"');
+ });
+ it('keeps history collapsed on mobile while showing a usable toggle and new-chat control',()=>{
+  const markup=html('en',true,false);
+  expect(markup).toContain('Previous CEO conversations');
+  expect(markup).toContain('aria-expanded="false"');
+  expect(markup).not.toContain('Playback follow-up');
+  expect(markup).toContain('aria-label="New conversation"');
  });
  it('has localized owner and multilingual labels without changing saved content',()=>{
   expect(html('el')).toContain('Προηγούμενες συνομιλίες CEO');
@@ -32,7 +41,7 @@ describe('personal CEO preview UI',()=>{
   expect(html('zh-CN')).toContain('以往 CEO 对话');
  });
  it('read-only user still sees and can choose own history while new conversation is unavailable',()=>{
-  const markup=html('en',false);
+  const markup=html('en',false,true);
   expect(markup).toContain('Playback follow-up');
   expect(markup).toMatch(/disabled=""[^>]*aria-label="New conversation"/);
   expect(markup).toContain('role="listitem"');
