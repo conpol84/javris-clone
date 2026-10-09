@@ -50,12 +50,16 @@ try {
           inputLeft: rect?.left ?? -10,
           inputRight: rect?.right ?? 99999,
           transcript: !!document.querySelector('[data-ceo-transcript]'),
+          composerBottom: rect?.bottom ?? 99999,
+          bottomNavTop: document.querySelector('.fb-bottomnav')?.getBoundingClientRect().top ?? Infinity,
+          shell: [...document.querySelectorAll('main, main > div, main [data-firbo-voice]')].slice(0,5).map(e => ({tag: e.tagName, scrollHeight: e.scrollHeight, clientHeight: e.clientHeight, scrollTop: e.scrollTop, overflowY: getComputedStyle(e).overflowY})),
         };
       });
       failUnless(dimensions.overflow <= 3, name + ': horizontal overflow ' + JSON.stringify(dimensions));
       failUnless(dimensions.inputWidth >= 100 && dimensions.inputLeft >= -2 && dimensions.inputRight <= width + 3,
         name + ': input clipped ' + JSON.stringify(dimensions));
       failUnless(dimensions.transcript, name + ': transcript not present');
+      if (width < 768) failUnless(dimensions.composerBottom <= dimensions.bottomNavTop - 4, name + ': bottom nav obscures composer ' + JSON.stringify(dimensions));
       failUnless(errors.length === 0, name + ': client errors ' + errors.slice(0, 4).join('; '));
       await page.screenshot({ path: 'ceo-mobile-artifacts/' + name + '.png', fullPage: true, animations: 'disabled' });
       console.log('PASS ' + name + ' ' + width + 'x' + height + ' history/composer/layout');
