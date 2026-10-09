@@ -116,6 +116,9 @@ const APP_ALIASES:[string,string[]][]=[
 export function parseDirectComputerCommand(input:string):DirectComputerProposal|null{
  if(typeof input!=='string'||!input.trim()||input.length>4000)return null;
  const text=input.trim(),routing=deviceClause(plainText(text)),plain=routing.action;
+ // Content research about browsers/music is NOT permission to operate a
+ // computer; in particular "research" must not match the substring "search".
+ if(/^(?:research|explain|how (?:do|can|to)|write (?:a |an )?(?:report|guide)|ερευνα|εξηγησε|γραψε (?:οδηγιες|αναφορα))(?:\s|$)/u.test(plain))return null;
  const target=routing.target?{target:routing.target}:{};
  if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app},...target};
