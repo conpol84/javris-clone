@@ -34,7 +34,7 @@ export interface DeviceRow {
 export interface JobRow {
   id: string;
   device_id: string;
-  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'browser_task' | 'open_app' | 'shortcut';
+  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'browser_task' | 'open_app' | 'shortcut' | 'desktop_task';
   params: Record<string, unknown>;
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   result: Record<string, unknown> | null;
@@ -50,7 +50,7 @@ export interface JobRow {
   agent_id?: string | null;
 }
 
-export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'device_required' | 'device_not_ready' | 'action_not_executable' | 'unknown';
+export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'device_required' | 'device_not_ready' | 'action_not_executable' | 'business_plan_required' | 'desktop_setup_required' | 'unknown';
 export class ComputerError extends Error {
   constructor(public code: ComputerErrorCode) {
     super(code);
@@ -64,7 +64,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
     if (error instanceof FunctionsHttpError) {
       try {
         const b = await error.context.json();
-        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed', 'device_required', 'device_not_ready', 'action_not_executable'].includes(b?.error)) code = b.error;
+        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed', 'device_required', 'device_not_ready', 'action_not_executable','business_plan_required','desktop_setup_required'].includes(b?.error)) code = b.error;
       } catch {
         /* keep unknown */
       }

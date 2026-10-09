@@ -16,9 +16,9 @@ export const agentAccessLabels: Record<Lang, AgentAccessLabels> = {
   en: {
     control: 'Control mode',
     guarded: 'Guarded — use Inbox approvals for higher-risk steps',
-    full: 'Full Control — owner-authorized hands-free work on this Mac',
+    full: 'Full Control — owner-authorized hands-free work on this computer',
     fullHelp: 'Full Control removes duplicate Firbo approvals for owner-allowed file, app and browser work. Passwords, banking, keychain/system settings and destructive commands remain blocked.',
-    localFull: 'Enable the matching local Full Control mode on this Mac, then restart the Connector:',
+    localFull: 'Enable the matching local Full Control mode on this computer, then restart the Connector:',
     takeControl: 'Take Control / Emergency Stop',
     takeControlHelp: 'Stops new AI work on this computer, cancels queued jobs and requests Stop for anything already running. You remain able to use Computer Manager manually.',
     takeControlConfirm: 'Take control of this computer now? New AI work will be disabled and current AI jobs will be stopped.',
@@ -27,9 +27,9 @@ export const agentAccessLabels: Record<Lang, AgentAccessLabels> = {
   el: {
     control: 'Λειτουργία ελέγχου',
     guarded: 'Προστατευμένη — Inbox approval για πιο ριψοκίνδυνα βήματα',
-    full: 'Full Control — owner-authorized αυτόνομη εργασία σε αυτόν τον Mac',
+    full: 'Full Control — owner-authorized αυτόνομη εργασία σε αυτόν τον υπολογιστή',
     fullHelp: 'Το Full Control αφαιρεί τα διπλά FIRBO approvals για αρχεία, εφαρμογές και browser που έχει επιτρέψει ο owner. Κωδικοί, τράπεζες, Keychain/ρυθμίσεις συστήματος και καταστροφικές εντολές παραμένουν μπλοκαρισμένα.',
-    localFull: 'Ενεργοποίησε και το αντίστοιχο τοπικό Full Control σε αυτόν τον Mac και μετά ξανατρέξε τον Connector:',
+    localFull: 'Ενεργοποίησε και το αντίστοιχο τοπικό Full Control σε αυτόν τον υπολογιστή και μετά ξανατρέξε τον Connector:',
     takeControl: 'Take Control / Επείγον Stop',
     takeControlHelp: 'Σταματά νέα δουλειά AI σε αυτόν τον υπολογιστή, ακυρώνει ό,τι περιμένει και ζητά Stop για ό,τι ήδη τρέχει. Εσύ συνεχίζεις να χρησιμοποιείς χειροκίνητα το Computer Manager.',
     takeControlConfirm: 'Να πάρεις τώρα τον έλεγχο αυτού του υπολογιστή; Η νέα δουλειά AI θα απενεργοποιηθεί και οι τρέχουσες εργασίες AI θα σταματήσουν.',
