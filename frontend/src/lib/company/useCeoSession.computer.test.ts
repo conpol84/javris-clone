@@ -151,3 +151,17 @@ it('truthfully discloses when a device job is durable but the separate CEO journ
  const update=fixture.setters[3].mock.calls.slice(-1)[0][0];
  expect(update([]).at(-1).text).toContain('δεν καταγράφηκε');
 });
+
+it('AI CEO shows genuine worker stage while awaiting the physical result',async()=>{
+ const stage={jobId:'15992c52-e6c3-4623-8e71-21206d863175',deviceName:'My shell',stage:'running' as const,elapsedSeconds:8};
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockImplementation(async(_org,_proposal,_lang,_signal,deps)=>{
+  deps.onProgress(stage);
+  return{reply:'The worker has not confirmed completion.',status:'queued',job_id:stage.jobId};
+ });
+ const hook=session();
+ await hook.ask('open browser');
+ expect(dispatch).toHaveBeenCalledOnce();
+ expect(fixture.setters[9]).toHaveBeenCalledWith(stage);
+ expect(sendChat).not.toHaveBeenCalled();
+});
