@@ -8,15 +8,18 @@ const labels:Record<string,{title:string;newChat:string;search:string;empty:stri
  es:{title:'Conversaciones anteriores del CEO',newChat:'Nueva conversación',search:'Buscar conversaciones',empty:'Aún no hay conversaciones guardadas',showAll:'Todas las conversaciones',showLess:'Mostrar menos',active:'Actual',loading:'Cargando historial...',error:'No se pudo cargar el historial.'},
  pt:{title:'Conversas anteriores do CEO',newChat:'Nova conversa',search:'Pesquisar conversas',empty:'Ainda não há conversas guardadas',showAll:'Todas as conversas',showLess:'Mostrar menos',active:'Atual',loading:'A carregar histórico...',error:'Não foi possível carregar o histórico.'},
  fr:{title:'Conversations précédentes du CEO',newChat:'Nouvelle conversation',search:'Rechercher',empty:'Aucune conversation enregistrée',showAll:'Toutes les conversations',showLess:'Voir moins',active:'Actuelle',loading:'Chargement de l’historique...',error:'Impossible de charger l’historique.'},
+ de:{title:'Frühere CEO-Gespräche',newChat:'Neues Gespräch',search:'Gespräche suchen',empty:'Noch keine gespeicherten Gespräche',showAll:'Alle Gespräche',showLess:'Weniger anzeigen',active:'Aktuell',loading:'Verlauf wird geladen...',error:'Verlauf konnte nicht geladen werden.'},
+ ar:{title:'محادثات الرئيس التنفيذي السابقة',newChat:'محادثة جديدة',search:'البحث في المحادثات',empty:'لا توجد محادثات محفوظة',showAll:'كل المحادثات',showLess:'عرض أقل',active:'الحالية',loading:'جارٍ تحميل السجل...',error:'تعذر تحميل السجل.'},
+ 'zh-CN':{title:'以往 CEO 对话',newChat:'新对话',search:'搜索对话',empty:'暂无已保存对话',showAll:'所有对话',showLess:'收起',active:'当前',loading:'正在加载历史...',error:'无法加载历史记录。'},
 };
 export interface CeoSessionHistoryProps{
  lang:string; sessions:CeoSessionPreview[]; activeId:string|null;
- loading:boolean; error:boolean; disabled:boolean;
+ loading:boolean; error:boolean; disabled:boolean; canCreate:boolean;
  onSelect:(id:string)=>void; onNew:()=>void; onRetry:()=>void;
  compact?:boolean;
 }
 /** Never includes other users' conversations: caller supplies own-user scoped rows. */
-export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled,onSelect,onNew,onRetry,compact=false}:CeoSessionHistoryProps){
+export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled,canCreate,onSelect,onNew,onRetry,compact=false}:CeoSessionHistoryProps){
  const copy=labels[lang]??labels.en;
  const [query,setQuery]=useState('');
  const [expanded,setExpanded]=useState(false);
@@ -28,7 +31,7 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
  return <section className="fb-glass fb-col gap-2 p-3" aria-label={copy.title} data-ceo-session-history="true">
    <div className="flex flex-wrap items-center justify-between gap-2">
      <span className="text-sm font-semibold inline-flex items-center gap-2"><History size={15}/>{copy.title}</span>
-     <button type="button" className="fb-btn fb-btn--ghost" disabled={disabled||loading} onClick={onNew} aria-label={copy.newChat}>
+     <button type="button" className="fb-btn fb-btn--ghost" disabled={disabled||loading||!canCreate} onClick={onNew} aria-label={copy.newChat}>
        <MessageSquarePlus size={14}/>{copy.newChat}
      </button>
    </div>
