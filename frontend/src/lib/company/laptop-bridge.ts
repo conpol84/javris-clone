@@ -270,7 +270,20 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:verified?`${device.name}: ${row.result.summary}${terminalEvidence(row)}`:`${device.name}: completion not verified; ${row.result.summary}${terminalEvidence(row)}`};
    if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
    if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:(greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`)+terminalEvidence(row)};
-   if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?`Το ${device.name} δεν ολοκλήρωσε την ενέργεια.`:`${device.name} did not complete the action.`};
+   if(row&&['error','cancelled'].includes(row.status)){
+    // The connector deliberately stores a bounded error CODE, not device stdout,
+    // raw screenshots or secrets. Explain what actually failed; never imply the
+    // song played or a browser task succeeded without a positive terminal receipt.
+    const reason=typeof row.error==='string'&&/^[a-z][a-z0-9_]{2,63}$/.test(row.error)
+      ?row.error:'worker_error_unavailable';
+    const cancelled=row.status==='cancelled';
+    const detail=cancelled
+      ?(greek?'Η εργασία ακυρώθηκε.':'The job was cancelled.')
+      :(greek?`Η τοπική εκτέλεση απέτυχε (κωδικός: ${reason}).`
+          :`Local execution failed (code: ${reason}).`);
+    const verified=greek?'Δεν επιβεβαιώθηκε η ζητούμενη ενέργεια.':'The requested action was not verified.';
+    return{handled:true,status:'failed',job_id:job.job_id,reply:`${device.name}: ${detail} ${verified} Job ID: ${job.job_id}. ${greek?'Δες τη συγκεκριμένη εργασία στους Υπολογιστές.':'Open that job in Computers.'}`};
+   }
    await sleep(650,signal);
   }
   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
