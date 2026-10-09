@@ -10,6 +10,7 @@ import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
 import { memoryBlocks } from '../_shared/company-pulse.ts';
+import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
 
@@ -216,7 +217,7 @@ Deno.serve(async (req) => {
   // User-controlled metadata cannot grant cross-user visibility. Until a
   // server-attested company-memory sharing path exists, use only same-user
   // rows for inference. This intentionally fails closed for legacy NULL owners.
-  const accessibleMemory=(memRows??[]).filter((m:any)=>m.user_id===user.id);
+  const accessibleMemory=ownerVisibleMemory(memRows??[], user.id);
   const memoryBlock = memoryBlocks(accessibleMemory).join('\n');
   let previousCeoSessions='';
   let pastSessionsUnavailable=false;
