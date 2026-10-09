@@ -47,6 +47,11 @@ function deviceClause(plain:string){
  // device targets from page text, quoted content, URLs or trailing restrictions.
  const scoped=plain.match(/^(?:execute|run|εκτελε\p{L}*)\s+(?:.{1,110}?\s+)?(?:exclusively|only|αποκλειστικα)\s+(?:on|στον|στο|ston|sto)\s+(?:(?:the|τον|το)\s+)?(?:computer|υπολογιστη|υπολογιστης)\s+(my shell|polis1984|mac mini|macbook|mac|debian|linux|windows)(?=\s|$)/u);
  if(scoped)return{target:scoped[1],action:plain};
+ // Natural owner Greeklish "re to shell einai unlock, pexe ..." refers to the
+ // owner's named machine. Only accept this prefix, never device names within
+ // a web page search, quoted text, path or trailing safety restriction.
+ const shell=plain.match(/^(?:(?:re|ρε)\s+)?(?:to|sto|ston|το|στο|στον)\s+(?:(?:my|το)\s+)?shell(?=\s|$)/u);
+ if(shell)return{target:'my shell',action:plain.slice(shell[0].length).trim()};
  const label='(mac mini|macbook|mac|debian|linux|windows|polis1984|my shell)';
  const clause='(?:from|on|using|apo|sto|ston|απο|στο|στον)\\s+(?:(?:my|the|το|τον)\\s+)?'+label;
  const prefix=plain.match(new RegExp('^'+clause+'\\s+','u'));
@@ -67,7 +72,7 @@ export function isComputerControlRequest(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
  const plain=plainText(input);
  const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη|website|site|ιστοσελιδα|ιστοσελιδες)(?:\s|$)/u.test(plain);
- const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pexe|peks|paixe|paikse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
  // Research and instructions about controlling a computer are ordinary work.
  if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
  return target&&action;
