@@ -14,36 +14,18 @@ permissions:
 jobs:
   memory-tenant-isolation:
     name: RLS ownership, legacy and tenant isolation
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
-    services:
-      postgres:
-        image: postgres:17
-        env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: ci-only-fixture
-          POSTGRES_DB: firbo_fixture
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres -d firbo_fixture"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 12
     steps:
       - name: Checkout exact PR head
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           persist-credentials: false
-      - name: Install PostgreSQL client
+      - name: Install and start local PostgreSQL
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq postgresql-client
-      - name: Apply real migration to disposable fixture and assert row isolation
-        env:
-          PGHOST: localhost
-          PGPORT: '5432'
-          PGUSER: postgres
-          PGPASSWORD: ci-only-fixture
-          PGDATABASE: firbo_fixture
-        run: psql -X -v ON_ERROR_STOP=1 -f tests/firbo/sql/sgmem01_staging_rls.sql
+          sudo apt-get install -y -qq postgresql-16 postgresql-client-16
+          sudo pg_ctlcluster 16 main start || sudo pg_ctlcluster 16 main status
+          sudo -u postgres psql --version
+      - name: Execute real migration and tenant fixture
+        run: sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres -f tests/firbo/sql/sgmem01_staging_rls.sql
