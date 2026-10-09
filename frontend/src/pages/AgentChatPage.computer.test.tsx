@@ -69,7 +69,7 @@ it('never dispatches an explicit rejected app command', async () => {
 });
 it('routes the exact incomplete owner transcript to readiness rather than the model',async()=>{
   await elements(page('mporis na anixis to mac kai na valis tragoudia apo youtube ?')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
-  expect(prepare).toHaveBeenCalledWith('org','browser_task','en',expect.any(AbortSignal));
+  expect(prepare).toHaveBeenCalledWith('org',{kind:'desktop_task',description:'mporis na anixis to mac kai na valis tragoudia apo youtube ?',params:{goal:'mporis na anixis to mac kai na valis tragoudia apo youtube ?'}},'en',expect.any(AbortSignal));
   expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(fixture.refs[1].current).toBeNull();
   const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
   expect(update([]).slice(-1)[0].content).toContain('No job was queued');
@@ -98,4 +98,17 @@ it('routes a voice transcript through the same readiness guard',async()=>{
   expect(button).toBeDefined();button!.props.onClick?.();
   await Promise.resolve();await Promise.resolve();
   expect(prepare).toHaveBeenCalledOnce();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+});
+
+it('native Full Control dispatches a simple app goal immediately on the ready device',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ await elements(page('open Microsoft Word')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'desktop_task',description:'open Microsoft Word',params:{goal:'open Microsoft Word'},deviceId:'d7'});expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('passes the explicit Mac target through chat readiness and pending approval',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Polis1984',deviceId:'mac'});
+ await elements(page('from mac open chrome')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledWith('org',{kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'mac'},'en',expect.any(AbortSignal));
+ expect(fixture.refs[1].current).toMatchObject({target:'mac',deviceId:'mac',params:{app:'Google Chrome'}});expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
 });

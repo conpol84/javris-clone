@@ -580,6 +580,9 @@ def create_app(
                 headers=_NO_CACHE_HEADERS,
             )
 
+    from openjarvis.server.dashboard_login import install_dashboard_login
+
+    install_dashboard_login(app)
     return app
 
 

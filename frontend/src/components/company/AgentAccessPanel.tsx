@@ -48,7 +48,7 @@ export function AgentAccessPanel({ device, platform, onSaved }: { device: Device
   return (
     <form onSubmit={save} className="fb-col gap-3 rounded-lg border border-white/10 p-3" data-testid="agent-access">
       <h3 className="flex items-center gap-2 font-semibold"><Bot size={16} /> {c('xTitle')}</h3>
-      <p className="fb-dim text-xs">{c('xHelp')}</p>
+      <p className="fb-dim text-xs">{kinds.includes('desktop_task') ? (lang === 'el' ? 'Έλεγχος desktop για Business/Enterprise: ο CEO βλέπει την οθόνη και χειρίζεται mouse/keyboard στις εφαρμογές σου. Η πρόσβαση desktop αφορά τον λογαριασμό του υπολογιστή και δεν περιορίζεται στους φακέλους αρχείων παρακάτω. Το Take Control σταματά τις ενέργειες AI· τα ήδη ανοιχτά προγράμματα παραμένουν ανοιχτά.' : 'Business/Enterprise desktop control: the CEO observes your screen and operates mouse/keyboard across your apps. Desktop access uses your computer account and is not confined to the file folders below. Take Control stops AI input; applications already opened remain open.') : c('xHelp')}</p>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={p.enabled} onChange={e => setP({ ...p, enabled: e.target.checked })} /> {c('xOn')}
       </label>
@@ -59,7 +59,7 @@ export function AgentAccessPanel({ device, platform, onSaved }: { device: Device
           <option value="full">{full.full}</option>
         </select>
       </label>
-      {p.enabled && p.control === 'full' && <p className="text-xs" style={{ color: 'var(--fb-warn)' }}>{full.fullHelp}</p>}
+      {!kinds.includes('desktop_task') && p.enabled && p.control === 'full' && <p className="text-xs" style={{ color: 'var(--fb-warn)' }}>{full.fullHelp}</p>}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="fb-col gap-1 text-sm sm:col-span-2">
           <span className="fb-dim text-xs">{c('xApps')}</span>

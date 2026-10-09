@@ -1,0 +1,38 @@
+name: Firbo dashboard login
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - 'src/openjarvis/server/dashboard_login.py'
+      - 'src/openjarvis/server/app.py'
+      - 'deploy/hostinger/install-dashboard-login.py'
+      - 'deploy/hostinger/repair-dashboard-origin.py'
+      - 'deploy/hostinger/reset-dashboard-password.py'
+      - 'tests/server/test_dashboard_login*.py'
+      - '.github/workflows/firbo-dashboard-login.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install fastapi==0.115.12 httpx==0.28.1 playwright==1.55.0
+      - run: python -m playwright install --with-deps chromium
+      - name: Get real Caddy adapter
+        run: |
+          docker pull caddy:2.10.2
+          docker create --name caddy-test caddy:2.10.2
+          docker cp caddy-test:/usr/bin/caddy /tmp/caddy
+          docker rm caddy-test
+          chmod +x /tmp/caddy
+      - name: Authentication, browser session, WebSocket and route preservation
+        env:
+          CADDY_BIN: /tmp/caddy
+          FIRBO_BROWSER_TEST: '1'
+        run: python -m unittest discover -s tests/server -p 'test_dashboard_login*.py' -v
