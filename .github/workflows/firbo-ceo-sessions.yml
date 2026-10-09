@@ -44,5 +44,7 @@ jobs:
         run: node --experimental-strip-types --test ../tests/firbo/ceo-session-recall.test.mjs
       - name: Edge entrypoint contract
         run: node --experimental-strip-types --test ../tests/firbo/edge-entrypoints.test.mjs
+      - name: Isolated Edge Function TypeScript contract
+        run: npx tsc --project ../tests/firbo/tsconfig.edge.json
       - name: Typecheck and production frontend
         run: npm run build:tauri
