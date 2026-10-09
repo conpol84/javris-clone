@@ -287,3 +287,12 @@ describe('CEO device-intent regression: positive task with negative guardrails',
   }
  });
 });
+
+
+it('kind-only requests are incomplete, never malformed live VPS previews',async()=>{
+ for(const kind of ['browser_task','desktop_task'] as const){
+  const result=await prepareDirectComputerCommand('org',kind,'el');
+  expect(result).toMatchObject({ready:false,status:'details_required'});
+  if(!result.ready)expect(result.reply).toContain('https://example.com');
+ }
+});
