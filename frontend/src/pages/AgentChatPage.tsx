@@ -168,6 +168,7 @@ export function AgentChatPage() {
     try {
       if (activeIsCeo) {
         const proposal = parseDirectComputerCommand(msg);
+
         const decision = parseOwnerDecision(msg);
         const pending = pendingComputer.current;
         const computerRequest = !!proposal || isComputerControlRequest(msg);
@@ -194,12 +195,20 @@ export function AgentChatPage() {
             computerRun.current = controller; setComputerRunning(true);
             let readiness;
             try {
-              readiness = await prepareDirectComputerCommand(orgId, proposal?.kind ?? 'browser_task', lang, controller.signal);
+              readiness = await prepareDirectComputerCommand(orgId, proposal ?? 'browser_task', lang, controller.signal);
             } finally {
               if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
             }
-            if (voiceScopeRef.current !== scopeAtSend) return;
-            pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId } : null;
+            if (voiceScopeRef.current !== scopeAtSend || controller.signal.aborted) return;
+            if(readiness.ready&&readiness.ownerFullControl===true&&proposal){
+              pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
+              try{
+                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,controller.signal);
+                if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
+              }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
+              return;
+            }
+            pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId, requestId: readiness.requestId } : null;
             directMessage(!readiness.ready ? readiness.reply : !proposal ? incompleteComputerReply(lang) : lang === 'el'
               ? `Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`
               : `I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);

@@ -3,13 +3,16 @@
 import fs from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { createHash, webcrypto, randomUUID } from 'node:crypto';
+import * as desktopPlanner from '../../../supabase/functions/_shared/desktop-planner.ts';
 import * as computerPolicy from '../../../supabase/functions/_shared/computer-policy.ts';
+import * as workerDispatch from '../../../supabase/functions/_shared/worker-dispatch.ts';
+import {finalizePendingComputerExecution} from '../../../supabase/functions/_shared/worker-execution.ts';
 export const TOKEN = 'a'.repeat(64), ORG = '22222222-2222-4222-8222-222222222222', DEVICE = '33333333-3333-4333-8333-333333333333';
 export async function makeHandler() {
  const state = { rows: {
   connector_secrets: [{device_id:DEVICE,token_hash:createHash('sha256').update(TOKEN).digest('hex')}],
   connector_devices: [{id:DEVICE,organization_id:ORG,name:'Synthetic laptop',platform:'test',paired:true,capabilities:{},revoked_at:null}],
-  connector_jobs: [], organization_members: [], audit_log: [],
+  organizations:[{id:ORG,plan:'enterprise',plan_status:'active',status:'active'}], connector_jobs: [], organization_members: [], audit_log: [],
  }, writes:[], reads:[], failures:[], user:null };
  function builder(table) {
   const filters=[];let update=null,select=null,limit=Infinity,insert=null;
@@ -22,6 +25,7 @@ export async function makeHandler() {
    then(resolve,reject){return Promise.resolve(run(false)).then(resolve,reject);}
   };
   function run(single) {
+   if(!update&&!insert)state.beforeRead?.({table,select});
    const index=state.failures.findIndex(f=>f.table===table&&f.type===(update?'update':insert?'insert':'read'));
    if(index>=0){state.failures.splice(index,1);return {data:null,error:{message:'synthetic database error'},count:null};}
    let rows=(state.rows[table]||[]).filter(row=>filters.every(f=>f(row))).slice(0,limit);
@@ -66,11 +70,14 @@ export async function makeHandler() {
  const source=await fs.readFile(new URL('../../../supabase/functions/connector/index.ts',import.meta.url),'utf8');
  const original="import { createClient } from 'npm:@supabase/supabase-js@2';";
  if(!source.includes(original))throw new Error('test adapter must be reviewed after SDK import changes');
- const policyImport="import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';";
+ const policyImport="import { APP_NAME, browserTaskParams, cleanPolicy, withinHours } from '../_shared/computer-policy.ts';";
  if(!source.includes(policyImport))throw new Error('test adapter must be reviewed after policy import changes');
- const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
- const deno={env:{get:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
- new Function('Deno','createClient','crypto','APP_NAME','browserTaskParams','cleanPolicy',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.browserTaskParams,computerPolicy.cleanPolicy);
+ const desktopImport="import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';";
+ const workerImport="import { canonicalDispatch, validatedDispatchRecord } from '../_shared/worker-dispatch.ts';";
+ const executionImport="import { finalizePendingComputerExecution } from '../_shared/worker-execution.ts';";
+ const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(desktopImport,'').replace(workerImport,'').replace(executionImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
+ const deno={env:{get:key=>({FIRBO_DESKTOP_VISION_MODEL:'synthetic',FIRBO_DESKTOP_PRICE_IN_PER_M:'1',FIRBO_DESKTOP_PRICE_OUT_PER_M:'2',SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
+ new Function('Deno','createClient','crypto','APP_NAME','browserTaskParams','cleanPolicy','withinHours','advancedComputerKind','desktopEntitled','desktopAuthorization','planDesktopStep','canonicalDispatch','validatedDispatchRecord','finalizePendingComputerExecution',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.browserTaskParams,computerPolicy.cleanPolicy,computerPolicy.withinHours,desktopPlanner.advancedComputerKind,desktopPlanner.desktopEntitled,desktopPlanner.desktopAuthorization,desktopPlanner.planDesktopStep,workerDispatch.canonicalDispatch,workerDispatch.validatedDispatchRecord,finalizePendingComputerExecution);
  const invoke=body=>handler(new Request('https://synthetic.invalid/connector',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
  return {state,handler,invoke};
 }

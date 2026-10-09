@@ -7,7 +7,9 @@ import { useI18n } from '../../i18n/I18nProvider';
 import type { TKey } from '../../i18n/locales/en';
 import { loadAgentUsage, type AgentUsage } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
-import { RunError, runErrorText, runTask } from '../../lib/company/runner';
+import { computerExecutionOf, runErrorText, runOutcomeNotice, runTask, type RunOutcome } from '../../lib/company/runner';
+import { useRunScope } from '../../lib/company/useRunScope';
+import { ComputerExecutionView } from '../company/ComputerExecutionView';
 import { agentColor } from '../../lib/company/status';
 import { OPEN_TASK_STATUSES, safeAutonomy, type AgentRow, type TaskRow } from '../../lib/company/types';
 
@@ -41,6 +43,9 @@ export function AgentDetail({
   const [usage, setUsage] = useState<AgentUsage | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
+  const [acknowledgement, setAcknowledgement] = useState<{ taskId: string; outcome: RunOutcome } | null>(null);
+  const captureScope = useRunScope(`${orgId}:${agent.id}:${canRun}`);
+  useEffect(() => { setAcknowledgement(null); setOpenId(null); setRunningId(null); }, [orgId, agent.id, canRun]);
 
   useEffect(() => {
     setUsage(null);
@@ -56,28 +61,42 @@ export function AgentDetail({
 
   const mine = tasks.filter((x) => x.assigned_agent_id === agent.id);
   const open = mine.filter((x) => OPEN_TASK_STATUSES.includes(x.status)).slice(0, 5);
-  const done = mine.filter((x) => x.result && (x.result.report || x.result.error)).slice(0, 4);
+  const done = mine.filter((x) => x.status !== 'running' && x.result && (x.result.report || x.result.error)).slice(0, 4);
   const color = agentColor(agent.type, agent.slug);
   const budget = agent.monthly_budget_usd;
   const pct = budget && usage ? Math.min(100, (usage.cost / budget) * 100) : 0;
   const tools = agent.agent_tools.filter((x) => x.enabled);
+  const executionFor = (task: TaskRow) => computerExecutionOf(task.result)
+    ?? (acknowledgement?.taskId === task.id && !['completed', 'failed', 'cancelled'].includes(task.status)
+      ? acknowledgement.outcome.computer_execution ?? null : null);
+  const pendingFor = (task: TaskRow) => ['pending', 'unknown'].includes(executionFor(task)?.status ?? '')
+    || acknowledgement?.taskId === task.id && acknowledgement.outcome.status === 'running'
+      && !['completed', 'failed', 'cancelled'].includes(task.status);
 
   const run = async (id: string) => {
+    const task = mine.find(row => row.id === id);
+    if (!canRun || runningId || task?.status === 'running' || task && pendingFor(task)) return;
+    const currentScope = captureScope();
     setRunningId(id);
     try {
       const out = await runTask(id, lang);
-      toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
+      if (!currentScope()) return;
+      setAcknowledgement({ taskId: id, outcome: out });
+      const notice = runOutcomeNotice(t, out);
+      toast[notice.tone](notice.text);
       setOpenId(id);
     } catch (err) {
-      toast.error(runErrorText(t, err));
+      if (currentScope()) toast.error(runErrorText(t, err));
     } finally {
-      setRunningId(null);
-      onChanged();
+      if (currentScope()) { setRunningId(null); onChanged(); }
     }
   };
 
   return (
     <div>
+      {acknowledgement?.outcome.status === 'running' && !mine.some(task => task.id === acknowledgement.taskId && ['completed', 'failed', 'cancelled'].includes(task.status)) && <div role="status" aria-live="polite" className="fb-dim mb-3 text-xs">
+        {runOutcomeNotice(t, acknowledgement.outcome).text} <Link className="underline" to="/tasks">{t('nav.tasks')}</Link>
+      </div>}
       {canSeeUsage && (
         <div className="mb-4 grid grid-cols-2 gap-2">
           <Mini label={t('office.stat.cost')} value={usage ? fmt.currency(usage.cost) : '–'} />
@@ -116,16 +135,17 @@ export function AgentDetail({
       ) : (
         <ul className="flex flex-col gap-2">
           {open.map((task) => (
-            <li key={task.id} className="fb-row py-2">
+            <li key={task.id} className="fb-row flex-wrap py-2">
               <StatusDot tone={task.status === 'running' ? 'ok' : task.status === 'awaiting_approval' ? 'warn' : 'idle'} />
               <span className="min-w-0 flex-1 truncate text-sm">{task.title}</span>
               {canRun && ['pending', 'blocked', 'failed'].includes(task.status) ? (
-                <button className="fb-btn fb-btn--primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={runningId !== null} onClick={() => void run(task.id)}>
+                <button className="fb-btn fb-btn--primary" style={{ height: 28, padding: '0 10px', fontSize: 12 }} disabled={runningId !== null || pendingFor(task)} onClick={() => void run(task.id)}>
                   {runningId === task.id ? t('run.busy') : t('office.run')}
                 </button>
               ) : (
                 <span className="fb-dim text-[11px]">{t(`status.${task.status}` as TKey)}</span>
               )}
+              <div className="w-full"><ComputerExecutionView execution={executionFor(task)} compact /></div>
             </li>
           ))}
         </ul>
@@ -146,6 +166,7 @@ export function AgentDetail({
                 <div className="text-[13px]">
                   {task.result.summary && <p className="mb-1 font-medium">{task.result.summary}</p>}
                   <ReportView result={task.result} compact />
+                  <ComputerExecutionView execution={computerExecutionOf(task.result)} />
                   {task.result.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${task.result.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
                 </div>
               )}

@@ -7,11 +7,13 @@ import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { appendTaskNote, createTask } from '../lib/company/data';
 import { CANCELLABLE_TASK_STATUSES, manageTask, taskActionErrorCode, taskNeedsReconciliation } from '../lib/company/task-actions';
 import { taskActionLabels } from '../lib/company/task-action-labels';
-import { RunError, runErrorText, runTask } from '../lib/company/runner';
+import { computerExecutionOf, runErrorText, runOutcomeNotice, runTask, type RunOutcome } from '../lib/company/runner';
+import { useRunScope } from '../lib/company/useRunScope';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { Modal } from '../components/team/Modal';
 import { ReportView } from '../components/company/ReportView';
 import { ReportFeedback } from '../components/company/ReportFeedback';
+import { ComputerExecutionView } from '../components/company/ComputerExecutionView';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { useI18n } from '../i18n/I18nProvider';
@@ -55,7 +57,9 @@ export function TasksPage() {
   const [modalId, setModalId] = useState<string | null>(null);
   const [taskAction, setTaskAction] = useState<{ task: TaskRow; orgId: string; action: 'cancel' | 'delete' | 'recover' } | null>(null);
   const [mutationId, setMutationId] = useState<string | null>(null);
-  useEffect(() => { setTaskAction(null); setModalId(null); setOpenId(null); }, [orgId]);
+  const [runOutcomes, setRunOutcomes] = useState<Record<string, RunOutcome>>({});
+  const captureScope = useRunScope(`${orgId}:${user?.id}:${role}`);
+  useEffect(() => { setTaskAction(null); setModalId(null); setOpenId(null); setRunOutcomes({}); setRunningId(null); }, [orgId, user?.id, role]);
   const [view, setView] = useState<'board' | 'list'>(() => (typeof window !== 'undefined' && window.innerWidth < 768 ? 'list' : 'board'));
   const receiptLabel: Record<string,string> = { en:'Execution receipts',el:'Αποδείξεις εκτέλεσης',es:'Recibos de ejecución','pt-BR':'Comprovantes de execução',fr:'Reçus d’exécution',de:'Ausführungsbelege',ar:'إيصالات التنفيذ','zh-CN':'执行回执' };
   const receiptWord: Record<string,string> = { en:'Verified',el:'Επαληθευμένο',es:'Verificado','pt-BR':'Verificado',fr:'Vérifié',de:'Verifiziert',ar:'تم التحقق','zh-CN':'已验证' };
@@ -89,6 +93,10 @@ export function TasksPage() {
     { id: 'completed', statuses: ['completed', 'failed', 'cancelled'], tone: '#34d399' },
   ];
   const agent = (id: string | null) => data.agents.find((a) => a.id === id);
+  const executionFor = (task: TaskRow) => computerExecutionOf(task.result)
+    ?? (['completed', 'failed', 'cancelled'].includes(task.status) ? null : runOutcomes[task.id]?.computer_execution ?? null);
+  const computerPending = (task: TaskRow) => ['pending', 'unknown'].includes(executionFor(task)?.status ?? '')
+    || runOutcomes[task.id]?.status === 'running' && !['completed', 'failed', 'cancelled'].includes(task.status);
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
@@ -121,29 +129,36 @@ export function TasksPage() {
 
   const run = async (id: string) => {
     const task = data.tasks.find((row) => row.id === id);
-    if (task && taskNeedsReconciliation(task)) return void toast.error(taskLabels.reconciliation);
+    if (task && (taskNeedsReconciliation(task) || computerPending(task))) return void toast.error(taskLabels.reconciliation);
+    const currentScope = captureScope();
     setRunningId(id);
     try {
       const out = await runTask(id, lang);
-      toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
+      if (!currentScope()) return;
+      setRunOutcomes(prev => ({ ...prev, [id]: out }));
+      const notice = runOutcomeNotice(t, out);
+      toast[notice.tone](notice.text);
       setOpenId(id);
+      if (view === 'board' && out.computer_execution) setModalId(id);
     } catch (err) {
-      toast.error(runErrorText(t, err));
+      if (currentScope()) toast.error(runErrorText(t, err));
     } finally {
-      setRunningId(null);
-      await data.reload();
+      if (currentScope()) { setRunningId(null); await data.reload(); }
     }
   };
 
   const rerunWithInfo = async (id: string) => {
+    const task = data.tasks.find(row => row.id === id);
+    if (task?.status === 'running' || task && computerPending(task)) return;
+    const currentScope = captureScope();
     const note = (notes[id] ?? '').trim();
     if (!note) return;
     try {
       await appendTaskNote(id, note);
+      if (!currentScope()) return;
       setNotes((prev) => ({ ...prev, [id]: '' }));
     } catch (err) {
-      console.error(err);
-      toast.error(t('tasks.updateError'));
+      if (currentScope()) { console.error(err); toast.error(t('tasks.updateError')); }
       return;
     }
     await run(id);
@@ -310,7 +325,7 @@ export function TasksPage() {
                             </div>
                             {task.due_at && <div className="mt-2 text-[11px]" style={{ color: overdue ? 'var(--fb-warn)' : 'var(--fb-dim)' }}>{t(overdue ? 'tasks.overdue' : 'tasks.due', { date: fmt.dateTime(task.due_at) })}</div>}
                             {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
-                              <button className="fb-btn fb-btn--primary mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task)} onClick={() => void run(task.id)}>
+                              <button className="fb-btn fb-btn--primary mt-3 w-full" style={{ height: 30, fontSize: 12.5 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task) || computerPending(task)} onClick={() => void run(task.id)}>
                                 {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
                               </button>
                             )}
@@ -322,6 +337,7 @@ export function TasksPage() {
                             <div className="mt-3">{lifecycleButtons(task)}</div>
                             {task.status === 'running' && canManage && <p className="fb-dim mt-2 text-xs">{taskLabels.inProgress}</p>}
                             {taskNeedsReconciliation(task) && <p className="fb-dim mt-2 text-xs">{taskLabels.reconciliation}</p>}
+                            <ComputerExecutionView execution={executionFor(task)} compact />
                           </li>
                         );
                       })}
@@ -360,7 +376,7 @@ export function TasksPage() {
                     </button>
                   )}
                   {canWrite && task.assigned_agent_id && ['pending', 'blocked', 'failed'].includes(task.status) && (
-                    <button className="fb-btn fb-btn--primary" style={{ height: 32, padding: '0 14px', fontSize: 13 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task)} onClick={() => void run(task.id)}>
+                    <button className="fb-btn fb-btn--primary" style={{ height: 32, padding: '0 14px', fontSize: 13 }} disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task) || computerPending(task)} onClick={() => void run(task.id)}>
                       {runningId === task.id ? t('run.busy') : task.status === 'failed' ? t('run.again') : t('run.btn')}
                     </button>
                   )}
@@ -381,6 +397,7 @@ export function TasksPage() {
                   {lifecycleButtons(task)}
                   {task.status === 'running' && canManage && <p className="fb-dim w-full text-xs">{taskLabels.inProgress}</p>}
                   {taskNeedsReconciliation(task) && <p className="fb-dim w-full text-xs">{taskLabels.reconciliation}</p>}
+                  <div className="w-full"><ComputerExecutionView execution={executionFor(task)} compact /></div>
                   {openId === task.id && task.result && (
                     <div className="w-full rounded-xl p-3 text-sm" style={{ background: 'rgba(5,10,20,.7)', border: '1px solid var(--fb-border)' }}>
                       <div className="mb-2 flex flex-wrap items-center gap-2">
@@ -434,7 +451,7 @@ export function TasksPage() {
                             placeholder={t('run.moreInfoPh')}
                             onChange={(e) => setNotes((prev) => ({ ...prev, [task.id]: e.target.value }))}
                           />
-                          <button className="fb-btn fb-btn--primary self-start" disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task) || !(notes[task.id] ?? '').trim()} onClick={() => void rerunWithInfo(task.id)}>
+                          <button className="fb-btn fb-btn--primary self-start" disabled={task.status === 'running' || computerPending(task) || runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(task) || !(notes[task.id] ?? '').trim()} onClick={() => void rerunWithInfo(task.id)}>
                             {t('run.moreInfoRun')}
                           </button>
                         </div>
@@ -455,6 +472,7 @@ export function TasksPage() {
             <div className="fb-col gap-3 text-sm">
               {r.ai_generated && <span className="fb-chip self-start">{t('run.ai')}</span>}
               {r.summary && <p className="font-medium">{r.summary}</p>}
+              <ComputerExecutionView execution={executionFor(mt)} />
               <ReportView result={r} />
               {r.ai_generated && r.report && <ReportFeedback task={mt} />}
               {r.error && <p style={{ color: 'var(--fb-err)' }}>{t(`run.err.${r.error === 'model_error' ? 'model_error' : 'unknown'}` as TKey)}</p>}
@@ -472,7 +490,7 @@ export function TasksPage() {
                 <div className="fb-col gap-2 pt-2" style={{ borderTop: '1px solid var(--fb-border)' }}>
                   <label className="fb-eyebrow" htmlFor={`modal-more-${mt.id}`}>{t('run.moreInfo')}</label>
                   <textarea id={`modal-more-${mt.id}`} className="fb-input" rows={2} maxLength={2000} value={notes[mt.id] ?? ''} placeholder={t('run.moreInfoPh')} onChange={(e) => setNotes((prev) => ({ ...prev, [mt.id]: e.target.value }))} />
-                  <button className="fb-btn fb-btn--primary self-start" disabled={runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(mt) || !(notes[mt.id] ?? '').trim()} onClick={() => void rerunWithInfo(mt.id).then(() => setModalId(null))}>
+                  <button className="fb-btn fb-btn--primary self-start" disabled={mt.status === 'running' || computerPending(mt) || runningId !== null || mutationId !== null || !!data.error || taskNeedsReconciliation(mt) || !(notes[mt.id] ?? '').trim()} onClick={() => void rerunWithInfo(mt.id).then(() => setModalId(null))}>
                     {t('run.moreInfoRun')}
                   </button>
                 </div>

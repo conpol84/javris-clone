@@ -125,6 +125,38 @@ function parseJson(text: string): any {
   }
 }
 
+/** A terminal task row alone cannot prove that its computer work finished. */
+function computerWorkResolved(step: any): boolean {
+  const marker = step.result?.computer_execution;
+  if (marker === undefined) return true;
+  const expectedStatus = step.status === 'cancelled' ? 'failed' : step.status;
+  if (marker?.contract !== 'firbo-worker-execution/v1' || marker.status !== expectedStatus
+    || !['completed', 'failed', 'blocked'].includes(marker.status)
+    || !Array.isArray(marker.jobs) || !marker.jobs.length || marker.jobs.length > 10
+    || (marker.status === 'completed' && marker.verified_success !== true)) return false;
+  const ids = new Set<string>();
+  const uuid = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+  return marker.jobs.every((job: any) => {
+    if (!job || typeof job.job_id !== 'string' || !uuid.test(job.job_id) || ids.has(job.job_id)
+      || typeof job.device_id !== 'string' || !uuid.test(job.device_id)
+      || typeof job.kind !== 'string' || !/^[a-z_]{1,40}$/.test(job.kind)
+      || (job.request_id !== undefined && job.request_id !== job.job_id)
+      || !['done', 'error', 'cancelled'].includes(job.status)
+      || (marker.status === 'completed' && job.status !== 'done')) return false;
+    if (marker.status === 'completed' && job.status === 'done' && ['desktop_task', 'browser_task'].includes(job.kind)
+      && (job.result?.completed !== true || job.result?.blocked === true)) return false;
+    ids.add(job.job_id);
+    // A known failure/cancellation may be reported as such without a success
+    // receipt; a successful computer result always requires correlated evidence.
+    if (job.status !== 'done' && job.receipt == null) return true;
+    const receipt = job.receipt;
+    return receipt?.contract === 'firbo-execution-receipt/v1'
+      && receipt.job_id === job.job_id && receipt.device_id === job.device_id
+      && receipt.kind === job.kind && /^[0-9a-f]{64}$/.test(receipt.report_sha256 ?? '')
+      && receipt.ok === (job.status === 'done');
+  });
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
   if (req.method !== 'POST') return json(405, { error: 'method_not_allowed' });
@@ -368,13 +400,27 @@ Deno.serve(async (req) => {
 
   // ---- synthesize
   if (mission.status !== 'running') return json(409, { error: 'not_runnable' });
-  const { data: steps } = await admin
-    .from('tasks')
-    .select('id, title, status, result, assigned_agent_id, created_at')
-    .eq('parent_task_id', mission.id)
-    .order('created_at', { ascending: true });
-  const list = (steps ?? []) as any[];
-  if (list.some((s) => s.status === 'pending' || s.status === 'running')) return json(409, { error: 'not_runnable' });
+  let steps: any;
+  try {
+    const { data, error } = await admin
+      .from('tasks')
+      .select('id, title, status, result, assigned_agent_id, created_at')
+      .eq('organization_id', mission.organization_id)
+      .eq('parent_task_id', mission.id)
+      .order('created_at', { ascending: true });
+    if (error) return json(503, { error: 'steps_unavailable' });
+    steps = data;
+  } catch {
+    return json(503, { error: 'steps_unavailable' });
+  }
+  if (!Array.isArray(steps) || !steps.length) return json(409, { error: 'not_runnable' });
+  const list = steps as any[];
+  if (list.some((s) => s?.result?.reconcile_required === true || s?.result?.accounting?.status === 'reconcile_required')) {
+    return json(409, { error: 'reconciliation_required', retry_safe: false });
+  }
+  if (list.some((s) => !s || !['completed', 'failed', 'blocked', 'cancelled'].includes(s.status) || !computerWorkResolved(s))) {
+    return json(409, { error: 'not_runnable' });
+  }
   const digest = list
     .map((s, i) => {
       const who = agents.find((a) => a.id === s.assigned_agent_id)?.name ?? 'AI employee';

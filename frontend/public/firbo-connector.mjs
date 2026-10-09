@@ -51,7 +51,7 @@ const FILE_ERRORS = new Set(['ENOENT', 'EACCES', 'EPERM', 'EEXIST', 'ENOSPC', 'E
 /** Validate independently of the server. A job cannot grant its own local powers. */
 export function validateJob(job) {
   if (!job || typeof job !== 'object' || Array.isArray(job)) throw new Error('bad_job');
-  if (!['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut'].includes(job.kind)) throw new Error('unknown_job');
+  if (!['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut', 'desktop_task'].includes(job.kind)) throw new Error('unknown_job');
   const p = job.params ?? {};
   if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('bad_job_params');
   const validPath = value => value === undefined || (typeof value === 'string' && value.length <= 500 && !value.includes('\0'));
@@ -147,7 +147,7 @@ export async function openBrowser(value, { spawnImpl = spawn, platform = process
 
 function safeLocalError(error) {
   if (LOCAL_ERRORS.has(error?.message)) return error.message;
-  if (/^(?:browser_[a-z_]+|invalid_browser_plan)$/.test(error?.message ?? '')) return error.message;
+  if (/^(?:browser_[a-z_]+|desktop_[a-z_]+|invalid_browser_plan)$/.test(error?.message ?? '')) return error.message;
   if (FILE_ERRORS.has(error?.code)) return `file_${error.code.toLowerCase()}`;
   return 'local_operation_failed';
 }
@@ -238,6 +238,10 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
   const p = validateJob(job);
   if (!cfg || !Array.isArray(cfg.roots) || cfg.roots.some(root => typeof root !== 'string' || !root)) throw new Error('no_folder_allowed');
   const roots = cfg.roots;
+  if (job.kind === 'desktop_task') {
+    const { executeDesktopTask } = await import('./firbo-desktop.mjs');
+    return executeDesktopTask(job,cfg,{signal,call:connectorCall,shell:(command,stop)=>runJob({kind:'exec',params:{command}},cfg,{signal:stop})});
+  }
   if (job.kind === 'browser_task') {
     if (cfg.allowBrowser !== true || cfg.allowBrowserControl !== true) throw new Error('browser_control_disabled');
     const { executeBrowserPlan } = await import('./firbo-browser.mjs');
@@ -379,7 +383,7 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
 export async function connectorCall(action, body, { fetchImpl = fetch, timeoutMs, signal } = {}) {
   validateConnectorURL(API);
   if (signal?.aborted) throw new Error('connector_stopped');
-  const limit = action === 'poll' ? 35_000 : 15_000;
+  const limit = action === 'desktop_plan' ? 90_000 : action === 'poll' ? 35_000 : 15_000;
   const timeout = timeoutMs ?? limit;
   if (!Number.isInteger(timeout) || timeout < 1 || timeout > limit) throw new Error('invalid_timeout');
   const payload = JSON.stringify({ ...body, action });
@@ -751,6 +755,7 @@ export function localCapabilities(cfg) {
   if (cfg?.allowBrowser === true) kinds.push('browser_open');
   if (cfg?.allowBrowser === true && cfg?.allowBrowserControl === true && (cfg?.fullControl === true || cfg?.browserSites?.length)) kinds.push('browser_task');
   if (cfg?.allowApps === true && process.platform === 'darwin') kinds.push('open_app', 'shortcut');
+  if (cfg?.allowDesktop === true && cfg?.fullControl === true && cfg?.desktopReady === true) kinds.push('desktop_task');
   // The allowed folder names help AI employees ask for the right paths; nothing else from the config leaves this computer.
   const base = { job_kinds: kinds, ...(cfg?.fullControl === true ? { full_control: true } : {}) };
   return Array.isArray(cfg?.roots) && cfg.roots.length ? { ...base, roots: cfg.roots.slice(0, 8) } : base;
@@ -792,6 +797,11 @@ export async function monitorRemoteStop(job, cfg, {
 export async function runDurableConnector(cfg, { directory, signal, callFn = connectorCall, onEvent = () => {}, maxJobs = Infinity } = {}) {
   if (!cfg || !/^[a-f0-9]{64}$/.test(cfg.token) || !Array.isArray(cfg.roots) || (!cfg.roots.length && cfg.allowBrowser !== true && cfg.allowApps !== true)) throw new Error('invalid_local_config');
   cfg = { ...cfg, internalProtectedPaths: [directory, CONFIG] };
+  if(cfg.allowDesktop === true && cfg.fullControl === true){
+    const { desktopAction }=await import('./firbo-desktop.mjs');
+    await desktopAction({action:'observe'},{signal});
+    cfg.desktopReady=true;
+  }
   const scope = hashBytes(API + '\n' + cfg.token);
   const journal = await LocalJobJournal.open(directory, scope);
   let completed = 0, backoff = 1000;
@@ -950,6 +960,18 @@ async function main() {
   }
   if (!cfg) throw new Error('Not paired yet. Get a code in Firbo → Computers, then pair with --allow <folder> and/or --allow-browser.');
   // Change one local permission without pairing again. Each one is your decision on this computer, not Firbo's.
+  if (cmd === 'desktop-control') {
+    cfg.allowDesktop=arg!=='off';
+    if(cfg.allowDesktop){
+      if(cfg.fullControl!==true)throw new Error('desktop_requires_full_control');
+      const { desktopAction }=await import('./firbo-desktop.mjs');
+      await desktopAction({action:'observe'});
+      console.log('Desktop control enabled for this account: screenshots, mouse and keyboard across applications. This is not confined to allowed folders. Move the mouse to the top-left corner or use Take Control to stop AI input.');
+    }
+    await fs.writeFile(CONFIG,JSON.stringify(cfg,null,2),{mode:0o600});
+    console.log('Restart the Connector to apply.');
+    return;
+  }
   if (cmd === 'full-control') {
     const enabled = arg !== 'off';
     cfg.fullControl = enabled;

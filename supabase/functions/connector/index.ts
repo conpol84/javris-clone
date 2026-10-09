@@ -6,7 +6,10 @@
 // The computer's owner stays in control locally: the program enforces its own allowed folders and refuses anything
 // it was not started with (no writing, no commands) no matter what this service sends.
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';
+import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';
+import { APP_NAME, browserTaskParams, cleanPolicy, withinHours } from '../_shared/computer-policy.ts';
+import { canonicalDispatch, validatedDispatchRecord } from '../_shared/worker-dispatch.ts';
+import { finalizePendingComputerExecution } from '../_shared/worker-execution.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -36,7 +39,7 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task','open_app','shortcut']);
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task','open_app','shortcut','desktop_task']);
 function browserUrl(value: unknown): string | null {
   const raw = str(value, 2048).trim();
   if (!raw || /[\r\n\0]/.test(raw)) return null;
@@ -52,12 +55,12 @@ function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?:
   const kinds = Array.isArray(record.job_kinds) ? record.job_kinds.filter((x): x is string => typeof x === 'string' && DEVICE_JOB_KINDS.has(x)) : [];
   // The computer's allowed folders, so AI employees ask for paths that exist. Plain path strings only.
   const roots = Array.isArray(record.roots) ? record.roots.filter((x): x is string => typeof x === 'string' && x.length <= 300 && !/[\0\r\n]/.test(x)) : [];
-  const base = { job_kinds: [...new Set(kinds)].slice(0, 8), ...(record.full_control === true ? { full_control: true } : {}) };
+  const base = { job_kinds: [...new Set(kinds)].slice(0, 9), ...(record.full_control === true ? { full_control: true } : {}) };
   return roots.length ? { ...base, roots: roots.slice(0, 8) } : base;
 }
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
-export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'|'browser_task'|'open_app'|'shortcut'; params: Record<string, unknown> } | null {
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task','computer_desktop_task']);
+export function executionForApproval(action: string, payload: Record<string, unknown>): { kind: 'list'|'read'|'write'|'exec'|'browser_open'|'browser_task'|'open_app'|'shortcut'|'desktop_task'; params: Record<string, unknown> } | null {
   const name=action.trim().toLowerCase();
   const path=str(payload.path,500);
   if (name==='file_list'||name==='computer_list') return {kind:'list',params:{path}};
@@ -73,6 +76,7 @@ export function executionForApproval(action: string, payload: Record<string, unk
   if (name==='computer_shortcut') { const shortcut=str(payload.name,60).trim(); return APP_NAME.test(shortcut)?{kind:'shortcut',params:{name:shortcut}}:null; }
   // An employee's browser plan: only its steps and time limit go to the computer, which shows the plan to its owner again.
   if (name==='computer_browser_task') { const plan=browserTaskParams({steps:payload.steps,...(payload.timeout_ms===undefined?{}:{timeout_ms:payload.timeout_ms})}); return plan?{kind:'browser_task',params:plan}:null; }
+  if(name==='computer_desktop_task'){const goal=typeof payload.goal==='string'?payload.goal.trim():'';return goal&&goal.length<=4000?{kind:'desktop_task',params:{goal}}:null;}
   return null;
 }
 
@@ -156,15 +160,32 @@ Deno.serve(async (req) => {
     return json(200, { token, device_name: dev.name });
   }
 
-  if (action === 'poll' || action === 'report' || action === 'capabilities' || action === 'control') {
+  if (action === 'poll' || action === 'report' || action === 'capabilities' || action === 'control' || action === 'desktop_plan') {
     const token = str(body.token, 100);
     if (!/^[a-f0-9]{64}$/.test(token)) return json(401, { error: 'unauthorized' });
     const { data: sec, error: secretError } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
     if (secretError) return json(503, { error: 'device_auth_unavailable' });
     if (!sec) return json(401, { error: 'unauthorized' });
-    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at').eq('id', sec.device_id).maybeSingle();
+    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, capabilities, agent_policy').eq('id', sec.device_id).maybeSingle();
     if (deviceError) return json(503, { error: 'device_auth_unavailable' });
     if (!dev || dev.revoked_at || dev.paired !== true) return json(401, { error: 'revoked' });
+
+    if (action === 'desktop_plan') {
+      const {data:job,error}=await admin.from('connector_jobs').select('id,kind,params,organization_id,device_id,created_by,status,cancel_requested_at,origin,agent_task_id,agent_id,agent_run_claim')
+        .eq('id',str(body.job_id,60)).eq('device_id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+      if(error||!job||job.kind!=='desktop_task'||!await desktopAuthorization(admin,dev,job))return json(403,{error:'desktop_not_authorized'});
+      try {
+        const next=await planDesktopStep(admin,dev,job,body,req.signal,name=>Deno.env.get(name));
+        // Authorization can change while the provider is thinking. The client
+        // also calls control before applying input.
+        const [{data:fresh},{data:current}]=await Promise.all([
+          admin.from('connector_devices').select('*').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle(),
+          admin.from('connector_jobs').select('*').eq('id',job.id).eq('device_id',dev.id).eq('organization_id',dev.organization_id).maybeSingle(),
+        ]);
+        if(!current||!await desktopAuthorization(admin,fresh,current))return json(403,{error:'desktop_not_authorized'});
+        return json(200,next);
+      }catch(error){return json(503,{error:error instanceof Error&&/^desktop_[a-z_]+$/.test(error.message)?error.message:'desktop_planning_failed'});}
+    }
 
     if (action === 'capabilities') {
       const capabilities = cleanClientCapabilities(body.client_capabilities);
@@ -183,16 +204,21 @@ Deno.serve(async (req) => {
       const jobId = str(body.job_id, 60);
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return json(400, { error: 'bad_request' });
       const { data: job, error: controlError } = await admin.from('connector_jobs')
-        .select('id,status,cancel_requested_at')
+        .select('id,status,cancel_requested_at,kind,organization_id,device_id,created_by,origin,agent_task_id,agent_id,agent_run_claim')
         .eq('id', jobId).eq('device_id', dev.id).eq('organization_id', dev.organization_id).maybeSingle();
       if (controlError) return json(503, { error: 'control_unavailable' });
       if (!job) return json(404, { error: 'not_found' });
+      let entitlementLost=false;
+      if(advancedComputerKind(job.kind)){
+        const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
+        entitlementLost=!!error||!desktopEntitled(org);
+      }
       await admin.from('connector_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', dev.id);
       return json(200, {
         ok: true,
         job_id: job.id,
         status: job.status,
-        stop: job.status === 'running' && !!job.cancel_requested_at,
+        stop: job.status === 'running' && (!!job.cancel_requested_at || entitlementLost || (job.kind==='desktop_task' && !await desktopAuthorization(admin,dev,job))),
         terminal: ['done','error','cancelled'].includes(job.status),
       });
     }
@@ -220,6 +246,12 @@ Deno.serve(async (req) => {
         if (/state_conflict|report_conflict/.test(message)) return json(409,{error:'state_conflict'});
         return json(503,{error:'save_failed'});
       }
+      // Best effort report finalization is claim-bound and contains no new effect.
+      // A repeated durable report can safely finish a delayed parent publication.
+      try{
+        const{data:reported}=await admin.from('connector_jobs').select('agent_task_id,agent_run_claim,origin').eq('id',jobId).eq('device_id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+        if(reported?.origin==='agent'&&reported.agent_task_id)await finalizePendingComputerExecution(admin,reported.agent_task_id,dev.organization_id,reported.agent_run_claim);
+      }catch{/* The execution ACK is durable; parent readback remains resumable. */}
       return json(200,{ok:true,job_id:jobId,report_sha256:digest,duplicate:finished?.duplicate===true,receipt:finished?.receipt??null});
     }
 
@@ -266,10 +298,18 @@ Deno.serve(async (req) => {
       if (!execution) return json(422,{error:'action_not_executable'});
       deviceId=str(body.device_id,60);
       if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400,{error:'device_required'});
-      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at,capabilities').eq('id',deviceId).maybeSingle();
+      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at,capabilities,agent_policy,last_seen_at').eq('id',deviceId).maybeSingle();
       if (!dev || dev.organization_id!==approval.organization_id || !dev.paired || dev.revoked_at) return json(404,{error:'device_not_ready'});
       // Browser control runs only on a computer whose owner turned it on there.
       if (execution.kind==='browser_task' && !(Array.isArray(dev.capabilities?.job_kinds) && dev.capabilities.job_kinds.includes('browser_task'))) return json(409,{error:'device_not_ready'});
+      if(execution.kind==='desktop_task'){
+        if(approval.payload?.device_id!==deviceId||canonicalDispatch(edited)!==canonicalDispatch(approval.payload))return json(409,{error:'request_conflict'});
+        const{data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',approval.organization_id).maybeSingle();
+        if(error)return json(503,{error:'entitlement_unavailable'});if(!desktopEntitled(org))return json(403,{error:'business_plan_required'});
+        if(!Deno.env.get('FIRBO_DESKTOP_VISION_MODEL')||!Deno.env.get('FIRBO_DESKTOP_PRICE_IN_PER_M')||!Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))return json(503,{error:'desktop_setup_required'});
+        if(dev.agent_policy?.enabled!==true||dev.agent_policy?.control!=='full'||dev.capabilities?.full_control!==true||!dev.capabilities?.job_kinds?.includes('desktop_task')
+          ||!dev.last_seen_at||!Number.isFinite(Date.parse(dev.last_seen_at))||Date.now()-Date.parse(dev.last_seen_at)>60000)return json(409,{error:'device_not_ready'});
+      }
       kind=execution.kind;params=execution.params;
     }
     const { data: decided, error: decideError } = await admin.rpc('connector_decide_execution', {
@@ -365,13 +405,27 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'create_job') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at').eq('id', str(body.device_id, 60)).maybeSingle();
+    const requestId=body.request_id;
+    if(requestId!==undefined&&(typeof requestId!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId)))return json(400,{error:'bad_request'});
+    if(body.owner_full_control_required!==undefined&&body.owner_full_control_required!==true)return json(400,{error:'bad_request'});
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
+    if(advancedComputerKind(kind)){
+      const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
+      if(error)return json(503,{error:'entitlement_unavailable'});
+      if(!desktopEntitled(org))return json(403,{error:'business_plan_required'});
+    }
     const p = (body.params ?? {}) as Record<string, unknown>;
     let params: Record<string, unknown>;
-    if (kind === 'list') {
+    if(kind==='desktop_task'){
+      if(!Deno.env.get('FIRBO_DESKTOP_VISION_MODEL')||!Deno.env.get('FIRBO_DESKTOP_PRICE_IN_PER_M')||!Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))return json(503,{error:'desktop_setup_required'});
+      if(body.confirm!==true)return json(400,{error:'confirm_required'});
+      if(dev.agent_policy?.enabled!==true||dev.agent_policy?.control!=='full'||dev.capabilities?.full_control!==true||!dev.capabilities?.job_kinds?.includes(kind)||!dev.last_seen_at||!Number.isFinite(Date.parse(dev.last_seen_at))||Date.now()-Date.parse(dev.last_seen_at)>60000)return json(409,{error:'device_not_ready'});
+      if(typeof p.goal!=='string'||!p.goal.trim()||p.goal.length>4000)return json(400,{error:'bad_request'});
+      params={goal:p.goal.trim()};
+    } else if (kind === 'list') {
       params = { path: str(p.path, 500) };
     } else if (kind === 'read') {
       params = { path: str(p.path, 500) };
@@ -400,9 +454,27 @@ Deno.serve(async (req) => {
     } else {
       return json(400, { error: 'bad_request' });
     }
+    let dispatchRecord:Record<string,unknown>|null=null;
+    try{dispatchRecord=validatedDispatchRecord(body.dispatch_request,requestId,dev,kind,params);}catch{return json(409,{error:'request_conflict'});}
+    const existing=async()=>admin.from('connector_jobs').select('id,organization_id,device_id,created_by,kind,params,dispatch_request,origin').eq('id',requestId).eq('organization_id',dev.organization_id).maybeSingle();
+    const matches=(j:any)=>j&&j.created_by===user.id&&j.device_id===dev.id&&j.kind===kind&&j.origin!=='agent'
+      &&canonicalDispatch(j.params)===canonicalDispatch(params)&&canonicalDispatch(j.dispatch_request??null)===canonicalDispatch(dispatchRecord);
+    if(requestId){const{data:prior,error}=await existing();if(error)return json(503,{error:'save_failed'});if(prior)return matches(prior)?json(200,{job_id:prior.id,duplicate:true}):json(409,{error:'request_conflict'});}
+    if(body.owner_full_control_required===true){
+      // Automatic owner work carries a stricter mode requirement than a
+      // manually approved step. Re-read it at the final queue boundary.
+      const{data:fresh,error:fe}=await admin.from('connector_devices')
+        .select('id,organization_id,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+      if(fe)return json(503,{error:'control_unavailable'});
+      const seen=Date.parse(fresh?.last_seen_at??''),age=Date.now()-seen;
+      if(!fresh||fresh.paired!==true||fresh.revoked_at||fresh.agent_policy?.enabled!==true||fresh.agent_policy?.control!=='full'
+        ||fresh.capabilities?.full_control!==true||!fresh.capabilities?.job_kinds?.includes(kind)||!withinHours(cleanPolicy(fresh.agent_policy))
+        ||!Number.isFinite(seen)||age<-5000||age>60000)return json(409,{error:'device_not_ready'});
+    }
     const { count } = await admin.from('connector_jobs').select('id', { count: 'exact', head: true }).eq('device_id', dev.id).eq('status', 'queued');
     if ((count ?? 0) >= MAX_QUEUED) return json(429, { error: 'too_many' });
-    const { data: job, error } = await admin.from('connector_jobs').insert({ organization_id: dev.organization_id, device_id: dev.id, created_by: user.id, kind, params }).select('id').single();
+    const { data: job, error } = await admin.from('connector_jobs').insert({...(requestId?{id:requestId}:{}),...(dispatchRecord?{dispatch_request:dispatchRecord}:{}), organization_id: dev.organization_id, device_id: dev.id, created_by: user.id, kind, params }).select('id').single();
+    if(error?.code==='23505'&&requestId){const{data:prior,error:re}=await existing();if(re)return json(503,{error:'save_failed'});return matches(prior)?json(200,{job_id:prior.id,duplicate:true}):json(409,{error:'request_conflict'});}
     if (error || !job) return json(500, { error: 'save_failed' });
     await audit(dev.organization_id, 'connector.job', job.id, { device: dev.name, kind, path: params.path ?? null, command: params.command ?? null, browser_host: params.url ? new URL(String(params.url)).hostname : null });
     return json(200, { job_id: job.id });

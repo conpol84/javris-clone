@@ -34,7 +34,7 @@ export interface DeviceRow {
 export interface JobRow {
   id: string;
   device_id: string;
-  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'browser_task' | 'open_app' | 'shortcut';
+  kind: 'list' | 'read' | 'write' | 'exec' | 'browser_open' | 'browser_task' | 'open_app' | 'shortcut' | 'desktop_task';
   params: Record<string, unknown>;
   status: 'queued' | 'running' | 'done' | 'error' | 'cancelled';
   result: Record<string, unknown> | null;
@@ -50,7 +50,7 @@ export interface JobRow {
   agent_id?: string | null;
 }
 
-export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'device_required' | 'device_not_ready' | 'action_not_executable' | 'unknown';
+export type ComputerErrorCode = 'forbidden' | 'too_many' | 'confirm_required' | 'bad_request' | 'not_found' | 'state_conflict' | 'save_failed' | 'device_required' | 'device_not_ready' | 'action_not_executable' | 'business_plan_required' | 'desktop_setup_required' | 'unknown';
 export class ComputerError extends Error {
   constructor(public code: ComputerErrorCode) {
     super(code);
@@ -64,7 +64,7 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
     if (error instanceof FunctionsHttpError) {
       try {
         const b = await error.context.json();
-        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed', 'device_required', 'device_not_ready', 'action_not_executable'].includes(b?.error)) code = b.error;
+        if (['forbidden', 'too_many', 'confirm_required', 'bad_request', 'not_found', 'state_conflict', 'save_failed', 'device_required', 'device_not_ready', 'action_not_executable','business_plan_required','desktop_setup_required'].includes(b?.error)) code = b.error;
       } catch {
         /* keep unknown */
       }
@@ -113,8 +113,19 @@ export const setAgentPolicy = (device_id: string, policy: ComputerPolicy) => cal
 export const cancelJob = (job_id: string) => call<{ ok: true; stop_requested?: boolean; duplicate?: boolean }>({ action: 'cancel_job', job_id });
 export const takeControl = (device_id: string) => call<{ ok: true; policy: ComputerPolicy; queued_cancelled: number; running_stop_requested: number }>({ action: 'take_control', device_id });
 
-export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task']);
+export const COMPUTER_APPROVAL_ACTIONS = new Set(['file_list','file_read','file_write','shell_exec','computer_list','computer_read','computer_write','computer_exec','browser_open','computer_browser_open','computer_open_app','computer_shortcut','computer_browser_task','computer_desktop_task','desktop_task']);
 export const isComputerApprovalAction = (action: string) => COMPUTER_APPROVAL_ACTIONS.has(action.trim().toLowerCase());
+export const isNativeComputerApprovalAction = (action: string) => ['computer_desktop_task','desktop_task'].includes(action.trim().toLowerCase());
+/** Native task approval is bound to its original goal and worker. A removed
+ * device never causes the Inbox to pick another computer automatically. */
+export function computerApprovalDevice(approval: { action:string; payload?:unknown }, devices:DeviceRow[], selected?:string):string|undefined {
+  const payload=approval.payload && typeof approval.payload==='object' && !Array.isArray(approval.payload)?approval.payload as Record<string,unknown>:{};
+  const native=isNativeComputerApprovalAction(approval.action),pinned=typeof payload.device_id==='string'?payload.device_id:undefined;
+  if(native&&(!pinned||typeof payload.goal!=='string'||!payload.goal.trim()||payload.goal.length>4000))return undefined;
+  const choice=native?pinned:selected??pinned;
+  const eligible=devices.filter(d=>d.paired&&!d.revoked_at);
+  return choice!==undefined?eligible.find(d=>d.id===choice)?.id:native?undefined:eligible[0]?.id;
+}
 export const decideComputerApproval = (input: {
   approval_id: string; decision: 'approved'|'rejected'; device_id?: string; note?: string; payload?: Record<string, unknown>;
 }) => call<{ decision:'approved'|'rejected'; job_id:string|null; duplicate:boolean }>({

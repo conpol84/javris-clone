@@ -26,7 +26,8 @@ let current, captured;
 globalThis.__firboTestCreateClient=(...args)=>current.client(...args);
 globalThis.Deno={env:{get:key=>current.env[key]},serve:handler=>{captured=handler;}};
 const handlers={};
-for (const name of ['agent-chat','agent-runner']) {
+const textHandlers=['agent-chat','agent-runner'];
+for (const name of [...textHandlers,'mission-runner']) {
   const source=await readFile(new URL(`supabase/functions/${name}/index.ts`,root),'utf8');
   const replacement="const createClient = (...args: any[]) => (globalThis as any).__firboTestCreateClient(...args);";
   const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",replacement)
@@ -37,18 +38,26 @@ for (const name of ['agent-chat','agent-runner']) {
 after(async()=>{globalThis.fetch=originalFetch;globalThis.Deno=originalDeno;delete globalThis.__firboTestCreateClient;await rm(temp,{recursive:true,force:true});});
 
 function fixture(options={}) {
-  const state={calls:[],writes:[],reads:[],stored:[],env:{
+  const state={calls:[],writes:[],reads:[],stored:[],computerJobs:options.existingComputerJobs??[],env:{
     SUPABASE_URL:'https://db.example.test',SUPABASE_ANON_KEY:'public-test',SUPABASE_SERVICE_ROLE_KEY:'service-test',
     FIRBO_TEXT_ROUTING_MODE:'gateway',OMNIROUTE_BASE_URL:'https://gateway.firboai.app/v1',OMNIROUTE_API_KEY:'inference-test',
     OMNIROUTE_PRICE_IN_PER_M:'1',OMNIROUTE_PRICE_OUT_PER_M:'2',
+    ...((options.tools??[]).some(t=>t.tool_name==='computer_use')?{OPENJARVIS_URL:'https://jarvis.example.test',OPENJARVIS_API_KEY:'selection-test'}:{}),
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
-  const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
-  const agent={id:AGENT,name:'Test agent',type:options.agentType??'custom',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
+  const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??(options.mission?'running':'pending'),priority:'normal',assigned_agent_id:AGENT,result:options.result??null,
+    ...(options.mission?{kind:'mission',metadata:{}}:{})};
+  const agent={id:AGENT,name:'Test agent',type:options.agentType??(options.mission?'ceo':'custom'),model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[],
+    ...(options.mission?{slug:'ceo'}:{})};
   const execute=(table,op,payload,filters,selection,single=false)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
       state.writes.push(info);
+      if(table==='tasks'&&op==='update'&&payload.result?.computer_execution) {
+        if(options.computerReceiptSaveError)return{data:null,error:{message:'database unavailable'}};
+        state.computerResult=payload.result;
+        return{data:{id:TASK,organization_id:ORG,status:'running',run_claim:CLAIM,result:payload.result},error:null};
+      }
       if(table==='messages')return{data:options.messageError?null:{id:'saved',...payload},error:options.messageError?{message:'db failure'}:null};
       if(table==='tasks'&&op==='update'&&payload.result?.reconcile_required===true) {
         if(options.reconciliationWriteThrows)throw new Error('transport unavailable');
@@ -60,6 +69,7 @@ function fixture(options={}) {
       if(table==='connector_jobs'){
         const row={id:'12121212-1212-4212-8212-121212121212',...payload};
         state.computerJobs=[...(state.computerJobs??[]),row];
+        if(options.computerInsertResponseLost)return{data:null,error:{message:'response lost'}};
         return{data:{id:row.id},error:null};
       }
       return{data:null,error:null};
@@ -69,19 +79,38 @@ function fixture(options={}) {
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
+      if(options.mission&&!single)return{data:options.foreignAgent||options.disabled?[]:[agent],error:null};
       return{data:options.foreignAgent?null:{...agent,...(selection?.includes('autonomy')&&state.rpcs?.some(r=>r.fn==='claim_task_run')?{autonomy:options.freshAutonomy??agent.autonomy,enabled:options.freshAgentEnabled??agent.enabled}:{})},error:null};
     }
+    if(options.mission&&table==='tasks'&&filters.some(([k,v])=>k==='parent_task_id'&&v===TASK)){
+      if(options.missionStepsThrow)throw new Error('private database transport failure');
+      return{data:Object.hasOwn(options,'missionSteps')?options.missionSteps:[{id:CHAT_REQUEST,organization_id:ORG,parent_task_id:TASK,title:'Research delivered',status:'completed',assigned_agent_id:AGENT,result:{report:'Observed completed research.'}}],
+        error:options.missionStepsError?{message:'private database failure'}:null};
+    }
     if(table==='tasks'&&selection==='id,organization_id,status,run_claim,result'&&options.reconciliationReadConflict)return{data:{...task,status:'completed',run_claim:null},error:null};
-    if(table==='tasks')return{data:options.missingTask?null:{...task,...(selection?.includes('run_claim')?{status:'running',run_claim:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
+    if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
+      ...(selection?.includes('run_claim')&&(state.rpcs?.some(r=>r.fn==='claim_task_run')||options.taskStatus==='running')?{
+        status:options.taskChangedAfterSelection&&state.workerSelections?.length?'completed':'running',
+        run_claim:options.taskChangedAfterSelection&&state.workerSelections?.length?null:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
     if(table==='connector_devices'){
       const initialPolicy={enabled:true,apps:['Safari'],shortcuts:[],writes:'auto',commands:'safe',hours:null};
-      const device={id:'13131313-1313-4313-8313-131313131313',name:'Synthetic Mac',last_seen_at:new Date().toISOString(),
+      const device={id:'13131313-1313-4313-8313-131313131313',organization_id:ORG,name:'Synthetic Mac',platform:'darwin',last_seen_at:new Date().toISOString(),
         paired:true,revoked_at:null,capabilities:{job_kinds:['list','read','write','browser_task'],roots:['Documents']},
         agent_policy:single?(options.freshDevicePolicy??initialPolicy):initialPolicy};
-      return{data:single?device:[device],error:null};
+      const devices=options.devices??[device];
+      const chosen=devices.find(d=>filters.some(([key,value])=>key==='id'&&value===d.id));
+      return{data:single?chosen?{...chosen,agent_policy:options.freshDevicePolicy??chosen.agent_policy,
+        ...(options.deviceChangedAfterSelection&&state.workerSelections?.length?{capabilities:{job_kinds:[]}}:{})}:null:devices,error:null};
     }
     if(table==='agent_tools')return{data:{enabled:options.freshToolEnabled??true,policy:options.freshToolPolicy??'allow'},error:null};
-    if(table==='connector_jobs')return{data:{status:'done',result:{entries:[{name:'report.md',type:'file'}]},error:null},error:null};
+    if(table==='connector_jobs'){
+      if(selection==='device_id')return{data:options.workerActiveJobs??[],error:null};
+      const jobs=(state.computerJobs??[]).map(j=>({...j,status:options.computerJobStatus??'done',
+        result:options.computerJobResult??{entries:[{name:'report.md',type:'file'}]},error:null,
+        ...(options.computerTerminalReceipt?{report_sha256:'a'.repeat(64),receipt:{contract:'firbo-execution-receipt/v1',job_id:j.id,
+          device_id:j.device_id,kind:j.kind,ok:true,report_sha256:'a'.repeat(64)}}:{})}));
+      return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
+    }
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
@@ -90,7 +119,7 @@ function fixture(options={}) {
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'integration read must be bound to verified organization');
       return{data:options.integrations??[],error:options.integrationsError?{message:'db unavailable'}:null};
     }
-    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan},error:null};
+    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan,plan_status:options.planStatus??'active',status:'active'},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
@@ -165,6 +194,17 @@ function fixture(options={}) {
   state.client=client;current=state;
   globalThis.fetch=async(url,init)=>{
     state.calls.push({url,init});
+    if(String(url).endsWith('/v1/firbo/dispatch')){
+      const request=JSON.parse(init.body);state.workerSelections=[...(state.workerSelections??[]),request];
+      if(options.workerSelectionFailure)return Response.json({error:'target_unavailable'},{status:409});
+      if(request.kind==='server_task')return Response.json({contract:request.contract,request_id:request.request_id,organization_id:request.organization_id,
+        worker:{kind:'vps',id:'vps',name:'Firbo VPS',platform:'linux'},job:{kind:request.kind,params:request.params},reason:'synthetic_vps_selection'});
+      const device=request.devices.find(d=>d.id===options.selectedWorker)??request.devices[0];
+      if(!device)return Response.json({error:'no_eligible_worker'},{status:409});
+      return Response.json({contract:request.contract,request_id:request.request_id,organization_id:request.organization_id,
+        worker:{kind:'computer',id:device.id,name:device.name,platform:device.platform},
+        job:options.selectedWorkerJob??{kind:request.kind,params:request.params},reason:'synthetic_vps_selection'});
+    }
     if(String(url).includes('api.firboai.app/v1/firbo/free/')){
       if(options.freeFailure)return Response.json({error:'unavailable'},{status:503});
       const request=JSON.parse(init.body);
@@ -207,14 +247,15 @@ function fixture(options={}) {
 // A report that already meets the professional standard (sections, enough substance): it needs no quality pass.
 const FULL_REPORT=['## Executive summary','The market grew. '.repeat(40),'## Findings','Sales rose in every region. '.repeat(25),'## Recommendations','1. Expand online. '.repeat(25)].join('\n');
 async function invoke(name,options={},bodyExtra={}){
-  const state=fixture(options);
-  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',request_id:CHAT_REQUEST,...bodyExtra}:{task_id:TASK,...bodyExtra};
+  const state=fixture({...options,mission:name==='mission-runner'});
+  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',request_id:CHAT_REQUEST,...bodyExtra}
+    :name==='mission-runner'?{mission_id:TASK,action:'synthesize',...bodyExtra}:{task_id:TASK,...bodyExtra};
   const headers={'content-type':'application/json',authorization:'Bearer user-test',...(options.cron?{'x-cron-secret':options.cron}:{})};
   const response=await handlers[name](new Request('https://db.example.test/functions/v1/'+name,{method:'POST',headers,body:JSON.stringify(payload)}));
   return{state,response,body:await response.json()};
 }
 
-for(const name of Object.keys(handlers)){
+for(const name of textHandlers){
   test(`${name}: selected gateway route uses one request and keeps company accounting`,async()=>{
     const {state,response,body}=await invoke(name);
     assert.equal(response.status,200);assert.equal(state.calls.length,1);assert.ok(state.calls[0].url.startsWith('https://gateway.firboai.app/v1/'));
@@ -329,6 +370,126 @@ test('auto computer job carries the exact task claim and authorization snapshots
   assert.equal(state.computerJobs[0].agent_policy_snapshot.enabled,true);
   assert.ok(state.computerJobs[0].agent_capabilities_snapshot.job_kinds.includes('list'));
 });
+
+const NATIVE_MAC='14141414-1414-4414-8414-141414141414';
+const NATIVE_DEBIAN='15151515-1515-4515-8515-151515151515';
+const nativeEnv={FIRBO_DESKTOP_VISION_MODEL:'openai/test-vision',FIRBO_DESKTOP_PRICE_IN_PER_M:'5',FIRBO_DESKTOP_PRICE_OUT_PER_M:'30'};
+const nativeDevices=()=>[
+  {id:NATIVE_MAC,organization_id:ORG,name:'Synthetic Catalina Mac',platform:'darwin',paired:true,revoked_at:null,
+    last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','browser_open'],roots:['Documents']},
+    agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
+  {id:NATIVE_DEBIAN,organization_id:ORG,name:'Synthetic Debian',platform:'linux',paired:true,revoked_at:null,
+    last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','desktop_task'],roots:['/home/firbo'],full_control:true},
+    agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
+];
+const computerTools=[{tool_name:'computer_use',enabled:true,policy:'allow'}];
+const nativeReplies=()=>['{"action":"computer","input":"desktop Άνοιξε YouTube και επιβεβαίωσε ότι προχωρά ο χρόνος."}',
+  JSON.stringify({summary:'Finished',report:'The job completed.',actions:[]})];
+
+test('employee native goal goes through VPS-selected Debian and stays running despite model completion prose',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+    plan:'enterprise',env:nativeEnv,computerJobStatus:'running',chatReplies:nativeReplies(),workerActiveJobs:[{device_id:NATIVE_MAC},{device_id:NATIVE_MAC}]});
+  assert.equal(response.status,202);assert.equal(body.status,'running');assert.equal(body.pending,true);
+  assert.equal(state.workerSelections.length,1);assert.equal(state.workerSelections[0].devices.length,2);
+  assert.equal(state.workerSelections[0].devices[0].load,2);assert.equal(state.workerSelections[0].devices[1].load,0);
+  assert.equal(state.computerJobs.length,1);const job=state.computerJobs[0];
+  assert.equal(job.device_id,NATIVE_DEBIAN);assert.equal(job.kind,'desktop_task');
+  assert.equal(job.params.goal,'Άνοιξε YouTube και επιβεβαίωσε ότι προχωρά ο χρόνος.');
+  assert.equal(job.dispatch_request.contract,'firbo-dispatch-request/v1');assert.equal(job.dispatch_request.request_id,job.id);
+  assert.deepEqual(job.dispatch_request.params,job.params);assert.ok(!('devices' in job.dispatch_request));
+  assert.equal(job.origin,'agent');assert.equal(job.agent_task_id,TASK);assert.equal(job.agent_run_claim,CLAIM);
+  const marker=state.computerResult.computer_execution;
+  assert.equal(marker.ready_to_finalize,true);assert.equal(marker.verified_success,false);assert.equal(marker.jobs[0].job_id,job.id);
+  assert.doesNotMatch(state.computerResult.report,/job completed/);assert.match(state.computerResult.unverified_draft.report,/job completed/);
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));assert.ok(!state.writes.some(w=>w.table==='connector_jobs'&&w.op==='update'));
+  const system=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+  assert.match(system,/desktop <complete natural-language goal>/);assert.doesNotMatch(system,/run osascript/);
+});
+
+test('employee open_app accepts the exact VPS native adaptation on a worker without open_app',async()=>{
+  const {state,response}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+    selectedWorkerJob:{kind:'desktop_task',params:{goal:'Open Google Chrome'}},plan:'enterprise',env:nativeEnv,computerJobStatus:'running',
+    chatReplies:['{"action":"computer","input":"open_app Google Chrome"}',JSON.stringify({summary:'Pending',report:'Waiting.',actions:[]})]});
+  assert.equal(response.status,202);assert.equal(state.computerJobs.length,1);
+  assert.equal(state.computerJobs[0].kind,'desktop_task');assert.deepEqual(state.computerJobs[0].params,{goal:'Open Google Chrome'});
+  assert.equal(state.computerJobs[0].dispatch_request.kind,'open_app');assert.deepEqual(state.computerJobs[0].dispatch_request.params,{app:'Google Chrome'});
+});
+
+test('employee native approval keeps the chosen worker and goal, without inline enqueue',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'computer_use',enabled:true,policy:'approval'}],freshToolPolicy:'approval',
+    devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,plan:'enterprise',env:nativeEnv,chatReplies:nativeReplies()});
+  assert.equal(response.status,200);assert.equal(body.status,'awaiting_approval');assert.equal(state.computerJobs.length,0);
+  const approved=state.writes.find(w=>w.table==='approvals').payload[0];
+  assert.equal(approved.action,'computer_desktop_task');assert.equal(approved.payload.device_id,NATIVE_DEBIAN);
+  assert.equal(approved.payload.goal,'Άνοιξε YouTube και επιβεβαίωσε ότι προχωρά ο χρόνος.');assert.equal(approved.risk,'high');
+  assert.equal(approved.payload.dispatch_request.kind,'desktop_task');assert.equal(approved.payload.dispatch_request.request_id,approved.payload.worker_request_id);
+});
+
+test('employee cannot bypass the chosen pending approval with another computer step',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{tools:[{tool_name:'computer_use',enabled:true,policy:'approval'}],freshToolPolicy:'approval',
+    devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,plan:'enterprise',env:nativeEnv,
+    chatReplies:[nativeReplies()[0],'{"action":"computer","input":"list /home/firbo"}',JSON.stringify({summary:'Waiting',report:'Owner approval needed.',actions:[]})]});
+  assert.equal(response.status,200);assert.equal(body.status,'awaiting_approval');assert.equal(state.computerJobs.length,0);
+  assert.equal(state.workerSelections.length,1);assert.equal(state.writes.find(w=>w.table==='approvals').payload.length,1);
+});
+
+test('employee worker selection failures and changed authorization never fall back or enqueue',async()=>{
+  for(const changed of [{workerSelectionFailure:true},{taskChangedAfterSelection:true},{deviceChangedAfterSelection:true},
+    {freshDevicePolicy:{enabled:false,control:'full'}},{planStatus:'cancelled'},{role:'manager'}]){
+    const {state,response}=await invoke('agent-runner',{...changed,tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+      plan:'enterprise',env:nativeEnv,chatReplies:nativeReplies()});
+    assert.equal(response.status,200);assert.equal(state.computerJobs.length,0);
+    assert.ok((state.workerSelections?.length??0)<=1);assert.ok(!state.writes.some(w=>w.table==='connector_jobs'));
+  }
+});
+
+test('employee explicit target remains in the VPS request and unavailable target queues nothing',async()=>{
+  const {state,response}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),workerSelectionFailure:true,
+    plan:'enterprise',env:nativeEnv,chatReplies:[JSON.stringify({action:'computer',input:JSON.stringify({kind:'desktop_task',goal:'Open Chrome',target:'mac'})}),
+      JSON.stringify({summary:'Blocked',report:'Requested Mac unavailable.',actions:[]})]});
+  assert.equal(response.status,200);assert.equal(state.workerSelections[0].target,'mac');assert.equal(state.computerJobs.length,0);
+});
+
+test('employee native enqueue uncertainty keeps the claim and never dispatches another effect',async()=>{
+  const repeat='{"action":"computer","input":"desktop Άνοιξε YouTube και επιβεβαίωσε ότι προχωρά ο χρόνος."}';
+  const {state,response,body}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+    plan:'enterprise',env:nativeEnv,computerInsertResponseLost:true,computerJobStatus:'running',chatReplies:[repeat,repeat,
+      JSON.stringify({summary:'Pending',report:'Needs receipt review.',actions:[]})]});
+  assert.equal(response.status,503);assert.equal(body.error,'computer_dispatch_unknown');assert.equal(body.retry_safe,false);
+  assert.equal(state.workerSelections.length,1);assert.equal(state.computerJobs.length,1);
+  assert.equal(state.computerResult.reconcile_required,true);assert.equal(state.computerResult.computer_execution.status,'unknown');
+  assert.ok(!state.rpcs.some(r=>r.fn==='publish_task_run'));
+});
+
+test('employee saves the correlated intent before the job and refuses dispatch if receipt storage fails',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+    plan:'enterprise',env:nativeEnv,computerReceiptSaveError:true,chatReplies:nativeReplies()});
+  assert.equal(response.status,503);assert.equal(body.retry_safe,false);assert.equal(state.computerJobs.length,0);
+  assert.ok(!state.writes.some(w=>w.table==='connector_jobs'));
+});
+
+test('employee native fast terminal receipt can complete only after final inference and readiness marker',async()=>{
+  const {state,response,body}=await invoke('agent-runner',{tools:computerTools,devices:nativeDevices(),selectedWorker:NATIVE_DEBIAN,
+    plan:'enterprise',env:nativeEnv,computerTerminalReceipt:true,computerJobStatus:'done',
+    computerJobResult:{completed:true,summary:'Observed playback clock advancing.',verification:'model_screen_observation'},chatReplies:nativeReplies()});
+  assert.equal(response.status,200);assert.equal(body.status,'completed');assert.equal(body.pending,false);
+  assert.equal(body.computer_execution.verified_success,true);
+  const receiptWrites=state.writes.filter(w=>w.table==='tasks'&&w.op==='update'&&w.payload.result?.computer_execution);
+  assert.equal(receiptWrites[0].payload.result.computer_execution.ready_to_finalize,false);
+  assert.equal(receiptWrites.at(-1).payload.result.computer_execution.ready_to_finalize,true);
+  assert.equal(state.computerJobs.length,1);
+});
+
+test('employee pending native readback performs no new model call, claim or worker dispatch',async()=>{
+  const jobId='16161616-1616-4616-8616-161616161616';
+  const params={goal:'Open Chrome'};
+  const receipt={job_id:jobId,request_id:jobId,device_id:NATIVE_DEBIAN,device_name:'Synthetic Debian',kind:'desktop_task',params,run_claim:CLAIM,status:'queued'};
+  const result={computer_execution:{contract:'firbo-worker-execution/v1',status:'pending',jobs:[receipt],ready_to_finalize:true,verified_success:false}};
+  const existingComputerJobs=[{id:jobId,organization_id:ORG,device_id:NATIVE_DEBIAN,kind:'desktop_task',params,origin:'agent',agent_task_id:TASK,agent_id:AGENT,agent_run_claim:CLAIM}];
+  const {state,response,body}=await invoke('agent-runner',{taskStatus:'running',result,existingComputerJobs,computerJobStatus:'running'});
+  assert.equal(response.status,202);assert.equal(body.pending,true);assert.equal(state.calls.length,0);
+  assert.equal(state.writes.length,0);assert.ok(!state.rpcs?.length);
+});
 test('blocked tool proposals are dropped',async()=>{const {state,body}=await invoke('agent-runner',{tools:[{tool_name:'send_email',enabled:false,policy:'block'}]});assert.equal(body.dropped,1);assert.ok(!state.writes.some(w=>w.table==='approvals'));});
 test('lost task claim stops duplicate execution',async()=>{const {state,response}=await invoke('agent-runner',{claimLost:true});assert.equal(response.status,409);assert.equal(state.calls.length,0);});
 test('active previous computer execution prevents a new model request',async()=>{const {state,response,body}=await invoke('agent-runner',{taskStatus:'failed',activeExecution:true});assert.equal(response.status,409);assert.equal(body.error,'task_active_jobs');assert.equal(state.calls.length,0);});
@@ -409,6 +570,96 @@ test('mission-runner moves only free-plan companies to the free combo and report
   assert.equal((source.match(/await askAccounted\(/g)||[]).length,4);
   assert.equal((source.match(/fetch\(/g)||[]).length,1);
 });
+
+function missionExecution(status='completed',jobStatus='done',extra={}){
+  const job={job_id:CHAT_REQUEST,request_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:jobStatus,
+    result:{completed:jobStatus==='done'},
+    receipt:{contract:'firbo-execution-receipt/v1',job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',report_sha256:'a'.repeat(64),ok:jobStatus==='done'}};
+  return{contract:'firbo-worker-execution/v1',status,verified_success:status==='completed',jobs:[job],...extra};
+}
+function missionStep(status='completed',result={report:'Observed employee work.'}){
+  return{id:CHAT_REQUEST,organization_id:ORG,parent_task_id:TASK,title:'Employee work',status,assigned_agent_id:AGENT,result};
+}
+const unresolvedMissionSteps=[
+  ['pending step',missionStep('pending')],
+  ['running step',missionStep('running')],
+  ['approval still pending',missionStep('awaiting_approval')],
+  ['unknown step status',missionStep('unknown')],
+  ['completed row with pending computer work',missionStep('completed',{computer_execution:missionExecution('pending','queued')})],
+  ['failed row with unknown computer dispatch',missionStep('failed',{computer_execution:missionExecution('unknown','unknown')})],
+  ['terminal marker with queued receipt',missionStep('completed',{computer_execution:missionExecution('completed','queued')})],
+  ['completed computer marker without verified success',missionStep('completed',{computer_execution:missionExecution('completed','done',{verified_success:false})})],
+  ['computer marker with unknown contract',missionStep('completed',{computer_execution:missionExecution('completed','done',{contract:'untrusted/v1'})})],
+  ['completed computer job with no receipt',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'done'}]})})],
+  ['computer receipt belongs to another job',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],receipt:{...missionExecution().jobs[0].receipt,job_id:TASK}}]})})],
+  ['native receipt without observed completion',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],result:{completed:false}}]})})],
+  ['native receipt with blocked result',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],result:{completed:true,blocked:true}}]})})],
+  ['browser receipt without observed completion',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],kind:'browser_task',receipt:{...missionExecution().jobs[0].receipt,kind:'browser_task'},result:{completed:false}}]})})],
+  ['step reconciliation required',missionStep('failed',{reconcile_required:true,error:'usage_save_failed'})],
+  ['step accounting still needs reconciliation',missionStep('completed',{accounting:{status:'reconcile_required'}})],
+];
+for(const [label,step] of unresolvedMissionSteps){
+  test(`mission synthesis: ${label} stops before provider, reservation and completion`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:[step]});
+    assert.equal(response.status,409);assert.ok(['not_runnable','reconciliation_required'].includes(body.error));
+    assert.equal(state.calls.length,0);
+    assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+    assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  });
+}
+test('mission synthesis: failed child read cannot spend or publish completion',async()=>{
+  const {state,response,body}=await invoke('mission-runner',{missionSteps:[],missionStepsError:true});
+  assert.equal(response.status,503);assert.equal(body.error,'steps_unavailable');
+  assert.equal(state.calls.length,0);assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  assert.ok(!JSON.stringify(body).includes('private database'));
+});
+test('mission synthesis: thrown child read fails closed without inference or completion',async()=>{
+  const {state,response,body}=await invoke('mission-runner',{missionStepsThrow:true});
+  assert.equal(response.status,503);assert.equal(body.error,'steps_unavailable');assert.equal(state.calls.length,0);
+  assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  assert.ok(!JSON.stringify(body).includes('private database'));
+});
+for(const [label,steps] of [['empty',[]],['null',null],['nonarray',{}]]){
+  test(`mission synthesis: ${label} child result cannot claim team completion`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:steps});
+    assert.equal(response.status,409);assert.equal(body.error,'not_runnable');assert.equal(state.calls.length,0);
+    assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+    assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  });
+}
+for(const [label,steps] of [
+  ['completed research and terminal failed employee',[missionStep(),{...missionStep('failed',{error:'Research unavailable'}),id:ACCOUNTING}]],
+  ['explicitly cancelled employee',[missionStep('cancelled',{error:'Owner cancelled this step'})]],
+  ['completed computer work',[missionStep('completed',{report:'Chrome opened.',computer_execution:missionExecution()})]],
+  ['confirmed terminal computer error',[missionStep('failed',{error:'App unavailable',computer_execution:missionExecution('failed','error')})]],
+  ['terminal blocked native goal',[missionStep('blocked',{report:'Native work was blocked before goal completion.',computer_execution:missionExecution('blocked','done',{jobs:[{...missionExecution().jobs[0],result:{completed:false,blocked:true}}]})})]],
+  ['terminal blocked browser goal',[missionStep('blocked',{report:'Browser work was blocked before goal completion.',computer_execution:missionExecution('blocked','done',{jobs:[{...missionExecution().jobs[0],kind:'browser_task',receipt:{...missionExecution().jobs[0].receipt,kind:'browser_task'},result:{completed:false,blocked:true}}]})})]],
+  ['terminal computer failure without success receipt',[missionStep('failed',{error:'App unavailable',computer_execution:missionExecution('failed','error',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'error',receipt:null}]})})]],
+  ['confirmed computer cancellation',[missionStep('failed',{error:'Owner stopped the job',computer_execution:missionExecution('failed','cancelled',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'cancelled',receipt:null}]})})]],
+]){
+  test(`mission synthesis: ${label} preserves current accounting and tenant scope`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:steps});
+    assert.equal(response.status,200);assert.equal(body.status,'completed');assert.equal(state.calls.length,1);
+    assert.equal(String(state.calls[0].url),'https://api.openai.com/v1/chat/completions');
+    if(steps.some(step=>step.status==='blocked')){
+      const prompt=JSON.parse(state.calls[0].init.body).messages[1].content;
+      assert.match(prompt,/Status: blocked/);assert.match(prompt,/was blocked before goal completion/);
+    }
+    const childRead=state.reads.find(r=>r.table==='tasks'&&r.filters.some(([k,v])=>k==='parent_task_id'&&v===TASK));
+    assert.ok(childRead.filters.some(([k,v])=>k==='organization_id'&&v===ORG),'child read must be bound to verified organization');
+    const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_inference'),settle=state.rpcs.find(r=>r.fn==='firbo_settle_inference');
+    assert.equal(reserve.args.p_org,ORG);assert.equal(reserve.args.p_user,USER);assert.equal(reserve.args.p_agent,AGENT);
+    assert.equal(reserve.args.p_source,'mission-runner');assert.equal(settle.args.p_request,ACCOUNTING);
+    assert.equal(settle.args.p_model,'openai:test-model');assert.equal(settle.args.p_input_tokens,100);assert.equal(settle.args.p_output_tokens,20);
+    assert.equal(settle.args.p_cost_usd,0.0006);assert.ok(reserve.args.p_reserved_usd>settle.args.p_cost_usd);
+    assert.deepEqual(body.accounting,{requests:[{request_id:ACCOUNTING,agent_id:AGENT,status:'settled'}],status:'settled'});
+    const completed=state.writes.find(w=>w.table==='tasks'&&w.payload?.status==='completed');
+    assert.equal(completed.payload.result.steps,steps.length);assert.equal(completed.payload.result.reconcile_required,false);
+    assert.deepEqual(completed.payload.result.accounting,body.accounting);
+  });
+}
 
 const OWN='sk-own-company-key-1234567890';
 for (const name of ['agent-chat','agent-runner']) {
@@ -707,7 +958,8 @@ test('agent-runner: a customer company gets only the sandboxed server agent, nev
   assert.equal(response.status,200);
   const urls=state.calls.map(c=>String(c.url));
   assert.ok(urls.some(u=>u.startsWith('https://box-jarvis.example/jarvis-box/v1/chat/completions')));
-  assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')));
+  assert.ok(!urls.some(u=>u.startsWith('https://admin-jarvis.example')&&!u.endsWith('/v1/firbo/dispatch')));
+  assert.equal(state.workerSelections.length,1);assert.equal(state.workerSelections[0].kind,'server_task');
   const box=state.calls.find(c=>String(c.url).startsWith('https://box-jarvis.example/jarvis-box/v1/chat'));
   assert.equal(box.init.headers.authorization,'Bearer box-key');
   assert.equal(JSON.parse(box.init.body).max_tokens,8192);
@@ -836,11 +1088,12 @@ test('agent-runner: the direct OmniRoute route (no gateway mode) also moves up t
   assert.ok(!other.state.calls.some(c=>String(c.url).endsWith('/chat/completions')&&JSON.parse(c.init.body).model==='firbo-quality'));
 });
 
-test('employees work inside Mac apps with one approved AppleScript, never as a made-up action', async () => {
+test('employees use native worker goals for app work, with shell reserved for explicit requests', async () => {
   const { readFile: read } = await import('node:fs/promises');
   const src = await read(new URL('../../supabase/functions/agent-runner/index.ts', import.meta.url), 'utf8');
-  assert.match(src, /run osascript -e/);
-  assert.match(src, /never put a script or a computer job in the final "actions" list/);
+  assert.doesNotMatch(src, /run osascript -e/);
+  assert.match(src, /Use native desktop goals for full app work/);
+  assert.match(src, /a final actions proposal does not execute computer work/);
 });
 
 for (const [lane,options] of [

@@ -114,12 +114,18 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;
         }
         if(computerRequest&&(!proposal||decision!=='approve')){
-          const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal?.kind??'browser_task',lang,signal),active.signal,24_000);
+          const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal??'browser_task',lang,signal),active.signal,24_000);
           if(!valid(id)||!active.current())return;
           if(!readiness.ready||!proposal){
             pendingComputer.current=null;await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;
           }
-          pendingComputer.current={...proposal,deviceId:readiness.deviceId};
+          if(readiness.ownerFullControl===true){
+            pendingComputer.current=null;
+            const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,active.signal);
+            if(!valid(id)||!active.current())return;
+            await sayDirect(remote.reply);return;
+          }
+          pendingComputer.current={...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId};
           await sayDirect(lang==='el'?`Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`:`I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);return;
         }
         if(proposal&&decision==='approve'){

@@ -9,8 +9,10 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { listAgents } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
-import { createMeeting, createMission, getMission, isMeeting, listMissions, listSteps, runMission, type MissionProgress, type MissionRow, type StepRow } from '../lib/company/missions';
-import { RunError, runErrorText, runTask } from '../lib/company/runner';
+import { createMeeting, createMission, getMission, isMeeting, listMissions, listSteps, missionStepWaiting, runMission, type MissionProgress, type MissionRow, type StepRow } from '../lib/company/missions';
+import { computerExecutionOf, refreshComputerOutcome, RunError, runErrorText, runOutcomeNotice, runTask, type RunOutcome } from '../lib/company/runner';
+import { useRunScope } from '../lib/company/useRunScope';
+import { ComputerExecutionView } from '../components/company/ComputerExecutionView';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { resolvePersona } from '../lib/company/persona';
 import { agentColor } from '../lib/company/status';
@@ -28,6 +30,7 @@ export function MissionsPage() {
   const { current, user } = useCompanyAuth();
   const [params, setParams] = useSearchParams();
   const orgId = current?.organization.id ?? '';
+  const identity = JSON.stringify([orgId, user?.id, current?.role]);
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
   const [agents, setAgents] = useState<AgentRow[]>([]);
   const [missions, setMissions] = useState<MissionRow[]>([]);
@@ -41,58 +44,81 @@ export function MissionsPage() {
   const [mode, setMode] = useState<'mission' | 'meeting'>(params.get('meet') !== null ? 'meeting' : 'mission');
   const [invited, setInvited] = useState<string[]>(() => (params.get('with') ?? '').split(',').filter((x) => /^[0-9a-f-]{36}$/i.test(x)).slice(0, 5));
   const [runningStep, setRunningStep] = useState<string | null>(null);
+  const [acknowledgements, setAcknowledgements] = useState<Record<string, RunOutcome>>({});
+  const [autoStart, setAutoStart] = useState<{ mission: MissionRow; identity: string } | null>(null);
+  const [inventoryIdentity, setInventoryIdentity] = useState<string | null>(null);
+  const [stepsIdentity, setStepsIdentity] = useState<string | null>(null);
   const stop = useRef(false);
+  const operation = useRef<symbol | null>(null);
   const activeId = params.get('m');
-  const mission = missions.find((m) => m.id === activeId) ?? null;
-  const running = phase !== null && phase !== 'done';
+  const liveScope = useRunScope(JSON.stringify([orgId, user?.id, current?.role, activeId]))();
+  const selectionIdentity = JSON.stringify([identity, activeId]);
+  const visibleMissions = inventoryIdentity === identity ? missions : [];
+  const visibleAgents = inventoryIdentity === identity ? agents : [];
+  const mission = visibleMissions.find((m) => m.id === activeId) ?? null;
+  const visibleSteps = mission && stepsIdentity === selectionIdentity ? steps : [];
+  const running = phase !== null && phase !== 'done' && phase !== 'waiting';
+  const waitingStep = visibleSteps.find(s => missionStepWaiting(s, acknowledgements[s.id]));
+
+  useEffect(() => {
+    setInventoryIdentity(null); setStepsIdentity(null); setMissions([]); setAgents([]); setSteps([]);
+  }, [identity]);
+
+  useEffect(() => {
+    stop.current = true; operation.current = null;
+    setPhase(null); setRunningStep(null); setAcknowledgements({});
+    setAutoStart(previous => previous?.mission.id === activeId && previous.identity === identity ? previous : null);
+  }, [orgId, user?.id, current?.role, activeId]);
 
   const nameOf = useCallback((id: string | null) => {
-    const a = agents.find((x) => x.id === id);
+    const a = visibleAgents.find((x) => x.id === id);
     return a ? agentLabel(a, i18n).name : t('unassigned');
-  }, [agents, i18n, t]);
+  }, [visibleAgents, i18n, t]);
 
   const reloadMissions = useCallback(async () => {
     if (!orgId) return;
-    setMissions(await listMissions(orgId));
-  }, [orgId]);
+    const live = liveScope;
+    const rows = await listMissions(orgId);
+    if (live()) { setMissions(rows); setInventoryIdentity(identity); }
+  }, [orgId, user?.id, current?.role, activeId]);
 
   useEffect(() => {
     if (!orgId) return;
-    let live = true;
+    const live = liveScope;
     Promise.all([listAgents(orgId), listMissions(orgId)])
       .then(([a, m]) => {
-        if (live) {
+        if (live()) {
           setAgents(a);
           setMissions(m);
+          setInventoryIdentity(identity);
         }
       })
-      .catch(() => live && toast.error(t('mis.loadError')));
+      .catch(() => live() && toast.error(t('mis.loadError')));
     return () => {
-      live = false;
       stop.current = true;
     };
-  }, [orgId, t]);
+  }, [orgId, user?.id, current?.role, activeId, t]);
 
   useEffect(() => {
     setSteps([]);
     setOpen(null);
-    if (!activeId) return;
-    let live = true;
-    listSteps(activeId).then((s) => live && setSteps(s)).catch(() => {});
-    return () => {
-      live = false;
-    };
-  }, [activeId]);
+    setStepsIdentity(null);
+    if (!mission || !liveScope()) return;
+    const live = liveScope;
+    listSteps(mission.id, orgId).then((s) => { if (live()) { setSteps(s); setStepsIdentity(selectionIdentity); } }).catch(() => {});
+  }, [orgId, user?.id, current?.role, activeId, mission?.id]);
 
   // Keep the picture fresh while a mission is running somewhere (this tab or another).
   useEffect(() => {
     if (!mission || mission.status !== 'running') return;
+    const live = liveScope;
     const id = window.setInterval(() => {
-      void listSteps(mission.id).then(setSteps).catch(() => {});
-      void getMission(mission.id).then((m) => m && setMissions((prev) => prev.map((x) => (x.id === m.id ? m : x)))).catch(() => {});
+      if (!live()) return;
+      void listSteps(mission.id, orgId).then(s => { if (live()) { setSteps(s); setStepsIdentity(selectionIdentity); } }).catch(() => {});
+      void getMission(mission.id, orgId).then((m) => live() && m && setMissions((prev) => prev.map((x) => (x.id === m.id ? m : x)))).catch(() => {});
     }, 3500);
     return () => window.clearInterval(id);
-  }, [mission]);
+  }, [mission?.id, mission?.status, orgId, user?.id, current?.role, activeId]);
 
   const select = (id: string | null) => {
     const next = new URLSearchParams(params);
@@ -102,67 +128,102 @@ export function MissionsPage() {
   };
 
   const start = async (m: MissionRow) => {
+    if (!liveScope() || !canWrite || !user || operation.current || mission?.id !== m.id) return;
+    const live = liveScope, token = Symbol(); operation.current = token;
+    const progress = { phase: 'planning' as MissionProgress['phase'] };
     stop.current = false;
     setPhase('planning');
     try {
       await runMission(m, lang, (p) => {
+        if (!live()) return;
+        progress.phase = p.phase;
         setPhase(p.phase);
         setSteps(p.steps);
-      }, () => stop.current);
+        setStepsIdentity(selectionIdentity);
+        if (p.acknowledgement) { const { stepId, outcome } = p.acknowledgement; setAcknowledgements(previous => ({ ...previous, [stepId]: outcome })); }
+      }, () => stop.current || !live(), acknowledgements, orgId);
     } catch (err) {
-      toast.error(runErrorText(t, err));
+      if (live()) toast.error(runErrorText(t, err));
     } finally {
-      setPhase(null);
-      await reloadMissions().catch(() => {});
-      setSteps(await listSteps(m.id).catch(() => []));
+      if (live()) {
+        if (progress.phase !== 'waiting') setPhase(null);
+        await reloadMissions().catch(() => {});
+        if (live()) { const fresh = await listSteps(m.id, orgId).catch(() => null); if (live() && fresh) { setSteps(fresh); setStepsIdentity(selectionIdentity); } }
+      }
+      if (operation.current === token) operation.current = null;
     }
   };
 
   const create = async (e: FormEvent) => {
     e.preventDefault();
-    if (!goal.trim() || !user || running) return;
+    if (!liveScope() || !goal.trim() || !user || running) return;
+    const live = liveScope;
     try {
       const m = mode === 'meeting' ? await createMeeting(orgId, user.id, goal, details, invited) : await createMission(orgId, user.id, goal, details);
+      if (!live()) return;
       setGoal('');
       setDetails('');
       setInvited([]);
-      setMissions((prev) => [m, ...prev]);
+      setMissions((prev) => [m, ...(inventoryIdentity === identity ? prev : [])]); setInventoryIdentity(identity);
       select(m.id);
-      void start(m);
+      setAutoStart({ mission: m, identity });
     } catch (err) {
       console.error(err);
-      toast.error(t('mis.createError'));
+      if (live()) toast.error(t('mis.createError'));
     }
   };
 
-  const ceo = agents.find((a) => a.type === 'ceo' || a.slug.startsWith('ceo')) ?? agents[0];
+  useEffect(() => {
+    if (autoStart?.mission.id !== activeId || autoStart.identity !== identity) return;
+    setAutoStart(null); void start(autoStart.mission);
+  }, [autoStart, activeId, identity]);
+
+  const ceo = visibleAgents.find((a) => a.type === 'ceo' || a.slug.startsWith('ceo')) ?? visibleAgents[0];
   const nodes = useMemo(() => {
     const ids = new Set<string>();
     if (ceo) ids.add(ceo.id);
-    for (const s of steps) if (s.assigned_agent_id) ids.add(s.assigned_agent_id);
+    for (const s of visibleSteps) if (s.assigned_agent_id) ids.add(s.assigned_agent_id);
     for (const x of mission?.result?.transcript ?? []) ids.add(x.agent_id);
     return [...ids].flatMap((id) => {
-      const a = agents.find((x) => x.id === id);
+      const a = visibleAgents.find((x) => x.id === id);
       return a ? [{ id, name: agentLabel(a, i18n).name.replace(' Agent', ''), color: agentColor(a.type, a.slug), persona: resolvePersona(a) }] : [];
     });
-  }, [agents, steps, ceo, i18n, mission]);
-  const sceneSteps = useMemo(() => steps.map((s) => ({ id: s.id, agentId: s.assigned_agent_id, status: s.status })), [steps]);
-  const status = phase ? 'running' : mission?.status ?? 'pending';
+  }, [visibleAgents, visibleSteps, ceo, i18n, mission]);
+  const sceneSteps = useMemo(() => visibleSteps.map((s) => ({ id: s.id, agentId: s.assigned_agent_id, status: s.status })), [visibleSteps]);
+  const status = phase === 'waiting' ? (waitingStep?.status === 'awaiting_approval' ? 'awaiting_approval' : 'running') : phase ? 'running' : mission?.status ?? 'pending';
   const meeting = mode === 'meeting';
   const examples = meeting ? [copy('mtEx1'), copy('mtEx2'), copy('mtEx3')] : [t('mis.ex1'), t('mis.ex2'), t('mis.ex3')];
-  const team = agents.filter((a) => a.enabled && a.id !== ceo?.id);
+  const team = visibleAgents.filter((a) => a.enabled && a.id !== ceo?.id);
   const toggleInvite = (id: string) => setInvited((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= 5 ? cur : [...cur, id]));
   // An action item from a meeting is an ordinary task: run it right here.
   const runStep = async (step: StepRow) => {
+    if (!liveScope() || !mission || !visibleSteps.some(s => s.id === step.id) || !canWrite || !user || operation.current || missionStepWaiting(step, acknowledgements[step.id])) return;
+    const live = liveScope, token = Symbol(); operation.current = token;
     setRunningStep(step.id);
-    try { await runTask(step.id, lang); }
-    catch (err) { toast.error(runErrorText(t, err)); }
+    try {
+      const outcome = await runTask(step.id, lang);
+      if (!live()) return;
+      setAcknowledgements(previous => ({ ...previous, [step.id]: outcome }));
+      const fresh = await listSteps(mission.id, orgId);
+      if (!live()) return;
+      setSteps(fresh);
+      setStepsIdentity(selectionIdentity);
+      const observed = fresh.find(s => s.id === step.id);
+      if (!observed) throw new RunError('unknown', 'task_readback_missing');
+      const effective: RunOutcome = observed && missionStepWaiting(observed, outcome) && outcome.status === 'completed'
+        ? { ...outcome, status: observed.status === 'awaiting_approval' ? 'awaiting_approval' : 'running', pending: observed.status !== 'awaiting_approval' } : outcome;
+      setAcknowledgements(previous => ({ ...previous, [step.id]: effective }));
+      const notice = runOutcomeNotice(t, effective); toast[notice.tone](notice.text);
+    }
+    catch (err) { if (live()) toast.error(runErrorText(t, err)); }
     finally {
-      setRunningStep(null);
-      if (activeId) setSteps(await listSteps(activeId).catch(() => steps));
+      if (live()) setRunningStep(null);
+      if (operation.current === token) operation.current = null;
     }
   };
-  const phaseText = (p: MissionProgress['phase']) => (p === 'meeting' ? copy('mtInSession') : t(`mis.phase.${p}` as TKey));
+  const phaseText = (p: MissionProgress['phase']) => p === 'waiting'
+    ? t(waitingStep?.status === 'awaiting_approval' || acknowledgements[waitingStep?.id ?? '']?.status === 'awaiting_approval' ? 'status.awaiting_approval' : 'run.pending')
+    : p === 'meeting' ? copy('mtInSession') : t(`mis.phase.${p}` as TKey);
 
   return (
     <div className="fb-root flex h-full flex-col lg:flex-row">
@@ -208,7 +269,7 @@ export function MissionsPage() {
           </form>
         )}
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
-          {missions.map((m) => (
+          {visibleMissions.map((m) => (
             <li key={m.id}>
               <button
                 onClick={() => select(m.id)}
@@ -223,7 +284,7 @@ export function MissionsPage() {
               </button>
             </li>
           ))}
-          {missions.length === 0 && <li className="fb-dim px-2 text-sm">{t('mis.empty')}</li>}
+          {visibleMissions.length === 0 && <li className="fb-dim px-2 text-sm">{t('mis.empty')}</li>}
         </ul>
       </aside>
 
@@ -255,8 +316,8 @@ export function MissionsPage() {
             </div>
 
             <div className="space-y-4 p-4">
-              {!running && canWrite && (mission.status === 'pending' || mission.status === 'running') && (
-                <button className="fb-btn fb-btn--primary" onClick={() => void start(mission)}>
+              {!running && canWrite && (phase === 'waiting' || ['pending', 'running', 'awaiting_approval'].includes(mission.status)) && (
+                <button className="fb-btn fb-btn--primary" disabled={!!waitingStep} onClick={() => void start(mission)}>
                   <Rocket size={14} /> {t('mis.continue')}
                 </button>
               )}
@@ -279,12 +340,12 @@ export function MissionsPage() {
                 </Panel>
               )}
               <Panel title={isMeeting(mission) ? copy('mtActions') : t('mis.steps')}>
-                {isMeeting(mission) && steps.length > 0 && <p className="fb-dim mb-2 text-xs">{copy('mtActionsHint')}</p>}
-                {steps.length === 0 ? (
+                {isMeeting(mission) && visibleSteps.length > 0 && <p className="fb-dim mb-2 text-xs">{copy('mtActionsHint')}</p>}
+                {visibleSteps.length === 0 ? (
                   <p className="fb-dim text-sm">{t('mis.noSteps')}</p>
                 ) : (
                   <ol className="flex flex-col gap-2">
-                    {steps.map((s, idx) => (
+                    {visibleSteps.map((s, idx) => (
                       <li key={s.id} className="fb-row flex-col items-stretch gap-1.5 py-2.5">
                         <button className="flex w-full cursor-pointer items-center gap-2.5 text-start" onClick={() => setOpen(open === s.id ? null : s.id)} aria-expanded={open === s.id}>
                           <span className="fb-dim w-5 shrink-0 text-xs tabular-nums">{idx + 1}</span>
@@ -295,10 +356,13 @@ export function MissionsPage() {
                           </span>
                         </button>
                         {isMeeting(mission) && canWrite && ['pending', 'failed'].includes(s.status) && (
-                          <button type="button" className="fb-btn fb-btn--ghost self-start" style={{ height: 28 }} disabled={runningStep !== null} onClick={() => void runStep(s)}>
+                          <button type="button" className="fb-btn fb-btn--ghost self-start" style={{ height: 28 }} disabled={runningStep !== null || missionStepWaiting(s, acknowledgements[s.id])} onClick={() => void runStep(s)}>
                             <Play size={12} /> {runningStep === s.id ? t('mis.starting') : copy('mtRun')}
                           </button>
                         )}
+                        <ComputerExecutionView execution={acknowledgements[s.id]?.computer_execution
+                          ? refreshComputerOutcome(acknowledgements[s.id], s.result).computer_execution ?? null
+                          : computerExecutionOf(s.result)} compact />
                         {open === s.id && (
                           <div className="text-[13px]">
                             {s.description && <p className="fb-muted mb-2 whitespace-pre-wrap break-words">{s.description.split('\n\nResults from teammates so far:')[0]}</p>}

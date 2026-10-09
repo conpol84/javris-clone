@@ -69,7 +69,7 @@ it('never dispatches an explicit rejected app command', async () => {
 });
 it('routes the exact incomplete owner transcript to readiness rather than the model',async()=>{
   await elements(page('mporis na anixis to mac kai na valis tragoudia apo youtube ?')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
-  expect(prepare).toHaveBeenCalledWith('org','browser_task','en',expect.any(AbortSignal));
+  expect(prepare).toHaveBeenCalledWith('org',{kind:'desktop_task',description:'mporis na anixis to mac kai na valis tragoudia apo youtube ?',params:{goal:'mporis na anixis to mac kai na valis tragoudia apo youtube ?'}},'en',expect.any(AbortSignal));
   expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(fixture.refs[1].current).toBeNull();
   const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
   expect(update([]).slice(-1)[0].content).toContain('No job was queued');
@@ -98,4 +98,47 @@ it('routes a voice transcript through the same readiness guard',async()=>{
   expect(button).toBeDefined();button!.props.onClick?.();
   await Promise.resolve();await Promise.resolve();
   expect(prepare).toHaveBeenCalledOnce();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+});
+
+it('native Full Control dispatches a simple app goal immediately on the ready device',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true,ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ await elements(page('open Microsoft Word')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'open_app',description:'Open Microsoft Word',params:{app:'Microsoft Word'},deviceId:'d7',requestId:'11111111-1111-4111-8111-111111111111',ownerFullControlRequired:true});expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
+});
+
+it.each(['open browser','Open YouTube and play Μαζωνάκης Ώρες Μικρές'])('owner Full Control runs %s once without an approval prompt',async message=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed result'});
+ await elements(page(message)).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toMatchObject({deviceId:'d7',requestId:'11111111-1111-4111-8111-111111111111',ownerFullControlRequired:true});expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].content).toBe('Observed result');
+});
+
+it.each(['open browser','open Microsoft Word','Open YouTube and play Μαζωνάκης Ώρες Μικρές'])('guarded native readiness asks before %s and one approval executes the bound request',async message=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true,ownerFullControl:false,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed result'});
+ await elements(page(message)).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();const pending=fixture.refs[1].current;
+ const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].content).toContain('Do you approve?');
+ await elements(page('approve')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',pending,'en',expect.any(AbortSignal));expect(pending).not.toHaveProperty('ownerFullControlRequired');expect(fixture.refs[1].current).toBeNull();
+});
+
+it('keeps a missing central Full Control marker guarded even with native desktop capability',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true});
+ await elements(page('Open YouTube and play Μαζωνάκης Ώρες Μικρές')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(dispatch).not.toHaveBeenCalled();const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].content).toContain('Do you approve?');
+});
+
+it.each([true,false])('fences a late central Full Control=%s preview after the page Stop control',async ownerFullControl=>{
+ let release!:(value:unknown)=>void;prepare.mockImplementation(()=>new Promise(resolve=>{release=resolve}));
+ const sending=elements(page('open browser')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ elements(page('open browser',true)).find(e=>e.props['aria-label']==='ceo.stop')!.props.onClick?.();
+ release({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true,ownerFullControl});await sending;
+ expect(dispatch).not.toHaveBeenCalled();expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('passes the explicit Mac target through chat readiness and pending approval',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Polis1984',deviceId:'mac'});
+ await elements(page('from mac open chrome')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledWith('org',{kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'mac'},'en',expect.any(AbortSignal));
+ expect(fixture.refs[1].current).toMatchObject({target:'mac',deviceId:'mac',params:{app:'Google Chrome'}});expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
 });

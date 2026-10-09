@@ -2,7 +2,7 @@
 // Three outcomes: "auto" (runs now, the employee gets the result), "approve" (waits for the owner in the Inbox)
 // and "deny" (never). The Connector program on the computer still enforces its own local limits on top of this.
 
-export const COMPUTER_KINDS = ['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut'] as const;
+export const COMPUTER_KINDS = ['list', 'read', 'write', 'exec', 'browser_open', 'browser_task', 'open_app', 'shortcut', 'desktop_task'] as const;
 export type ComputerKind = typeof COMPUTER_KINDS[number];
 export type Verdict = 'auto' | 'approve' | 'deny';
 
@@ -87,6 +87,11 @@ export function decideComputer(kind: ComputerKind, params: Record<string, unknow
     case 'browser_task':
       // The computer shows the plan and asks its owner before it runs; clicks, typing and uploads ask again.
       return { verdict: 'auto', reason: 'reviewed_on_the_computer' };
+    case 'desktop_task':
+      if (!desktopTaskParams(params)) return { verdict: 'deny', reason: 'desktop_goal_required' };
+      return policy.control === 'full'
+        ? { verdict: 'auto', reason: 'owner_full_control' }
+        : { verdict: 'deny', reason: 'desktop_full_control_required' };
     case 'open_app':
       if (policy.control === 'full') return { verdict: 'auto', reason: 'owner_full_control' };
       return has(policy.apps, params.app) ? { verdict: 'auto', reason: 'allowed_app' } : { verdict: 'approve', reason: 'app_not_on_list' };
@@ -115,7 +120,9 @@ export function decideForEmployee(kind: ComputerKind, params: Record<string, unk
   const owner = decideComputer(kind, params, policy, now);
   if (owner.verdict === 'deny') return owner;
   if (employee.suggestOnly && !(owner.verdict === 'auto' && (kind === 'list' || kind === 'read'))) return { verdict: 'suggest', reason: 'employee_may_only_suggest' };
-  if (owner.verdict === 'auto' && employee.askFirst && policy.control !== 'full') return { verdict: 'approve', reason: 'employee_must_ask' };
+  // Device Full Control does not grant a different employee power. The SQL
+  // inline-job guard requires that power to be "allow"; "approval" uses Inbox.
+  if (owner.verdict === 'auto' && employee.askFirst) return { verdict: 'approve', reason: 'employee_must_ask' };
   return owner;
 }
 
@@ -149,24 +156,50 @@ export function browserTaskParams(raw: unknown): Record<string, unknown> | null 
   return {steps:p.steps,timeout_ms:timeout};
 }
 
+/** Native work carries one stored goal, never caller-supplied actions or OS permissions. */
+export function desktopTaskParams(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (Object.keys(value).some(key => key !== 'goal') || typeof value.goal !== 'string'
+    || !value.goal.trim() || value.goal.length > 4000 || /[\u0000-\u0008\u000b-\u001f\u007f]/.test(value.goal)) return null;
+  return { goal: value.goal.trim() };
+}
+
 /**
  * What the employee asked for, in plain words: "open_app Safari", "open_url https://…", "list Documents", "read notes.txt",
  * "write report.md :: text", "run git status", "shortcut Daily backup". A JSON {"kind": …, …} object works too.
  */
-export function parseComputerRequest(input: string): { kind: ComputerKind; params: Record<string, unknown> } | { error: string } {
+export function parseComputerRequest(input: string): { kind: ComputerKind; params: Record<string, unknown>; target?: string; deviceId?: string } | { error: string } {
   const text = input.trim();
   if (text.startsWith('{')) {
     try {
       const o = JSON.parse(text) as Record<string, unknown>;
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return { error: 'bad_request' };
       const verb = String(o.kind ?? o.action ?? '');
+      const target = typeof o.target === 'string' && o.target.trim() && o.target.length <= 80 ? o.target.trim() : undefined;
+      const deviceId = typeof o.device_id === 'string' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(o.device_id) ? o.device_id : undefined;
+      if ((o.target !== undefined && !target) || (o.device_id !== undefined && !deviceId)) return { error: 'bad_target' };
+      const withTarget = (parsed: ReturnType<typeof parseComputerRequest>) => 'error' in parsed ? parsed : { ...parsed, ...(target ? { target } : {}), ...(deviceId ? { deviceId } : {}) };
+      if (['desktop', 'desktop_task'].includes(verb)) {
+        const params = desktopTaskParams({ goal: o.goal });
+        return params ? withTarget({ kind: 'desktop_task', params }) : { error: 'desktop_goal_required' };
+      }
+      if (verb === 'browser_task') {
+        const params = browserTaskParams({ steps: o.steps, ...(o.timeout_ms === undefined ? {} : { timeout_ms: o.timeout_ms }) });
+        return params ? withTarget({ kind: 'browser_task', params }) : { error: 'browse_needs_a_plan' };
+      }
       const arg = String(o.app ?? o.url ?? o.path ?? o.command ?? o.name ?? '');
-      return parseComputerRequest(`${verb} ${arg}${typeof o.content === 'string' ? ` :: ${o.content}` : ''}`);
+      return withTarget(parseComputerRequest(`${verb} ${arg}${typeof o.content === 'string' ? ` :: ${o.content}` : ''}`));
     } catch { return { error: 'bad_request' }; }
   }
   const m = /^([a-z_]+)\s*([\s\S]*)$/i.exec(text);
   if (!m) return { error: 'bad_request' };
   const verb = m[1].toLowerCase();
   const rest = m[2].trim();
+  if (['desktop', 'desktop_task'].includes(verb)) {
+    const params = desktopTaskParams({ goal: rest });
+    return params ? { kind: 'desktop_task', params } : { error: 'desktop_goal_required' };
+  }
   if (['open_app', 'app', 'open'].includes(verb)) {
     if (/^https?:\/\//i.test(rest)) return parseComputerRequest(`open_url ${rest}`);
     return APP_NAME.test(rest) ? { kind: 'open_app', params: { app: rest } } : { error: 'bad_app_name' };
@@ -183,7 +216,7 @@ export function parseComputerRequest(input: string): { kind: ComputerKind; param
     const content = at < 0 ? '' : rest.slice(at + 2).trim();
     return path && content ? { kind: 'write', params: { path, content: content.slice(0, 100_000), overwrite: false } } : { error: 'write_needs_path_and_content' };
   }
-  // Room for a whole AppleScript job (open Excel, fill a sheet, save it, draft the email) in one approval.
+  // Explicit shell requests retain their separate owner policy.
   if (['run', 'exec', 'command', 'shell'].includes(verb)) return rest ? { kind: 'exec', params: { command: rest.slice(0, 4000) } } : { error: 'command_required' };
   if (['browse', 'browser_task'].includes(verb)) {
     let plan: unknown = null;
@@ -208,6 +241,7 @@ export function describeComputerResult(kind: ComputerKind, result: unknown, max 
   if (kind === 'open_app') return `Opened ${String(r.app ?? 'the app')}.`;
   if (kind === 'shortcut') return `Ran the shortcut ${String(r.name ?? '')}.`;
   if (kind === 'browser_open') return `Opened ${String(r.url ?? 'the page')} in the browser.`;
+  if (kind === 'desktop_task') return `${r.completed === true ? 'Completed' : 'Needs owner input or continuation'}: ${typeof r.summary === 'string' ? r.summary : 'No desktop observation summary was returned.'}`.slice(0, max);
   if (kind === 'browser_task' && Array.isArray(r.steps)) {
     return (r.steps as Record<string, unknown>[]).map(st => `${String(st.step ?? '')}. ${String(st.action ?? '')}${st.url ? ` ${String(st.url)}` : ''}${typeof st.text === 'string' ? `\n${st.text}` : ''}${typeof st.accessibility === 'string' ? `\n${st.accessibility}` : ''}${st.path ? ` ${String(st.path)}${st.sha256 ? ` sha256:${String(st.sha256)}` : ''}` : ''}`).join('\n').slice(0, max);
   }

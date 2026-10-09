@@ -11,6 +11,11 @@ export const BROWSER_ACTIONS = ['open', 'read', 'snapshot', 'screenshot', 'click
 const MUTATIONS = new Set(['click', 'fill', 'upload']);
 const CAPTURES = new Set(['snapshot', 'screenshot']);
 const MAX_BYTES = 4 * 1024 * 1024;
+// Page documents/scripts are not file transfers or captures. Keep their larger
+// allowance separate, and charge the shared task budget while bytes arrive.
+const MAX_PAGE_RESPONSE_BYTES = 16 * 1024 * 1024;
+const MAX_NETWORK_BYTES = 20 * MAX_BYTES;
+const pageResponseLimit = type => ['document', 'script', 'stylesheet'].includes(type) ? MAX_PAGE_RESPONSE_BYTES : MAX_BYTES;
 const PNG_SIGNATURE = Buffer.from([137,80,78,71,13,10,26,10]);
 const check = signal => { if (signal?.aborted) throw new Error('operation_stopped'); };
 const hash = data => createHash('sha256').update(data).digest('hex');
@@ -65,7 +70,9 @@ export function isPublicIPv4(ip) {
  * rebinding. Never follow redirects here; Chromium sends each hop through routing.
  * No ambient proxy, client certificates or local authentication are inherited.
  */
-export async function publicRequest(input, { signal, lookup = resolve4, request = https.request } = {}) {
+export async function publicRequest(input, { signal, lookup = resolve4, request = https.request,
+  maxResponseBytes = MAX_BYTES, consumeBytes = () => {} } = {}) {
+  if (!Number.isSafeInteger(maxResponseBytes) || maxResponseBytes < 1 || maxResponseBytes > MAX_PAGE_RESPONSE_BYTES) throw new Error('browser_transfer_too_large');
   const origin = browserOrigin(input.url);
   if (!input.sites.includes(origin)) throw new Error('browser_site_denied');
   check(signal);
@@ -78,11 +85,22 @@ export async function publicRequest(input, { signal, lookup = resolve4, request 
   return await new Promise((resolve, reject) => {
     const req = request(u, {method:input.method, headers, signal, agent:false, family:4, autoSelectFamily:false,
       lookup:(_host, options, done)=>options.all?done(null,[{address:addresses[0],family:4}]):done(null, addresses[0], 4), timeout:15_000}, res => {
-      const chunks=[]; let size=0;
-      res.on('data', chunk => { size+=chunk.length; if (size>MAX_BYTES) req.destroy(new Error('browser_transfer_too_large')); else chunks.push(chunk); });
+      const chunks=[]; let size=0, failed=false;
+      res.on('data', chunk => {
+        if (failed) return;
+        try {
+          consumeBytes(chunk.length);
+          size+=chunk.length;
+          if (size>maxResponseBytes) throw new Error('browser_transfer_too_large');
+          chunks.push(chunk);
+        } catch (error) {
+          failed=true; chunks.length=0;
+          req.destroy(error); reject(error);
+        }
+      });
       res.on('error', reject);
       res.on('aborted', ()=>reject(new Error('browser_network_denied')));
-      res.on('end', ()=>resolve({status:res.statusCode, headers:res.headers, body:Buffer.concat(chunks)}));
+      res.on('end', ()=>{ if (!failed) resolve({status:res.statusCode, headers:res.headers, body:Buffer.concat(chunks)}); });
     });
     req.on('timeout', ()=>req.destroy(new Error('browser_network_timeout')));
     req.on('error', reject);
@@ -136,6 +154,22 @@ export async function executeBrowserPlan(raw, cfg, {
   stop.signal.addEventListener('abort', close, {once:true});
   const ensure = () => { check(stop.signal); if (networkFailure) throw new Error(networkFailure); };
   const results=[];
+  const consumeNetworkBytes = bytes => {
+    if (!Number.isSafeInteger(bytes) || bytes < 0) throw new Error('browser_network_denied');
+    transferred+=bytes;
+    if (transferred>MAX_NETWORK_BYTES) throw new Error('browser_transfer_too_large');
+  };
+  const boundedTransport = async (input, maxResponseBytes) => {
+    let observedBytes=0;
+    const out=await transport(input,{signal:stop.signal,maxResponseBytes,
+      consumeBytes:bytes=>{ consumeNetworkBytes(bytes); observedBytes+=bytes; }});
+    // Injected/test transports must satisfy the same contract even if they
+    // do not report incremental ingress. Never refund failed requests.
+    if (!Buffer.isBuffer(out.body)) throw new Error('browser_network_denied');
+    if (out.body.length>observedBytes) consumeNetworkBytes(out.body.length-observedBytes);
+    if (out.body.length>maxResponseBytes) throw new Error('browser_transfer_too_large');
+    return out;
+  };
   try {
     const engine=chromium ?? await installedChromium();
     ensure();
@@ -165,16 +199,15 @@ export async function executeBrowserPlan(raw, cfg, {
           },stop.signal))) throw new Error('browser_write_denied');
         }
         ensure();
-        const out=await transport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:ownerFullControl?[requestOrigin]:plan.sites},{signal:stop.signal});
-        transferred+=out.body.length;
-        if (transferred>20*MAX_BYTES) throw new Error('browser_transfer_too_large');
+        const maxResponseBytes=pageResponseLimit(req.resourceType?.());
+        const out=await boundedTransport({url:req.url(),method:req.method(),headers:await req.allHeaders(),body:req.postDataBuffer(),sites:ownerFullControl?[requestOrigin]:plan.sites},maxResponseBytes);
         const headers={};
         for (const [k,v] of Object.entries(out.headers)) if (!['connection','transfer-encoding','content-length','set-cookie'].includes(k.toLowerCase()) && v!==undefined) headers[k]=Array.isArray(v)?v.join(','):String(v);
         // Cookies can contain multiple Set-Cookie lines; never merge them as CSV.
         if (out.headers['set-cookie']) headers['set-cookie']=[out.headers['set-cookie']].flat().join('\n');
         await route.fulfill({status:out.status,headers,body:out.body});
       } catch (e) {
-        networkFailure=/^browser_[a-z_]+$/.test(e?.message??'')?e.message:'browser_network_denied';
+        networkFailure ||= /^browser_[a-z_]+$/.test(e?.message??'')?e.message:'browser_network_denied';
         await route.abort().catch(()=>{});
       }
     });
@@ -235,7 +268,7 @@ export async function executeBrowserPlan(raw, cfg, {
       if (s.action==='download') {
         if(!await confirm('browser_download',{url:s.url,path:s.path},stop.signal))throw new Error('declined_on_this_computer');
         ensure();
-        const out=await transport({url:s.url,method:'GET',headers:{},sites:plan.sites},{signal:stop.signal});
+        const out=await boundedTransport({url:s.url,method:'GET',headers:{},sites:plan.sites},MAX_BYTES);
         if(out.status!==200||out.body.length>MAX_BYTES)throw new Error('browser_download_failed');
         ensure();
         result=await writeFile(s.path,out.body); // exclusive creation + read-back hash

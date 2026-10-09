@@ -25,7 +25,9 @@ import {
 } from '../_shared/agent-tools.ts';
 import { companySkillContext, readCompanySkill, type CompanySkill } from '../_shared/company-skills.ts';
 import { detectDeliverable, deliverableInstructions, needsPolish, polishSystem, requestedSlideCount } from '../_shared/deliverables.ts';
-import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerPolicy } from '../_shared/computer-policy.ts';
+import { cleanPolicy, decideForEmployee, describeComputerResult, parseComputerRequest, type ComputerKind, type ComputerPolicy } from '../_shared/computer-policy.ts';
+import { selectWorkerOnVps, dispatchRequestRecord, type WorkerRequest } from '../_shared/worker-dispatch.ts';
+import { finalizePendingComputerExecution } from '../_shared/worker-execution.ts';
 import { maximumInferenceCost, maximumTokenBoundCost } from '../_shared/inference-accounting.ts';
 import {
   executeRunnerInferenceAttempt,
@@ -195,7 +197,7 @@ Deno.serve(async (req) => {
   const reader = systemRun ? admin : userClient;
   if (!body.task_id || typeof body.task_id !== 'string') return json(400, { error: 'bad_request' });
   const lang = body.lang && body.lang in LANG_NAME ? body.lang : 'en';
-  const { data: task } = await reader.from('tasks').select('id, organization_id, title, description, status, priority, assigned_agent_id, result, shift_id')
+  const { data: task } = await reader.from('tasks').select('id, organization_id, title, description, status, priority, assigned_agent_id, result, shift_id, run_claim')
     .eq('id', body.task_id).maybeSingle();
   if (!task) return json(404, { error: 'not_found' });
   const { data: member } = await reader.from('organization_members').select('role').eq('organization_id', task.organization_id).eq('user_id', user.id).maybeSingle();
@@ -204,6 +206,15 @@ Deno.serve(async (req) => {
   const email = (user.email ?? '').toLowerCase();
   if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
   if (task.result?.reconcile_required === true) return json(409, { error: 'reconciliation_required', retry_safe: false });
+  if (task.status === 'running' && task.result?.computer_execution?.contract === 'firbo-worker-execution/v1') {
+    // This is receipt readback only. A repeated request cannot obtain another
+    // claim, run inference or dispatch a second effect while the worker runs.
+    const finalised = await finalizePendingComputerExecution(admin, task.id, task.organization_id, task.run_claim);
+    if (finalised) return json(finalised.status === 'running' ? 202 : 200, {
+      status: finalised.status, pending: finalised.status === 'running', retry_safe: false,
+      computer_execution: finalised.result?.computer_execution ?? task.result.computer_execution });
+    return json(409, { error: 'computer_receipt_state_changed', retry_safe: false });
+  }
   if (!RUNNABLE.includes(task.status)) return json(409, { error: 'not_runnable', status: task.status });
   if (!task.assigned_agent_id) return json(422, { error: 'no_agent' });
   const { data: agent } = await admin.from('agents')
@@ -211,7 +222,7 @@ Deno.serve(async (req) => {
     .eq('id', task.assigned_agent_id).eq('organization_id', task.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
-  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', task.organization_id).maybeSingle();
+  const { data: orgPlan } = await admin.from('organizations').select('plan,plan_status,status').eq('id', task.organization_id).maybeSingle();
   // Learning from feedback (OpenJarvis's learning/routing): when the owner marked at least two of this agent's last five
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
   const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
@@ -825,6 +836,23 @@ Deno.serve(async (req) => {
           || currentTask.assigned_agent_id !== agent.id || currentTask.result?.reconcile_required === true) {
           return 'Server execution is no longer authorised. Describe the proposed work without running it.';
         }
+        try {
+          const selected = await selectWorkerOnVps({ requestId: crypto.randomUUID(), organizationId: task.organization_id,
+            kind: 'server_task', params: { goal: job }, devices: [], target: 'vps' }, name => Deno.env.get(name));
+          if (selected.worker.kind !== 'vps' || selected.job.kind !== 'server_task') return 'The VPS did not authorise this server job. No execution was started.';
+        } catch {
+          return 'The VPS worker dispatcher is unavailable. No server work was executed; do not substitute a local computer.';
+        }
+        const [{ data: selectedAgent }, { data: selectedTask }] = await Promise.all([
+          admin.from('agents').select('id,enabled,autonomy,agent_tools(*)').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('tasks').select('id,status,run_claim,assigned_agent_id,result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
+        ]);
+        if (!selectedAgent?.enabled || selectedAgent.autonomy === 'suggest'
+          || !(selectedAgent.agent_tools ?? []).some((t: any) => SERVER_POWERS.test(t.tool_name) && t.enabled && t.policy === 'allow')
+          || selectedTask?.status !== 'running' || selectedTask.run_claim !== claimed.run_claim
+          || selectedTask.assigned_agent_id !== agent.id || selectedTask.result?.reconcile_required === true) {
+          return 'Server authorisation changed after worker selection. No execution was started.';
+        }
         const headers = { 'content-type': 'application/json', authorization: `Bearer ${serverKey}` };
         // The server agent requires a model name: use the one it runs by default.
         const info = await fetch(`${serverUrl}/v1/info`, { headers, signal: AbortSignal.timeout(8_000) }).then(r => r.ok ? r.json() : {}).catch(() => ({}));
@@ -846,75 +874,189 @@ Deno.serve(async (req) => {
       };
     }
   }
-  // The company's own computers (power "computer_use"), under the owner's rules for each one (_shared/computer-policy.ts):
-  // reading, opening pages and allowed apps run at once and the employee gets the result; riskier steps wait for the owner;
-  // forbidden ones never happen. The Connector on the computer still applies its own local limits on top.
+  // The VPS selects a worker; the chosen local policy is checked again before
+  // enqueue. No first-device selection or fallback after an uncertain effect.
   const computerApprovals: { action: string; payload: Record<string, unknown>; risk: 'low' | 'medium' | 'high' }[] = [];
+  type ComputerReceipt = { job_id: string; request_id: string; device_id: string; device_name: string;
+    kind: string; params: Record<string, unknown>; run_claim: string; status: string;
+    dispatch: Record<string, unknown>; dispatch_request: Record<string, unknown> };
+  const computerReceipts: ComputerReceipt[] = [];
+  let computerPending = false;
+  let computerUncertain = false;
+  let computerExecutionReady = false;
+  const computerExecution = () => ({ contract: 'firbo-worker-execution/v1', status: computerUncertain ? 'unknown' : 'pending',
+    jobs: computerReceipts, ready_to_finalize: computerExecutionReady, verified_success: false });
+  const saveComputerReceipt = async (report: Record<string, unknown> = {}) => {
+    try {
+      const { data: current, error: readError } = await admin.from('tasks').select('id,organization_id,status,run_claim,result')
+        .eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle();
+      if (readError || current?.status !== 'running' || current?.run_claim !== claimed.run_claim
+        || current.id !== task.id || current.organization_id !== task.organization_id
+        || (current.result?.reconcile_required === true && current.result?.error !== 'computer_dispatch_unknown')) return false;
+      const prior = current.result;
+      if (prior !== null && (typeof prior !== 'object' || Array.isArray(prior))) return false;
+      let update = admin.from('tasks').update({ result: { ...(prior ?? {}), ...report,
+        computer_execution: computerExecution(), verified_success: false,
+        ...(computerUncertain ? { reconcile_required: true, error: 'computer_dispatch_unknown' } : {}) } })
+        .eq('id', task.id).eq('organization_id', task.organization_id).eq('status', 'running').eq('run_claim', claimed.run_claim);
+      update = prior === null ? update.is('result', null) : update.eq('result', JSON.stringify(prior));
+      const { data: saved, error } = await update.select('id,organization_id,status,run_claim,result').maybeSingle();
+      return !error && saved?.id === task.id && saved?.organization_id === task.organization_id
+        && saved?.status === 'running' && saved?.run_claim === claimed.run_claim
+        && saved?.result?.computer_execution?.contract === 'firbo-worker-execution/v1';
+    } catch { return false; }
+  };
   if (!free && usable('computer_use')) {
-    type Machine = { id: string; name: string; last_seen_at: string | null; capabilities: any; policy: ComputerPolicy };
-    const { data: devRows } = await admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy')
+    type Machine = { id: string; organization_id: string; name: string; platform?: string; paired: boolean;
+      revoked_at: string | null; last_seen_at: string | null; capabilities: any; agent_policy: any; policy: ComputerPolicy };
+    const { data: devRows, error: devicesError } = await admin.from('connector_devices')
+      .select('id, organization_id, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
       .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null);
     const machines: Machine[] = (devRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy) })).filter((d: Machine) => d.policy.enabled);
-    if (machines.length) {
-      // The power set to "approval" (the Studio default) means: every computer step waits for the owner in the Inbox.
-      const online = (d: Machine) => !!d.last_seen_at && Date.now() - Date.parse(d.last_seen_at) < 90_000;
-      const kindsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.job_kinds) ? d.capabilities.job_kinds : []);
-      const rootsOf = (d: Machine): string[] => (Array.isArray(d.capabilities?.roots) ? d.capabilities.roots : []);
-      const about = machines.map(d => `"${flat(d.name, 40)}" (${online(d) ? 'online' : 'offline'}; can: ${kindsOf(d).join(', ') || 'nothing yet'}; folders: ${rootsOf(d).map(r => flat(r, 80)).join(', ') || 'none'}; apps it opens without asking: ${d.policy.apps.slice(0, 12).join(', ')})`).join('; ');
-      toolHelp = { ...(toolHelp ?? {}), computer: `{"action": "computer", "input": "open_app Safari" or "open_url https://..." or "list <folder>" or "read <file>" or "write <new file> :: <text>" or "run <command>" or "shortcut <name>" or "browse [{\"action\":\"open\",\"url\":\"https://...\"},{\"action\":\"read\"}]" (steps: open, read, click, fill, scroll; the owner approves the plan on the computer)} works on the company's computer: ${about}. Opening pages and allowed apps, listing and reading files run at once and you get the result; other steps go to the owner for approval. Use paths inside the listed folders. To do real work inside an app (Excel, Numbers, Word, Pages, Keynote, Mail), use "run osascript -e '...'" with ONE complete AppleScript that does the whole job: open the app, create or open the file, fill in the data, save it in an allowed folder, and for Mail make a draft (never send). Save files with a full path inside one of the listed folders (with no folders listed, use ~/Documents). It goes to the owner for approval once and runs on the computer; you will not see its output in this task, so in your report say exactly what the script does and where the file will be. Work on the computer only as computer steps: never put a script or a computer job in the final "actions" list, where it cannot run. If the computer cannot open apps directly, "run open -a \"Microsoft Excel\"" works too. Never try passwords, banking, payments or system settings.` };
+    if (!devicesError && machines.length) {
+      const online = (d: Machine) => !!d.last_seen_at && Number.isFinite(Date.parse(d.last_seen_at))
+        && Date.now() - Date.parse(d.last_seen_at) >= -5000 && Date.now() - Date.parse(d.last_seen_at) < 60_000;
+      const kindsOf = (d: Machine): string[] => Array.isArray(d.capabilities?.job_kinds) ? d.capabilities.job_kinds : [];
+      const rootsOf = (d: Machine): string[] => Array.isArray(d.capabilities?.roots) ? d.capabilities.roots : [];
+      const about = machines.map(d => `"${flat(d.name, 40)}" (${d.platform ?? 'unknown'}; ${online(d) ? 'online' : 'offline'}; can: ${kindsOf(d).join(', ') || 'nothing yet'}; folders: ${rootsOf(d).map(r => flat(r, 80)).join(', ') || 'none'})`).join('; ');
+      toolHelp = { ...(toolHelp ?? {}), computer: `{"action":"computer","input":"desktop <complete natural-language goal>"} asks the VPS to select a capable company worker for visible app/browser, mouse and keyboard work. Use a complete goal and the requested verification (for playback, observe the clock advancing). For a specific worker use input as JSON text, e.g. {"kind":"desktop_task","goal":"Open Chrome and find the requested page","target":"mac"}. Workers: ${about}. Other explicit steps: "open_app Safari", "open_url https://...", "list <folder>", "read <file>", "write <new file> :: <text>", "run <command>", "shortcut <name>", "browse [{\"action\":\"open\",\"url\":\"https://...\"},{\"action\":\"read\"}]". Use native desktop goals for full app work; use shell only when the task explicitly calls for a command. All work follows the selected device's local permissions and this employee's own power policy. Steps requiring approval go to Inbox for that exact worker. A queued/running receipt is pending: do not repeat the step, switch workers or claim completion. Work only through this tool; a final actions proposal does not execute computer work.` };
+      const computerAttempts = new Map<string, string>();
       loopTools.computer = async (input) => {
+        if (computerPending || computerUncertain) return 'A computer job is already pending verification. Do not queue another effect or switch worker; report the existing receipt.';
+        if (computerApprovals.length) return 'The exact chosen computer job is waiting for owner approval. Finish the report; do not dispatch another step before that decision.';
         const asked = parseComputerRequest(input);
-        if ('error' in asked) return `Could not understand that (${asked.error}). Write one step, e.g. "open_app Safari", "list Documents" or "read notes.txt".`;
-        const picked = machines.find(d => online(d) && kindsOf(d).includes(asked.kind)) ?? machines.find(d => kindsOf(d).includes(asked.kind));
-        if (!picked) return `No company computer can "${asked.kind}" right now: the owner has to allow it in the Connector on that computer. Do not try again.`;
-        // The owner may change the rules or remove the computer while the employee works: read them again before every step.
-        const [{ data: fresh }, { data: freshAgent }, { data: freshTool }, { data: freshTask }] = await Promise.all([
-          admin.from('connector_devices').select('id, name, last_seen_at, capabilities, agent_policy, paired, revoked_at')
-            .eq('id', picked.id).eq('organization_id', task.organization_id).maybeSingle(),
+        if ('error' in asked) return `Could not understand that (${asked.error}). Use "desktop <goal>" for native work or one explicit computer step.`;
+        const signature = JSON.stringify(asked);
+        const previous = computerAttempts.get(signature);
+        if (previous) return previous;
+        // Read membership, agent, task and candidates at the actual tool call.
+        const [{ data: currentRows, error: currentDevicesError }, { data: currentAgent }, { data: currentTool },
+          { data: currentTask }, { data: currentMember }, { data: currentOrg, error: currentOrgError },
+          { data: activeJobs, error: activeJobsError }] = await Promise.all([
+          admin.from('connector_devices').select('id, organization_id, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
+            .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null),
           admin.from('agents').select('id, enabled, autonomy').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
           admin.from('agent_tools').select('enabled, policy').eq('agent_id', agent.id).eq('organization_id', task.organization_id).eq('tool_name', 'computer_use').maybeSingle(),
           admin.from('tasks').select('id, status, run_claim, assigned_agent_id, result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('organization_members').select('role').eq('organization_id', task.organization_id).eq('user_id', user.id).maybeSingle(),
+          admin.from('organizations').select('plan,plan_status,status').eq('id', task.organization_id).maybeSingle(),
+          admin.from('connector_jobs').select('device_id').eq('organization_id', task.organization_id).in('status', ['queued', 'running']).limit(5000),
+        ]);
+        if (!currentTask || currentTask.status !== 'running' || currentTask.run_claim !== claimed.run_claim
+          || currentTask.assigned_agent_id !== agent.id || currentTask.result?.reconcile_required === true
+          || !currentMember || !WRITERS.includes(currentMember.role)) return 'This task is no longer authorised to use a company computer. Stop without another computer step.';
+        if (!currentAgent?.enabled || !currentTool?.enabled || !['allow', 'approval', 'approve'].includes(currentTool.policy)) return 'The owner turned this employee computer power off. Do not try again.';
+        if (currentAgent.autonomy === 'suggest' && !['list', 'read'].includes(asked.kind)) return 'You may only suggest this computer step: describe it in your report for the owner.';
+        if (currentDevicesError || activeJobsError) return 'The current worker inventory or load is unavailable. No job was queued; do not select a different worker.';
+        if (['desktop_task', 'browser_task', 'open_app', 'shortcut', 'exec'].includes(asked.kind)
+          && (currentOrgError || currentOrg?.status !== 'active' || !['business', 'enterprise'].includes(currentOrg?.plan)
+            || !['active', 'trialing'].includes(currentOrg?.plan_status))) return 'Advanced computer work requires an active Business or Enterprise plan. No job was queued.';
+        if (asked.kind === 'desktop_task' && (!['owner', 'admin'].includes(currentMember.role)
+          || !Deno.env.get('FIRBO_DESKTOP_VISION_MODEL') || !Deno.env.get('FIRBO_DESKTOP_PRICE_IN_PER_M')
+          || !Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))) return 'Native desktop work is not configured or this caller is not authorised. No job was queued.';
+        const candidates = (currentRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy),
+          load: Array.isArray(activeJobs) ? activeJobs.filter((j: any) => j.device_id === d.id).length : 0 }))
+          .filter((d: Machine) => d.organization_id === task.organization_id && d.policy.enabled && online(d));
+        const dispatchInput: WorkerRequest = { requestId: crypto.randomUUID(), organizationId: task.organization_id,
+          kind: asked.kind, params: asked.params, devices: candidates,
+          ...(asked.target ? { target: asked.target } : {}), ...(asked.deviceId ? { deviceId: asked.deviceId } : {}),
+          ...(typeof asked.params.goal === 'string' ? { goal: asked.params.goal }
+            : asked.kind === 'browser_task' ? { goal: `Perform this exact browser plan: ${JSON.stringify(asked.params)}` } : {}) };
+        let selection;
+        try {
+          selection = await selectWorkerOnVps(dispatchInput, name => Deno.env.get(name));
+        } catch (error) {
+          const reason = error instanceof Error && /^[a-z0-9_]{1,80}$/.test(error.message) ? error.message : 'worker_selection_unavailable';
+          const message = `The VPS could not select an authorised worker (${reason}). No job was queued. Do not silently substitute another computer.`;
+          computerAttempts.set(signature, message);
+          return message;
+        }
+        if (selection.worker.kind !== 'computer') return 'This computer tool received a server worker decision. No local job was queued.';
+        const execution = { kind: selection.job.kind as ComputerKind, params: selection.job.params };
+        // Recheck the exact chosen worker and claim after the VPS decision.
+        const [{ data: fresh }, { data: freshAgent }, { data: freshTool }, { data: freshTask },
+          { data: freshMember }, { data: freshOrg, error: freshOrgError }] = await Promise.all([
+          admin.from('connector_devices').select('id, organization_id, name, platform, last_seen_at, capabilities, agent_policy, paired, revoked_at')
+            .eq('id', selection.worker.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('agents').select('id, enabled, autonomy').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('agent_tools').select('enabled, policy').eq('agent_id', agent.id).eq('organization_id', task.organization_id).eq('tool_name', 'computer_use').maybeSingle(),
+          admin.from('tasks').select('id, status, run_claim, assigned_agent_id, result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('organization_members').select('role').eq('organization_id', task.organization_id).eq('user_id', user.id).maybeSingle(),
+          admin.from('organizations').select('plan,plan_status,status').eq('id', task.organization_id).maybeSingle(),
         ]);
         if (!freshTask || freshTask.status !== 'running' || freshTask.run_claim !== claimed.run_claim
-          || freshTask.assigned_agent_id !== agent.id || freshTask.result?.reconcile_required === true) {
-          return 'This task is no longer authorised to use a company computer. Stop and finish the report without another computer step.';
-        }
-        if (!freshAgent?.enabled || !freshTool?.enabled || freshTool.policy === 'block') {
-          return 'The owner turned this employee computer power off. Do not try again; say so in the report.';
-        }
-        if (!fresh || !fresh.paired || fresh.revoked_at) return `"${picked.name}" is no longer connected to the company. Do not try again.`;
+          || freshTask.assigned_agent_id !== agent.id || freshTask.result?.reconcile_required === true
+          || !freshMember || !WRITERS.includes(freshMember.role)) return 'This task is no longer authorised to use a company computer. Stop without another step.';
+        if (!freshAgent?.enabled || !freshTool?.enabled || !['allow', 'approval', 'approve'].includes(freshTool.policy)) return 'The owner turned this employee computer power off. Do not try again.';
+        if (!fresh || fresh.organization_id !== task.organization_id || !fresh.paired || fresh.revoked_at
+          || !candidates.some((d: Machine) => d.id === fresh.id)) return 'The chosen worker is no longer connected to this company. Do not substitute another worker.';
         const machine: Machine = { ...fresh, policy: cleanPolicy(fresh.agent_policy) };
-        if (!kindsOf(machine).includes(asked.kind)) return `"${machine.name}" cannot "${asked.kind}" any more. Do not try again.`;
-        const askFirst = freshTool.policy === 'approval' || freshTool.policy === 'approve';
-        const { verdict, reason } = decideForEmployee(asked.kind, asked.params, machine.policy,
-          { askFirst, suggestOnly: freshAgent.autonomy === 'suggest' });
-        if (verdict === 'deny') return `Not allowed on "${machine.name}" (${reason}). Do not try again; say in the report what you could not do.`;
-        if (verdict === 'suggest') return `You may only suggest this step (${reason}): describe it in your report for the owner.`;
+        if (!online(machine) || !kindsOf(machine).includes(execution.kind)) return `"${machine.name}" cannot do that job right now. Do not substitute another worker.`;
+        if (['desktop_task', 'browser_task', 'open_app', 'shortcut', 'exec'].includes(execution.kind)
+          && (freshOrgError || freshOrg?.status !== 'active' || !['business', 'enterprise'].includes(freshOrg?.plan)
+            || !['active', 'trialing'].includes(freshOrg?.plan_status))) return 'The advanced computer entitlement changed. No job was queued.';
+        if (execution.kind === 'desktop_task' && (machine.capabilities?.full_control !== true || !['owner', 'admin'].includes(freshMember.role)
+          || !Deno.env.get('FIRBO_DESKTOP_VISION_MODEL') || !Deno.env.get('FIRBO_DESKTOP_PRICE_IN_PER_M')
+          || !Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))) return 'Native Full Control is no longer authorised or configured on the chosen worker.';
+        const { verdict, reason } = decideForEmployee(execution.kind, execution.params, machine.policy,
+          { askFirst: freshTool.policy !== 'allow', suggestOnly: freshAgent.autonomy === 'suggest' });
+        if (verdict === 'deny') return `Not allowed on "${machine.name}" (${reason}). Do not try again.`;
+        if (verdict === 'suggest') return `You may only suggest this step (${reason}): describe it in your report.`;
         if (verdict === 'approve') {
           if (computerApprovals.length >= 3) return 'Enough computer steps are already waiting for approval: finish your report now.';
-          computerApprovals.push({ action: `computer_${asked.kind}`, risk: ['exec', 'shortcut', 'write', 'browser_task'].includes(asked.kind) ? 'high' : 'medium',
-            payload: { ...asked.params, device_id: machine.id, device_name: machine.name, reason, ai_generated: true, disclosure: DISCLOSURE[lang] } });
-          return `Sent to the owner for approval (${reason}) on "${machine.name}". It runs once approved; you will not see its result in this task, so finish your report and say what is waiting for approval.`;
+          computerApprovals.push({ action: `computer_${execution.kind}`, risk: ['exec', 'shortcut', 'write', 'browser_task', 'desktop_task'].includes(execution.kind) ? 'high' : 'medium',
+            payload: { ...execution.params, device_id: machine.id, device_name: machine.name, reason, worker_request_id: selection.request_id,
+              dispatch_request: dispatchRequestRecord(dispatchInput),
+              ai_generated: true, disclosure: DISCLOSURE[lang] } });
+          const message = `Sent to the owner for approval (${reason}) on "${machine.name}". The exact chosen job runs only after approval; do not claim it completed.`;
+          computerAttempts.set(signature, message);
+          return message;
         }
-        if (!online(machine)) return `"${machine.name}" is offline right now (asleep or the Connector is not running). Say so in your report.`;
-        const { data: job, error } = await admin.from('connector_jobs').insert({ organization_id: task.organization_id, device_id: machine.id, created_by: user.id,
-          kind: asked.kind, params: asked.params, agent_task_id: task.id, agent_id: agent.id, origin: 'agent',
-          agent_run_claim: claimed.run_claim, agent_policy_snapshot: fresh.agent_policy ?? {},
-          agent_capabilities_snapshot: fresh.capabilities ?? {} }).select('id').single();
-        if (error || !job) throw new Error('computer_job_not_saved');
-        // Wait for the result, leaving time for the final answer.
+        const receipt: ComputerReceipt = { job_id: selection.request_id, request_id: selection.request_id,
+          device_id: machine.id, device_name: machine.name, kind: execution.kind, params: execution.params, run_claim: claimed.run_claim, status: 'queued',
+          dispatch: { contract: selection.contract, request_id: selection.request_id, organization_id: selection.organization_id,
+            worker: selection.worker, reason: selection.reason }, dispatch_request: dispatchRequestRecord(dispatchInput) };
+        if (JSON.stringify([...computerReceipts, receipt]).length > 350_000) return 'This task has reached the durable receipt size limit. No further job was submitted; report the confirmed work so far.';
+        computerReceipts.push(receipt);
+        computerPending = true;
+        // Store the correlated intent before enqueue so a very fast terminal
+        // report can finalise it and a lost HTTP response cannot cause a replay.
+        if (!await saveComputerReceipt()) {
+          computerReceipts.pop(); computerPending = false;
+          computerUncertain = true;
+          return 'The computer dispatch receipt could not be saved. No job was submitted; stop computer work and request review.';
+        }
+        try {
+          const { data: job, error } = await admin.from('connector_jobs').insert({ id: receipt.job_id,
+            dispatch_request: receipt.dispatch_request,
+            organization_id: task.organization_id, device_id: machine.id, created_by: user.id,
+            kind: execution.kind, params: execution.params, agent_task_id: task.id, agent_id: agent.id, origin: 'agent',
+            agent_run_claim: claimed.run_claim, agent_policy_snapshot: fresh.agent_policy ?? {},
+            agent_capabilities_snapshot: fresh.capabilities ?? {} }).select('id').single();
+          if (error || job?.id !== receipt.job_id) throw new Error('computer_dispatch_unknown');
+        } catch {
+          receipt.status = 'unknown'; computerUncertain = true;
+          await saveComputerReceipt();
+          return `The dispatch of job ${receipt.job_id} is uncertain. Do not retry or switch worker; verify that exact receipt in Computers.`;
+        }
+        // Native goals can take minutes; the Connector keeps working after this
+        // Edge request ends. Never withdraw or call them done after 45 seconds.
+        if (execution.kind === 'desktop_task') return `Pending native job ${receipt.job_id} on "${machine.name}". The VPS selected this worker; the Connector has not yet returned a confirmed result. Report pending, not completed; do not issue another job.`;
         const until = Math.min(Date.now() + 45_000, requestStarted + WALL_CLOCK_MS - 60_000);
         while (Date.now() < until) {
           await new Promise(r => setTimeout(r, 1500));
-          const { data: row } = await admin.from('connector_jobs').select('status, result, error').eq('id', job.id).maybeSingle();
-          if (row?.status === 'done') return describeComputerResult(asked.kind, row.result);
-          if (row?.status === 'error') return `The computer did not do it: ${flat(row.error, 120)}.`;
-          if (row?.status === 'cancelled') return 'The job was cancelled on the computer side.';
+          const { data: row, error } = await admin.from('connector_jobs').select('id,status,result,error')
+            .eq('id', receipt.job_id).eq('organization_id', task.organization_id).eq('agent_task_id', task.id)
+            .eq('agent_id', agent.id).eq('agent_run_claim', claimed.run_claim).maybeSingle();
+          if (error) break;
+          if (row?.status === 'done' || row?.status === 'error' || row?.status === 'cancelled') {
+            receipt.status = row.status; computerPending = false;
+            if (row.status === 'done') return describeComputerResult(execution.kind, row.result);
+            return row.status === 'cancelled' ? 'The job was cancelled on the computer side.' : `The computer did not do it: ${flat(row.error, 120)}.`;
+          }
+          if (row?.status === 'running') receipt.status = 'running';
         }
-        // A job nobody picked up is withdrawn, so it can never run later without anyone watching.
-        const { data: withdrawn } = await admin.from('connector_jobs').update({ status: 'cancelled', finished_at: new Date().toISOString() })
-          .eq('id', job.id).eq('status', 'queued').select('id').maybeSingle();
-        return withdrawn ? `"${machine.name}" did not pick up the job in time; it was withdrawn.` : `Still running on "${machine.name}"; its result will appear in Computers.`;
+        return `Pending job ${receipt.job_id} on "${machine.name}"; its confirmed result will appear in Computers. Do not retry or substitute another worker.`;
       };
     }
   }
@@ -951,7 +1093,7 @@ Deno.serve(async (req) => {
     // Quality pass: a draft below the standard of its deliverable is rewritten once (same facts) while there is time.
     const draft = parseModelJson(text);
     const left = requestStarted + WALL_CLOCK_MS - Date.now() - 5_000;
-    if (standard && isFinalAnswer(text) && needsPolish(deliverable, draft.report, slideCount) && left > 40_000) {
+    if (!computerPending && !computerUncertain && !computerApprovals.length && standard && isFinalAnswer(text) && needsPolish(deliverable, draft.report, slideCount) && left > 40_000) {
       const better = await callOnce([
         { role: 'system', content: polishSystem(deliverable, LANG_NAME[lang], slideCount) },
         { role: 'user', content: `TASK:\n${task.title}\n${String(task.description ?? '').slice(0, 1500)}\n\nCOMPANY: ${org?.name ?? ''}. ${profile.goal ? `Goal: ${profile.goal}.` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}\n\nMATERIAL:\n${evidence.join('\n\n').slice(-7000) || '(none)'}\n\nDRAFT:\n${text.slice(0, 9000)}` },
@@ -971,6 +1113,39 @@ Deno.serve(async (req) => {
       reason: inferenceReconcileReason ?? 'provider_result_unknown', attempts: attemptOrdinal }));
     return json(503, { error: 'reconciliation_required', reason: inferenceReconcileReason ?? 'provider_result_unknown',
       retry_safe: false, reconciliation_saved: reconciliationSaved, accounting: { attempts: inferenceReceipts }, routing });
+  }
+  if (computerPending || computerUncertain) {
+    // A model's final prose cannot turn an unfinished effect into a completed
+    // task. Keep the original claim until a correlated terminal device report.
+    const draft = text ? parseModelJson(text) : null;
+    computerExecutionReady = !computerUncertain;
+    const saved = await saveComputerReceipt({ ai_generated: true,
+      summary: computerUncertain ? 'Computer dispatch needs verification.' : 'Computer work is pending its confirmed result.',
+      report: 'The selected worker has not returned a terminal receipt. Work remains pending; do not repeat it.',
+      ...(draft ? { unverified_draft: { summary: draft.summary, report: draft.report } } : {}),
+      proposed_actions: draft?.actions ?? [], accounting: { attempts: inferenceReceipts },
+      routing, ran_at: new Date().toISOString() });
+    if (!saved) {
+      // A fast device may already have finalised the same claim. Observe it;
+      // never overwrite that receipt or submit a second computer job.
+      const { data: current } = await admin.from('tasks').select('id,status,run_claim,result')
+        .eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle();
+      if (['completed', 'failed', 'blocked'].includes(current?.status)
+        && current?.result?.computer_execution?.jobs?.some((job: any) => computerReceipts.some(receipt => receipt.job_id === job.job_id))) {
+        return json(200, { status: current.status, computer_execution: current.result.computer_execution, retry_safe: false, routing });
+      }
+      return json(503, { error: 'computer_receipt_save_failed', retry_safe: false,
+        computer_execution: computerExecution(), routing });
+    }
+    if (!computerUncertain) {
+      const finalised = await finalizePendingComputerExecution(admin, task.id, task.organization_id, claimed.run_claim);
+      if (finalised && finalised.status !== 'running') return json(200, {
+        status: finalised.status, pending: false, retry_safe: false,
+        computer_execution: finalised.result?.computer_execution, routing });
+    }
+    return json(computerUncertain ? 503 : 202, { status: 'running', pending: true,
+      ...(computerUncertain ? { error: 'computer_dispatch_unknown' } : {}),
+      retry_safe: false, computer_execution: computerExecution(), routing });
   }
   if (!text || !used) {
     const saved = await publish('failed', { error: 'model_error', message: lastError, routing, reconcile_required: !!free || (!!gateway && !planFree) });

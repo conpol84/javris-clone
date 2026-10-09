@@ -1,20 +1,8 @@
 import { Link } from 'react-router';
 import { useI18n } from '../../i18n/I18nProvider';
-
-/** Dashboard URLs are public navigation targets, never API keys or loopback services. */
-function dashboardUrl(value: unknown): string | null {
-  if (typeof value !== 'string' || !value.trim()) return null;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
-      || !url.hostname.includes('.') || /^(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(url.hostname)
-      || url.hostname.endsWith('.localhost') || url.hostname.endsWith('.local')) return null;
-    return url.href;
-  } catch { return null; }
-}
+import { dashboardUrl, JARVIS_DASHBOARD } from '../../lib/company/service-dashboards';
 
 const gateway = dashboardUrl(import.meta.env.VITE_OMNIROUTE_URL) || 'https://gateway.firboai.app/';
-const jarvis = dashboardUrl(import.meta.env.VITE_SERVER_AGENT_DASHBOARD) || 'https://jarvis.firboai.app/';
 const free = dashboardUrl(import.meta.env.VITE_FREELLMAPI_DASHBOARD_URL);
 
 /** Mount only inside platform-admin surfaces. Availability is not inferred from a link. */
@@ -34,7 +22,7 @@ export function ServiceAccessPanel() {
       <div className="rounded-xl border border-white/10 p-3">
         <h3 className="font-semibold">Jarvis</h3>
         <p className="fb-muted mt-1 text-sm">{el ? 'Συνομιλία, εργαλεία και έλεγχος εκτέλεσης.' : 'Chat, tools and execution checks.'}</p>
-        <div className="mt-3 flex flex-wrap gap-2"><Link className="fb-btn fb-btn--primary" to="/admin?tab=jarvis">{el ? 'Άνοιγμα Jarvis' : 'Open Jarvis'}</Link>{external(jarvis, 'Dashboard')}</div>
+        <div className="mt-3 flex flex-wrap gap-2"><Link className="fb-btn fb-btn--primary" to="/admin?tab=jarvis">{el ? 'Άνοιγμα Jarvis' : 'Open Jarvis'}</Link>{external(JARVIS_DASHBOARD, 'Dashboard')}</div>
       </div>
       <div className="rounded-xl border border-white/10 p-3">
         <h3 className="font-semibold">FreeLLMAPI</h3>

@@ -20,6 +20,9 @@ const CODING = [
   'Before changing files, say the plan in one or two lines. After changing, show the diff (git diff) and how you tested it.',
   'Never push, deploy or delete a repository unless the message explicitly asks for it.',
 ].join('\n');
+// Opt in to the installed native-agent budget across all model turns. The
+// browser cannot override this bound; provider pricing/admission is separate.
+const MAX_OUTPUT_TOKENS = 2400;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -57,7 +60,8 @@ Deno.serve(async (req) => {
       const history = (Array.isArray(body.history) ? body.history : []).slice(-8)
         .filter(m => (m?.role === 'user' || m?.role === 'assistant') && typeof m.content === 'string').map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
       const res = await fetch(`${base}/v1/chat/completions`, { method: 'POST', headers, signal: AbortSignal.timeout(140_000),
-        body: JSON.stringify({ model, messages: [...coding, ...history, { role: 'user', content: message }], stream: false, firbo_include_execution: true }) });
+        body: JSON.stringify({ model, messages: [...coding, ...history, { role: 'user', content: message }], stream: false,
+          firbo_include_execution: true, max_tokens: MAX_OUTPUT_TOKENS }) });
       if (!res.ok) return json(502, { error: `jarvis_http_${res.status}` });
       const out = await res.json();
       return json(200, { reply: String(out?.choices?.[0]?.message?.content ?? ''), model: out?.model ?? null, ms: Date.now() - started,
