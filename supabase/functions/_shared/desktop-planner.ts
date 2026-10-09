@@ -13,9 +13,21 @@ export async function desktopAuthorization(db: any, device: any, job: any) {
     db.from('organizations').select('plan,plan_status,status').eq('id',device.organization_id).maybeSingle(),
     db.from('organization_members').select('role').eq('organization_id',device.organization_id).eq('user_id',job.created_by).maybeSingle(),
   ]);
-  return !oe && !me && desktopEntitled(org) && ['owner','admin'].includes(member?.role)
+  const allowed = !oe && !me && desktopEntitled(org) && ['owner','admin'].includes(member?.role)
     && device.agent_policy?.enabled === true && device.agent_policy?.control === 'full' && withinHours(cleanPolicy(device.agent_policy))
     && device.capabilities?.full_control === true && device.capabilities?.job_kinds?.includes('desktop_task');
+  if(!allowed)return false;
+  if(job.origin==='agent'){
+    const[{data:task,error:te},{data:agent,error:ae},{data:tool,error:pe}]=await Promise.all([
+      db.from('tasks').select('id,status,run_claim,assigned_agent_id,result').eq('id',job.agent_task_id).eq('organization_id',device.organization_id).maybeSingle(),
+      db.from('agents').select('id,enabled,autonomy').eq('id',job.agent_id).eq('organization_id',device.organization_id).maybeSingle(),
+      db.from('agent_tools').select('enabled,policy').eq('agent_id',job.agent_id).eq('organization_id',device.organization_id).eq('tool_name','computer_use').maybeSingle(),
+    ]);
+    return !te&&!ae&&!pe&&!!job.agent_run_claim&&task?.status==='running'&&task.run_claim===job.agent_run_claim
+      &&task.assigned_agent_id===job.agent_id&&task.result?.reconcile_required!==true&&agent?.enabled===true&&agent.autonomy!=='suggest'
+      &&tool?.enabled===true&&tool.policy==='allow';
+  }
+  return job.origin===undefined||job.origin==='owner'||job.origin==='approval';
 }
 
 export function validateDesktopAction(value: any): Record<string,unknown> {
@@ -47,7 +59,9 @@ export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:
   // combo as a vision model or guess its price.
   const model=env('FIRBO_DESKTOP_VISION_MODEL');
   if(!model)throw new Error('desktop_vision_not_configured');
-  const {data:agent,error}=await db.from('agents').select('id').eq('organization_id',device.organization_id).eq('type','ceo').eq('enabled',true).limit(1).maybeSingle();
+  let agentQuery=db.from('agents').select('id').eq('organization_id',device.organization_id).eq('enabled',true);
+  agentQuery=job.origin==='agent'?agentQuery.eq('id',job.agent_id):agentQuery.eq('type','ceo');
+  const {data:agent,error}=await agentQuery.limit(1).maybeSingle();
   if(error||!agent)throw new Error('desktop_ceo_unavailable');
   const desktopEnv=(name:string)=>name==='OMNIROUTE_PRICE_IN_PER_M'?env('FIRBO_DESKTOP_PRICE_IN_PER_M'):name==='OMNIROUTE_PRICE_OUT_PER_M'?env('FIRBO_DESKTOP_PRICE_OUT_PER_M'):env(name);
   const route=gatewayForAgent({id:agent.id,model:`omniroute:${model}`},desktopEnv,{force:true});

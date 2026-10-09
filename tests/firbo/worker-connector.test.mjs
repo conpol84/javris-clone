@@ -1,0 +1,21 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {makeHandler,ORG,DEVICE} from './helpers/connector-handler.mjs';
+const ID='44444444-4444-4444-8444-444444444444';
+async function owner(){const r=await makeHandler();r.state.user={id:'owner'};r.state.rows.organization_members.push({organization_id:ORG,user_id:'owner',role:'owner'});Object.assign(r.state.rows.connector_devices[0],{platform:'linux x64',last_seen_at:new Date().toISOString(),agent_policy:{enabled:true,control:'full'},capabilities:{full_control:true,job_kinds:['desktop_task','exec']}});return r;}
+const body={action:'create_job',request_id:ID,device_id:DEVICE,kind:'exec',params:{command:'pwd',cwd:''},confirm:true};
+test('the actual Connector binds deterministic id and same request reuses one job',async()=>{const r=await owner();const a=await r.invoke(body);assert.equal(a.status,200);assert.equal((await a.json()).job_id,ID);const b=await r.invoke(body);assert.equal(b.status,200);assert.equal((await b.json()).duplicate,true);assert.equal(r.state.rows.connector_jobs.length,1);});
+test('same id with changed params conflicts and cannot overwrite the first executor',async()=>{const r=await owner();await r.invoke(body);const res=await r.invoke({...body,params:{command:'whoami',cwd:''}});assert.equal(res.status,409);assert.equal(r.state.rows.connector_jobs.length,1);assert.equal(r.state.rows.connector_jobs[0].params.command,'pwd');});
+test('request id is validated before an enqueue',async()=>{const r=await owner();assert.equal((await r.invoke({...body,request_id:'not-a-uuid'})).status,400);assert.equal(r.state.rows.connector_jobs.length,0);});
+test('completed request is not queued again and queue load does not change identity',async()=>{const r=await owner();await r.invoke(body);r.state.rows.connector_jobs[0].status='done';for(let i=0;i<10;i++)r.state.rows.connector_jobs.push({id:'other'+i,device_id:DEVICE,status:'queued'});assert.equal((await r.invoke(body)).status,200);assert.equal(r.state.rows.connector_jobs.length,11);});
+test('atomic dispatch record binds original adapted app as well as native goal',async()=>{const r=await owner();const record={contract:'firbo-dispatch-request/v1',request_id:ID,organization_id:ORG,kind:'open_app',params:{app:'Chrome'},goal:'Open browser'};
+ const native={...body,kind:'desktop_task',params:{goal:'Open browser'},dispatch_request:record};assert.equal((await r.invoke(native)).status,200);
+ const altered=await r.invoke({...native,dispatch_request:{...record,params:{app:'Safari'}}});assert.equal(altered.status,409);assert.equal(r.state.rows.connector_jobs.length,1);assert.deepEqual(r.state.rows.connector_jobs[0].dispatch_request,record);
+});
+test('another tenant cannot reuse or replace an existing request',async()=>{const r=await owner();await r.invoke(body);r.state.rows.organization_members=[];assert.equal((await r.invoke(body)).status,403);assert.equal(r.state.rows.connector_jobs.length,1);});
+test('native Inbox approval cannot change VPS selected device or stored goal',async()=>{const r=await owner();r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',payload:{goal:'Find the requested page',device_id:DEVICE}}];
+ const response=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,payload:{goal:'Different task',device_id:DEVICE}});assert.equal(response.status,409);assert.equal(r.state.decisions,undefined);
+});
+test('native approval reaches the transactional RPC with exact stored goal and worker',async()=>{const r=await owner();const payload={goal:'Find the requested page',device_id:DEVICE};r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',payload}];
+ const res=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,payload});assert.equal(res.status,409);assert.equal(r.state.decisions[0].p_kind,'desktop_task');assert.deepEqual(r.state.decisions[0].p_params,{goal:payload.goal});assert.equal(r.state.decisions[0].p_device,DEVICE);
+});

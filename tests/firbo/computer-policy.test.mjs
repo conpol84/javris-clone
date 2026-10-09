@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanPolicy, decideComputer, decideForEmployee, isSafeCommand, parseComputerRequest, withinHours, describeComputerResult, DEFAULT_POLICY } from '../../supabase/functions/_shared/computer-policy.ts';
+import { cleanPolicy, decideComputer, decideForEmployee, isSafeCommand, parseComputerRequest, withinHours, describeComputerResult, desktopTaskParams, DEFAULT_POLICY } from '../../supabase/functions/_shared/computer-policy.ts';
 
 const on = cleanPolicy({ enabled: true });
 
@@ -105,4 +105,30 @@ test('turning the computer off for AI is honoured on the very next step', () => 
   const before = cleanPolicy({ enabled: true });
   assert.equal(decideForEmployee('list', { path: '' }, before, {}).verdict, 'auto');
   assert.equal(decideForEmployee('list', { path: '' }, cleanPolicy({}), {}).verdict, 'deny');
+});
+
+test('native goals retain exact Unicode and an explicit worker selector', () => {
+  const goal = 'Άνοιξε YouTube, βρες Μαζωνάκης Ώρες Μικρές και έλεγξε τον χρόνο αναπαραγωγής.';
+  assert.deepEqual(parseComputerRequest(`desktop ${goal}`), { kind: 'desktop_task', params: { goal } });
+  assert.deepEqual(parseComputerRequest(JSON.stringify({ kind: 'desktop_task', goal, target: 'mac' })),
+    { kind: 'desktop_task', params: { goal }, target: 'mac' });
+  const device_id = '13131313-1313-4313-8313-131313131313';
+  assert.deepEqual(parseComputerRequest(JSON.stringify({ kind: 'read', path: 'Documents/report.md', device_id })),
+    { kind: 'read', params: { path: 'Documents/report.md' }, deviceId: device_id });
+  assert.equal(desktopTaskParams({ goal, actions: [{ action: 'click' }] }), null);
+  for (const bad of ['', 'x'.repeat(4001), 'open\0chrome']) assert.ok('error' in parseComputerRequest(`desktop ${bad}`));
+  assert.ok('error' in parseComputerRequest('{"kind":"desktop_task","goal":"Open Chrome","device_id":"wrong"}'));
+});
+
+test('native desktop requires full local policy while employee approval and suggest scope remain separate', () => {
+  const params = { goal: 'Open Chrome and read the requested page.' };
+  assert.deepEqual(decideForEmployee('desktop_task', params, on, {}), { verdict: 'deny', reason: 'desktop_full_control_required' });
+  const full = cleanPolicy({ enabled: true, control: 'full' });
+  assert.equal(decideForEmployee('desktop_task', params, full, {}).verdict, 'auto');
+  assert.equal(decideForEmployee('desktop_task', params, full, { askFirst: true }).verdict, 'approve');
+  assert.equal(decideForEmployee('desktop_task', params, full, { suggestOnly: true }).verdict, 'suggest');
+  assert.equal(decideForEmployee('list', {}, full, { askFirst: true }).verdict, 'approve');
+  assert.equal(decideForEmployee('desktop_task', {}, full, {}).verdict, 'deny');
+  assert.match(describeComputerResult('desktop_task', { completed: false, summary: 'Needs a local permission.' }), /Needs owner input or continuation/);
+  assert.match(describeComputerResult('desktop_task', { completed: true, summary: 'Observed playback advancing.' }), /^Completed: Observed playback/);
 });

@@ -177,10 +177,10 @@ describe('owner transcript control requests and readiness',()=>{
   expect(out.ready).toBe(false);expect(out).toMatchObject({status:'upgrade_required'});
   if(!out.ready){expect(out.reply).toContain('No job was queued');expect(out.reply).toContain('Catalina');expect(out.reply).not.toContain('run it once');}
  });
- it('does not switch from the selected unavailable Mac to another ready device',async()=>{
+ it('uses a capable worker despite an unavailable default Voice laptop',async()=>{
   const store=memory();setVoiceLaptop('org','d1',store);
   const out=await prepareDirectComputerCommand('org','browser_task','en',undefined,{loadDevices:async()=>[device('d1','Polis1984'),device('d2','Another Mac',true)],storage:store,now:()=>now});
-  expect(out.ready).toBe(false);
+  expect(out).toMatchObject({ready:true,deviceId:'d2'});expect(store.getItem('firbo.voice-laptop.v1:org')).toBe('d1');
  });
  it('returns the actual device identity for the pending owner confirmation',async()=>{
   const out=await prepareDirectComputerCommand('org','open_app','en',undefined,{loadDevices:async()=>[device('d2','Owner laptop',true)],storage:memory(),now:()=>now});

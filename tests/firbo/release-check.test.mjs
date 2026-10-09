@@ -27,7 +27,7 @@ function fixture() {
 
 test('complete source, production and served assets pass without making a task-acceptance claim',()=>{
   const {evidence,options}=fixture();const result=verifyRelease(evidence,options);
-  assert.equal(result.ok,true);assert.equal(result.functions.length,5);assert.match(result.scope,/parity only/);
+  assert.equal(result.ok,true);assert.equal(result.functions.length,6);assert.match(result.scope,/parity only/);
   assert.match(result.limitations.join(' '),/Not authenticated business/);
 });
 test('rejects wrong product evidence before reading any source',()=>{

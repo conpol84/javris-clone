@@ -101,9 +101,9 @@ it('routes a voice transcript through the same readiness guard',async()=>{
 });
 
 it('native Full Control dispatches a simple app goal immediately on the ready device',async()=>{
- prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d7',nativeDesktop:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed opened app'});
  await elements(page('open Microsoft Word')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
- expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'desktop_task',description:'open Microsoft Word',params:{goal:'open Microsoft Word'},deviceId:'d7'});expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'open_app',description:'Open Microsoft Word',params:{app:'Microsoft Word'},deviceId:'d7',requestId:'11111111-1111-4111-8111-111111111111'});expect(fixture.refs[1].current).toBeNull();expect(sendChat).not.toHaveBeenCalled();
 });
 
 it('passes the explicit Mac target through chat readiness and pending approval',async()=>{

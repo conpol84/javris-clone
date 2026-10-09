@@ -4,7 +4,7 @@ import { CheckCircle2, Inbox as InboxIcon } from 'lucide-react';
 import { Avatar, EmptyState, humanize, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { decideApproval, listApprovalHistory } from '../lib/company/data';
-import { decideComputerApproval, isComputerApprovalAction, listDevices, type DeviceRow } from '../lib/company/computers';
+import { computerApprovalDevice, decideComputerApproval, isComputerApprovalAction, isNativeComputerApprovalAction, listDevices, type DeviceRow } from '../lib/company/computers';
 import { listIntegrations, sendIntegration, type IntegrationRow } from '../lib/company/integrations';
 import { timeAgo } from '../lib/company/feed';
 import { agentLabel } from '../lib/company/labels';
@@ -99,11 +99,7 @@ export function InboxPage() {
   const [sent, setSent] = useState<Record<string, string>>({});
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [deviceTarget, setDeviceTarget] = useState<Record<string,string>>({});
-  // The computer an AI employee chose for this step comes first; the owner can still pick another one.
-  const deviceFor=(a:{id:string;payload?:unknown})=>{
-    const chosen=(a.payload as {device_id?:unknown}|null)?.device_id;
-    return deviceTarget[a.id]??(typeof chosen==='string'&&devices.some(d=>d.id===chosen)?chosen:devices[0]?.id);
-  };
+  const deviceFor=(a:{id:string;action:string;payload?:unknown})=>computerApprovalDevice(a,devices,deviceTarget[a.id]);
   const computerCopy: Record<string,[string,string]> = {
     en:['Select computer','Pair a computer first in My computers.'], el:['Επίλεξε υπολογιστή','Σύνδεσε πρώτα υπολογιστή στο My computers.'],
     es:['Seleccionar ordenador','Conecta primero un ordenador en My computers.'], 'pt-BR':['Selecionar computador','Conecte primeiro um computador em My computers.'],
@@ -266,14 +262,14 @@ export function InboxPage() {
                           aria-label={t('inbox.noteAria')}
                         />
                         {isComputerApprovalAction(a.action) && (
-                          <select className="fb-input" style={{width:'auto',minWidth:160}} disabled={!canRunComputer||busy===a.id||devices.length===0}
+                          <select className="fb-input" style={{width:'auto',minWidth:160}} disabled={!canRunComputer||busy===a.id||devices.length===0||isNativeComputerApprovalAction(a.action)}
                             aria-label={cc[0]} value={deviceFor(a)??''}
                             onChange={e=>setDeviceTarget({...deviceTarget,[a.id]:e.target.value})}>
-                            {devices.length===0?<option value="">{cc[1]}</option>:devices.map(d=><option key={d.id} value={d.id}>{d.name+(d.platform?' · '+d.platform:'')}</option>)}
+                            {!deviceFor(a)&&<option value="">{cc[1]}</option>}{devices.map(d=><option key={d.id} value={d.id}>{d.name+(d.platform?' · '+d.platform:'')}</option>)}
                           </select>
                         )}
                         <div className="flex gap-2">
-                          <button className="fb-btn fb-btn--primary" disabled={busy === a.id || (isComputerApprovalAction(a.action)&&(!canRunComputer||devices.length===0))} onClick={() => void decide(a, 'approved')}>
+                          <button className="fb-btn fb-btn--primary" disabled={busy === a.id || (isComputerApprovalAction(a.action)&&(!canRunComputer||!deviceFor(a)))} onClick={() => void decide(a, 'approved')}>
                             {t('inbox.approve')}
                           </button>
                           <button className="fb-btn fb-btn--ghost" style={{ color: 'var(--fb-err)' }} disabled={busy === a.id} onClick={() => void decide(a, 'rejected')}>

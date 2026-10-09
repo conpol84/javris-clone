@@ -1,0 +1,24 @@
+name: Firbo VPS worker dispatch
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8, main]
+    paths: ['src/openjarvis/server/firbo_dispatch.py','src/openjarvis/server/app.py','deploy/hostinger/install-worker-dispatch.py','supabase/functions/**','frontend/**','tests/firbo/worker-*.mjs','tests/server/test_firbo_dispatch*.py','.github/workflows/firbo-worker-dispatch.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '24'}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.12'}
+      - run: python -m pip install fastapi==0.115.12 httpx==0.28.1 ruff==0.16.7
+      - run: python -m unittest discover -s tests/server -p 'test_firbo_dispatch*.py' -v
+      - run: python -m ruff check src/openjarvis/server/firbo_dispatch.py tests/server/test_firbo_dispatch*.py
+      - run: node --test tests/firbo/worker-dispatch.test.mjs tests/firbo/worker-connector.test.mjs tests/firbo/worker-execution.test.mjs tests/firbo/edge-entrypoints.test.mjs tests/firbo/computer-policy.test.mjs
+      - run: node tools/firbo-release-check.mjs --source "$GITHUB_SHA" --source-only

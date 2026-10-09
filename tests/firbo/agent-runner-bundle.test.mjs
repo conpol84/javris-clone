@@ -12,10 +12,10 @@ const run = (args = [], env = {}) => spawnSync(process.execPath, [gate, ...args]
   cwd: root, encoding: 'utf8', env: { ...process.env, ...env },
 });
 
-test('manifest covers the exact complete 17-file runner import closure', () => {
+test('manifest covers the exact complete 19-file runner import closure', () => {
   const result = run();
   assert.equal(result.status, 0, result.stderr);
-  assert.deepEqual(JSON.parse(result.stdout), { ok: true, files: 17, manifest: 'deploy/firbo-agent-runner-bundle.json' });
+  assert.deepEqual(JSON.parse(result.stdout), { ok: true, files: 19, manifest: 'deploy/firbo-agent-runner-bundle.json' });
 });
 
 test('actual entrypoint links every required named export without a provider call', async () => {

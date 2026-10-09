@@ -55,9 +55,9 @@ it('spoken final text uses the same control lane',async()=>{
 });
 
 it('native Full Control runs a simple app request without a duplicate approval',async()=>{
- prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed opened app'});
  const hook=session();await hook.ask('open Microsoft Word');
- expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'desktop_task',description:'open Microsoft Word',params:{goal:'open Microsoft Word'},deviceId:'d8'});expect(sendChat).not.toHaveBeenCalled();
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'open_app',description:'Open Microsoft Word',params:{app:'Microsoft Word'},deviceId:'d8',requestId:'11111111-1111-4111-8111-111111111111'});expect(sendChat).not.toHaveBeenCalled();
 });
 
 it('passes the explicit Mac target through Talk readiness and the bound approval',async()=>{

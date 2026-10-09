@@ -195,7 +195,7 @@ export function AgentChatPage() {
           try{
             const readiness=await prepareDirectComputerCommand(orgId,proposal,lang,controller.signal);
             if(voiceScopeRef.current!==scopeAtSend)return;
-            const remote=readiness.ready?await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId},lang,controller.signal):readiness;
+            const remote=readiness.ready?await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId},lang,controller.signal):readiness;
             if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
           }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
           return;
@@ -213,12 +213,12 @@ export function AgentChatPage() {
             if(readiness.ready&&readiness.nativeDesktop&&proposal){
               pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
               try{
-                const remote=await dispatchDirectComputerCommand(orgId,{kind:'desktop_task',description:msg,params:{goal:msg},deviceId:readiness.deviceId},lang,controller.signal);
+                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId},lang,controller.signal);
                 if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
               }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
               return;
             }
-            pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId } : null;
+            pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId, requestId: readiness.requestId } : null;
             directMessage(!readiness.ready ? readiness.reply : !proposal ? incompleteComputerReply(lang) : lang === 'el'
               ? `Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`
               : `I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);

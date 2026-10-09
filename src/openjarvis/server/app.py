@@ -583,6 +583,9 @@ def create_app(
     from openjarvis.server.dashboard_login import install_dashboard_login
 
     install_dashboard_login(app)
+    from openjarvis.server.firbo_dispatch import install_worker_dispatch
+
+    install_worker_dispatch(app)
     return app
 
 

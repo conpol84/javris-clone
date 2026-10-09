@@ -116,6 +116,8 @@ jobs:
               psql -X -v ON_ERROR_STOP=1 -c "alter table public.organizations add column plan_status text default 'active'"
               psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261009020000_desktop_control.sql
               psql -X -v ON_ERROR_STOP=1 -f tests/firbo/desktop-postgres.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
+              psql -X -v ON_ERROR_STOP=1 -f supabase/migrations/20261009113535_worker_dispatch_native_approval.sql
+              psql -X -v ON_ERROR_STOP=1 -f tests/firbo/worker-dispatch-postgres.sql | tee -a /tmp/firbo-lifecycle-evidence/results.txt
               ;;
             tasks)
               python3 tests/firbo/workspace-postgres-loader.py tasks --output /tmp/firbo-lifecycle-evidence/base.sql

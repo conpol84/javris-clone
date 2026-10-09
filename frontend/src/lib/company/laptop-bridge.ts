@@ -1,4 +1,5 @@
-import { canOpenBrowser, cancelJob, giveJob, isOnline, listDevices, listJobs, policyOf, ComputerError, type DeviceRow, type JobRow } from './computers';
+import { canOpenBrowser, cancelJob, giveJob, isOnline, listJobs, policyOf, ComputerError, type DeviceRow, type JobRow } from './computers';
+import { dispatchJson as actionJson, dispatchWorkerRequest, workerDispatchReceipt, WorkerDispatchError, type WorkerDispatchRequest } from './worker-dispatch';
 
 type StorageLike={getItem:(k:string)=>string|null;setItem:(k:string,v:string)=>void;removeItem:(k:string)=>void};
 const key=(org:string)=>`firbo.voice-laptop.v1:${org}`;
@@ -32,6 +33,7 @@ export type DirectComputerProposal={
  description:string;
  deviceId?:string;
  target?:string;
+ requestId?:string;
 };
 
 const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^\p{L}\p{N}\s-]+/gu,' ').replace(/\s+/g,' ').trim();
@@ -147,63 +149,81 @@ function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],se
  return{ready:false as const,status:'failed',reply:greek?'Ο επιλεγμένος υπολογιστής δεν είναι διαθέσιμος με Full Control. Δεν μπήκε εργασία στην ουρά.':'The selected computer is unavailable for Full Control. No job was queued.'};
 }
 
-/** Read only, before offering approval. Dispatch rechecks the same selection. */
-export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number}){
+const dispatchFailure=(lang:string,error:unknown)=>{
+ const greek=lang==='el',code=error instanceof WorkerDispatchError?error.code:'dispatch_unavailable';
+ const replies:Record<string,[string,string]>={
+  forbidden:['Ο έλεγχος υπολογιστή απαιτεί Owner/Admin. Δεν μπήκε εργασία στην ουρά.','Computer control requires Owner/Admin. No job was queued.'],
+  business_plan_required:['Ο έλεγχος υπολογιστή απαιτεί ενεργό Business ή Enterprise.','Computer control requires active Business or Enterprise.'],
+  desktop_setup_required:['Η υπηρεσία ελέγχου οθόνης δεν έχει ρυθμιστεί ακόμη. Δεν στάλθηκε εργασία.','The screen-control service is not configured yet. No job was sent.'],
+  unsupported_app:['Δεν υπάρχει διαθέσιμος worker για τη ζητούμενη εφαρμογή. Δεν μπήκε εργασία στην ουρά.','No available worker supports the requested application. No job was queued.'],
+  device_required:['Ο ρητά ζητούμενος υπολογιστής δεν προσδιορίζεται μοναδικά. Δεν μπήκε εργασία στην ουρά.','The explicitly requested computer is not uniquely identified. No job was queued.'],
+  device_not_ready:['Δεν υπάρχει διαθέσιμος worker με τις απαιτούμενες δυνατότητες. Δεν μπήκε εργασία στην ουρά.','No available worker has the required capabilities. No job was queued.'],
+  no_eligible_worker:['Δεν υπάρχει διαθέσιμος worker με τις απαιτούμενες δυνατότητες. Δεν μπήκε εργασία στην ουρά.','No available worker has the required capabilities. No job was queued.'],
+  target_unavailable:['Ο ρητά ζητούμενος υπολογιστής δεν είναι διαθέσιμος για αυτή την εργασία. Δεν επιλέχθηκε άλλος worker.','The explicitly requested computer is unavailable for this task. Another worker was not selected.'],
+  target_ambiguous:['Το όνομα που ζήτησες αντιστοιχεί σε περισσότερους από έναν υπολογιστές. Δώσε το ακριβές όνομα· δεν μπήκε εργασία στην ουρά.','The requested target matches more than one computer. Give its exact name; no job was queued.'],
+ };
+ const reply=replies[code];
+ return {ready:false as const,status:code,reply:reply?reply[greek?0:1]:(greek?'Ο κεντρικός dispatcher δεν επιβεβαίωσε την εργασία. Δεν έγινε επανάληψη· έλεγξε τις πρόσφατες εργασίες στους Υπολογιστές.':'The central dispatcher did not confirm the job. It was not retried; check recent jobs in Computers.')};
+};
+const centralRequest=(orgId:string,proposal:DirectComputerProposal,action:'preview'|'dispatch'):WorkerDispatchRequest=>({
+ action,organization_id:orgId,request_id:proposal.requestId??crypto.randomUUID(),kind:proposal.kind,
+ params:JSON.parse(actionJson(proposal.params)),goal:proposal.description,
+ ...(proposal.target?{target:proposal.target}:{}),...(proposal.deviceId?{device_id:proposal.deviceId}:{}),
+ ...(action==='dispatch'?{confirm:true as const}:{}),
+});
+
+/** Production selection belongs to the VPS dispatcher. Injected discovery is
+ * retained only for isolated legacy executor tests, never as a runtime fallback. */
+export type DirectComputerReadiness={ready:true;deviceId:string;deviceName:string;nativeDesktop?:true;requestId?:string}|{ready:false;status:string;reply:string};
+export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number;dispatcher?:typeof dispatchWorkerRequest}):Promise<DirectComputerReadiness>{
  const kind=typeof request==='string'?request:request.kind,target=typeof request==='string'?undefined:request.target,app=typeof request==='string'?undefined:request.params.app;
- const s=deps?.storage===undefined?storage():deps.storage;
- const selected=typeof request==='object'&&request.deviceId?request.deviceId:target?null:getVoiceLaptop(orgId,s);
- const rows=await(deps?.loadDevices??listDevices)(orgId);
- if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
- const state=directSelection(rows,kind,selected,(deps?.now??Date.now)(),lang,target,app);
- return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name,...(kind!=='browser_open'&&state.device.capabilities?.job_kinds?.includes('desktop_task')?{nativeDesktop:true as const}:{})}:state;
+ if(deps?.loadDevices&&!deps.dispatcher){
+  const selected=typeof request==='object'&&request.deviceId?request.deviceId:null;
+  const rows=await deps.loadDevices(orgId);
+  if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+  const state=directSelection(rows,kind,selected,(deps?.now??Date.now)(),lang,target,app);
+  return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name,...(kind!=='browser_open'&&state.device.capabilities?.job_kinds?.includes('desktop_task')?{nativeDesktop:true as const}:{})}:state;
+ }
+ try{
+  const proposal=typeof request==='string'?{kind:request,params:{},description:'Computer control readiness'}:request;
+  const payload=centralRequest(orgId,proposal,'preview');
+  const receipt=workerDispatchReceipt(await(deps?.dispatcher??dispatchWorkerRequest)(JSON.parse(actionJson(payload)),signal),payload);
+  if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+  return {ready:true as const,deviceId:receipt.worker.id,deviceName:receipt.worker.name,requestId:receipt.request_id,...(receipt.job.kind==='desktop_task'?{nativeDesktop:true as const}:{})};
+ }catch(error){if(signal?.aborted||error instanceof DOMException&&error.name==='AbortError')throw new DOMException('Cancelled','AbortError');return dispatchFailure(lang,error);}
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
  ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'
  :'No job was queued. Give an exact command, for example “Open Safari” or “YouTube search Nikos Oikonomopoulos”. The browser plan opens a result; it does not verify sustained playback, a screenshot or AppleScript execution.';
-/** Bounded JSON identity: database JSON key order is not approval identity.
- * Reject values JSON.stringify would silently drop or alter. */
-function actionJson(value:unknown):string{
- let nodes=0;
- const visit=(v:unknown,depth:number):unknown=>{
-  if(++nodes>2048||depth>12)throw new Error('Invalid action JSON');
-  if(v===null||typeof v==='boolean'||typeof v==='string')return v;
-  if(typeof v==='number'&&Number.isFinite(v))return v;
-  if(Array.isArray(v)){
-   if(v.length>2048||Object.keys(v).length!==v.length||Object.getOwnPropertySymbols(v).length)throw new Error('Invalid action array');
-   return Array.from({length:v.length},(_,i)=>{const d=Object.getOwnPropertyDescriptor(v,String(i));if(!d||!('value' in d))throw new Error('Invalid action array');return visit(d.value,depth+1)});
-  }
-  if(typeof v!=='object'||Object.getPrototypeOf(v)!==Object.prototype||Object.getOwnPropertySymbols(v).length||Object.getOwnPropertyNames(v).length!==Object.keys(v).length)throw new Error('Invalid action value');
-  const result:Record<string,unknown>=Object.create(null);
-  for(const k of Object.keys(v).sort()){
-   const descriptor=Object.getOwnPropertyDescriptor(v,k)!;
-   if(!('value' in descriptor))throw new Error('Invalid action accessor');
-   result[k]=visit(descriptor.value,depth+1);
-  }
-  return result;
- };
- const json=JSON.stringify(visit(value,0));
- if(json.length>65536)throw new Error('Action too large');
- return json;
-}
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
- loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>
+ loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest
 }){
- const greek=lang==='el',load=deps?.loadDevices??listDevices,queue=deps?.queue??giveJob,loadJobs=deps?.loadJobs??listJobs,cancel=deps?.cancel??cancelJob,now=deps?.now??Date.now,s=deps?.storage===undefined?storage():deps.storage,sleep=deps?.sleep??delay;
+ const greek=lang==='el',loadJobs=deps?.loadJobs??listJobs,cancel=deps?.cancel??cancelJob,now=deps?.now??Date.now,sleep=deps?.sleep??delay;
  let jobId:string|undefined;
  try{
   // Capture the owner's exact approval and selection before the first await.
   if(!proposal.params||Array.isArray(proposal.params)||Object.getPrototypeOf(proposal.params)!==Object.prototype)throw new Error('Invalid action parameters');
-  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??(proposal.target?null:getVoiceLaptop(orgId,s)),target:proposal.target,params:actionJson(proposal.params)};
+  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??null,target:proposal.target,params:actionJson(proposal.params)};
   if(!['browser_task','open_app','desktop_task','browser_open'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>4000|| (approved.selected!==null&&typeof approved.selected!=='string')||(approved.target!==undefined&&(typeof approved.target!=='string'||approved.target.length>100)))throw new Error('Invalid approved action');
   const approvedParams=JSON.parse(approved.params) as Record<string,unknown>;
-  const rows=await load(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-  const selected=approved.selected,selection=directSelection(rows,approved.kind,selected,now(),lang,approved.target,approvedParams.app);
-  if(!selection.ready)return{handled:true,status:selection.status,reply:selection.reply};
-  const device=selection.device;
-  if(approved.kind==='open_app'&&!device.capabilities?.job_kinds?.includes('open_app')&&device.capabilities?.job_kinds?.includes('desktop_task')){approved.kind='desktop_task';approved.params=actionJson({goal:approved.description});}
-  if(device.id!==selected)setVoiceLaptop(orgId,device.id,s);
-  const job=await queue(device.id,approved.kind,JSON.parse(approved.params),true);jobId=job.job_id;
+  let device:{id:string;name:string},job:{job_id:string};
+  if(deps?.loadDevices&&!deps.dispatcher){
+   const rows=await deps.loadDevices(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+   const selection=directSelection(rows,approved.kind,approved.selected,now(),lang,approved.target,approvedParams.app);
+   if(!selection.ready)return{handled:true,status:selection.status,reply:selection.reply};
+   device=selection.device;
+   if(approved.kind==='open_app'&&!selection.device.capabilities?.job_kinds?.includes('open_app')&&selection.device.capabilities?.job_kinds?.includes('desktop_task')){approved.kind='desktop_task';approved.params=actionJson({goal:approved.description});}
+   job=await(deps.queue??giveJob)(device.id,approved.kind,JSON.parse(approved.params),true);
+  }else{
+   const payload=centralRequest(orgId,{kind:approved.kind,description:approved.description,params:approvedParams,...(approved.selected?{deviceId:approved.selected}:{}),...(approved.target?{target:approved.target}:{}),...(proposal.requestId?{requestId:proposal.requestId}:{})},'dispatch');
+   // The server queues with this UUID. Even a lost enqueue ACK can request
+   // cancellation of the exact operation, without re-dispatching it.
+   jobId=payload.request_id;
+   const receipt=workerDispatchReceipt(await(deps?.dispatcher??dispatchWorkerRequest)(JSON.parse(actionJson(payload)),signal),payload);
+   device=receipt.worker;approved.kind=receipt.job.kind;approved.params=actionJson(receipt.job.params);job={job_id:receipt.job_id!};
+  }
+  jobId=job.job_id;
   const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
   while(now()<deadline&&!signal?.aborted){
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
@@ -219,16 +239,19 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
   return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η εργασία ${job.job_id} μπήκε στην ουρά για ${device.name}, αλλά η εκτέλεση δεν έχει επιβεβαιωθεί ακόμη.`:`Job ${job.job_id} was queued for ${device.name}; execution is not confirmed yet.`};
  }catch(error){
-  if(error instanceof DOMException&&error.name==='AbortError'){if(jobId)await cancel(jobId).catch(()=>{});throw error;}
+  if(signal?.aborted||error instanceof DOMException&&error.name==='AbortError'){if(jobId)await cancel(jobId).catch(()=>{});throw new DOMException('Cancelled','AbortError');}
+  if(jobId&&(!(error instanceof WorkerDispatchError)||['dispatch_unavailable','dispatch_enqueue_uncertain','dispatch_receipt_invalid'].includes(error.code)))await cancel(jobId).catch(()=>{});
+  if(error instanceof WorkerDispatchError)return{handled:true,status:'failed',reply:dispatchFailure(lang,error).reply};
   if(error instanceof ComputerError&&error.code==='business_plan_required')return{handled:true,status:'failed',reply:greek?'Ο έλεγχος υπολογιστή απαιτεί ενεργό Business ή Enterprise.':'Computer control requires active Business or Enterprise.'};
   if(error instanceof ComputerError&&error.code==='desktop_setup_required')return{handled:true,status:'failed',reply:greek?'Η σύνδεση του υπολογιστή υπάρχει, αλλά η υπηρεσία ελέγχου οθόνης δεν έχει ρυθμιστεί ακόμη. Δεν στάλθηκε εργασία.':'Your computer is connected, but the screen-control service is not configured yet. No job was sent.'};
   return{handled:true,status:'failed',reply:greek?'Ο υπολογιστής δεν μπόρεσε να εκτελέσει την ενέργεια.':'The computer could not execute the action.'};
  }
 }
 const delay=(ms:number,signal?:AbortSignal)=>new Promise<void>(resolve=>{if(signal?.aborted)return resolve();const done=()=>{clearTimeout(timer);signal?.removeEventListener('abort',done);resolve()};const timer=setTimeout(done,ms);signal?.addEventListener('abort',done,{once:true})});
-export async function dispatchLaptopBrowserCommand(orgId:string,input:string,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>}){
+export async function dispatchLaptopBrowserCommand(orgId:string,input:string,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>}):Promise<{handled:boolean;status?:string;reply?:string;job_id?:string}>{
  const intent=parseLaptopBrowserCommand(input);if(!intent)return{handled:false};const greek=lang==='el';
- const load=deps?.loadDevices??listDevices,queue=deps?.queue??giveJob,loadJobs=deps?.loadJobs??listJobs,now=deps?.now??Date.now,s=deps?.storage===undefined?storage():deps.storage,sleep=deps?.sleep??delay;
+ if(!deps?.loadDevices){const target=deviceClause(plainText(input)).target;return dispatchDirectComputerCommand(orgId,{kind:'browser_open',description:input.trim(),params:{url:intent.url},...(target?{target}: {})},lang,signal,deps);}
+ const load=deps.loadDevices,queue=deps?.queue??giveJob,loadJobs=deps?.loadJobs??listJobs,now=deps?.now??Date.now,s=deps?.storage===undefined?storage():deps.storage,sleep=deps?.sleep??delay;
  try{const rows=await load(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');const selected=getVoiceLaptop(orgId,s),ready=browserReadyDevices(rows,now()),device=chooseVoiceLaptop(rows,selected,now());if(!device)return{handled:true,status:'failed',reply:ready.length>1?(greek?'Διάλεξε Voice laptop στους Υπολογιστές.':'Choose your Voice laptop in Computers.'):(greek?'Δεν υπάρχει online laptop με άδεια browser.':'No browser-ready laptop is online.')};if(device.id!==selected)setVoiceLaptop(orgId,device.id,s);const job=await queue(device.id,'browser_open',{url:intent.url},false),deadline=now()+16000;while(now()<deadline&&!signal?.aborted){const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);if(row?.status==='done'&&row.result?.launched===true)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Άνοιξα το browser στο ${device.name}.`:`Opened the browser on ${device.name}.`};if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Το laptop δεν μπόρεσε να ανοίξει το browser.':'The laptop could not open the browser.'};await sleep(650,signal)}return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Έστειλα την εντολή στο ${device.name}, αλλά δεν επιβεβαιώθηκε ακόμη.`:`Browser request sent to ${device.name}; not confirmed yet.`}}catch(error){if(error instanceof DOMException&&error.name==='AbortError')throw error;return{handled:true,status:'failed',reply:greek?'Το laptop δεν μπόρεσε να ανοίξει το browser.':'The laptop could not open the browser.'}}
 }
 

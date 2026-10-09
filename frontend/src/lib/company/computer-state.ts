@@ -19,6 +19,7 @@ export function formatComputerResult(job: { kind: string; result: Record<string,
   if (job.kind === 'read') return String(r.content ?? '');
   if (job.kind === 'write') return `${String(r.path ?? '')} (${String(r.written ?? '')} chars)`;
   if (job.kind === 'browser_open' || job.kind === 'browser_task') return JSON.stringify(r, null, 2);
+  if (job.kind === 'desktop_task') return typeof r.summary === 'string' ? r.summary : JSON.stringify(r, null, 2);
   return `exit ${String(r.code ?? '')}\n${String(r.stdout ?? '')}${r.stderr ? `\n${String(r.stderr)}` : ''}`;
 }
 /** Each refresh owns a ticket. Old requests and responses after disposal cannot publish. */
