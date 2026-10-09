@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const fixture=vi.hoisted(()=>({index:0,refIndex:0,states:[] as unknown[],refs:[] as {current:any}[],effects:[] as (()=>void|(()=>void))[],setters:[] as ReturnType<typeof vi.fn>[]}));
-const prepare=vi.hoisted(()=>vi.fn());const dispatch=vi.hoisted(()=>vi.fn());const sendChat=vi.hoisted(()=>vi.fn());const listen=vi.hoisted(()=>vi.fn());const recover=vi.hoisted(()=>vi.fn());
+const prepare=vi.hoisted(()=>vi.fn());const dispatch=vi.hoisted(()=>vi.fn());const sendChat=vi.hoisted(()=>vi.fn());const listen=vi.hoisted(()=>vi.fn());const recover=vi.hoisted(()=>vi.fn());const journal=vi.hoisted(()=>vi.fn());const histories=vi.hoisted(()=>vi.fn());
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
  useState:()=>{const i=fixture.index++;const setter=vi.fn();fixture.setters[i]=setter;return[fixture.states[i],setter]},
  useRef:(initial:unknown)=>{const i=fixture.refIndex++;return fixture.refs[i]??(fixture.refs[i]={current:initial})},
@@ -12,6 +12,8 @@ vi.mock('./runner',async original=>({...await original<typeof import('./runner')
 vi.mock('./voice',()=>({unlockAudio:vi.fn(),speak:async()=>({status:'completed'}),listenSmart:listen}));
 vi.mock('./laptop-bridge',async original=>({...await original<typeof import('./laptop-bridge')>(),prepareDirectComputerCommand:prepare,dispatchDirectComputerCommand:dispatch}));
 vi.mock('./computer-continuation',async original=>({...await original<typeof import('./computer-continuation')>(),resolveUnlockContinuation:recover}));
+vi.mock('./ceo-device-journal',()=>({journalCeoComputerJob:journal}));
+vi.mock('./ceo-sessions',()=>({listCeoSessions:histories,readCeoSession:vi.fn()}));
 import {useCeoSession} from './useCeoSession';
 import {createConversation} from './data';
 
@@ -21,7 +23,7 @@ function session(canComputer=true){
  const hook=useCeoSession('org','owner','el',key=>key,'briefing',true,canComputer);
  fixture.effects[0]();fixture.refs[6].current=true;return hook;
 }
-beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'Δεν μπήκε εργασία στην ουρά.'})});
+beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'Δεν μπήκε εργασία στην ουρά.'});histories.mockResolvedValue([]);journal.mockResolvedValue(true)});
 afterEach(()=>vi.unstubAllGlobals());
 it('Command/Talk incomplete request reads capabilities and never asks an LLM to queue it',async()=>{
  const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
@@ -125,4 +127,27 @@ it('Greeklish direct playback after unlock keeps named My shell instead of Mac f
  expect(recover).not.toHaveBeenCalled();expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d8',params:{goal}});
  expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('durably journals a terminal owner desktop result in the same CEO session',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',convId='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+ vi.mocked(createConversation).mockResolvedValue({id:convId} as Awaited<ReturnType<typeof createConversation>>);
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({status:'failed',job_id:jobId,reply:'Screen locked, goal NOT achieved'});
+ const hook=session();await hook.ask('open browser on my shell');
+ expect(journal).toHaveBeenCalledExactlyOnceWith(convId,jobId,expect.any(AbortSignal));
+ expect(sendChat).not.toHaveBeenCalled();expect(dispatch).toHaveBeenCalledOnce();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];
+ expect(update([]).at(-1).text).toBe('Screen locked, goal NOT achieved');
+});
+it('truthfully discloses when a device job is durable but the separate CEO journal fails',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212';
+ vi.mocked(createConversation).mockResolvedValue({id:'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'} as Awaited<ReturnType<typeof createConversation>>);
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({status:'done',job_id:jobId,reply:'Device returned observed result'});
+ journal.mockRejectedValue(new Error('journal unavailable'));
+ const hook=session();await hook.ask('open browser');
+ expect(journal).toHaveBeenCalledOnce();expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];
+ expect(update([]).at(-1).text).toContain('δεν καταγράφηκε');
 });
