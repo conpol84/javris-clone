@@ -55,9 +55,11 @@ it('denies another users CEO conversation even for an admin and never fetches it
 it('restores past turns, preserving server-authored task offers and exact user text',async()=>{
  const uuid='11111111-1111-4111-8111-111111111111';
  fixture.sessions=[{id:'own',organization_id:'company',user_id:'owner',agent_id:'ceo',status:'active'}];
+ // Mock the database's DESC created_at reply; readCeoSession reverses into
+ // chronological display order after retrieving the most recent N turns.
  fixture.messages=[
-  {role:'user',content:'Continue our project'},
-  {role:'assistant',content:`I will delegate.\n\n[[task:${uuid}]] Test run\nCheck real device receipt`}
+  {role:'assistant',content:`I will delegate.\n\n[[task:${uuid}]] Test run\nCheck real device receipt`},
+  {role:'user',content:'Continue our project'}
  ];
  const out=await readCeoSession('company','owner','ceo','own');
  expect(out[0]).toEqual({who:'me',text:'Continue our project'});
