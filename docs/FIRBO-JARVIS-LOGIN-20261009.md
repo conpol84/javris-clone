@@ -63,3 +63,18 @@ Existing dashboard build and provider tasks are not replaced or declared tested.
 Actual CEO desktop work, Mac capability installation and the three desktop vision
 settings remain independent, unfinished acceptance work. Keep PR111 and both
 contributors' accepted ancestry; no unrelated web/backend release for this patch.
+
+## Browser regression and correction
+
+Owner screenshot after successful scripted install shows `origin_denied` on the
+form POST. The original `Referrer-Policy: no-referrer` can cause native browser
+form submissions to send `Origin: null`. The scripted acceptance supplied an
+Origin header explicitly and missed this browser behavior.
+
+Use `same-origin` on login responses. Keep the exact origin check, null-origin
+denial, cookie protection and existing password. A real Chromium HTTPS test
+reproduces the old rejection and verifies native form login and logout at 390
+and 1280 pixels without fabricating the browser's headers. The guarded
+`repair-dashboard-origin.py` changes only the known installed module version,
+keeps a private backup and verifies the served header and anonymous API denial.
+It does not reinstall login, change Caddy, or reset the administrator password.
