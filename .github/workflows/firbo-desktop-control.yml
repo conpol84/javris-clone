@@ -2,7 +2,7 @@ name: Firbo native desktop control
 on:
   pull_request:
     branches: [claude/gifted-dijkstra-rph5j8, main]
-    paths: ['frontend/public/firbo-*', 'supabase/functions/**', 'supabase/migrations/20261009020000_desktop_control.sql', 'tests/firbo/desktop-*', '.github/workflows/firbo-desktop-control.yml']
+    paths: ['frontend/public/firbo-*', 'supabase/functions/**', 'supabase/migrations/20261009020000_desktop_control.sql', 'tests/firbo/desktop-*', 'tests/firbo/desktop_update_test.py', 'tools/debian/*desktop*.py', '.github/workflows/firbo-desktop-control.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -18,5 +18,6 @@ jobs:
         with:
           node-version: '24'
       - run: sudo apt-get update && sudo apt-get install -y xvfb xdotool python3-pil python3-tk
+      - run: python3 -m unittest discover -s tests/firbo -p 'desktop_update_test.py' -v
       - run: node --test tests/firbo/desktop-control.test.mjs
       - run: xvfb-run -a /usr/bin/python3 tests/firbo/desktop-native.py

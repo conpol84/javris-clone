@@ -20,8 +20,8 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, build_opener
 FILES = {
     "firbo-connector.mjs": "e689ddd095e49edf16e28920b27a9f8dbfc05194c2630628cc4bb34ecccf6513",
     "firbo-browser.mjs": "12e6c0595aae55ae97090b67246a337d9531af9dcfbf2d5ef1c508a79e19fd78",
-    "firbo-desktop.mjs": "9398c2981ace17687f73878183ead935f5b1414191f668018f7f66e3d7d3873c",
-    "firbo-desktop.py": "2b8be9381c03c717945705c1861861d64d12ca41e34ad2814ddb65064c3999a8"
+    "firbo-desktop.mjs": "3cb4f820213d67931750cf69980ae1dbdeae9c5d91c3c4328313582bb9c1b428",
+    "firbo-desktop.py": "5c65a5fcaa96af709643cdb5c99ec4e2b948964ff231359142237ba0f42af4a5"
 }
 
 

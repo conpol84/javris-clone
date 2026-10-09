@@ -35,6 +35,12 @@ def capture():
     raise ValueError("desktop_capture_too_large")
 
 
+def physical_stop():
+    pointer = xdo("getmouselocation", "--shell")
+    if "X=0\nY=0\n" in pointer:
+        raise ValueError("desktop_local_stop")
+
+
 def perform(action):
     if sys.platform != "linux" or not os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
         raise ValueError("desktop_x11_required")
@@ -44,9 +50,7 @@ def perform(action):
     if kind == "observe":
         return capture()
     # The top-left corner is a local physical stop, independent of the server.
-    pointer = xdo("getmouselocation", "--shell")
-    if "X=0\nY=0\n" in pointer:
-        raise ValueError("desktop_local_stop")
+    physical_stop()
     if kind in ("click", "move", "drag"):
         width, height = map(int, xdo("getdisplaygeometry").split())
         fw, fh = action.get("width"), action.get("height")
@@ -78,7 +82,13 @@ def perform(action):
         text = action.get("text")
         if not isinstance(text, str) or len(text) > 4000 or "\0" in text:
             raise ValueError("desktop_bad_text")
-        xdo("type", "--clearmodifiers", "--delay", 5, "--file", "-", text=text)
+        # Legacy xdotool temporarily remaps absent Unicode keys. A 5ms burst
+        # can outrun the target application's keymap processing and drop letters.
+        # Pace input and recheck the physical Stop between bounded chunks.
+        for offset in range(0, len(text), 16):
+            physical_stop()
+            xdo("type", "--clearmodifiers", "--delay", 60, "--file", "-",
+                text=text[offset:offset + 16])
     elif kind == "key":
         key = action.get("key", "")
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+){0,4}", key):
