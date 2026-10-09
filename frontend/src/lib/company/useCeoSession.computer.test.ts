@@ -98,3 +98,14 @@ it('passes positive Debian command with negative guardrails to dispatcher',async
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d8'});
  expect(sendChat).not.toHaveBeenCalled();
 });
+
+
+it('owner Greeklish music request stays in real CEO voice/computer execution lane',async()=>{
+ const phrase="re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser";
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'debian',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Execution pending owner receipt'});
+ const hook=session();await hook.ask(phrase);
+ expect(prepare).toHaveBeenCalledExactlyOnceWith('org',expect.objectContaining({kind:'desktop_task',params:{goal:phrase}}),'el',expect.any(AbortSignal));
+ expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',expect.objectContaining({kind:'desktop_task',params:{goal:phrase},deviceId:'debian',ownerFullControlRequired:true}),'el',expect.any(AbortSignal));
+ expect(sendChat).not.toHaveBeenCalled();
+});
