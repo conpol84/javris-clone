@@ -90,7 +90,11 @@ export function createSpeechHandler({ createClient, env, http = fetch }: Depende
         } catch { return json(requestSignal.aborted ? 504 : 502, { error: 'voice_error' }); }
         if (!res.ok) {
           void res.body?.cancel().catch(() => {});
-          if (res.status === 429) return json(429, { error: 'rate_limited' });
+          // Provider-side 429 consumes no FIRBO quota. Treat as TTS infrastructure
+          // unavailable so authorized clients can use clearly labeled local browser
+          // speech without another paid request. The FIRBO/org usage-cap 429 above
+          // remains an explicit hard denial; authorization checks are unchanged.
+          if (res.status === 429) return json(503, { error: 'voice_provider_rate_limited' });
           if ([401, 402, 403].includes(res.status)) return json(503, { error: 'voice_unavailable' });
           // Retry only definite model rejection, never a timeout or partially received voice.
           if ([400, 404].includes(res.status) && model === 'gpt-4o-mini-tts') continue;
