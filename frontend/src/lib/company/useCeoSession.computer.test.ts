@@ -53,3 +53,9 @@ it('spoken final text uses the same control lane',async()=>{
  const hook=session();hook.listen();await Promise.resolve();await Promise.resolve();await Promise.resolve();
  expect(prepare).toHaveBeenCalledOnce();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
 });
+
+it('native Full Control runs a simple app request without a duplicate approval',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ const hook=session();await hook.ask('open Microsoft Word');
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'desktop_task',description:'open Microsoft Word',params:{goal:'open Microsoft Word'},deviceId:'d8'});expect(sendChat).not.toHaveBeenCalled();
+});

@@ -201,3 +201,7 @@ describe('owner transcript control requests and readiness',()=>{
  });
 });
 
+
+it('never switches a stored unavailable device to another ready laptop, including URL opening',()=>{
+ expect(chooseVoiceLaptop([device('other')],'selected',now)).toBeNull();
+});

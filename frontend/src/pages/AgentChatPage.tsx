@@ -210,6 +210,14 @@ export function AgentChatPage() {
               if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
             }
             if (voiceScopeRef.current !== scopeAtSend) return;
+            if(readiness.ready&&readiness.nativeDesktop&&proposal){
+              pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
+              try{
+                const remote=await dispatchDirectComputerCommand(orgId,{kind:'desktop_task',description:msg,params:{goal:msg},deviceId:readiness.deviceId},lang,controller.signal);
+                if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
+              }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
+              return;
+            }
             pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId } : null;
             directMessage(!readiness.ready ? readiness.reply : !proposal ? incompleteComputerReply(lang) : lang === 'el'
               ? `Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`

@@ -6,7 +6,7 @@ const storage=():StorageLike|null=>{try{return typeof window==='undefined'?null:
 export function getVoiceLaptop(org:string,s:StorageLike|null=storage()){if(!org||!s)return null;try{return s.getItem(key(org))}catch{return null}}
 export function setVoiceLaptop(org:string,device:string|null,s:StorageLike|null=storage()){if(!org||!s)return;try{device?s.setItem(key(org),device):s.removeItem(key(org))}catch{}}
 export const browserReadyDevices=(rows:DeviceRow[],now=Date.now())=>rows.filter(d=>canOpenBrowser(d)&&isOnline(d,now));
-export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return ready.find(d=>d.id===selected)??(ready.length===1?ready[0]:null)}
+export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return selected?(ready.find(d=>d.id===selected)??null):(ready.length===1?ready[0]:null)}
 function safeUrl(raw:string){let value=raw.trim().replace(/[),.;!?]+$/,'');if(!value)return null;if(!/^https:\/\//i.test(value))value='https://'+value;try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||!u.hostname||u.hostname==='localhost'||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)||u.hostname.includes(':'))return null;return u.href}catch{return null}}
 export function parseLaptopBrowserCommand(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>500)return null;
@@ -125,7 +125,7 @@ export async function prepareDirectComputerCommand(orgId:string,kind:DirectCompu
  if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
  const s=deps?.storage===undefined?storage():deps.storage;
  const state=directSelection(rows,kind,getVoiceLaptop(orgId,s),(deps?.now??Date.now)(),lang);
- return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name}:state;
+ return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name,...(state.device.capabilities?.job_kinds?.includes('desktop_task')?{nativeDesktop:true as const}:{})}:state;
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
  ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'

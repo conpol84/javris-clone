@@ -129,6 +129,12 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           if(!readiness.ready||!proposal){
             pendingComputer.current=null;await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;
           }
+          if(readiness.nativeDesktop){
+            pendingComputer.current=null;
+            const remote=await dispatchDirectComputerCommand(orgId,{kind:'desktop_task',description:message,params:{goal:message},deviceId:readiness.deviceId},lang,active.signal);
+            if(!valid(id)||!active.current())return;
+            await sayDirect(remote.reply);return;
+          }
           pendingComputer.current={...proposal,deviceId:readiness.deviceId};
           await sayDirect(lang==='el'?`Θα εκτελέσω στο ${readiness.deviceName}: ${proposal.description}. Το εγκρίνεις;`:`I will run this on ${readiness.deviceName}: ${proposal.description}. Do you approve?`);return;
         }
