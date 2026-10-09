@@ -12,6 +12,7 @@ import { agentColor, deriveAgentStates } from '../lib/company/status';
 import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { useCeoSession } from '../lib/company/useCeoSession';
+import { computerProgressLabel } from '../lib/company/laptop-bridge';
 import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 import '../styles/voice-experience.css';
@@ -42,7 +43,7 @@ export function CeoPage() {
   const canWrite = WRITER_ROLES.includes(role);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
-    sessions, activeSessionId, historyLoading, historyError, openSession, newSession, retryHistory } = session;
+    sessions, activeSessionId, historyLoading, historyError, computerProgress, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
   const transcriptRef = useRef<HTMLUListElement>(null);
   const followLatestRef = useRef(true);
@@ -128,6 +129,13 @@ export function CeoPage() {
             <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
               loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
               onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
+            {computerProgress && (
+              <div role="status" aria-live="polite" data-ceo-job-progress="true"
+                className="fb-dim rounded-xl border px-3 py-2 text-xs"
+                style={{borderColor:'var(--fb-border)'}}>
+                {computerProgressLabel(computerProgress,lang)}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {(canTalk || state !== 'idle') &&
                 (state === 'listening' ? (
