@@ -46,13 +46,13 @@ export function CeoPage() {
   const [text, setText] = useState('');
   const transcriptRef = useRef<HTMLUListElement>(null);
   const followLatestRef = useRef(true);
+  useEffect(() => { followLatestRef.current = true; }, [activeSessionId]);
   // Follow new replies without pulling the user away while reading older messages.
   useEffect(() => {
     if (!followLatestRef.current) return;
     const transcript = transcriptRef.current;
     if (transcript) transcript.scrollTop = transcript.scrollHeight;
   }, [lines.length, activeSessionId]);
-  useEffect(() => { followLatestRef.current = true; }, [activeSessionId]);
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
   const satellites: Satellite[] = useMemo(
