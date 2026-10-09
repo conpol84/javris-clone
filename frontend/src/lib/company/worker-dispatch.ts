@@ -12,6 +12,7 @@ export interface WorkerDispatchRequest {
   target?: string;
   device_id?: string;
   confirm?: true;
+  owner_full_control_required?: true;
 }
 export interface WorkerDispatchReceipt {
   contract: 'firbo-worker-dispatch/v1';
@@ -20,6 +21,7 @@ export interface WorkerDispatchReceipt {
   worker: { kind: 'computer'; id: string; name: string; platform: string | null };
   job: { kind: DispatchKind; params: Record<string, unknown> };
   reason: string;
+  owner_full_control: boolean;
   job_id?: string;
 }
 export class WorkerDispatchError extends Error {
@@ -77,6 +79,7 @@ export function workerDispatchReceipt(value: unknown, request: WorkerDispatchReq
     || (value.worker.platform !== null && (typeof value.worker.platform !== 'string' || value.worker.platform.length > 200))
     || !record(value.job) || !kinds.includes(value.job.kind as DispatchKind) || !record(value.job.params)
     || typeof value.reason !== 'string' || value.reason.length > 500
+    || (value.owner_full_control !== undefined && typeof value.owner_full_control !== 'boolean')
     || (request.device_id && value.worker.id !== request.device_id)
     || (request.action === 'dispatch' ? value.job_id !== request.request_id : value.job_id !== undefined)) {
     throw new WorkerDispatchError('dispatch_receipt_invalid');
@@ -85,7 +88,9 @@ export function workerDispatchReceipt(value: unknown, request: WorkerDispatchReq
   const native = request.kind === 'open_app' && value.job.kind === 'desktop_task'
     && dispatchJson(value.job.params) === dispatchJson({ goal: request.goal });
   if ((!exact && !native) || (request.target && !targetMatches(value.worker as unknown as WorkerDispatchReceipt['worker'],request.target))) throw new WorkerDispatchError('dispatch_receipt_invalid');
-  return JSON.parse(dispatchJson(value)) as WorkerDispatchReceipt;
+  // Only the current central authorization can enable hands-free execution.
+  // Older responses without the marker stay in the guarded approval lane.
+  return { ...JSON.parse(dispatchJson(value)), owner_full_control: value.owner_full_control === true } as WorkerDispatchReceipt;
 }
 
 /** One authenticated central call. Transport ambiguity is never retried locally
@@ -97,6 +102,7 @@ export async function dispatchWorkerRequest(input: WorkerDispatchRequest, signal
     || (request.device_id !== undefined && !uuid(request.device_id))
     || (request.target !== undefined && (typeof request.target !== 'string' || !request.target || request.target.length > 100))
     || (request.action !== 'preview' && request.action !== 'dispatch')
+    || (request.owner_full_control_required !== undefined && (request.owner_full_control_required !== true || request.action !== 'dispatch'))
     || (request.action === 'dispatch' ? request.confirm !== true : request.confirm !== undefined)) {
     throw new WorkerDispatchError('bad_request');
   }

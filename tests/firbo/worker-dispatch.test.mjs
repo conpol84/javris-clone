@@ -202,3 +202,77 @@ test('mismatched queue receipt or ACK never confirms completion or silently retr
   for(const mode of ['wrongAck','receipt']){const h=await edgeAdapter();if(mode==='wrongAck')h.state.wrongAck=true;else h.state.connectorReceiptHook=row=>{row.params={goal:'Different goal'};};
     const res=await h.invoke();assert.equal(res.status,503);assert.equal((await res.json()).error,'dispatch_enqueue_uncertain');assert.equal(h.state.calls.length,2);assert.equal(h.state.rows.connector_jobs.length,1);}
 });
+
+const browserBody=(changes={})=>body({kind:'browser_open',params:{url:'https://example.com/'},goal:'Open the requested page',...changes});
+test('trusted Full Control appears on preview and dispatch only when owner rules and real capability both allow it',async()=>{
+  const h=await edgeAdapter();
+  const preview=await h.invoke(body({action:'preview',confirm:undefined}));assert.equal(preview.status,200);
+  assert.equal((await preview.json()).owner_full_control,true);assert.equal(h.state.rows.connector_jobs.length,0);
+  const queued=await h.invoke(body({owner_full_control_required:true}));assert.equal(queued.status,200);
+  assert.equal((await queued.json()).owner_full_control,true);assert.equal(h.state.rows.connector_jobs.length,1);
+  assert.equal(h.state.calls[2].body.owner_full_control_required,true,'same requirement reaches the final Connector queue boundary');
+});
+
+test('guarded policy, absent or false local Full Control capability keep preview guarded',async()=>{
+  for(const mutation of [
+    dev=>{dev.agent_policy.control='guarded';},dev=>{dev.capabilities.full_control=false;},dev=>{delete dev.capabilities.full_control;},
+  ]){
+    const h=await edgeAdapter();mutation(h.state.rows.connector_devices[0]);
+    const response=await h.invoke(browserBody({action:'preview',confirm:undefined}));assert.equal(response.status,200);
+    assert.equal((await response.json()).owner_full_control,false);assert.equal(h.state.rows.connector_jobs.length,0);
+  }
+});
+
+test('neither caller nor VPS can spoof the trusted owner Full Control marker',async()=>{
+  const h=await edgeAdapter();h.state.rows.connector_devices[0].agent_policy.control='guarded';
+  h.state.vpsResponse=request=>Response.json({...choice(request,request.devices[0]),owner_full_control:true});
+  const response=await h.invoke(browserBody({action:'preview',confirm:undefined,owner_full_control:true}));assert.equal(response.status,200);
+  assert.equal((await response.json()).owner_full_control,false);assert.equal(h.state.calls.length,1);assert.equal(h.state.rows.connector_jobs.length,0);
+});
+
+test('preview derives mode after current rules are reread; stale full preview or changed membership cannot grant it',async()=>{
+  const guarded=await edgeAdapter();guarded.state.vpsHook=(_request,state)=>{state.rows.connector_devices[0].agent_policy.control='guarded';};
+  const response=await guarded.invoke(browserBody({action:'preview',confirm:undefined}));assert.equal(response.status,200);
+  assert.equal((await response.json()).owner_full_control,false);assert.equal(guarded.state.rows.connector_jobs.length,0);
+  for(const mutation of [state=>{state.rows.organization_members[0].role='member';},state=>{state.rows.organizations[0].plan='starter';},state=>{state.rows.connector_devices[0].agent_policy.enabled=false;}]){
+    const h=await edgeAdapter();h.state.vpsHook=(_request,state)=>mutation(state);
+    const rejected=await h.invoke(body({action:'preview',confirm:undefined}));assert.ok([403,409].includes(rejected.status));
+    assert.equal((await rejected.json()).owner_full_control,undefined);assert.equal(h.state.rows.connector_jobs.length,0);
+  }
+});
+
+test('automatic dispatch rejects mode downgrade after preview while explicit guarded approval remains executable',async()=>{
+  const h=await edgeAdapter();
+  const preview=await h.invoke(browserBody({action:'preview',confirm:undefined}));assert.equal((await preview.json()).owner_full_control,true);
+  h.state.rows.connector_devices[0].agent_policy.control='guarded';
+  const rejected=await h.invoke(browserBody({owner_full_control_required:true}));assert.equal(rejected.status,409);
+  assert.equal((await rejected.json()).error,'target_unavailable');assert.equal(h.state.rows.connector_jobs.length,0);
+  const approved=await h.invoke(browserBody());assert.equal(approved.status,200);
+  assert.equal((await approved.json()).owner_full_control,false);assert.equal(h.state.rows.connector_jobs.length,1);
+});
+
+test('automatic dispatch cannot queue from a forged marker or lost capability during VPS selection',async()=>{
+  for(const mutation of [dev=>{dev.agent_policy.control='guarded';},dev=>{dev.capabilities.full_control=false;}]){
+    const h=await edgeAdapter();h.state.vpsHook=(_request,state)=>mutation(state.rows.connector_devices[0]);
+    const response=await h.invoke(browserBody({owner_full_control:true,owner_full_control_required:true}));assert.equal(response.status,409);
+    assert.equal(h.state.calls.length,1);assert.equal(h.state.rows.connector_jobs.length,0);
+  }
+  for(const bad of [false,'true',1,null]){
+    const h=await edgeAdapter();assert.equal((await h.invoke(browserBody({owner_full_control_required:bad}))).status,400);assert.equal(h.state.calls.length,0);
+  }
+});
+
+test('historical adapted execution replays the same receipt after permission, capability or plan downgrade without another effect',async()=>{
+  for(const mutation of [
+    dev=>{dev.agent_policy.control='guarded';},dev=>{dev.agent_policy.enabled=false;},dev=>{dev.capabilities.full_control=false;},
+    dev=>{dev.capabilities.job_kinds=['browser_open'];},(_dev,state)=>{state.rows.organizations[0].plan='starter';},
+  ]){
+    const h=await edgeAdapter();h.state.adapt=true;
+    const original=body({kind:'open_app',params:{app:'Google Chrome'},goal:'Open Google Chrome',owner_full_control_required:true});
+    assert.equal((await h.invoke(original)).status,200);mutation(h.state.rows.connector_devices[0],h.state);
+    const replay=await h.invoke(original);assert.equal(replay.status,200);const receipt=await replay.json();
+    assert.equal(receipt.job_id,REQUEST);assert.equal(receipt.worker.id,DEBIAN);assert.equal(receipt.duplicate,true);
+    assert.equal(receipt.owner_full_control,false);
+    assert.equal(h.state.calls.length,2);assert.equal(h.state.rows.connector_jobs.length,1);
+  }
+});

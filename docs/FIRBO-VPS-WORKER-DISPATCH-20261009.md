@@ -24,6 +24,9 @@ correlated result. A successful selection or heartbeat is not task completion.
 - Both CEO entry points use this path. The stored Voice laptop remains a voice
   preference, rather than an automatic worker assignment. An approved preview
   carries its request UUID and selected worker into dispatch.
+- Owner-enabled Full Control permits an explicit owner command to start without
+  a second approval prompt. The backend supplies the selected worker's mode and
+  rechecks Full Control before an automatic enqueue. Guarded mode keeps approval.
 - Employee computer and server tools also consult the VPS. Native employee goals
   keep task claims while work is pending. Each native observation rechecks the
   employee, task claim and computer power. Employee approval still uses Inbox.
@@ -47,16 +50,18 @@ is still a separate unfinished product item.
 
 1. Require exact-candidate Python/auth/rollback, frontend, handler, source closure
    and stock PostgreSQL migration checks. Re-read coordination and live source.
-2. Run the hash-pinned `deploy/hostinger/install-worker-dispatch.py --source SHA
+2. Stage only the additive `worker_dispatch_native_approval` migration and the
+   complete, compatible Connector and new computer-dispatch bundles. Preserve
+   existing JWT settings. Keep the old frontend and agent-runner active until
+   the VPS selector is installed. Existing owner jobs do not depend on the new
+   route; retain the previous Connector bundle for rollback.
+3. Run the hash-pinned `deploy/hostinger/install-worker-dispatch.py --source SHA
    --apply` as `root@srv2027143`. The operator script verifies source, backs up
    owned files, enables only the administrator dispatcher, checks authenticated
    selection and anonymous denial, preserves runtime identity and box service,
    and rolls back a failed acceptance. It queues no computer task.
-3. Apply only the new `worker_dispatch_native_approval` migration after checking
-   applied migrations. Deploy complete reviewed bundles for Connector,
-   computer-dispatch and agent-runner. Preserve existing JWT settings; the new
-   user-session-only computer-dispatch has platform JWT verification enabled.
-4. Deploy the exact frontend only after the VPS selector is available. Verify
+4. Deploy complete reviewed remaining function bundles, including agent-runner,
+   and the exact frontend only after the VPS selector is available. Verify
    all six critical function closures, source/deployment identities and unchanged
    served Connector assets. Preserve the observed production rollback deployment.
 5. Owner requests a real CEO goal, verifies the chosen worker's screen/result,
@@ -64,9 +69,9 @@ is still a separate unfinished product item.
 
 ## Evidence and remaining work
 
-Local candidate checks: 673 frontend tests and production build; 24 Python
-selector/auth/real-file rollback tests; 280 employee/handler/policy tests; 16
-actual shared-helper/Edge dispatch tests; 9 Connector idempotency/approval tests;
+Local candidate checks: 698 frontend tests and production build; 24 Python
+selector/auth/real-file rollback tests; 280 employee/handler/policy tests; 23
+actual shared-helper/Edge dispatch tests; 14 Connector idempotency/approval tests;
 17 terminal receipt/authorization tests; strict Edge TypeScript. Native approval
 SQL passed against embedded PostgreSQL 17.5 with the actual prerequisite
 migrations. Stock PostgreSQL and exact-source CI are release checks, not inferred
@@ -76,6 +81,12 @@ The current owner Debian advertises `desktop_task`/Full Control. Polis1984
 (Macmini6,2, Catalina 10.15.7) advertises only legacy file/exec/browser_open
 capabilities. Routing cannot install missing native Mac capabilities. That
 compatible native adapter and its owner-device acceptance remain necessary.
+The current native helper is Linux/X11-only, the latest Connector requires
+Node's built-in SQLite runtime, and the desktop planner uses Linux key
+conventions. Catalina delivery therefore includes a compatible durable
+transport/journal, native Quartz capture/input and platform-aware planning.
+Check the actual Mac runtime and operating-system permissions before updating;
+do not rerun the macOS 14-only Playwright updater or re-pair the device.
 This company-worker dispatcher does not turn private text-digest PR104 into
 isolated cross-tenant platform workers, and does not complete the broader master
 plan: management UI, useful business artifact/readback, OAuth/provider/customer,

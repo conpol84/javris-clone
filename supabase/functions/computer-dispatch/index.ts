@@ -8,6 +8,18 @@ const json=(status:number,body:unknown)=>new Response(JSON.stringify(body),{stat
 const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const text=(v:any,max:number)=>typeof v==='string'&&v.length<=max&&!v.includes('\0')?v:null;
 
+function selectedDeviceReady(device:any,organizationId:string,kind:string):boolean{
+  if(!device||device.organization_id!==organizationId||device.paired!==true||device.revoked_at||!device.last_seen_at)return false;
+  const seen=Date.parse(device.last_seen_at),age=Date.now()-seen;
+  return Number.isFinite(seen)&&age>=-5000&&age<=60000&&device.agent_policy?.enabled===true
+    &&withinHours(cleanPolicy(device.agent_policy))&&device.capabilities?.job_kinds?.includes(kind)===true;
+}
+/** This mode belongs to the selected owner's current rules and real Connector
+ * capability. Neither a request field nor a VPS response can grant it. */
+function ownerFullControl(device:any,organizationId:string,kind:string):boolean{
+  return selectedDeviceReady(device,organizationId,kind)&&device.agent_policy?.control==='full'&&device.capabilities?.full_control===true;
+}
+
 export function normalizeDispatchParams(kind:string,p:any):Record<string,unknown>{
   if(!p||typeof p!=='object'||Array.isArray(p))throw new Error('dispatch_bad_request');
   if(kind==='desktop_task'){const goal=text(p.goal,4000)?.trim();if(!goal)throw new Error('dispatch_bad_request');return{goal};}
@@ -39,7 +51,8 @@ Deno.serve(async(req:Request)=>{
     const bytes=new Uint8Array(size);let pos=0;for(const part of parts){bytes.set(part,pos);pos+=part.length;}b=JSON.parse(new TextDecoder().decode(bytes));
   }catch{return json(400,{error:'dispatch_bad_request'});}
   if(!b||!['preview','dispatch'].includes(b.action)||!UUID.test(b.organization_id)||!UUID.test(b.request_id)||!DISPATCH_KINDS.has(b.kind)||b.kind==='server_task'
-    ||b.device_id!==undefined&&!UUID.test(b.device_id)||b.target!==undefined&&!text(b.target,120)||b.goal!==undefined&&!text(b.goal,4000))return json(400,{error:'dispatch_bad_request'});
+    ||b.device_id!==undefined&&!UUID.test(b.device_id)||b.target!==undefined&&!text(b.target,120)||b.goal!==undefined&&!text(b.goal,4000)
+    ||b.owner_full_control_required!==undefined&&b.owner_full_control_required!==true)return json(400,{error:'dispatch_bad_request'});
   let params:Record<string,unknown>;try{params=normalizeDispatchParams(b.kind,b.params);}catch{return json(400,{error:'dispatch_bad_request'});}
   const role=async()=>{
     const {data,error}=await admin.from('organization_members').select('role').eq('organization_id',b.organization_id).eq('user_id',user.id).maybeSingle();
@@ -57,7 +70,7 @@ Deno.serve(async(req:Request)=>{
     return(devices??[]).map((d:any)=>({...d,load:(jobs??[]).filter((j:any)=>j.device_id===d.id).length}));
   };
   try{
-    if(!await role())return json(403,{error:'forbidden'});if(!await entitlement(b.kind))return json(403,{error:'business_plan_required'});
+    if(!await role())return json(403,{error:'forbidden'});
     const devices=await inventory();
     const input={requestId:b.request_id,organizationId:b.organization_id,kind:b.kind,params,devices,
       ...(b.target?{target:b.target}:{}),...(b.device_id?{deviceId:b.device_id}:{}),...(b.goal?{goal:b.goal}:{})};
@@ -65,34 +78,47 @@ Deno.serve(async(req:Request)=>{
     const{data:prior,error:pe}=await admin.from('connector_jobs').select('id,organization_id,device_id,created_by,kind,params,origin,dispatch_request').eq('id',b.request_id).eq('organization_id',b.organization_id).maybeSingle();
     if(pe)throw new Error('dispatch_unavailable');
     if(prior){
-      const dev=devices.find((d:any)=>d.id===prior.device_id);
+      const{data:freshWho,error:fe}=await userClient.auth.getUser();
+      if(fe||freshWho?.user?.id!==user.id||!await role())return json(403,{error:'forbidden'});
+      const refreshed=await inventory();const dev=refreshed.find((d:any)=>d.id===prior.device_id);
       if(prior.created_by!==user.id||prior.origin==='agent'||!dev||canonicalDispatch(prior.dispatch_request)!==canonicalDispatch(dispatchRequestRecord(input))) return json(409,{error:'request_conflict'});
       const recorded={contract:DISPATCH_CONTRACT,request_id:b.request_id,organization_id:b.organization_id,worker:{kind:'computer',id:dev.id,name:dev.name,platform:dev.platform},job:{kind:prior.kind,params:prior.params},reason:'existing_execution'};
-      try{validateWorkerDecision(recorded,input);}catch{return json(409,{error:'request_conflict'});}
-      return json(200,{...recorded,...(b.action==='dispatch'?{job_id:prior.id,duplicate:true}:{})});
+      // Readback never authorizes another effect. Preserve the recorded goal
+      // after permission/capability/plan downgrade, while still binding its
+      // original proposal and exact explicit worker identity.
+      const exact=prior.kind===input.kind&&canonicalDispatch(prior.params)===canonicalDispatch(input.params);
+      const native=input.kind==='open_app'&&prior.kind==='desktop_task'
+        &&canonicalDispatch(prior.params)===canonicalDispatch({goal:input.goal?.trim()||`Open ${String(input.params.app??'').trim()}`});
+      if(!exact&&!native)return json(409,{error:'request_conflict'});
+      try{validateWorkerDecision(recorded,{...input,devices:refreshed,kind:prior.kind,params:prior.params});}catch{return json(409,{error:'request_conflict'});}
+      const owner_full_control=await entitlement(prior.kind)&&ownerFullControl(dev,b.organization_id,prior.kind);
+      return json(200,{...recorded,owner_full_control,...(b.action==='dispatch'?{job_id:prior.id,duplicate:true}:{})});
     }
+    if(!await entitlement(b.kind))return json(403,{error:'business_plan_required'});
     const choice=await selectWorkerOnVps(input,env);
-    if(b.action==='preview')return json(200,choice);
-    if(b.confirm!==true)return json(400,{error:'confirm_required'});
+    if(b.action==='dispatch'&&b.confirm!==true)return json(400,{error:'confirm_required'});
     // Fresh checks after the network wait. The Connector and transactional claim
     // repeat execution authorization; this Edge cannot bypass them.
     const{data:freshWho,error:fe}=await userClient.auth.getUser();
     if(fe||freshWho?.user?.id!==user.id||!await role())return json(403,{error:'forbidden'});
     if(!await entitlement(choice.job.kind))return json(403,{error:'business_plan_required'});
     const freshDevices=await inventory();const fresh=freshDevices.find((d:any)=>d.id===choice.worker.id);
-    if(!fresh||!fresh.last_seen_at||Date.now()-Date.parse(fresh.last_seen_at)>60000||!Number.isFinite(Date.parse(fresh.last_seen_at))
-      ||fresh.agent_policy?.enabled!==true||!withinHours(cleanPolicy(fresh.agent_policy))||!fresh.capabilities?.job_kinds?.includes(choice.job.kind)
+    if(!selectedDeviceReady(fresh,b.organization_id,choice.job.kind)
       ||choice.job.kind==='desktop_task'&&(fresh.agent_policy?.control!=='full'||fresh.capabilities?.full_control!==true))return json(409,{error:'target_unavailable'});
     validateWorkerDecision(choice,{...input,devices:freshDevices});
+    const owner_full_control=ownerFullControl(fresh,b.organization_id,choice.job.kind);
+    if(b.action==='preview')return json(200,{...choice,owner_full_control});
+    if(b.owner_full_control_required===true&&!owner_full_control)return json(409,{error:'target_unavailable'});
     // Forward the original user's token, never a service-role queue bypass.
     if(req.signal.aborted)return json(409,{error:'dispatch_cancelled'});
     const response=await fetch(`${base}/functions/v1/connector`,{method:'POST',headers:{authorization:auth,apikey:anon,'content-type':'application/json'},redirect:'error',signal:AbortSignal.any([req.signal,AbortSignal.timeout(15000)]),
-      body:JSON.stringify({action:'create_job',request_id:b.request_id,dispatch_request:dispatchRequestRecord(input),device_id:choice.worker.id,kind:choice.job.kind,params:choice.job.params,confirm:true})});
+      body:JSON.stringify({action:'create_job',request_id:b.request_id,dispatch_request:dispatchRequestRecord(input),device_id:choice.worker.id,kind:choice.job.kind,params:choice.job.params,confirm:true,
+        ...(b.owner_full_control_required===true?{owner_full_control_required:true}:{})})});
     const result=await response.json();if(!response.ok)return json(response.status,{error:result?.error??'dispatch_enqueue_uncertain'});
     if(result.job_id!==b.request_id)throw new Error('dispatch_enqueue_uncertain');
     const{data:receipt,error:re}=await admin.from('connector_jobs').select('id,organization_id,device_id,created_by,kind,params').eq('id',b.request_id).eq('organization_id',b.organization_id).maybeSingle();
     if(re||!receipt||receipt.created_by!==user.id||receipt.device_id!==choice.worker.id||receipt.kind!==choice.job.kind||canonicalDispatch(receipt.params)!==canonicalDispatch(choice.job.params))throw new Error('dispatch_enqueue_uncertain');
-    return json(200,{...choice,job_id:receipt.id});
+    return json(200,{...choice,owner_full_control,job_id:receipt.id});
   }catch(error){
     const message=error instanceof Error?error.message:'';
     return json(['no_eligible_worker','target_unavailable','target_ambiguous','request_conflict'].includes(message)?409:503,

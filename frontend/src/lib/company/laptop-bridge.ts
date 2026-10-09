@@ -34,6 +34,7 @@ export type DirectComputerProposal={
  deviceId?:string;
  target?:string;
  requestId?:string;
+ ownerFullControlRequired?:true;
 };
 
 const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^\p{L}\p{N}\s-]+/gu,' ').replace(/\s+/g,' ').trim();
@@ -170,11 +171,12 @@ const centralRequest=(orgId:string,proposal:DirectComputerProposal,action:'previ
  params:JSON.parse(actionJson(proposal.params)),goal:proposal.description,
  ...(proposal.target?{target:proposal.target}:{}),...(proposal.deviceId?{device_id:proposal.deviceId}:{}),
  ...(action==='dispatch'?{confirm:true as const}:{}),
+ ...(action==='dispatch'&&proposal.ownerFullControlRequired===true?{owner_full_control_required:true as const}:{}),
 });
 
 /** Production selection belongs to the VPS dispatcher. Injected discovery is
  * retained only for isolated legacy executor tests, never as a runtime fallback. */
-export type DirectComputerReadiness={ready:true;deviceId:string;deviceName:string;nativeDesktop?:true;requestId?:string}|{ready:false;status:string;reply:string};
+export type DirectComputerReadiness={ready:true;deviceId:string;deviceName:string;nativeDesktop?:true;requestId?:string;ownerFullControl?:boolean}|{ready:false;status:string;reply:string};
 export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number;dispatcher?:typeof dispatchWorkerRequest}):Promise<DirectComputerReadiness>{
  const kind=typeof request==='string'?request:request.kind,target=typeof request==='string'?undefined:request.target,app=typeof request==='string'?undefined:request.params.app;
  if(deps?.loadDevices&&!deps.dispatcher){
@@ -189,7 +191,7 @@ export async function prepareDirectComputerCommand(orgId:string,request:DirectCo
   const payload=centralRequest(orgId,proposal,'preview');
   const receipt=workerDispatchReceipt(await(deps?.dispatcher??dispatchWorkerRequest)(JSON.parse(actionJson(payload)),signal),payload);
   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-  return {ready:true as const,deviceId:receipt.worker.id,deviceName:receipt.worker.name,requestId:receipt.request_id,...(receipt.job.kind==='desktop_task'?{nativeDesktop:true as const}:{})};
+  return {ready:true as const,deviceId:receipt.worker.id,deviceName:receipt.worker.name,requestId:receipt.request_id,ownerFullControl:receipt.owner_full_control===true,...(receipt.job.kind==='desktop_task'?{nativeDesktop:true as const}:{})};
  }catch(error){if(signal?.aborted||error instanceof DOMException&&error.name==='AbortError')throw new DOMException('Cancelled','AbortError');return dispatchFailure(lang,error);}
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
@@ -204,7 +206,7 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
  try{
   // Capture the owner's exact approval and selection before the first await.
   if(!proposal.params||Array.isArray(proposal.params)||Object.getPrototypeOf(proposal.params)!==Object.prototype)throw new Error('Invalid action parameters');
-  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??null,target:proposal.target,params:actionJson(proposal.params)};
+  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??null,target:proposal.target,params:actionJson(proposal.params),ownerFullControlRequired:proposal.ownerFullControlRequired};
   if(!['browser_task','open_app','desktop_task','browser_open'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>4000|| (approved.selected!==null&&typeof approved.selected!=='string')||(approved.target!==undefined&&(typeof approved.target!=='string'||approved.target.length>100)))throw new Error('Invalid approved action');
   const approvedParams=JSON.parse(approved.params) as Record<string,unknown>;
   let device:{id:string;name:string},job:{job_id:string};
@@ -216,7 +218,7 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    if(approved.kind==='open_app'&&!selection.device.capabilities?.job_kinds?.includes('open_app')&&selection.device.capabilities?.job_kinds?.includes('desktop_task')){approved.kind='desktop_task';approved.params=actionJson({goal:approved.description});}
    job=await(deps.queue??giveJob)(device.id,approved.kind,JSON.parse(approved.params),true);
   }else{
-   const payload=centralRequest(orgId,{kind:approved.kind,description:approved.description,params:approvedParams,...(approved.selected?{deviceId:approved.selected}:{}),...(approved.target?{target:approved.target}:{}),...(proposal.requestId?{requestId:proposal.requestId}:{})},'dispatch');
+   const payload=centralRequest(orgId,{kind:approved.kind,description:approved.description,params:approvedParams,...(approved.selected?{deviceId:approved.selected}:{}),...(approved.target?{target:approved.target}:{}),...(proposal.requestId?{requestId:proposal.requestId}:{}),...(approved.ownerFullControlRequired===true?{ownerFullControlRequired:true as const}:{})},'dispatch');
    // The server queues with this UUID. Even a lost enqueue ACK can request
    // cancellation of the exact operation, without re-dispatching it.
    jobId=payload.request_id;

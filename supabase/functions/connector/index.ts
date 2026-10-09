@@ -7,7 +7,7 @@
 // it was not started with (no writing, no commands) no matter what this service sends.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';
-import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';
+import { APP_NAME, browserTaskParams, cleanPolicy, withinHours } from '../_shared/computer-policy.ts';
 import { canonicalDispatch, validatedDispatchRecord } from '../_shared/worker-dispatch.ts';
 import { finalizePendingComputerExecution } from '../_shared/worker-execution.ts';
 
@@ -407,6 +407,7 @@ Deno.serve(async (req) => {
   if (action === 'create_job') {
     const requestId=body.request_id;
     if(requestId!==undefined&&(typeof requestId!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId)))return json(400,{error:'bad_request'});
+    if(body.owner_full_control_required!==undefined&&body.owner_full_control_required!==true)return json(400,{error:'bad_request'});
     const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
@@ -459,6 +460,17 @@ Deno.serve(async (req) => {
     const matches=(j:any)=>j&&j.created_by===user.id&&j.device_id===dev.id&&j.kind===kind&&j.origin!=='agent'
       &&canonicalDispatch(j.params)===canonicalDispatch(params)&&canonicalDispatch(j.dispatch_request??null)===canonicalDispatch(dispatchRecord);
     if(requestId){const{data:prior,error}=await existing();if(error)return json(503,{error:'save_failed'});if(prior)return matches(prior)?json(200,{job_id:prior.id,duplicate:true}):json(409,{error:'request_conflict'});}
+    if(body.owner_full_control_required===true){
+      // Automatic owner work carries a stricter mode requirement than a
+      // manually approved step. Re-read it at the final queue boundary.
+      const{data:fresh,error:fe}=await admin.from('connector_devices')
+        .select('id,organization_id,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+      if(fe)return json(503,{error:'control_unavailable'});
+      const seen=Date.parse(fresh?.last_seen_at??''),age=Date.now()-seen;
+      if(!fresh||fresh.paired!==true||fresh.revoked_at||fresh.agent_policy?.enabled!==true||fresh.agent_policy?.control!=='full'
+        ||fresh.capabilities?.full_control!==true||!fresh.capabilities?.job_kinds?.includes(kind)||!withinHours(cleanPolicy(fresh.agent_policy))
+        ||!Number.isFinite(seen)||age<-5000||age>60000)return json(409,{error:'device_not_ready'});
+    }
     const { count } = await admin.from('connector_jobs').select('id', { count: 'exact', head: true }).eq('device_id', dev.id).eq('status', 'queued');
     if ((count ?? 0) >= MAX_QUEUED) return json(429, { error: 'too_many' });
     const { data: job, error } = await admin.from('connector_jobs').insert({...(requestId?{id:requestId}:{}),...(dispatchRecord?{dispatch_request:dispatchRecord}:{}), organization_id: dev.organization_id, device_id: dev.id, created_by: user.id, kind, params }).select('id').single();

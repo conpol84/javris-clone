@@ -44,7 +44,7 @@ it('honours one Go for the same ready device and fences a readiness result after
  const hook=session();await hook.ask('open Safari');await hook.ask('go nai kanta');
  expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toMatchObject({deviceId:'d8',params:{app:'Safari'}});expect(sendChat).not.toHaveBeenCalled();
  let release!:(value:any)=>void;prepare.mockImplementation(()=>new Promise(resolve=>{release=resolve}));
- const asking=hook.ask('open Safari');await Promise.resolve();await Promise.resolve();hook.stop();release({ready:true,deviceName:'Late Mac',deviceId:'late'});await asking;
+ const asking=hook.ask('open Safari');await Promise.resolve();await Promise.resolve();hook.stop();release({ready:true,deviceName:'Late Mac',deviceId:'late',ownerFullControl:true});await asking;
  expect(dispatch).toHaveBeenCalledOnce();expect(fixture.refs[9].current).toBeNull();
 });
 it('spoken final text uses the same control lane',async()=>{
@@ -55,9 +55,30 @@ it('spoken final text uses the same control lane',async()=>{
 });
 
 it('native Full Control runs a simple app request without a duplicate approval',async()=>{
- prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed opened app'});
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true,ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed opened app'});
  const hook=session();await hook.ask('open Microsoft Word');
- expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'open_app',description:'Open Microsoft Word',params:{app:'Microsoft Word'},deviceId:'d8',requestId:'11111111-1111-4111-8111-111111111111'});expect(sendChat).not.toHaveBeenCalled();
+ expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'open_app',description:'Open Microsoft Word',params:{app:'Microsoft Word'},deviceId:'d8',requestId:'11111111-1111-4111-8111-111111111111',ownerFullControlRequired:true});expect(sendChat).not.toHaveBeenCalled();
+});
+
+it.each(['open browser','Open YouTube and play Μαζωνάκης Ώρες Μικρές'])('owner Full Control runs %s once without an approval prompt',async message=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed result'});
+ const hook=session();await hook.ask(message);
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toMatchObject({deviceId:'d8',requestId:'11111111-1111-4111-8111-111111111111',ownerFullControlRequired:true});expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toBe('Observed result');expect(fixture.refs[9].current).toBeNull();
+});
+
+it.each(['open browser','open Microsoft Word','Open YouTube and play Μαζωνάκης Ώρες Μικρές'])('guarded native readiness asks before %s and one approval executes the bound request',async message=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true,ownerFullControl:false,requestId:'11111111-1111-4111-8111-111111111111'});dispatch.mockResolvedValue({reply:'Observed result'});
+ const hook=session();await hook.ask(message);
+ expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Το εγκρίνεις;');
+ await hook.ask('approve');expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toMatchObject({deviceId:'d8',requestId:'11111111-1111-4111-8111-111111111111'});expect(dispatch.mock.calls[0][1]).not.toHaveProperty('ownerFullControlRequired');
+});
+
+it('keeps a missing central Full Control marker guarded even with native desktop capability',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true});
+ const hook=session();await hook.ask('Open YouTube and play Μαζωνάκης Ώρες Μικρές');
+ expect(dispatch).not.toHaveBeenCalled();const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Το εγκρίνεις;');
 });
 
 it('passes the explicit Mac target through Talk readiness and the bound approval',async()=>{

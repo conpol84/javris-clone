@@ -28,3 +28,42 @@ test('actual native control reads agent provenance and stops when current comput
  const projection=r.state.reads.find(x=>x.table==='connector_jobs').select.split(',');for(const field of ['origin','agent_task_id','agent_id','agent_run_claim'])assert.ok(projection.includes(field));
  r.state.rows.agent_tools[0].enabled=false;const second=await r.invoke({action:'control',token:TOKEN,job_id:ID});assert.equal((await second.json()).stop,true);
 });
+
+test('automatic owner dispatch is allowed only with current Full Control and real local capability',async()=>{
+ const r=await owner();const response=await r.invoke({...body,owner_full_control_required:true});
+ assert.equal(response.status,200);assert.equal((await response.json()).job_id,ID);assert.equal(r.state.rows.connector_jobs.length,1);
+ const projection=r.state.reads.filter(read=>read.table==='connector_devices');assert.equal(projection.length,2,'mode is reread at the final queue boundary');
+});
+
+test('automatic dispatch refuses guarded, disabled, incapable, offline or outside-hours devices without queueing',async()=>{
+ const hour=new Date().getUTCHours();
+ for(const change of [
+  dev=>{dev.agent_policy.control='guarded';},dev=>{dev.agent_policy.enabled=false;},
+  dev=>{dev.capabilities.full_control=false;},dev=>{delete dev.capabilities.full_control;},
+  dev=>{dev.capabilities.job_kinds=['desktop_task'];},dev=>{dev.last_seen_at=new Date(Date.now()-61000).toISOString();},
+  dev=>{dev.agent_policy.hours={from:(hour+1)%24,to:(hour+2)%24,tz:'UTC'};},
+ ]){
+  const r=await owner();change(r.state.rows.connector_devices[0]);
+  const response=await r.invoke({...body,owner_full_control_required:true});assert.equal(response.status,409,change.toString());
+  assert.equal((await response.json()).error,'device_not_ready');assert.equal(r.state.rows.connector_jobs.length,0);
+ }
+});
+
+test('policy changed during request is reread before automatic enqueue, while manual guarded approval retains compatibility',async()=>{
+ const r=await owner();let reads=0;r.state.beforeRead=({table})=>{if(table==='connector_devices'&&++reads===2)r.state.rows.connector_devices[0].agent_policy.control='guarded';};
+ assert.equal((await r.invoke({...body,owner_full_control_required:true})).status,409);assert.equal(r.state.rows.connector_jobs.length,0);assert.equal(reads,2);
+ const manuallyApproved=await r.invoke(body);assert.equal(manuallyApproved.status,200);assert.equal(r.state.rows.connector_jobs.length,1);
+});
+
+test('a Full Control replay after downgrade reads the first job and never schedules another effect',async()=>{
+ const r=await owner();assert.equal((await r.invoke({...body,owner_full_control_required:true})).status,200);
+ r.state.rows.connector_devices[0].agent_policy.control='guarded';r.state.rows.connector_devices[0].capabilities.full_control=false;
+ const replay=await r.invoke({...body,owner_full_control_required:true});assert.equal(replay.status,200);assert.equal((await replay.json()).duplicate,true);
+ assert.equal(r.state.rows.connector_jobs.length,1);
+});
+
+test('automatic mode flag must be absent or literal true, never a caller-supplied truthy value',async()=>{
+ for(const value of [false,'true',1,null]){
+  const r=await owner();assert.equal((await r.invoke({...body,owner_full_control_required:value})).status,400);assert.equal(r.state.rows.connector_jobs.length,0);
+ }
+});

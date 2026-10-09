@@ -14,7 +14,7 @@ const proposal=()=>({kind:'desktop_task' as const,params:{goal},description:goal
 const receipt=(body:WorkerDispatchRequest,changes:Record<string,unknown>={})=>({
  contract:'firbo-worker-dispatch/v1',request_id:body.request_id,organization_id:body.organization_id,
  worker:{kind:'computer',id:DEBIAN,name:'My shell',platform:'linux x64'},
- job:{kind:body.kind,params:body.params},reason:'online native desktop',
+ job:{kind:body.kind,params:body.params},reason:'online native desktop',owner_full_control:false,
  ...(body.action==='dispatch'?{job_id:body.request_id}:{}),...changes,
 });
 const done=(kind:JobRow['kind']='desktop_task',params:Record<string,unknown>={goal}):JobRow=>({id:JOB,device_id:DEBIAN,kind,params,status:'done',result:kind==='desktop_task'?{completed:true,summary:'Matched artist and title; observed playback advancing'}:{launched:true},error:null,created_at:'',finished_at:''});
@@ -26,7 +26,7 @@ describe('CEO central worker dispatch',()=>{
   const store=memory();setVoiceLaptop(ORG,MAC,store);
   sdk.invoke.mockImplementation(async(_name,{body})=>({data:receipt(body),error:null}));
   const ready=await prepareDirectComputerCommand(ORG,proposal(),'en',undefined,{storage:store});
-  expect(ready).toEqual({ready:true,deviceId:DEBIAN,deviceName:'My shell',nativeDesktop:true,requestId:REQUEST});
+  expect(ready).toEqual({ready:true,deviceId:DEBIAN,deviceName:'My shell',nativeDesktop:true,requestId:REQUEST,ownerFullControl:false});
   if(!ready.ready)throw Error('must be ready');
   const out=await dispatchDirectComputerCommand(ORG,{...proposal(),deviceId:ready.deviceId,requestId:ready.requestId},'en',undefined,{storage:store,loadJobs:async(_org,id)=>{expect(id).toBe(DEBIAN);return[done()]}});
   expect(out.status).toBe('done');expect(sdk.invoke).toHaveBeenCalledTimes(2);
@@ -36,15 +36,38 @@ describe('CEO central worker dispatch',()=>{
   expect(calls[1][1].body).toEqual({...calls[0][1].body,action:'dispatch',confirm:true,device_id:DEBIAN});
   expect(store.getItem(`firbo.voice-laptop.v1:${ORG}`)).toBe(MAC);
  });
+ it('binds hands-free dispatch to the preview and rechecks Full Control at the central API',async()=>{
+  sdk.invoke.mockImplementation(async(_name,{body})=>({data:receipt(body,{owner_full_control:body.action==='preview'}),error:null}));
+  const ready=await prepareDirectComputerCommand(ORG,proposal(),'en');
+  expect(ready).toMatchObject({ready:true,ownerFullControl:true});if(!ready.ready)throw Error('must be ready');
+  const out=await dispatchDirectComputerCommand(ORG,{...proposal(),deviceId:ready.deviceId,requestId:ready.requestId,ownerFullControlRequired:true},'en',undefined,{loadJobs:async()=>[done()]});
+  expect(out.status).toBe('done');expect(sdk.invoke).toHaveBeenCalledTimes(2);
+  expect(sdk.invoke.mock.calls[0][1].body).not.toHaveProperty('owner_full_control_required');
+  expect(sdk.invoke.mock.calls[1][1].body).toEqual({action:'dispatch',organization_id:ORG,request_id:REQUEST,kind:'desktop_task',params:{goal},goal,device_id:DEBIAN,confirm:true,owner_full_control_required:true});
+ });
+ it('does not retry or switch workers when Full Control is withdrawn after preview',async()=>{
+  sdk.invoke.mockImplementation(async(_name,{body})=>body.action==='preview'?{data:receipt(body,{owner_full_control:true}),error:null}:{data:null,error:new FunctionsHttpError(Response.json({error:'target_unavailable'},{status:409}))});
+  const ready=await prepareDirectComputerCommand(ORG,proposal(),'en');if(!ready.ready)throw Error('must be ready');
+  const loadJobs=vi.fn(),queue=vi.fn(),cancel=vi.fn();
+  const out=await dispatchDirectComputerCommand(ORG,{...proposal(),deviceId:ready.deviceId,requestId:ready.requestId,ownerFullControlRequired:true},'en',undefined,{loadJobs,queue,cancel});
+  expect(out.status).toBe('failed');expect(sdk.invoke).toHaveBeenCalledTimes(2);expect(loadJobs).not.toHaveBeenCalled();expect(queue).not.toHaveBeenCalled();expect(cancel).not.toHaveBeenCalled();
+ });
+ it.each([false,undefined])('keeps a %s central Full Control marker guarded despite native capability and saved laptop selection',async marker=>{
+  const store=memory();setVoiceLaptop(ORG,MAC,store);
+  sdk.invoke.mockImplementation(async(_name,{body})=>{const data:Record<string,unknown>=receipt(body);if(marker===undefined)delete data.owner_full_control;return{data,error:null}});
+  const ready=await prepareDirectComputerCommand(ORG,proposal(),'en',undefined,{storage:store});
+  expect(ready).toMatchObject({ready:true,nativeDesktop:true,ownerFullControl:false});expect(sdk.invoke).toHaveBeenCalledOnce();expect(store.getItem(`firbo.voice-laptop.v1:${ORG}`)).toBe(MAC);
+ });
  it('snapshots approved goal, target and parameters before the central await',async()=>{
-  const p={kind:'open_app' as const,params:{app:'Google Chrome'},description:'Open Google Chrome',target:'mac',deviceId:MAC,requestId:REQUEST};
+  const p={kind:'open_app' as const,params:{app:'Google Chrome'},description:'Open Google Chrome',target:'mac',deviceId:MAC,requestId:REQUEST,ownerFullControlRequired:true as const};
   sdk.invoke.mockImplementation(async(_name,{body})=>{
    p.params.app='Safari';p.target='debian';p.deviceId=DEBIAN;p.description='Open Safari';
+   Object.assign(p,{ownerFullControlRequired:false});
    return{data:receipt(body,{worker:{kind:'computer',id:MAC,name:'Polis1984',platform:'darwin x64'}}),error:null};
   });
   const out=await dispatchDirectComputerCommand(ORG,p,'en',undefined,{loadJobs:async()=>[{...done('open_app',{app:'Google Chrome'}),device_id:MAC,result:{opened:true,app:'Google Chrome'}}]});
   expect(out.status).toBe('done');expect(out.reply).toContain('Open Google Chrome');
-  expect(sdk.invoke.mock.calls[0][1].body).toMatchObject({target:'mac',device_id:MAC,params:{app:'Google Chrome'},goal:'Open Google Chrome'});
+  expect(sdk.invoke.mock.calls[0][1].body).toMatchObject({target:'mac',device_id:MAC,params:{app:'Google Chrome'},goal:'Open Google Chrome',owner_full_control_required:true});
  });
  it('accepts only the exact native adaptation and verifies the adapted receipt',async()=>{
   sdk.invoke.mockImplementation(async(_name,{body})=>({data:receipt(body,{job:{kind:'desktop_task',params:{goal:body.goal}}}),error:null}));
@@ -98,6 +121,15 @@ describe('CEO central worker dispatch',()=>{
 });
 
 describe('central dispatch response identity',()=>{
+ it.each(['true',1,null,{}])('rejects a non-boolean Full Control marker %s',async marker=>{
+  sdk.invoke.mockImplementation(async(_name,{body})=>({data:receipt(body,{owner_full_control:marker}),error:null}));
+  expect(await prepareDirectComputerCommand(ORG,proposal(),'en')).toMatchObject({ready:false,status:'dispatch_receipt_invalid'});expect(sdk.invoke).toHaveBeenCalledOnce();
+ });
+ it.each([{action:'dispatch',owner_full_control_required:false},{action:'dispatch',owner_full_control_required:'true'},{action:'preview',owner_full_control_required:true}])('rejects an invalid hands-free request flag before sending $action',async change=>{
+  const request={organization_id:ORG,request_id:REQUEST,kind:'desktop_task',params:{goal},goal,confirm:true,...change};
+  if(request.action==='preview')delete (request as Record<string,unknown>).confirm;
+  await expect(dispatchWorkerRequest(request as WorkerDispatchRequest)).rejects.toThrow('bad_request');expect(sdk.invoke).not.toHaveBeenCalled();
+ });
  it.each(['request','org','worker','job','kind','params'])('rejects mismatched %s before polling a computer',async mismatch=>{
   const req:WorkerDispatchRequest={action:'dispatch',organization_id:ORG,request_id:REQUEST,kind:'desktop_task',params:{goal},goal,device_id:DEBIAN,confirm:true};
   const data=receipt(req);

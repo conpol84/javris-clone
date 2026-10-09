@@ -190,16 +190,6 @@ export function AgentChatPage() {
             directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
             return;
           }
-        if(proposal?.kind==='desktop_task'){
-          const controller=new AbortController();computerRun.current=controller;setComputerRunning(true);
-          try{
-            const readiness=await prepareDirectComputerCommand(orgId,proposal,lang,controller.signal);
-            if(voiceScopeRef.current!==scopeAtSend)return;
-            const remote=readiness.ready?await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId},lang,controller.signal):readiness;
-            if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
-          }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
-          return;
-        }
           if (computerRequest && (!proposal || decision !== 'approve')) {
             const controller = new AbortController();
             computerRun.current = controller; setComputerRunning(true);
@@ -209,11 +199,11 @@ export function AgentChatPage() {
             } finally {
               if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
             }
-            if (voiceScopeRef.current !== scopeAtSend) return;
-            if(readiness.ready&&readiness.nativeDesktop&&proposal){
+            if (voiceScopeRef.current !== scopeAtSend || controller.signal.aborted) return;
+            if(readiness.ready&&readiness.ownerFullControl===true&&proposal){
               pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
               try{
-                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId},lang,controller.signal);
+                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,controller.signal);
                 if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
               }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
               return;
