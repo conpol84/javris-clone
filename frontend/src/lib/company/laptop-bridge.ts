@@ -119,7 +119,7 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
  // An ability question without a destination is *not* authority to queue
  // a vague desktop job. The control lane will probe real worker capabilities
  // and request a specific URL instead of inventing an Operations handoff.
- const websiteQuestion=/^(?:μπορεις|mporis|can you|are you able to)(?:\s+να)?\s+(?:μπεις|mpis|bis|visit|open|access)\s+(?:(?:σε|sto|to|a|an|the)\s+)*(?:(?:ενα|ena)\s+)?(?:website|site|ιστοσελιδα)(?:\s|$)/u.test(plain);
+ const websiteQuestion=/^(?:μπορεις|mporis|can you|are you able to)(?:\s+(?:να|na))?\s+(?:μπεις|mpis|bis|visit|open|access)\s+(?:(?:σε|se|sto|to|a|an|the)\s+)*(?:(?:ενα|ena)\s+)?(?:website|site|ιστοσελιδα)(?:\s|$)/u.test(plain);
  if(websiteQuestion&&!/https?:\/\//i.test(text))return null;
  if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()},...target};
  if(/youtube/u.test(plain)&&/(search|serch|ψαξ|αναζητ|vale|βαλε|play|παιξ|pekse|proto|πρωτ|first)/u.test(plain)){
