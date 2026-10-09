@@ -7,6 +7,7 @@ const prepare = vi.hoisted(() => vi.fn());
 const sendChat = vi.hoisted(() => vi.fn());
 const listen = vi.hoisted(() => vi.fn());
 const recover = vi.hoisted(() => vi.fn());
+const journal=vi.hoisted(()=>vi.fn());
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(),
   useState: () => { const i = fixture.index++; const setter = vi.fn(); fixture.setters[i] = setter; return [fixture.states[i], setter]; },
   useRef: (initial: unknown) => fixture.refs[fixture.refIndex++] ?? { current: initial },
@@ -21,6 +22,7 @@ vi.mock('../lib/company/voice', () => ({ unlockAudio: vi.fn(), speak: vi.fn(), l
 vi.mock('../lib/company/runner', async original => ({ ...await original<typeof import('../lib/company/runner')>(), sendChat }));
 vi.mock('../lib/company/laptop-bridge', async original => ({ ...await original<typeof import('../lib/company/laptop-bridge')>(), dispatchDirectComputerCommand: dispatch, prepareDirectComputerCommand: prepare }));
 vi.mock('../lib/company/computer-continuation', async original => ({...await original<typeof import('../lib/company/computer-continuation')>(),resolveUnlockContinuation:recover}));
+vi.mock('../lib/company/ceo-device-journal',()=>({journalCeoComputerJob:journal}));
 import { AgentChatPage } from './AgentChatPage';
 
 type Element = ReactElement<{ children?: ReactNode; 'aria-label'?: string; onClick?: () => void; onSubmit?: (e: { preventDefault: () => void }) => Promise<void> }>;
@@ -38,6 +40,7 @@ function page(text = 'yes', running = false) {
 beforeEach(() => {
   vi.clearAllMocks(); fixture.role = 'owner'; fixture.org = 'org'; fixture.user = 'owner';
   prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'No job was queued. Catalina is unsupported.'});
+  journal.mockResolvedValue(true);
   fixture.refs = [{ current: vi.fn() }, { current: null }, { current: null }, { current: null }, { current: false }, { current: null }, { current: '' }];
 });
 afterEach(()=>vi.unstubAllGlobals());
@@ -187,4 +190,25 @@ it('a non-owner cannot retrieve an old device job from an unlock notice',async()
  fixture.role='member';
  await elements(page('ok tora einai unlock')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
  expect(recover).not.toHaveBeenCalled();expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('CEO typed chat journals actual completed owner computer work in the selected conversation',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Screen locked; objective blocked',status:'failed',job_id:jobId});
+ await elements(page('open browser')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(journal).toHaveBeenCalledExactlyOnceWith('chat',jobId,expect.any(AbortSignal));
+ expect(sendChat).not.toHaveBeenCalled();expect(dispatch).toHaveBeenCalledOnce();
+ const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
+ expect(update([]).at(-1).content).toContain('objective blocked');
+});
+it('does not claim CEO session persistence when journal failed',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Job terminal with receipt',status:'done',job_id:jobId});
+ journal.mockRejectedValue(new Error('not recorded'));
+ await elements(page('open browser')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(journal).toHaveBeenCalledOnce();
+ const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
+ expect(update([]).at(-1).content).toContain('could not record it');
 });
