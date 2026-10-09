@@ -344,3 +344,37 @@ describe('handoff PR119 Greeklish verbs, resolved with exact owner device scope'
   expect(parseDirectComputerCommand('Research music streaming trends on YouTube')).toBeNull();
  });
 });
+
+describe('CEO shows real failed computer receipts rather than silent generic failure',()=>{
+ it('surfaces the worker error code, exact job id, and never claims playback',async()=>{
+  const goal='Anixe to browser kai vale youtube.com meta kane search mazonakis kai vale na pezi ena tradoudi to proto';
+  const proposal=parseDirectComputerCommand(goal)!;
+  expect(proposal.kind).toBe('desktop_task');
+  const machine:DeviceRow={...device('shell1','My shell',true),platform:'linux x64',
+   capabilities:{job_kinds:['desktop_task','browser_open','browser_task'],full_control:true}};
+  const job:JobRow={id:'real-failure-id',device_id:'shell1',kind:'desktop_task',params:{goal},
+   status:'error',error:'local_operation_failed',result:null,created_at:'',finished_at:''};
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>now,storage:memory(),loadDevices:async()=>[machine],
+   queue:async()=>({job_id:job.id}),loadJobs:async()=>[job],sleep:async()=>{}
+  });
+  expect(out.status).toBe('failed');
+  expect(out.reply).toContain('local_operation_failed');
+  expect(out.reply).toContain(job.id);
+  expect(out.reply).toContain('not verified');
+  expect(out.reply).not.toMatch(/Done on|playing successfully|completed=true/);
+ });
+ it('does not reproduce uncontrolled device error text in the CEO transcript',async()=>{
+  const proposal={kind:'desktop_task' as const,description:'Open browser',params:{goal:'Open browser'}};
+  const machine:DeviceRow={...device('shell1','My shell',true),platform:'linux x64',
+   capabilities:{job_kinds:['desktop_task'],full_control:true}};
+  const job:JobRow={id:'job-with-untrusted-error',device_id:'shell1',kind:'desktop_task',params:proposal.params,
+   status:'error',error:'\u003cscript>untrusted\u003c/script>',result:null,created_at:'',finished_at:''};
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>now,storage:memory(),loadDevices:async()=>[machine],
+   queue:async()=>({job_id:job.id}),loadJobs:async()=>[job],sleep:async()=>{}
+  });
+  expect(out.reply).toContain('worker_error_unavailable');
+  expect(out.reply).not.toContain('<script>');
+ });
+});
