@@ -35,14 +35,15 @@ try {
         await toggle.click();
         failUnless(await toggle.getAttribute('aria-expanded') === 'false', name + ': history did not collapse');
       }
-      const composer = page.locator('input[aria-label="Or type to your CEO…"]');
+      const composer = page.locator('textarea[aria-label="Or type to your CEO…"]');
       await composer.waitFor({ timeout: 15000 });
       failUnless(await composer.isEnabled(), name + ': composer unavailable');
+      failUnless(await composer.getAttribute('maxlength') === '4000', name + ': text limited below server maximum');
       await composer.fill('Synthetic CEO readiness probe');
       failUnless(await composer.inputValue() === 'Synthetic CEO readiness probe', name + ': typing failed');
       failUnless(await page.getByRole('button', { name: 'Send', exact: true }).isEnabled(), name + ': Send disabled');
       const dimensions = await page.evaluate(() => {
-        const field = document.querySelector('input[aria-label="Or type to your CEO…"]');
+        const field = document.querySelector('textarea[aria-label="Or type to your CEO…"]');
         const rect = field?.getBoundingClientRect();
         return {
           overflow: document.documentElement.scrollWidth - innerWidth,
