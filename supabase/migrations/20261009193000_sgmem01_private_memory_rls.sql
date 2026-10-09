@@ -25,7 +25,7 @@ CREATE POLICY "sgmem01 owner delete" ON public.memories FOR DELETE TO authentica
 CREATE OR REPLACE FUNCTION public.sgmem01_prevent_identity_reassignment()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path = pg_catalog, public
-AS $
+AS $$
 BEGIN
   IF NEW.organization_id IS DISTINCT FROM OLD.organization_id
      OR NEW.user_id IS DISTINCT FROM OLD.user_id THEN
@@ -33,7 +33,7 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$;
+$$;
 REVOKE ALL ON FUNCTION public.sgmem01_prevent_identity_reassignment() FROM PUBLIC;
 DROP TRIGGER IF EXISTS sgmem01_identity_immutable ON public.memories;
 CREATE TRIGGER sgmem01_identity_immutable
