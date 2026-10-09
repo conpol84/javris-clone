@@ -167,6 +167,16 @@ export function AgentChatPage() {
     setText('');
     const temp: ChatMessage = { id: `tmp-${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages((m) => [...m, temp]);
+    // The same user-selected voice must deliver BOTH ordinary chat responses
+    // and verified direct computer outcomes. Neither path replays a device job.
+    const speakReply = (content: string) => {
+      if (voiceScopeRef.current !== scopeAtSend || !speakOnRef.current || !content.trim()) return;
+      const turn = beginVoiceTurn(); voiceTurn.current = turn;
+      void speak(orgId, content, lang, { turn }).then(result => {
+        if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend)
+          toast.error(voiceMessages(lang).playback);
+      });
+    };
     try {
       if (activeIsCeo) {
         const unlockNotice=isUnlockContinuation(msg);
@@ -187,6 +197,7 @@ export function AgentChatPage() {
           const directMessage = (content: string) => {
             const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
             setMessages((m) => [...m.filter((x) => x.id !== temp.id), temp, assistant]);
+            speakReply(content);
           };
           const directResult=async(remote:{reply:string;status?:string;job_id?:string},signal?:AbortSignal)=>{
             let narrative=remote.reply;
@@ -262,12 +273,7 @@ export function AgentChatPage() {
       if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
-      if (speakOnRef.current) {
-        const turn = beginVoiceTurn(); voiceTurn.current = turn;
-        void speak(orgId, parseHandoff(out.message.content).text, lang, { turn }).then(result => {
-          if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend) toast.error(voiceMessages(lang).playback);
-        });
-      }
+      speakReply(parseHandoff(out.message.content).text);
     } catch (err) {
       if (voiceScopeRef.current !== scopeAtSend) return;
       if (err instanceof DOMException && err.name === 'AbortError') {
