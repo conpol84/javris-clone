@@ -18,18 +18,18 @@ begin
  return id;
 end $$;
 do $$
-declare p text; state text; id uuid; result jsonb; denied boolean;
+declare p text; state text; job_id uuid; result jsonb; denied boolean;
 begin
  foreach p in array array['free','pro','business','enterprise'] loop
   foreach state in array array['active','trialing','past_due','canceled'] loop
    update public.organizations set plan=p,plan_status=state where slug='desktop-owner';
    denied:=false;
-   begin id:=pg_temp.desktop_enqueue();
+   begin job_id:=pg_temp.desktop_enqueue();
    exception when check_violation then
      if sqlerrm<>'advanced_computer_not_authorized' then raise; end if;denied:=true;
    end;
    if denied is distinct from not(p in ('business','enterprise') and state in ('active','trialing')) then raise exception 'plan gate failed: % %',p,state;end if;
-   if not denied then update public.connector_jobs set status='cancelled' where connector_jobs.id=id;end if;
+   if not denied then update public.connector_jobs set status='cancelled' where connector_jobs.id=job_id;end if;
   end loop;
  end loop;
  update public.organizations set plan='enterprise',plan_status='active' where slug='desktop-owner';
@@ -37,17 +37,17 @@ begin
  begin perform pg_temp.desktop_enqueue('22222222-0909-4909-8909-222222222222');
  exception when check_violation then denied:=true;end;
  if not denied then raise exception 'cross tenant accepted';end if;
- id:=pg_temp.desktop_enqueue();
+ job_id:=pg_temp.desktop_enqueue();
  update public.organizations set plan='pro' where slug='desktop-owner';
  result:=public.connector_claim_next_job('11111111-0909-4909-8909-111111111111','77777777-0909-4909-8909-777777777777',now()-interval '1 minute');
- if result is not null or (select status from public.connector_jobs where connector_jobs.id=id)<>'cancelled' then raise exception 'downgraded queued work reached device';end if;
+ if result is not null or (select status from public.connector_jobs where connector_jobs.id=job_id)<>'cancelled' then raise exception 'downgraded queued work reached device';end if;
  update public.organizations set plan='business' where slug='desktop-owner';
- id:=pg_temp.desktop_enqueue();
+ job_id:=pg_temp.desktop_enqueue();
  result:=public.connector_claim_next_job('11111111-0909-4909-8909-111111111111','77777777-0909-4909-8909-777777777777',now()-interval '1 minute');
- if result->>'id' is distinct from id::text then raise exception 'entitled claim failed';end if;
+ if result->>'id' is distinct from job_id::text then raise exception 'entitled claim failed';end if;
  update public.organizations set plan_status='past_due' where slug='desktop-owner';
  -- A terminal acknowledgement remains writable after entitlement is removed.
- update public.connector_jobs set status='error',error='operation_stopped',finished_at=now() where connector_jobs.id=id;
+ update public.connector_jobs set status='error',error='operation_stopped',finished_at=now() where connector_jobs.id=job_id;
  raise notice 'DESKTOP_POSTGRES_PLAN_TENANT_CLAIM_DOWNGRADE_TERMINAL_PASSED';
 end $$;
 rollback;

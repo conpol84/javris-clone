@@ -17,7 +17,7 @@ import time
 
 def xdo(*args, text=None):
     return subprocess.run(["xdotool", *map(str, args)], input=text, text=True,
-                          capture_output=True, check=True, timeout=12).stdout.strip()
+                          capture_output=True, check=True, timeout=25).stdout.strip()
 
 
 def capture():
@@ -78,7 +78,7 @@ def perform(action):
         text = action.get("text")
         if not isinstance(text, str) or len(text) > 4000 or "\0" in text:
             raise ValueError("desktop_bad_text")
-        xdo("type", "--clearmodifiers", "--delay", 1, "--file", "-", text=text)
+        xdo("type", "--clearmodifiers", "--delay", 5, "--file", "-", text=text)
     elif kind == "key":
         key = action.get("key", "")
         if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_]+(?:\+[A-Za-z0-9_]+){0,4}", key):

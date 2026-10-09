@@ -11,7 +11,7 @@ export async function desktopAction(action, { signal, spawnImpl = spawn } = {}) 
     const kill = sig => { try { process.kill(-child.pid,sig); } catch { /* Wait for close, never infer it. */ } };
     const interrupt = code => { if(interrupted)return;interrupted=true;reason=code;kill('SIGTERM');escalation=setTimeout(()=>kill('SIGKILL'),500); };
     const aborted = () => interrupt('operation_stopped');
-    const timer=setTimeout(()=>interrupt('desktop_adapter_timeout'),15000);
+    const timer=setTimeout(()=>interrupt('desktop_adapter_timeout'),30000);
     signal?.addEventListener('abort',aborted,{once:true});
     const clean=()=>{clearTimeout(timer);clearTimeout(escalation);signal?.removeEventListener('abort',aborted);};
     child.on('error',()=>{clean();reject(new Error('desktop_adapter_failed'));});
