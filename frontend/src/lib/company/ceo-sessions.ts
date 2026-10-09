@@ -64,7 +64,9 @@ export async function readCeoSession(orgId:string,userId:string,ceoId:string,con
  if(!own)throw new Error('ceo_session_not_found');
  const {data,error:readError}=await db.from('messages')
   .select('role,content').eq('organization_id',orgId).eq('conversation_id',conversationId)
-  .in('role',['user','assistant']).order('created_at',{ascending:true}).limit(220);
+  .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(220);
  fail(readError);
- return ceoLinesFromMessages((data??[]) as {role:string;content:string}[]);
+ // Fetch the most recent bounded 220 messages, then restore chronological
+ // display order. A lengthy user conversation must not always reopen at day 1.
+ return ceoLinesFromMessages([...(data??[])].reverse() as {role:string;content:string}[]);
 }
