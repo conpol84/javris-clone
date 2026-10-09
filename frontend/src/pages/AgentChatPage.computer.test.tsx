@@ -142,3 +142,15 @@ it('passes the explicit Mac target through chat readiness and pending approval',
  expect(prepare).toHaveBeenCalledWith('org',{kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'mac'},'en',expect.any(AbortSignal));
  expect(fixture.refs[1].current).toMatchObject({target:'mac',deviceId:'mac',params:{app:'Google Chrome'}});expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
 });
+
+
+it('CEO chat keeps a named Debian target despite trailing Μην safety wording',async()=>{
+ const goal='Εκτέλεσε αυτή την εργασία αποκλειστικά στον υπολογιστή My shell (Debian). Άνοιξε browser. Μην αλλάξεις σε Mac.';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'debian',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Terminal receipt pending'});
+ await elements(page(goal)).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledOnce();
+ expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'debian'});
+ expect(sendChat).not.toHaveBeenCalled();
+});
