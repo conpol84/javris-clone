@@ -33,3 +33,20 @@ test('actual redirect to a private URL is blocked before transport',async()=>{
   await assert.rejects(executeBrowserPlan({steps:[{action:'open',url:origin},{action:'read'}]},cfg,{chromium,confirm:async()=>true,transport:async({url})=>{called.push(url);return {status:302,headers:{location:'https://127.0.0.1/private'},body:Buffer.alloc(0)};}}));
   assert.deepEqual(called,[origin+'/']);
 });
+test('actual Chromium loads and uses a script larger than the file-transfer cap',async()=>{
+  const script=Buffer.from('/*'+ 'x'.repeat(5*1024*1024) +'*/document.querySelector("#result").textContent="large script ready";');
+  const document='<body><p id="result"></p><button id="apply" onclick="document.querySelector(\'#result\').textContent=\'clicked\'">Apply</button><script src="/large.js"></script></body>';
+  const result=await executeBrowserPlan({steps:[{action:'open',url:origin},{action:'read'},{action:'click',selector:'#apply'},{action:'read'}]},cfg,{
+    chromium,confirm:async()=>true,transport:async({url},options)=>{
+      const isScript=url.endsWith('/large.js');
+      assert.equal(options.maxResponseBytes,16*1024*1024);
+      const body=isScript?script:Buffer.from(document);
+      options.consumeBytes(body.length);
+      return {status:200,headers:{'content-type':isScript?'application/javascript':'text/html'},body};
+    },
+  });
+  assert.equal(result.completed,true);
+  assert.match(result.steps[1].text,/large script ready/);
+  assert.match(result.steps[3].text,/clicked/);
+  assert.ok(result.transferred_bytes>5*1024*1024);
+});
