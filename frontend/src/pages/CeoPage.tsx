@@ -122,7 +122,7 @@ export function CeoPage() {
             </div>
           </section>
 
-          <section className="fb-glass fb-col order-1 min-w-0 gap-3 p-3 sm:p-4 lg:order-2">
+          <section data-ceo-chatpanel="true" className="fb-glass fb-col order-1 min-w-0 gap-3 p-3 sm:p-4 lg:order-2">
             <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
               loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
               onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
