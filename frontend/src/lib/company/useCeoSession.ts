@@ -64,7 +64,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
         }
         setSessions(previews);setHistoryError(false);setCeo(found);
       }catch{
-        if(valid(id)){setHistoryError(true);setCeo(null);toast.error(tRef.current('chat.loadError'));}
+        if(valid(id)){setHistoryError(true);setCeo(found);toast.error(tRef.current('chat.loadError'));}
       }finally{if(valid(id))setHistoryLoading(false);}
     }).catch(()=>{if(valid(id)){setHistoryError(true);setHistoryLoading(false);toast.error(tRef.current('chat.loadError'));}});
     else setHistoryLoading(false);
@@ -110,7 +110,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     pendingComputer.current=null;clear();setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
   };
   const newSession=()=>{
-    if(busy.current||historyLoading)return;
+    if(busy.current||historyLoading||historyError)return;
     pendingComputer.current=null;clear();convo.current=null;setActiveSessionId(null);
     setLines([]);setState('idle');setInterim('');setHistoryError(false);
   };
@@ -143,7 +143,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     }).catch(()=>{if(valid(id))setHistoryError(true);}).finally(()=>{if(valid(id))setHistoryLoading(false);});
   };
   const ask=async(message:string)=>{
-    if(!ceo||!userId||!canWrite||!message.trim()||busy.current||loadedScope!==scope)return;
+    if(!ceo||!userId||!canWrite||!message.trim()||busy.current||historyLoading||historyError||loadedScope!==scope)return;
     clearTimeout(resumeTimer.current);stopListen.current();
     const id=++epoch.current;busy.current=true;unlockAudio();
     const active=newTurn(id);active.phase('thinking');
