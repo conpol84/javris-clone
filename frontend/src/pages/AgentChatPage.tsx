@@ -16,6 +16,7 @@ import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
 import { voiceMessages } from '../lib/company/voiceMessages';
+import { isUnlockContinuation, resolveUnlockContinuation } from '../lib/company/computer-continuation';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import { dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
@@ -167,11 +168,20 @@ export function AgentChatPage() {
     setMessages((m) => [...m, temp]);
     try {
       if (activeIsCeo) {
-        const proposal = parseDirectComputerCommand(msg);
-
-        const decision = parseOwnerDecision(msg);
+        const unlockNotice=isUnlockContinuation(msg);
+        let recovered:Awaited<ReturnType<typeof resolveUnlockContinuation>>|null=null;
+        if(unlockNotice&&canComputer&&user?.id){
+          const controller=new AbortController();
+          computerRun.current=controller;setComputerRunning(true);
+          try{recovered=await resolveUnlockContinuation(orgId,user.id,msg,lang,controller.signal);}
+          finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
+          if(voiceScopeRef.current!==scopeAtSend||controller.signal.aborted)return;
+        }
+        const proposal=recovered?.recognized&&recovered.proposal?recovered.proposal:parseDirectComputerCommand(msg);
+        // A lock-state update never approves a previously pending unrelated job.
+        const decision=unlockNotice?null:parseOwnerDecision(msg);
         const pending = pendingComputer.current;
-        const computerRequest = !!proposal || isComputerControlRequest(msg);
+        const computerRequest = !!proposal || isComputerControlRequest(msg) || unlockNotice;
         if (computerRequest || (pending && decision)) {
           const directMessage = (content: string) => {
             const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
@@ -181,9 +191,13 @@ export function AgentChatPage() {
             pendingComputer.current = null;
             const role = current?.role ?? 'viewer';
             directMessage(lang === 'el'
-              ? `Δεν θα το αναθέσω σε agent. Ο έλεγχος του Polis1984 επιτρέπεται μόνο σε Owner/Admin· ο τρέχων ρόλος σου είναι ${role}.`
-              : `I will not delegate this to an agent. Polis1984 computer control is available only to Owner/Admin; your current role is ${role}.`);
+              ? `Δεν θα το αναθέσω σε agent. Ο έλεγχος υπολογιστή απαιτεί Owner/Admin· ο τρέχων ρόλος σου είναι ${role}.`
+              : `I will not delegate this to an agent. Computer control requires Owner/Admin; your current role is ${role}.`);
             return;
+          }
+          if(unlockNotice&&recovered?.recognized&&!recovered.proposal){
+            pendingComputer.current=null;
+            directMessage(recovered.reply);return;
           }
           if (decision === 'reject') {
             pendingComputer.current = null;
