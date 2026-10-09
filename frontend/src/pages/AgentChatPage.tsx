@@ -193,7 +193,7 @@ export function AgentChatPage() {
         if(proposal?.kind==='desktop_task'){
           const controller=new AbortController();computerRun.current=controller;setComputerRunning(true);
           try{
-            const readiness=await prepareDirectComputerCommand(orgId,proposal.kind,lang,controller.signal);
+            const readiness=await prepareDirectComputerCommand(orgId,proposal,lang,controller.signal);
             if(voiceScopeRef.current!==scopeAtSend)return;
             const remote=readiness.ready?await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId},lang,controller.signal):readiness;
             if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
@@ -205,7 +205,7 @@ export function AgentChatPage() {
             computerRun.current = controller; setComputerRunning(true);
             let readiness;
             try {
-              readiness = await prepareDirectComputerCommand(orgId, proposal?.kind ?? 'browser_task', lang, controller.signal);
+              readiness = await prepareDirectComputerCommand(orgId, proposal ?? 'browser_task', lang, controller.signal);
             } finally {
               if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
             }

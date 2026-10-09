@@ -24,7 +24,7 @@ beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({re
 afterEach(()=>vi.unstubAllGlobals());
 it('Command/Talk incomplete request reads capabilities and never asks an LLM to queue it',async()=>{
  const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
- expect(prepare).toHaveBeenCalledWith('org','desktop_task','el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+ expect(prepare).toHaveBeenCalledWith('org',{kind:'desktop_task',description:'mporis na anixis to mac kai na valis tragoudia apo youtube ?',params:{goal:'mporis na anixis to mac kai na valis tragoudia apo youtube ?'}},'el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
  const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Δεν μπήκε εργασία');
 });
 it('sends a VPS artifact read to server chat without requiring a laptop',async()=>{
@@ -58,4 +58,11 @@ it('native Full Control runs a simple app request without a duplicate approval',
  prepare.mockResolvedValue({ready:true,deviceName:'Debian',deviceId:'d8',nativeDesktop:true});dispatch.mockResolvedValue({reply:'Observed opened app'});
  const hook=session();await hook.ask('open Microsoft Word');
  expect(dispatch).toHaveBeenCalledOnce();expect(dispatch.mock.calls[0][1]).toEqual({kind:'desktop_task',description:'open Microsoft Word',params:{goal:'open Microsoft Word'},deviceId:'d8'});expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('passes the explicit Mac target through Talk readiness and the bound approval',async()=>{
+ prepare.mockResolvedValue({ready:true,deviceName:'Polis1984',deviceId:'mac'});dispatch.mockResolvedValue({reply:'confirmed'});
+ const hook=session();await hook.ask('from mac open chrome');await hook.ask('approve');
+ expect(prepare).toHaveBeenCalledWith('org',{kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'mac'},'el',expect.any(AbortSignal));
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'mac',deviceId:'mac',params:{app:'Google Chrome'}});expect(sendChat).not.toHaveBeenCalled();
 });

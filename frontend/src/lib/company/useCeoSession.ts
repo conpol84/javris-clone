@@ -111,7 +111,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
       if(canComputer){
         if(proposal?.kind==='desktop_task'&&decision!=='reject'){
-          const readiness=await prepareDirectComputerCommand(orgId,proposal.kind,lang,active.signal);
+          const readiness=await prepareDirectComputerCommand(orgId,proposal,lang,active.signal);
           if(!valid(id)||!active.current())return;
           if(!readiness.ready){await sayDirect(readiness.reply);return;}
           pendingComputer.current=null;
@@ -124,7 +124,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;
         }
         if(computerRequest&&(!proposal||decision!=='approve')){
-          const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal?.kind??'browser_task',lang,signal),active.signal,24_000);
+          const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal??'browser_task',lang,signal),active.signal,24_000);
           if(!valid(id)||!active.current())return;
           if(!readiness.ready||!proposal){
             pendingComputer.current=null;await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;

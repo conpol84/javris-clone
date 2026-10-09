@@ -122,7 +122,7 @@ describe('CEO direct Full Control',()=>{
   const out=await dispatchDirectComputerCommand('org',{kind:'open_app',params:{app:'Microsoft Word'},description:'Open Word'},'el',undefined,{
    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984')],queue:async()=>{throw new Error('must not queue')},loadJobs:async()=>[],sleep:async()=>{},
   });
-  expect(out.status).toBe('upgrade_required');expect(out.reply).toContain('Catalina 10.15');expect(out.reply).toContain('Δεν μπήκε εργασία');
+  expect(out.status).toBe('upgrade_required');expect(out.reply).toContain('Polis1984');expect(out.reply).not.toContain('Catalina 10.15');expect(out.reply).toContain('Δεν μπήκε εργασία');
  });
  it('queues one owner-confirmed browser_task and reports done from its durable row',async()=>{
   let queued:any;
@@ -204,4 +204,59 @@ describe('owner transcript control requests and readiness',()=>{
 
 it('never switches a stored unavailable device to another ready laptop, including URL opening',()=>{
  expect(chooseVoiceLaptop([device('other')],'selected',now)).toBeNull();
+});
+
+describe('explicit owner device target',()=>{
+ const linux=()=>({...device('linux','My shell',true),platform:'linux x64',capabilities:{job_kinds:['browser_open','browser_task','desktop_task'],full_control:true}});
+ it.each(['from mac open chrome','open Chrome on my Mac','στο Mac άνοιξε Chrome','άνοιξε Chrome στο Mac'])( 'retains the requested Mac: %s',text=>{
+  expect(parseDirectComputerCommand(text)).toMatchObject({kind:'open_app',target:'mac',params:{app:'Google Chrome'}});
+ });
+ it('does not turn text inside the goal into a device switch',()=>{
+  expect(parseDirectComputerCommand('write on mac in the browser search field')?.target).toBeUndefined();
+ });
+ it('resolves Mac instead of the stored Linux device before approval',async()=>{
+  const store=memory();setVoiceLaptop('org','linux',store);
+  const proposal=parseDirectComputerCommand('from mac open chrome')!;
+  const out=await prepareDirectComputerCommand('org',proposal,'en',undefined,{loadDevices:async()=>[linux(),device('mac','Polis1984',true)],storage:store,now:()=>now});
+  expect(out).toMatchObject({ready:true,deviceId:'mac',deviceName:'Polis1984'});
+ });
+ it.each(['offline','revoked','missing','ambiguous','old'])('does not use Linux when the requested Mac is %s',async state=>{
+  const store=memory();setVoiceLaptop('org','linux',store);let queued=0;
+  const mac=device('mac','Polis1984',state!=='old');
+  if(state==='offline')mac.last_seen_at='2020-01-01T00:00:00Z';
+  if(state==='revoked')mac.revoked_at='2026-10-09T00:00:00Z';
+  const rows=[linux(),...(state==='missing'?[]:[mac]),...(state==='ambiguous'?[device('mac2','Other Mac',true)]:[])];
+  const out=await dispatchDirectComputerCommand('org',parseDirectComputerCommand('from mac open chrome')!,'en',undefined,{loadDevices:async()=>rows,storage:store,now:()=>now,queue:async()=>{queued++;return{job_id:'never'}}});
+  expect(out.status).not.toBe('done');expect(out.reply).not.toContain('My shell');expect(queued).toBe(0);
+ });
+ it('binds dispatch to the explicit target even if the proposal changes during discovery',async()=>{
+  const store=memory();setVoiceLaptop('org','linux',store);let queued:any;
+  const proposal=parseDirectComputerCommand('from mac open chrome')!;
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   storage:store,now:()=>now,loadDevices:async()=>{proposal.target='debian';return[linux(),device('mac','Polis1984',true)]},
+   queue:async(id,kind,params)=>(queued={id,kind,params},{job_id:'macjob'}),
+   loadJobs:async()=>[{id:'macjob',device_id:'mac',kind:'open_app',params:{app:'Google Chrome'},status:'done',result:{opened:true,app:'Google Chrome'},error:null,created_at:'',finished_at:''}],
+  });
+  expect(queued).toEqual({id:'mac',kind:'open_app',params:{app:'Google Chrome'}});expect(out.status).toBe('done');
+ });
+ it('explains Safari cannot run on the selected Debian, even when native desktop is ready',async()=>{
+  const out=await prepareDirectComputerCommand('org',parseDirectComputerCommand('open safari')!,'en',undefined,{storage:memory(),now:()=>now,loadDevices:async()=>[linux()]});
+  expect(out).toMatchObject({ready:false,status:'unsupported_app'});if(!out.ready)expect(out.reply).toContain('Safari requires a Mac');
+ });
+ it('keeps basic browser opening available on a legacy Mac with no Full Control',async()=>{
+  const proposal=parseDirectComputerCommand('from mac open browser')!;let queued:any;
+  expect(proposal.kind).toBe('browser_open');
+  const deps={storage:memory(),now:()=>now,loadDevices:async()=>[linux(),device('mac','Polis1984')]};
+  expect(await prepareDirectComputerCommand('org',proposal,'en',undefined,deps)).toMatchObject({ready:true,deviceId:'mac'});
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{...deps,
+   queue:async(id,kind,params)=>(queued={id,kind,params},{job_id:'browserjob'}),
+   loadJobs:async()=>[{id:'browserjob',device_id:'mac',kind:'browser_open',params:{url:'https://www.google.com/'},status:'done',result:{launched:true},error:null,created_at:'',finished_at:''}],
+  });
+  expect(queued).toEqual({id:'mac',kind:'browser_open',params:{url:'https://www.google.com/'}});expect(out.status).toBe('done');
+ });
+ it('distinguishes a missing capability from disabled Full Control',async()=>{
+  const d=linux();d.capabilities.job_kinds=['browser_open','browser_task'];
+  const out=await prepareDirectComputerCommand('org',parseDirectComputerCommand('open chrome')!,'en',undefined,{storage:memory(),now:()=>now,loadDevices:async()=>[d]});
+  expect(out.ready).toBe(false);if(!out.ready)expect(out.reply).toContain('has local Full Control');
+ });
 });

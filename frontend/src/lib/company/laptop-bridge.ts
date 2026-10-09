@@ -27,13 +27,31 @@ export function parseLaptopBrowserCommand(input:string){
 }
 
 export type DirectComputerProposal={
- kind:'browser_task'|'open_app'|'desktop_task';
+ kind:'browser_task'|'open_app'|'desktop_task'|'browser_open';
  params:Record<string,unknown>;
  description:string;
  deviceId?:string;
+ target?:string;
 };
 
 const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().replace(/[^\p{L}\p{N}\s-]+/gu,' ').replace(/\s+/g,' ').trim();
+
+// Only a leading/trailing device clause is routing intent. Mentions inside
+// page searches or text to type must not redirect an action to another device.
+function deviceClause(plain:string){
+ const label='(mac mini|macbook|mac|debian|linux|windows|polis1984|my shell)';
+ const clause='(?:from|on|using|apo|sto|ston|απο|στο|στον)\\s+(?:(?:my|the|το|τον)\\s+)?'+label;
+ const prefix=plain.match(new RegExp('^'+clause+'\\s+','u'));
+ const suffix=plain.match(new RegExp('\\s+'+clause+'$','u'));
+ const match=prefix??suffix;
+ return match?{target:match[1],action:plain.replace(match[0],' ').trim()}:{action:plain};
+}
+function targetMatches(d:DeviceRow,target:string){
+ if(['mac','mac mini','macbook'].includes(target))return /^(?:darwin|macos|mac)(?:\s|$)/i.test(d.platform??'');
+ if(['debian','linux'].includes(target))return /^linux(?:\s|$)/i.test(d.platform??'');
+ if(target==='windows')return /^(?:win32|windows)(?:\s|$)/i.test(d.platform??'');
+ return plainText(d.name)===target;
+}
 
 /** An incomplete control request stays in the computer lane. It must not become
  * a model-authored AppleScript, delegated task or imaginary queue receipt. */
@@ -79,11 +97,13 @@ const APP_ALIASES:[string,string[]][]=[
 ];
 export function parseDirectComputerCommand(input:string):DirectComputerProposal|null{
  if(typeof input!=='string'||!input.trim()||input.length>4000)return null;
- const text=input.trim(),plain=plainText(text);
+ const text=input.trim(),routing=deviceClause(plainText(text)),plain=routing.action;
+ const target=routing.target?{target:routing.target}:{};
  if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
-  for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app}};
+  for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app},...target};
  }
- if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()}};
+ if(/^(?:open|launch|ανοιξε|anoikse|anikse|anixe)\s+(?:(?:the|το|to)\s+)?(?:browser|φυλλομετρητη)(?:\s+(?:here|εδω))?$/u.test(plain))return{kind:'browser_open',description:'Open browser',params:{url:'https://www.google.com/'},...target};
+ if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()},...target};
  if(/youtube/u.test(plain)&&/(search|serch|ψαξ|αναζητ|vale|βαλε|play|παιξ|pekse|proto|πρωτ|first)/u.test(plain)){
   const query=youtubeQuery(text);
   if(query){
@@ -98,14 +118,21 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
  return null;
 }
 function directReady(d:DeviceRow,kind:DirectComputerProposal['kind'],now:number){
+ if(kind==='browser_open')return canOpenBrowser(d)&&isOnline(d,now);
  const p=policyOf(d),k=d.capabilities?.job_kinds??[];
  return d.paired&&!d.revoked_at&&isOnline(d,now)&&p.enabled&&p.control==='full'&&d.capabilities?.full_control===true&&(k.includes(kind)||(kind==='open_app'&&k.includes('desktop_task')));
 }
-function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],selected:string|null,now:number,lang:string){
+function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],selected:string|null,now:number,lang:string,target?:string,app?:unknown){
  const greek=lang==='el';
  const eligible=rows.filter(d=>d.paired&&!d.revoked_at);
+ if(target){
+  const matches=eligible.filter(d=>targetMatches(d,target));
+  if(matches.length!==1||selected&&matches[0]?.id!==selected)return{ready:false as const,status:'device_required',reply:greek?`Δεν βρέθηκε ένας μοναδικός συνδεδεμένος υπολογιστής για «${target}». Διάλεξέ τον στους Υπολογιστές. Δεν μπήκε εργασία στην ουρά.`:`There is no unique paired computer matching “${target}”. Choose it in Computers. No job was queued.`};
+  selected=matches[0].id;
+ }
  // A stored owner selection must never silently turn into another computer.
  const candidates=selected?eligible.filter(d=>d.id===selected):eligible;
+ if(candidates.length===1&&app==='Safari'&&!/^(?:darwin|macos|mac)(?:\s|$)/i.test(candidates[0].platform??''))return{ready:false as const,status:'unsupported_app',reply:greek?`Το ${candidates[0].name} δεν είναι Mac. Το Safari απαιτεί Mac· επίλεξε το Mac ή ζήτησε άλλο browser. Δεν μπήκε εργασία στην ουρά.`:`${candidates[0].name} is not a Mac. Safari requires a Mac; select your Mac or request another browser. No job was queued.`};
  const ready=candidates.filter(d=>directReady(d,kind,now));
  const device=ready.length===1?ready[0]:null;
  if(device)return{ready:true as const,device};
@@ -113,19 +140,22 @@ function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],se
  const online=candidates.find(d=>isOnline(d,now));
  if(online){
   const mac=/^(?:darwin|macos|mac)(?:\s|$)/i.test(online.platform??'');
-  const compatibility=mac?(greek?' Για browser tasks, έλεγξε τη συμβατότητα macOS: το Catalina 10.15 δεν υποστηρίζεται από τον τρέχοντα browser updater.':' For browser tasks, check macOS compatibility: Catalina 10.15 is unsupported by the current browser updater.') : '';
+  const compatibility=mac&&['browser_task','desktop_task'].includes(kind)?(greek?' Για browser tasks, έλεγξε τη συμβατότητα macOS: το Catalina 10.15 δεν υποστηρίζεται από τον τρέχοντα browser updater.':' For browser tasks, check macOS compatibility: Catalina 10.15 is unsupported by the current browser updater.') : '';
+  if(online.capabilities?.full_control===true)return{ready:false as const,status:'upgrade_required',reply:greek?`Το ${online.name} έχει τοπικό Full Control, αλλά η ζητούμενη λειτουργία δεν είναι διαθέσιμη ακόμη μέσω του Connector/server. Δεν μπήκε εργασία στην ουρά.`:`${online.name} has local Full Control, but the requested capability is not yet available through its Connector/server. No job was queued.`};
   return{ready:false as const,status:'upgrade_required',reply:(greek?`Το ${online.name} είναι online, αλλά δεν έχει ενεργό τοπικό Full Control για αυτή την ενέργεια. Δεν μπήκε εργασία στην ουρά. Δες τις δυνατότητες στους Υπολογιστές.`:`${online.name} is online, but local Full Control for this action is unavailable. No job was queued. Check its capabilities in Computers.`)+compatibility};
  }
  return{ready:false as const,status:'failed',reply:greek?'Ο επιλεγμένος υπολογιστής δεν είναι διαθέσιμος με Full Control. Δεν μπήκε εργασία στην ουρά.':'The selected computer is unavailable for Full Control. No job was queued.'};
 }
 
 /** Read only, before offering approval. Dispatch rechecks the same selection. */
-export async function prepareDirectComputerCommand(orgId:string,kind:DirectComputerProposal['kind'],lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number}){
+export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number}){
+ const kind=typeof request==='string'?request:request.kind,target=typeof request==='string'?undefined:request.target,app=typeof request==='string'?undefined:request.params.app;
+ const s=deps?.storage===undefined?storage():deps.storage;
+ const selected=typeof request==='object'&&request.deviceId?request.deviceId:target?null:getVoiceLaptop(orgId,s);
  const rows=await(deps?.loadDevices??listDevices)(orgId);
  if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
- const s=deps?.storage===undefined?storage():deps.storage;
- const state=directSelection(rows,kind,getVoiceLaptop(orgId,s),(deps?.now??Date.now)(),lang);
- return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name,...(state.device.capabilities?.job_kinds?.includes('desktop_task')?{nativeDesktop:true as const}:{})}:state;
+ const state=directSelection(rows,kind,selected,(deps?.now??Date.now)(),lang,target,app);
+ return state.ready?{ready:true as const,deviceId:state.device.id,deviceName:state.device.name,...(kind!=='browser_open'&&state.device.capabilities?.job_kinds?.includes('desktop_task')?{nativeDesktop:true as const}:{})}:state;
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
  ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'
@@ -164,11 +194,11 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
  try{
   // Capture the owner's exact approval and selection before the first await.
   if(!proposal.params||Array.isArray(proposal.params)||Object.getPrototypeOf(proposal.params)!==Object.prototype)throw new Error('Invalid action parameters');
-  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??getVoiceLaptop(orgId,s),params:actionJson(proposal.params)};
-  if(!['browser_task','open_app','desktop_task'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>4000|| (approved.selected!==null&&typeof approved.selected!=='string'))throw new Error('Invalid approved action');
+  const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??(proposal.target?null:getVoiceLaptop(orgId,s)),target:proposal.target,params:actionJson(proposal.params)};
+  if(!['browser_task','open_app','desktop_task','browser_open'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>4000|| (approved.selected!==null&&typeof approved.selected!=='string')||(approved.target!==undefined&&(typeof approved.target!=='string'||approved.target.length>100)))throw new Error('Invalid approved action');
   const approvedParams=JSON.parse(approved.params) as Record<string,unknown>;
   const rows=await load(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
-  const selected=approved.selected,selection=directSelection(rows,approved.kind,selected,now(),lang);
+  const selected=approved.selected,selection=directSelection(rows,approved.kind,selected,now(),lang,approved.target,approvedParams.app);
   if(!selection.ready)return{handled:true,status:selection.status,reply:selection.reply};
   const device=selection.device;
   if(approved.kind==='open_app'&&!device.capabilities?.job_kinds?.includes('open_app')&&device.capabilities?.job_kinds?.includes('desktop_task')){approved.kind='desktop_task';approved.params=actionJson({goal:approved.description});}
@@ -179,7 +209,7 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
    let verified=false;
-   try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
+   try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:approved.kind==='browser_open'?row.result?.launched===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
    if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:`${device.name}: ${row.result.summary}`};
    if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
    if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`};
