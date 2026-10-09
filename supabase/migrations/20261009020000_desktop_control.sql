@@ -9,7 +9,7 @@ create or replace function private.guard_advanced_computer_job()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare o public.organizations%rowtype; d public.connector_devices%rowtype;
 begin
-  if new.kind not in ('browser_task','open_app','shortcut','desktop_task') or new.status not in ('queued','running') then return new; end if;
+  if new.kind not in ('browser_task','open_app','shortcut','desktop_task','exec') or new.status not in ('queued','running') then return new; end if;
   select * into o from public.organizations where id=new.organization_id for share;
   if not found or o.status is distinct from 'active' or o.plan not in ('business','enterprise') or o.plan_status not in ('active','trialing')
     or o.plan is null or o.plan_status is null then

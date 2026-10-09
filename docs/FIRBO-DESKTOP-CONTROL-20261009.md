@@ -27,7 +27,7 @@ Business and Enterprise only. Source work is not physical acceptance.
 - Server checks organization status, active/trialing Business/Enterprise, owner/
   admin membership, pairing, local capability and enabled Full Control. A SQL
   trigger checks advanced jobs on enqueue and claim, including agent/approval API
-  paths. Claim withdraws work after downgrade. Stop/report remain available.
+  paths and direct shell execution (which otherwise bypasses desktop entitlement). Claim withdraws work after downgrade. Stop/report remain available.
 - Model calls use existing inference reservation/settlement; no automatic retry
   after an uncertain model call and no replay of interrupted desktop actions.
 
@@ -78,3 +78,14 @@ Business+ gate through the shared database claim/enqueue boundary.
 
 Preserves shared470724, parityce421e31 and PR110's browser repair. No force push,
 main/PR13 change, repeated VPS budget install, new pairing or unrelated project.
+
+## Source acceptance checkpoint
+
+PR111 includes PR110 as ancestry. Local 192 Connector/browser/desktop tests and
+625 frontend tests passed, along with TypeScript and bundle closure. Actual CI
+X11 passed capture, exact Greek text, replacement key chord, clicked callback and
+corner Stop (run37871181274/job113629412634). Actual PostgreSQL claim/entitlement
+regression passed (run37871181265/job113629413404). Initial failures were test
+fixture event processing/SQL variable ambiguity and formatting; all corrected
+without dropping the assertions. Final exact-head status is recorded in Issue52.
+No owner's computer or paid vision inference was exercised by these tests.

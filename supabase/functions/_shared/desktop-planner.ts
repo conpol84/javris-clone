@@ -2,7 +2,7 @@ import { cleanPolicy, withinHours } from './computer-policy.ts';
 import { gatewayForAgent } from './gateway-routing.ts';
 import { maximumTokenBoundCost, reserveInference, settleInference, markInferenceAmbiguous, releaseInference } from './inference-accounting.ts';
 
-export const advancedComputerKind = (kind: string) => ['desktop_task','browser_task','open_app','shortcut'].includes(kind);
+export const advancedComputerKind = (kind: string) => ['desktop_task','browser_task','open_app','shortcut','exec'].includes(kind);
 export function desktopEntitled(org: any): boolean {
   return !!org && org.status === 'active' && ['business','enterprise'].includes(org.plan) && ['active','trialing'].includes(org.plan_status);
 }

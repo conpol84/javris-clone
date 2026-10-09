@@ -71,7 +71,7 @@ export async function makeHandler() {
  if(!source.includes(policyImport))throw new Error('test adapter must be reviewed after policy import changes');
  const desktopImport="import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';";
  const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(desktopImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
- const deno={env:{get:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
+ const deno={env:{get:key=>({FIRBO_DESKTOP_VISION_MODEL:'synthetic',FIRBO_DESKTOP_PRICE_IN_PER_M:'1',FIRBO_DESKTOP_PRICE_OUT_PER_M:'2',SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
  new Function('Deno','createClient','crypto','APP_NAME','browserTaskParams','cleanPolicy','advancedComputerKind','desktopEntitled','desktopAuthorization','planDesktopStep',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.browserTaskParams,computerPolicy.cleanPolicy,desktopPlanner.advancedComputerKind,desktopPlanner.desktopEntitled,desktopPlanner.desktopAuthorization,desktopPlanner.planDesktopStep);
  const invoke=body=>handler(new Request('https://synthetic.invalid/connector',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
  return {state,handler,invoke};

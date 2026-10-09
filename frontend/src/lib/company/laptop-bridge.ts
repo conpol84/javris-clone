@@ -1,4 +1,4 @@
-import { canOpenBrowser, cancelJob, giveJob, isOnline, listDevices, listJobs, policyOf, type DeviceRow, type JobRow } from './computers';
+import { canOpenBrowser, cancelJob, giveJob, isOnline, listDevices, listJobs, policyOf, ComputerError, type DeviceRow, type JobRow } from './computers';
 
 type StorageLike={getItem:(k:string)=>string|null;setItem:(k:string,v:string)=>void;removeItem:(k:string)=>void};
 const key=(org:string)=>`firbo.voice-laptop.v1:${org}`;
@@ -190,6 +190,8 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
   return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η εργασία ${job.job_id} μπήκε στην ουρά για ${device.name}, αλλά η εκτέλεση δεν έχει επιβεβαιωθεί ακόμη.`:`Job ${job.job_id} was queued for ${device.name}; execution is not confirmed yet.`};
  }catch(error){
   if(error instanceof DOMException&&error.name==='AbortError'){if(jobId)await cancel(jobId).catch(()=>{});throw error;}
+  if(error instanceof ComputerError&&error.code==='business_plan_required')return{handled:true,status:'failed',reply:greek?'Ο έλεγχος υπολογιστή απαιτεί ενεργό Business ή Enterprise.':'Computer control requires active Business or Enterprise.'};
+  if(error instanceof ComputerError&&error.code==='desktop_setup_required')return{handled:true,status:'failed',reply:greek?'Η σύνδεση του υπολογιστή υπάρχει, αλλά η υπηρεσία ελέγχου οθόνης δεν έχει ρυθμιστεί ακόμη. Δεν στάλθηκε εργασία.':'Your computer is connected, but the screen-control service is not configured yet. No job was sent.'};
   return{handled:true,status:'failed',reply:greek?'Ο υπολογιστής δεν μπόρεσε να εκτελέσει την ενέργεια.':'The computer could not execute the action.'};
  }
 }

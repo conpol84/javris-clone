@@ -205,12 +205,17 @@ Deno.serve(async (req) => {
         .eq('id', jobId).eq('device_id', dev.id).eq('organization_id', dev.organization_id).maybeSingle();
       if (controlError) return json(503, { error: 'control_unavailable' });
       if (!job) return json(404, { error: 'not_found' });
+      let entitlementLost=false;
+      if(advancedComputerKind(job.kind)){
+        const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
+        entitlementLost=!!error||!desktopEntitled(org);
+      }
       await admin.from('connector_devices').update({ last_seen_at: new Date().toISOString() }).eq('id', dev.id);
       return json(200, {
         ok: true,
         job_id: job.id,
         status: job.status,
-        stop: job.status === 'running' && (!!job.cancel_requested_at || (job.kind==='desktop_task' && !await desktopAuthorization(admin,dev,job))),
+        stop: job.status === 'running' && (!!job.cancel_requested_at || entitlementLost || (job.kind==='desktop_task' && !await desktopAuthorization(admin,dev,job))),
         terminal: ['done','error','cancelled'].includes(job.status),
       });
     }
@@ -395,6 +400,7 @@ Deno.serve(async (req) => {
     const p = (body.params ?? {}) as Record<string, unknown>;
     let params: Record<string, unknown>;
     if(kind==='desktop_task'){
+      if(!Deno.env.get('FIRBO_DESKTOP_VISION_MODEL')||!Deno.env.get('FIRBO_DESKTOP_PRICE_IN_PER_M')||!Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))return json(503,{error:'desktop_setup_required'});
       if(body.confirm!==true)return json(400,{error:'confirm_required'});
       if(dev.agent_policy?.enabled!==true||dev.agent_policy?.control!=='full'||dev.capabilities?.full_control!==true||!dev.capabilities?.job_kinds?.includes(kind)||!dev.last_seen_at||!Number.isFinite(Date.parse(dev.last_seen_at))||Date.now()-Date.parse(dev.last_seen_at)>60000)return json(409,{error:'device_not_ready'});
       if(typeof p.goal!=='string'||!p.goal.trim()||p.goal.length>4000)return json(400,{error:'bad_request'});
