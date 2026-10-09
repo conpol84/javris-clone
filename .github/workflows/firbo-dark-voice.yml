@@ -1,0 +1,21 @@
+name: Firbo Dark voice signal and authenticated handler
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['supabase/functions/agent-speak/**','frontend/src/lib/company/voice*','frontend/src/lib/company/speechAudio.ts','tests/firbo/dark-voice/**','.github/workflows/firbo-dark-voice.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['supabase/functions/agent-speak/**','frontend/src/lib/company/voice*','frontend/src/lib/company/speechAudio.ts','tests/firbo/dark-voice/**','.github/workflows/firbo-dark-voice.yml']
+permissions:
+  contents: read
+jobs:
+  dark-voice:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Real signal processing and isolated handler boundary tests
+        run: node --experimental-strip-types --test tests/firbo/dark-voice/voice.test.mjs

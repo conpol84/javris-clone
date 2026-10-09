@@ -561,26 +561,39 @@ def test_connect_granola_invalid_key_returns_400_keeps_existing(
     from unittest.mock import patch
 
     from openjarvis.connectors.granola import GranolaConnector, GranolaKeyError
+    from openjarvis.core.registry import ConnectorRegistry
     from openjarvis.server.connectors_router import _instances
 
     creds = tmp_path / "granola.json"
-    creds.write_text(json.dumps({"token": "grl_real_existing_key"}))
+    creds.write_text(json.dumps({"token": "grl_synthetic_existing_key"}))
     _instances["granola"] = GranolaConnector(credentials_path=str(creds))
+    # The global fixture clears the registry between tests. Register this
+    # synthetic instance before patching: the router otherwise reloads the
+    # module on its first request and discards the validation mock.
+    ConnectorRegistry.register_value("granola", GranolaConnector)
     try:
-        with patch(
-            "openjarvis.connectors.granola._granola_api_validate_key",
-            side_effect=GranolaKeyError(
-                "Invalid API key. Check your key in Granola Settings → API."
-            ),
+        with (
+            patch(
+                "httpx.get",
+                side_effect=AssertionError("Synthetic test must not reach an API"),
+            ) as external_get,
+            patch(
+                "openjarvis.connectors.granola._granola_api_validate_key",
+                side_effect=GranolaKeyError(
+                    "Invalid API key. Check your key in Granola Settings → API."
+                ),
+            ) as validate_key,
         ):
             resp = app.post(
                 "/v1/connectors/granola/connect",
                 json={"code": "fake-key-12345"},
             )
+            validate_key.assert_called_once_with("fake-key-12345")
+            external_get.assert_not_called()
         assert resp.status_code == 400
         assert "Invalid API key" in resp.json()["detail"]
         # The previously-working credential must be untouched.
-        assert json.loads(creds.read_text())["token"] == "grl_real_existing_key"
+        assert json.loads(creds.read_text())["token"] == "grl_synthetic_existing_key"
     finally:
         _instances.pop("granola", None)
 
@@ -709,15 +722,36 @@ def test_connect_weather_requires_location(app, tmp_path: Path) -> None:
         _instances.pop("weather", None)
 
 
-def test_connect_news_rss_requires_and_persists_feeds(app, tmp_path: Path) -> None:
+def test_connect_news_rss_requires_and_persists_feeds(
+    app, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """A local connector with required setup cannot claim success for ``{}``."""
+    import socket
+
     from openjarvis.connectors.news_rss import NewsRSSConnector
+    from openjarvis.core.registry import ConnectorRegistry
     from openjarvis.server.connectors_router import _instances
 
+    # Keep the real URL/SSRF checks, with a synthetic public DNS answer.
+    # The empty sync below ensures that no feed transport is attempted.
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *_args, **_kwargs: [
+            (
+                socket.AF_INET,
+                socket.SOCK_STREAM,
+                socket.IPPROTO_TCP,
+                "",
+                ("93.184.216.34", 443),
+            )
+        ],
+    )
     path = tmp_path / "news_rss.json"
     instance = NewsRSSConnector(config_path=str(path))
     instance.sync = lambda **_kwargs: iter(())
     _instances["news_rss"] = instance
+    ConnectorRegistry.register_value("news_rss", NewsRSSConnector)
     try:
         assert app.post("/v1/connectors/news_rss/connect", json={}).status_code == 400
         resp = app.post(

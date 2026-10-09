@@ -1,3 +1,4 @@
+import '../styles/firbo.css';
 import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import {
@@ -199,7 +200,7 @@ function HostedView() {
         <Sparkles size={32} />
       </div>
       <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-        OpenJarvis
+        Firbo AI
       </h1>
       <p
         className="text-sm mb-6 leading-relaxed max-w-md mx-auto"
@@ -263,7 +264,7 @@ function DesktopView() {
           <Sparkles size={32} />
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          OpenJarvis Desktop
+          Firbo AI Desktop
         </h1>
         <p
           className="text-sm mb-4 leading-relaxed max-w-md mx-auto"
@@ -336,7 +337,7 @@ function SelfHostedView() {
           <Sparkles size={32} />
         </div>
         <h1 className="text-3xl font-bold mb-2" style={{ color: 'var(--color-text)' }}>
-          OpenJarvis
+          Firbo AI
         </h1>
         <p
           className="text-sm mb-4 leading-relaxed max-w-md mx-auto"
@@ -474,7 +475,7 @@ export function GetStartedPage() {
   const context = useMemo(detectContext, []);
 
   return (
-    <div className="flex-1 overflow-y-auto">
+    <div className="fb-root fb-legacy flex-1 overflow-y-auto">
       <div className="max-w-2xl mx-auto px-6 py-16">
         {context === 'hosted' && <HostedView />}
         {context === 'desktop' && <DesktopView />}

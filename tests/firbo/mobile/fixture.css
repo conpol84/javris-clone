@@ -1,0 +1,8 @@
+/* Test-only entry: retain the actual application CSS and explicitly scan its
+ * source because this isolated Vite root lives outside frontend/. Without this,
+ * Tailwind utilities (including fixed-position dialogs) are missing in the test.
+ * This file is not imported by the production application.
+ */
+@import "../../../frontend/src/index.css";
+@source "../../../frontend/src";
+@source "./fixture.tsx";

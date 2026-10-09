@@ -1,0 +1,1584 @@
+{
+  "upstream_commit": "3eb2077c64d1e8f5e53be3cf3e2d78e85b781d77",
+  "firbo_source_trees": {
+    "src/openjarvis": "90a89470176d5bb227f04b994c327047881218e2",
+    "frontend/src": "49227e71543aec97a3899132def29bb60844187c",
+    "rust": "d722411734d4f36926aeea3578e2fc784f85b7fc",
+    "tests": "4c382f11b0509ec8f2e1d98cf8265bd9e540dea5"
+  },
+  "meaning": "Presence and registrations only. No installation, enabled-tool, account or execution claim.",
+  "scopes": {
+    "src/openjarvis": {
+      "upstream_files": 950,
+      "firbo_files": 957,
+      "missing": [],
+      "added": [
+        "src/openjarvis/server/firbo_app.py",
+        "src/openjarvis/server/firbo_control.py",
+        "src/openjarvis/server/firbo_free_app.py",
+        "src/openjarvis/server/firbo_piper_server.py",
+        "src/openjarvis/server/free_inference.py",
+        "src/openjarvis/server/gateway_routes.py",
+        "src/openjarvis/server/local_tts.py"
+      ],
+      "modified": [
+        "src/openjarvis/core/config.py",
+        "src/openjarvis/engine/_discovery.py",
+        "src/openjarvis/engine/openai_compat_engines.py",
+        "src/openjarvis/security/data_boundary_audit.py",
+        "src/openjarvis/server/app.py",
+        "src/openjarvis/server/auth_middleware.py"
+      ]
+    },
+    "frontend/src": {
+      "upstream_files": 95,
+      "firbo_files": 289,
+      "missing": [],
+      "added": [
+        "frontend/src/components/admin/ServerJarvisPanel.tsx",
+        "frontend/src/components/brand/LanguageSwitcher.tsx",
+        "frontend/src/components/brand/Logo.tsx",
+        "frontend/src/components/command/BottomNav.tsx",
+        "frontend/src/components/command/CommandHost.tsx",
+        "frontend/src/components/command/Gauge.tsx",
+        "frontend/src/components/command/GlobalSearch.tsx",
+        "frontend/src/components/command/HudDock.tsx",
+        "frontend/src/components/command/Panel.tsx",
+        "frontend/src/components/command/ProviderTopology.tsx",
+        "frontend/src/components/command/TalkConsole.tsx",
+        "frontend/src/components/command/WindowControls.tsx",
+        "frontend/src/components/command/topology.test.ts",
+        "frontend/src/components/company/AgentAccessPanel.tsx",
+        "frontend/src/components/company/AskButton.tsx",
+        "frontend/src/components/company/AuthGate.test.tsx",
+        "frontend/src/components/company/AuthGate.tsx",
+        "frontend/src/components/company/LocaleSync.tsx",
+        "frontend/src/components/company/OnboardingWizard.tsx",
+        "frontend/src/components/company/OrgSwitcher.tsx",
+        "frontend/src/components/company/OwnKeysPanel.test.tsx",
+        "frontend/src/components/company/OwnKeysPanel.tsx",
+        "frontend/src/components/company/ReportFeedback.tsx",
+        "frontend/src/components/company/ReportView.test.ts",
+        "frontend/src/components/company/ReportView.tsx",
+        "frontend/src/components/company/SlideDeck.tsx",
+        "frontend/src/components/company/TwoWayChannel.tsx",
+        "frontend/src/components/devices/BrowserTaskComposer.tsx",
+        "frontend/src/components/devices/DeviceFabric.tsx",
+        "frontend/src/components/gateway/GatewayExtras.tsx",
+        "frontend/src/components/gateway/LocalComputePanel.tsx",
+        "frontend/src/components/gateway/NativeGatewayConsole.tsx",
+        "frontend/src/components/gateway/firboControlLabels.ts",
+        "frontend/src/components/gateway/nativeControl.ts",
+        "frontend/src/components/scenes/CeoStage.tsx",
+        "frontend/src/components/scenes/CoreOrb.tsx",
+        "frontend/src/components/scenes/HoloHead.tsx",
+        "frontend/src/components/scenes/HologramScene.tsx",
+        "frontend/src/components/scenes/MemoryScene.tsx",
+        "frontend/src/components/scenes/MissionScene.tsx",
+        "frontend/src/components/scenes/OfficeScene.tsx",
+        "frontend/src/components/scenes/Person.tsx",
+        "frontend/src/components/scenes/ReviewScene.tsx",
+        "frontend/src/components/scenes/SceneFallbackBoundary.tsx",
+        "frontend/src/components/scenes/ShiftScene.tsx",
+        "frontend/src/components/scenes/StudioScene.tsx",
+        "frontend/src/components/scenes/TeamStage.tsx",
+        "frontend/src/components/scenes/fx.tsx",
+        "frontend/src/components/scenes/webgl.ts",
+        "frontend/src/components/team/AgentDetail.tsx",
+        "frontend/src/components/team/AgentDrawer.keys.test.tsx",
+        "frontend/src/components/team/AgentDrawer.tsx",
+        "frontend/src/components/team/CharacterEditor.tsx",
+        "frontend/src/components/team/HireDialog.tsx",
+        "frontend/src/components/team/Modal.tsx",
+        "frontend/src/components/ui/kit.tsx",
+        "frontend/src/components/voice/VoiceProfileControl.tsx",
+        "frontend/src/i18n/I18nProvider.tsx",
+        "frontend/src/i18n/core.ts",
+        "frontend/src/i18n/format.ts",
+        "frontend/src/i18n/i18n.test.ts",
+        "frontend/src/i18n/locales/ar.ts",
+        "frontend/src/i18n/locales/de.ts",
+        "frontend/src/i18n/locales/el.ts",
+        "frontend/src/i18n/locales/en.ts",
+        "frontend/src/i18n/locales/es.ts",
+        "frontend/src/i18n/locales/fr.ts",
+        "frontend/src/i18n/locales/pt-BR.ts",
+        "frontend/src/i18n/locales/zh-CN.ts",
+        "frontend/src/lib/company/AuthProvider.tsx",
+        "frontend/src/lib/company/admin.ts",
+        "frontend/src/lib/company/audit.test.ts",
+        "frontend/src/lib/company/audit.ts",
+        "frontend/src/lib/company/billing.ts",
+        "frontend/src/lib/company/browser-task-labels.ts",
+        "frontend/src/lib/company/catalog.ts",
+        "frontend/src/lib/company/client.ts",
+        "frontend/src/lib/company/coding.ts",
+        "frontend/src/lib/company/computer-manager-labels.ts",
+        "frontend/src/lib/company/computer-setup-labels.ts",
+        "frontend/src/lib/company/computer-setup.ts",
+        "frontend/src/lib/company/computer-state.ts",
+        "frontend/src/lib/company/computers.ts",
+        "frontend/src/lib/company/connected-apps.ts",
+        "frontend/src/lib/company/connections.test.mjs",
+        "frontend/src/lib/company/connector.test.ts",
+        "frontend/src/lib/company/data.test.ts",
+        "frontend/src/lib/company/data.ts",
+        "frontend/src/lib/company/device-messages.ts",
+        "frontend/src/lib/company/feed.ts",
+        "frontend/src/lib/company/focus.ts",
+        "frontend/src/lib/company/handoff.test.ts",
+        "frontend/src/lib/company/handoff.ts",
+        "frontend/src/lib/company/integrations.ts",
+        "frontend/src/lib/company/keyStatusCopy.ts",
+        "frontend/src/lib/company/labels.ts",
+        "frontend/src/lib/company/laptop-bridge.test.ts",
+        "frontend/src/lib/company/laptop-bridge.ts",
+        "frontend/src/lib/company/limits.ts",
+        "frontend/src/lib/company/memory.test.ts",
+        "frontend/src/lib/company/memory.ts",
+        "frontend/src/lib/company/missions.ts",
+        "frontend/src/lib/company/ownKeys.ts",
+        "frontend/src/lib/company/persona.test.ts",
+        "frontend/src/lib/company/persona.ts",
+        "frontend/src/lib/company/powers.ts",
+        "frontend/src/lib/company/reviews.test.ts",
+        "frontend/src/lib/company/reviews.ts",
+        "frontend/src/lib/company/routes.ts",
+        "frontend/src/lib/company/runner.ts",
+        "frontend/src/lib/company/shifts.ts",
+        "frontend/src/lib/company/skillLibrary.ts",
+        "frontend/src/lib/company/skills.test.ts",
+        "frontend/src/lib/company/skillsCopy.ts",
+        "frontend/src/lib/company/slides.test.ts",
+        "frontend/src/lib/company/slides.ts",
+        "frontend/src/lib/company/speechAudio.ts",
+        "frontend/src/lib/company/status.test.ts",
+        "frontend/src/lib/company/status.ts",
+        "frontend/src/lib/company/task-action-labels.ts",
+        "frontend/src/lib/company/task-actions.test.ts",
+        "frontend/src/lib/company/task-actions.ts",
+        "frontend/src/lib/company/taskResult.test.ts",
+        "frontend/src/lib/company/taskResult.ts",
+        "frontend/src/lib/company/templates.premium.test.ts",
+        "frontend/src/lib/company/templates.test.ts",
+        "frontend/src/lib/company/templates.ts",
+        "frontend/src/lib/company/types.ts",
+        "frontend/src/lib/company/useCeoSession.ts",
+        "frontend/src/lib/company/useComputerQuery.ts",
+        "frontend/src/lib/company/useOrgData.ts",
+        "frontend/src/lib/company/usePendingCount.ts",
+        "frontend/src/lib/company/usePlan.test.ts",
+        "frontend/src/lib/company/usePlan.ts",
+        "frontend/src/lib/company/useRealtime.test.ts",
+        "frontend/src/lib/company/useRealtime.ts",
+        "frontend/src/lib/company/voice.test.ts",
+        "frontend/src/lib/company/voice.ts",
+        "frontend/src/lib/company/voiceActivity.ts",
+        "frontend/src/lib/company/voiceMessages.ts",
+        "frontend/src/lib/company/voiceProfile.ts",
+        "frontend/src/lib/company/workflowCopy.ts",
+        "frontend/src/lib/company/workflows.test.ts",
+        "frontend/src/lib/company/workspace.test.ts",
+        "frontend/src/lib/company/workspace.ts",
+        "frontend/src/lib/company/workspaceCopy.ts",
+        "frontend/src/lib/gateway-api.test.ts",
+        "frontend/src/lib/gateway-api.ts",
+        "frontend/src/lib/gateway.ts",
+        "frontend/src/lib/lazyPage.ts",
+        "frontend/src/pages/ActivityPage.tsx",
+        "frontend/src/pages/AdminPage.tsx",
+        "frontend/src/pages/AgentChatPage.tsx",
+        "frontend/src/pages/AnalyticsPage.tsx",
+        "frontend/src/pages/BillingPage.tsx",
+        "frontend/src/pages/CeoPage.tsx",
+        "frontend/src/pages/CodingPage.tsx",
+        "frontend/src/pages/CommandCenterPage.tsx",
+        "frontend/src/pages/CompaniesPage.tsx",
+        "frontend/src/pages/ComputersPage.tsx",
+        "frontend/src/pages/FirboSettingsPage.tsx",
+        "frontend/src/pages/GatewayLegacyPanel.tsx",
+        "frontend/src/pages/GatewayPage.tsx",
+        "frontend/src/pages/HubPage.tsx",
+        "frontend/src/pages/InboxPage.tsx",
+        "frontend/src/pages/IntegrationsPage.tsx",
+        "frontend/src/pages/KnowledgePage.test.tsx",
+        "frontend/src/pages/KnowledgePage.tsx",
+        "frontend/src/pages/LandingPage.tsx",
+        "frontend/src/pages/MemoryPage.tsx",
+        "frontend/src/pages/MissionsPage.tsx",
+        "frontend/src/pages/OfficePage.tsx",
+        "frontend/src/pages/PeoplePage.test.tsx",
+        "frontend/src/pages/PeoplePage.tsx",
+        "frontend/src/pages/ReviewsPage.tsx",
+        "frontend/src/pages/ShiftsPage.tsx",
+        "frontend/src/pages/SkillsPage.test.tsx",
+        "frontend/src/pages/SkillsPage.tsx",
+        "frontend/src/pages/StorePage.tsx",
+        "frontend/src/pages/StudioPage.tsx",
+        "frontend/src/pages/TasksPage.tsx",
+        "frontend/src/pages/TeamPage.tsx",
+        "frontend/src/pages/WorkflowsPage.test.tsx",
+        "frontend/src/pages/WorkflowsPage.tsx",
+        "frontend/src/scene-test.tsx",
+        "frontend/src/styles/connected-world.css",
+        "frontend/src/styles/firbo.css",
+        "frontend/src/styles/mobile-foundation.css",
+        "frontend/src/styles/mobile-operations.css",
+        "frontend/src/styles/mobile-pages.css",
+        "frontend/src/styles/vendor/README.md",
+        "frontend/src/styles/vendor/shadcn-LICENSE.txt",
+        "frontend/src/styles/vendor/shadcn-tailwind.css",
+        "frontend/src/styles/voice-experience.css"
+      ],
+      "modified": [
+        "frontend/src/App.tsx",
+        "frontend/src/components/Chat/InputArea.tsx",
+        "frontend/src/components/Chat/SystemPanel.tsx",
+        "frontend/src/components/CommandPalette.tsx",
+        "frontend/src/components/ErrorBoundary.tsx",
+        "frontend/src/components/InferenceSourceSetup.tsx",
+        "frontend/src/components/Layout.tsx",
+        "frontend/src/components/SetupScreen.tsx",
+        "frontend/src/components/Sidebar/ConversationList.tsx",
+        "frontend/src/components/Sidebar/Sidebar.tsx",
+        "frontend/src/components/setup/SourceConnectFlow.tsx",
+        "frontend/src/components/ui/dialog.tsx",
+        "frontend/src/index.css",
+        "frontend/src/lib/api.ts",
+        "frontend/src/lib/supabase.ts",
+        "frontend/src/main.tsx",
+        "frontend/src/pages/AgentsPage.tsx",
+        "frontend/src/pages/DataSourcesPage.tsx",
+        "frontend/src/pages/GetStartedPage.tsx",
+        "frontend/src/pages/SettingsPage.tsx",
+        "frontend/src/types/connectors.ts",
+        "frontend/src/vite-env.d.ts"
+      ]
+    },
+    "rust": {
+      "upstream_files": 146,
+      "firbo_files": 146,
+      "missing": [],
+      "added": [],
+      "modified": [
+        "rust/Cargo.lock",
+        "rust/Cargo.toml"
+      ]
+    },
+    "tests": {
+      "upstream_files": 721,
+      "firbo_files": 816,
+      "missing": [],
+      "added": [
+        "tests/deploy/test_gateway_credentials.py",
+        "tests/engine/test_omniroute.py",
+        "tests/firbo/agent-loop.test.mjs",
+        "tests/firbo/agent-tools.test.mjs",
+        "tests/firbo/browser-control-rendered.test.mjs",
+        "tests/firbo/browser-control.test.mjs",
+        "tests/firbo/company-pulse.test.mjs",
+        "tests/firbo/company-skills.test.mjs",
+        "tests/firbo/computer-policy.test.mjs",
+        "tests/firbo/computer-setup.test.mjs",
+        "tests/firbo/computer-state.test.mjs",
+        "tests/firbo/connections/entry.css",
+        "tests/firbo/connections/entry.tsx",
+        "tests/firbo/connections/index.html",
+        "tests/firbo/connections/mock-client.ts",
+        "tests/firbo/connections/postgres-assertions.sql",
+        "tests/firbo/connections/postgres-fixture.sql",
+        "tests/firbo/connections/verify.py",
+        "tests/firbo/connector-agent-approvals.test.mjs",
+        "tests/firbo/connector-apps.test.mjs",
+        "tests/firbo/connector-cancel.test.mjs",
+        "tests/firbo/connector-durable.test.mjs",
+        "tests/firbo/connector-execution.test.mjs",
+        "tests/firbo/connector-receipts.test.mjs",
+        "tests/firbo/dark-voice/voice.test.mjs",
+        "tests/firbo/deliverables.test.mjs",
+        "tests/firbo/delivery-matrix.test.mjs",
+        "tests/firbo/dependency-audit.mjs",
+        "tests/firbo/edge-entrypoints.test.mjs",
+        "tests/firbo/edge-typecheck.d.ts",
+        "tests/firbo/free-routing.test.mjs",
+        "tests/firbo/free-search.test.mjs",
+        "tests/firbo/gateway-proxy-config.test.mjs",
+        "tests/firbo/gateway-routing.test.mjs",
+        "tests/firbo/helpers/connector-handler.mjs",
+        "tests/firbo/knowledge-entrypoint.test.mjs",
+        "tests/firbo/knowledge/postgres-fixture.sql",
+        "tests/firbo/knowledge/postgres-regressions.sql",
+        "tests/firbo/legacy-integrations-persistence.test.mjs",
+        "tests/firbo/legacy-integrations/postgres-fixture.sql",
+        "tests/firbo/legacy-integrations/postgres-regressions.sql",
+        "tests/firbo/local_compute_browser.py",
+        "tests/firbo/local_model_docker.py",
+        "tests/firbo/mobile/fixture.css",
+        "tests/firbo/mobile/fixture.tsx",
+        "tests/firbo/mobile/index.html",
+        "tests/firbo/mobile/verify.py",
+        "tests/firbo/native-control.test.mjs",
+        "tests/firbo/native_rollout_docker.py",
+        "tests/firbo/own-keys.test.mjs",
+        "tests/firbo/pages/entry.css",
+        "tests/firbo/pages/entry.tsx",
+        "tests/firbo/pages/index.html",
+        "tests/firbo/pages/mock-client.ts",
+        "tests/firbo/pages/verify.py",
+        "tests/firbo/pages/verify_extra.py",
+        "tests/firbo/pages/verify_operations.py",
+        "tests/firbo/people/postgres-concurrency.py",
+        "tests/firbo/people/postgres-fixture.sql",
+        "tests/firbo/people/postgres-regressions.sql",
+        "tests/firbo/requirements.txt",
+        "tests/firbo/skills/postgres-acceptance.sql",
+        "tests/firbo/task-briefing.test.mjs",
+        "tests/firbo/tasks/postgres-fixture.sql",
+        "tests/firbo/tasks/postgres-regressions.sql",
+        "tests/firbo/tasks/run-protocol-concurrency.py",
+        "tests/firbo/tasks/run-protocol-fixture.sql",
+        "tests/firbo/tasks/run-protocol-regressions.sql",
+        "tests/firbo/test_control_plane.py",
+        "tests/firbo/test_free_app.py",
+        "tests/firbo/test_free_inference.py",
+        "tests/firbo/test_free_models.py",
+        "tests/firbo/test_free_models_guarded.py",
+        "tests/firbo/test_free_models_terms.py",
+        "tests/firbo/test_local_capacity.py",
+        "tests/firbo/test_local_rollout.py",
+        "tests/firbo/test_local_tts.py",
+        "tests/firbo/test_local_voice_rollout.py",
+        "tests/firbo/test_native_rollout.py",
+        "tests/firbo/test_oci_artifacts.py",
+        "tests/firbo/test_preflight.py",
+        "tests/firbo/test_recovery_checkpoint.py",
+        "tests/firbo/test_recovery_continue.py",
+        "tests/firbo/tsconfig.edge.json",
+        "tests/firbo/voice/entry.css",
+        "tests/firbo/voice/entry.tsx",
+        "tests/firbo/voice/index.html",
+        "tests/firbo/voice/mock-client.ts",
+        "tests/firbo/voice/verify.py",
+        "tests/firbo/workflow-lifecycle.test.mjs",
+        "tests/firbo/workflows/postgres-assertions.sql",
+        "tests/firbo/workflows/postgres-fixture.sql",
+        "tests/firbo/workspace-postgres-loader.py",
+        "tests/server/test_firbo_app.py",
+        "tests/server/test_gateway_routes.py"
+      ],
+      "modified": [
+        "tests/server/test_connectors_router.py",
+        "tests/server/test_sendblue_webhook.py"
+      ]
+    }
+  },
+  "counts": {
+    "AgentRegistry": 23,
+    "ChannelRegistry": 30,
+    "ConnectorRegistry": 27,
+    "EngineRegistry": 6,
+    "ToolRegistry": 64
+  },
+  "registrations": [
+    {
+      "registry": "AgentRegistry",
+      "name": "claude_code",
+      "source": "src/openjarvis/agents/claude_code.py",
+      "line": 45,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "deep_research",
+      "source": "src/openjarvis/agents/deep_research.py",
+      "line": 159,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "advisors",
+      "source": "src/openjarvis/agents/hybrid/advisors.py",
+      "line": 109,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "archon",
+      "source": "src/openjarvis/agents/hybrid/archon.py",
+      "line": 452,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "baseline_cloud",
+      "source": "src/openjarvis/agents/hybrid/baseline_cloud.py",
+      "line": 41,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "baseline_local",
+      "source": "src/openjarvis/agents/hybrid/baseline_local.py",
+      "line": 32,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "conductor",
+      "source": "src/openjarvis/agents/hybrid/conductor.py",
+      "line": 753,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "mini_swe_agent",
+      "source": "src/openjarvis/agents/hybrid/mini_swe_agent.py",
+      "line": 1542,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "minions",
+      "source": "src/openjarvis/agents/hybrid/minions.py",
+      "line": 450,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "skillorchestra",
+      "source": "src/openjarvis/agents/hybrid/skillorchestra/agent.py",
+      "line": 54,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "skillorchestra",
+      "source": "src/openjarvis/agents/hybrid/skillorchestra.py",
+      "line": 203,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "toolorchestra",
+      "source": "src/openjarvis/agents/hybrid/toolorchestra.py",
+      "line": 1115,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "monitor_operative",
+      "source": "src/openjarvis/agents/monitor_operative.py",
+      "line": 85,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "morning_digest",
+      "source": "src/openjarvis/agents/morning_digest.py",
+      "line": 42,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "native_openhands",
+      "source": "src/openjarvis/agents/native_openhands.py",
+      "line": 58,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "native_react",
+      "source": "src/openjarvis/agents/native_react.py",
+      "line": 132,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "opencode",
+      "source": "src/openjarvis/agents/opencode.py",
+      "line": 106,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "openhands",
+      "source": "src/openjarvis/agents/openhands.py",
+      "line": 19,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "operative",
+      "source": "src/openjarvis/agents/operative.py",
+      "line": 25,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "orchestrator",
+      "source": "src/openjarvis/agents/orchestrator.py",
+      "line": 32,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "proactive",
+      "source": "src/openjarvis/agents/proactive_agent.py",
+      "line": 295,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "rlm",
+      "source": "src/openjarvis/agents/rlm.py",
+      "line": 134,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "AgentRegistry",
+      "name": "simple",
+      "source": "src/openjarvis/agents/simple.py",
+      "line": 12,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "bluebubbles",
+      "source": "src/openjarvis/channels/bluebubbles.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "discord",
+      "source": "src/openjarvis/channels/discord_channel.py",
+      "line": 24,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "email",
+      "source": "src/openjarvis/channels/email_channel.py",
+      "line": 25,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "feishu",
+      "source": "src/openjarvis/channels/feishu.py",
+      "line": 22,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "gmail",
+      "source": "src/openjarvis/channels/gmail.py",
+      "line": 25,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "google_chat",
+      "source": "src/openjarvis/channels/google_chat.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "irc",
+      "source": "src/openjarvis/channels/irc_channel.py",
+      "line": 23,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "line",
+      "source": "src/openjarvis/channels/line_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "mastodon",
+      "source": "src/openjarvis/channels/mastodon_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "matrix",
+      "source": "src/openjarvis/channels/matrix_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "mattermost",
+      "source": "src/openjarvis/channels/mattermost.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "messenger",
+      "source": "src/openjarvis/channels/messenger_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "nostr",
+      "source": "src/openjarvis/channels/nostr_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "reddit",
+      "source": "src/openjarvis/channels/reddit_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "rocketchat",
+      "source": "src/openjarvis/channels/rocketchat_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "sendblue",
+      "source": "src/openjarvis/channels/sendblue.py",
+      "line": 30,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "signal",
+      "source": "src/openjarvis/channels/signal_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "slack",
+      "source": "src/openjarvis/channels/slack.py",
+      "line": 23,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "teams",
+      "source": "src/openjarvis/channels/teams.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "telegram",
+      "source": "src/openjarvis/channels/telegram.py",
+      "line": 25,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "twilio",
+      "source": "src/openjarvis/channels/twilio_sms.py",
+      "line": 30,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "twitch",
+      "source": "src/openjarvis/channels/twitch_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "twitter",
+      "source": "src/openjarvis/channels/twitter_channel.py",
+      "line": 108,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "viber",
+      "source": "src/openjarvis/channels/viber_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "webchat",
+      "source": "src/openjarvis/channels/webchat.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "webhook",
+      "source": "src/openjarvis/channels/webhook.py",
+      "line": 20,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "whatsapp",
+      "source": "src/openjarvis/channels/whatsapp.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "whatsapp_baileys",
+      "source": "src/openjarvis/channels/whatsapp_baileys.py",
+      "line": 46,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "xmpp",
+      "source": "src/openjarvis/channels/xmpp_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ChannelRegistry",
+      "name": "zulip",
+      "source": "src/openjarvis/channels/zulip_channel.py",
+      "line": 21,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "apple_calendar",
+      "source": "src/openjarvis/connectors/apple_calendar.py",
+      "line": 175,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "apple_contacts",
+      "source": "src/openjarvis/connectors/apple_contacts.py",
+      "line": 165,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "apple_health",
+      "source": "src/openjarvis/connectors/apple_health.py",
+      "line": 75,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "apple_music",
+      "source": "src/openjarvis/connectors/apple_music.py",
+      "line": 123,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "apple_notes",
+      "source": "src/openjarvis/connectors/apple_notes.py",
+      "line": 112,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "dropbox",
+      "source": "src/openjarvis/connectors/dropbox.py",
+      "line": 140,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "gcalendar",
+      "source": "src/openjarvis/connectors/gcalendar.py",
+      "line": 234,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "gcontacts",
+      "source": "src/openjarvis/connectors/gcontacts.py",
+      "line": 138,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "gdrive",
+      "source": "src/openjarvis/connectors/gdrive.py",
+      "line": 121,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "github_notifications",
+      "source": "src/openjarvis/connectors/github_notifications.py",
+      "line": 41,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "gmail",
+      "source": "src/openjarvis/connectors/gmail.py",
+      "line": 333,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "gmail_imap",
+      "source": "src/openjarvis/connectors/gmail_imap.py",
+      "line": 139,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "google_tasks",
+      "source": "src/openjarvis/connectors/google_tasks.py",
+      "line": 39,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "granola",
+      "source": "src/openjarvis/connectors/granola.py",
+      "line": 208,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "hackernews",
+      "source": "src/openjarvis/connectors/hackernews.py",
+      "line": 35,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "imap",
+      "source": "src/openjarvis/connectors/imap.py",
+      "line": 194,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "imessage",
+      "source": "src/openjarvis/connectors/imessage.py",
+      "line": 67,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "news_rss",
+      "source": "src/openjarvis/connectors/news_rss.py",
+      "line": 290,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "notion",
+      "source": "src/openjarvis/connectors/notion.py",
+      "line": 237,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "obsidian",
+      "source": "src/openjarvis/connectors/obsidian.py",
+      "line": 95,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "oura",
+      "source": "src/openjarvis/connectors/oura.py",
+      "line": 39,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "outlook",
+      "source": "src/openjarvis/connectors/outlook.py",
+      "line": 24,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "slack",
+      "source": "src/openjarvis/connectors/slack_connector.py",
+      "line": 277,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "spotify",
+      "source": "src/openjarvis/connectors/spotify.py",
+      "line": 39,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "strava",
+      "source": "src/openjarvis/connectors/strava.py",
+      "line": 57,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "weather",
+      "source": "src/openjarvis/connectors/weather.py",
+      "line": 114,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ConnectorRegistry",
+      "name": "whatsapp",
+      "source": "src/openjarvis/connectors/whatsapp.py",
+      "line": 72,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "afm",
+      "source": "src/openjarvis/engine/apple_fm.py",
+      "line": 172,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "cloud",
+      "source": "src/openjarvis/engine/cloud.py",
+      "line": 404,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "gemma_cpp",
+      "source": "src/openjarvis/engine/gemma_cpp.py",
+      "line": 25,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "litellm",
+      "source": "src/openjarvis/engine/litellm.py",
+      "line": 17,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "nim",
+      "source": "src/openjarvis/engine/nim.py",
+      "line": 27,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "EngineRegistry",
+      "name": "ollama",
+      "source": "src/openjarvis/engine/ollama.py",
+      "line": 107,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "schedule_task",
+      "source": "src/openjarvis/scheduler/tools.py",
+      "line": 14,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "list_scheduled_tasks",
+      "source": "src/openjarvis/scheduler/tools.py",
+      "line": 114,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "pause_scheduled_task",
+      "source": "src/openjarvis/scheduler/tools.py",
+      "line": 165,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "resume_scheduled_task",
+      "source": "src/openjarvis/scheduler/tools.py",
+      "line": 225,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "cancel_scheduled_task",
+      "source": "src/openjarvis/scheduler/tools.py",
+      "line": 285,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "agent_spawn",
+      "source": "src/openjarvis/tools/agent_tools.py",
+      "line": 36,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "agent_send",
+      "source": "src/openjarvis/tools/agent_tools.py",
+      "line": 129,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "agent_list",
+      "source": "src/openjarvis/tools/agent_tools.py",
+      "line": 216,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "agent_kill",
+      "source": "src/openjarvis/tools/agent_tools.py",
+      "line": 268,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "calendar_upcoming",
+      "source": "src/openjarvis/tools/apple_calendar.py",
+      "line": 14,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "calendar_search",
+      "source": "src/openjarvis/tools/apple_calendar.py",
+      "line": 45,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "apply_patch",
+      "source": "src/openjarvis/tools/apply_patch.py",
+      "line": 181,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "audio_transcribe",
+      "source": "src/openjarvis/tools/audio_tool.py",
+      "line": 18,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_navigate",
+      "source": "src/openjarvis/tools/browser.py",
+      "line": 56,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_click",
+      "source": "src/openjarvis/tools/browser.py",
+      "line": 154,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_type",
+      "source": "src/openjarvis/tools/browser.py",
+      "line": 391,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_screenshot",
+      "source": "src/openjarvis/tools/browser.py",
+      "line": 482,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_extract",
+      "source": "src/openjarvis/tools/browser.py",
+      "line": 562,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "browser_axtree",
+      "source": "src/openjarvis/tools/browser_axtree.py",
+      "line": 27,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "calculator",
+      "source": "src/openjarvis/tools/calculator.py",
+      "line": 115,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "channel_send",
+      "source": "src/openjarvis/tools/channel_tools.py",
+      "line": 18,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "channel_list",
+      "source": "src/openjarvis/tools/channel_tools.py",
+      "line": 94,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "channel_status",
+      "source": "src/openjarvis/tools/channel_tools.py",
+      "line": 143,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "code_interpreter",
+      "source": "src/openjarvis/tools/code_interpreter.py",
+      "line": 120,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "code_interpreter_docker",
+      "source": "src/openjarvis/tools/code_interpreter_docker.py",
+      "line": 13,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "db_query",
+      "source": "src/openjarvis/tools/db_query.py",
+      "line": 96,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "digest_collect",
+      "source": "src/openjarvis/tools/digest_collect.py",
+      "line": 423,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "docker_shell_exec",
+      "source": "src/openjarvis/tools/docker_shell_exec.py",
+      "line": 55,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "file_read",
+      "source": "src/openjarvis/tools/file_read.py",
+      "line": 17,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "file_write",
+      "source": "src/openjarvis/tools/file_write.py",
+      "line": 17,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "git_status",
+      "source": "src/openjarvis/tools/git_tool.py",
+      "line": 111,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "git_diff",
+      "source": "src/openjarvis/tools/git_tool.py",
+      "line": 169,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "git_commit",
+      "source": "src/openjarvis/tools/git_tool.py",
+      "line": 250,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "git_log",
+      "source": "src/openjarvis/tools/git_tool.py",
+      "line": 338,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "http_request",
+      "source": "src/openjarvis/tools/http_request.py",
+      "line": 34,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "image_generate",
+      "source": "src/openjarvis/tools/image_tool.py",
+      "line": 16,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "knowledge_search",
+      "source": "src/openjarvis/tools/knowledge_search.py",
+      "line": 22,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "knowledge_sql",
+      "source": "src/openjarvis/tools/knowledge_sql.py",
+      "line": 43,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "kg_add_entity",
+      "source": "src/openjarvis/tools/knowledge_tools.py",
+      "line": 14,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "kg_add_relation",
+      "source": "src/openjarvis/tools/knowledge_tools.py",
+      "line": 83,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "kg_query",
+      "source": "src/openjarvis/tools/knowledge_tools.py",
+      "line": 150,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "kg_neighbors",
+      "source": "src/openjarvis/tools/knowledge_tools.py",
+      "line": 222,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "llm",
+      "source": "src/openjarvis/tools/llm_tool.py",
+      "line": 14,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "memory_manage",
+      "source": "src/openjarvis/tools/memory_manage.py",
+      "line": 15,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "pdf_extract",
+      "source": "src/openjarvis/tools/pdf_tool.py",
+      "line": 51,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "check_permission",
+      "source": "src/openjarvis/tools/proactive_tools.py",
+      "line": 67,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "queue_action",
+      "source": "src/openjarvis/tools/proactive_tools.py",
+      "line": 118,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "get_pending_actions",
+      "source": "src/openjarvis/tools/proactive_tools.py",
+      "line": 206,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "record_decision",
+      "source": "src/openjarvis/tools/proactive_tools.py",
+      "line": 252,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "execute_pending_actions",
+      "source": "src/openjarvis/tools/proactive_tools.py",
+      "line": 342,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "repl",
+      "source": "src/openjarvis/tools/repl.py",
+      "line": 136,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "retrieval",
+      "source": "src/openjarvis/tools/retrieval.py",
+      "line": 15,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "scan_chunks",
+      "source": "src/openjarvis/tools/scan_chunks.py",
+      "line": 23,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "shell_exec",
+      "source": "src/openjarvis/tools/shell_exec.py",
+      "line": 52,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "skill_manage",
+      "source": "src/openjarvis/tools/skill_manage.py",
+      "line": 15,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "memory_store",
+      "source": "src/openjarvis/tools/storage_tools.py",
+      "line": 19,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "memory_retrieve",
+      "source": "src/openjarvis/tools/storage_tools.py",
+      "line": 82,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "memory_search",
+      "source": "src/openjarvis/tools/storage_tools.py",
+      "line": 150,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "memory_index",
+      "source": "src/openjarvis/tools/storage_tools.py",
+      "line": 224,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "text_to_speech",
+      "source": "src/openjarvis/tools/text_to_speech.py",
+      "line": 17,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "think",
+      "source": "src/openjarvis/tools/think.py",
+      "line": 13,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "user_profile_manage",
+      "source": "src/openjarvis/tools/user_profile_manage.py",
+      "line": 15,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "get_weather",
+      "source": "src/openjarvis/tools/weather.py",
+      "line": 83,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    },
+    {
+      "registry": "ToolRegistry",
+      "name": "web_search",
+      "source": "src/openjarvis/tools/web_search.py",
+      "line": 77,
+      "evidence": "SOURCE",
+      "runtime_verified": false
+    }
+  ]
+}

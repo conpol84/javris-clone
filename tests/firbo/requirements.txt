@@ -1,0 +1,6 @@
+# Versions used for the local isolated regression pass, not a new app dependency set.
+fastapi==0.128.2
+starlette==0.50.0
+httpx==0.28.1
+pydantic==2.13.4
+pytest==9.0.2

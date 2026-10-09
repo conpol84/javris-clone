@@ -1,0 +1,22 @@
+name: Firbo Mem0 transport accounting
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - 'supabase/functions/_shared/mem0-transport-accounting.ts'
+      - 'tests/firbo/mem0-transport-accounting.test.mjs'
+      - '.github/workflows/firbo-mem0-transport-accounting.yml'
+permissions:
+  contents: read
+jobs:
+  fail-closed-attempts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22.22.0'}
+      - run: node --experimental-strip-types --test tests/firbo/mem0-transport-accounting.test.mjs
+      - name: Strict-check the preparatory contract
+        run: npx --yes --package typescript@7.0.2 tsc --noEmit --strict --target ES2022 --module ESNext --lib ES2022,DOM supabase/functions/_shared/mem0-transport-accounting.ts

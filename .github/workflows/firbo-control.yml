@@ -1,0 +1,28 @@
+name: Firbo control-plane security
+on:
+  push:
+    branches: [main, claude/omniroute-engine, codex/firbo-unified-gateway]
+    paths: ['src/openjarvis/server/**', 'tests/firbo/**', '.github/workflows/firbo-control.yml']
+  pull_request:
+    branches: [main, claude/omniroute-engine]
+    paths: ['src/openjarvis/server/**', 'tests/firbo/**', '.github/workflows/firbo-control.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-control-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  isolated-security-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4, verified
+        with:
+          persist-credentials: false
+      - name: Create an isolated test environment
+        run: |
+          python3 -m venv /tmp/firbo-tests
+          /tmp/firbo-tests/bin/pip install -r tests/firbo/requirements.txt
+      - name: Test without the unrelated legacy engine fixtures
+        run: /tmp/firbo-tests/bin/pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py
