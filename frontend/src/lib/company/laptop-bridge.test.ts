@@ -423,6 +423,24 @@ describe('truthful CEO computer progress and safe read-only recovery',()=>{
   expect(out).toMatchObject({handled:true,status:'queued',job_id:'job-network-disconnect'});
   expect(out.reply).toContain('NOT verified');
  });
+ it('missing already-queued job is not treated as an invitation to requeue',async()=>{
+  let clock=now,queued=0,polls=0,cancels=0;
+  const stages:string[]=[];
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>clock,loadDevices:async()=>[machine],
+   queue:async()=>{queued++;return{job_id:'missing-confirmation'}},
+   loadJobs:async()=>{polls++;return[];},
+   cancel:async()=>{cancels++;},
+   sleep:async(ms)=>{clock+=ms;},
+   onProgress:p=>stages.push(p.stage)
+  });
+  expect(queued).toBe(1);
+  expect(polls).toBe(4);
+  expect(cancels).toBe(0);
+  expect(stages).toEqual(['queued','status_unavailable']);
+  expect(out).toMatchObject({status:'queued',job_id:'missing-confirmation'});
+  expect(out.reply).toContain('Nothing is verified');
+ });
  it('ignores exceptions thrown by rendering progress so they cannot stop devices',async()=>{
   let executions=0;
   const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
