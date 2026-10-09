@@ -48,13 +48,16 @@ BASELINES = {
 # Filled from the exact reviewed runtime bytes, never downloaded at install time.
 BUNDLE = {
     "server/routes.py": (
-        "a7f73bb266da83e01ced8faa6add7f295f087ca857908240a511df77e94bc8ad"
+        "3413231f4462b8f50b221da77bfac84a1429a85e4d353cbca3f17a835c3deda7"
     ),
     "server/models.py": (
         "592c67a9d40ac8198ab31cd55517d30f6d5744d1f253869cce66d2d09202f4f9"
     ),
     "server/native_approval.py": (
         "65e57f97efb4f4199a55096091247410c921c9bb82682ca20d8c7d1b5319fe02"
+    ),
+    "server/output_budget.py": (
+        "bd227b067b85cef573b93e3bae225cd9d82f29cf127371d830316214c994aaf5"
     ),
 }
 
@@ -291,7 +294,12 @@ def install():
     )
     require(
         set(BUNDLE)
-        == {"server/routes.py", "server/models.py", "server/native_approval.py"},
+        == {
+            "server/routes.py",
+            "server/models.py",
+            "server/native_approval.py",
+            "server/output_budget.py",
+        },
         "bundle_incomplete",
     )
     staged = {}
@@ -318,6 +326,13 @@ def install():
             digest(read_regular(added)) == BUNDLE["server/native_approval.py"],
             "unknown_approval_code",
         )
+    budget_file = PACKAGE / "server/output_budget.py"
+    require(not budget_file.is_symlink(), "unexpected_installed_symlink")
+    if budget_file.exists():
+        require(
+            digest(read_regular(budget_file)) == BUNDLE["server/output_budget.py"],
+            "unknown_output_budget_code",
+        )
     if all(
         (PACKAGE / n).exists() and digest(read_regular(PACKAGE / n)) == h
         for n, h in BUNDLE.items()
@@ -325,6 +340,7 @@ def install():
         print(json.dumps({"already_installed": True, "restart_performed": False}))
         return
     require(not added.exists(), "partial_install_requires_review")
+    require(not budget_file.exists(), "partial_install_requires_review")
     # Reject a partially replaced two-file bundle too; preserve it for inspection.
     for name in ("server/routes.py", "server/models.py"):
         require(
@@ -351,6 +367,7 @@ def install():
     print(json.dumps({"backup": str(backup), "phase": "before_install"}), flush=True)
     try:
         for name in (
+            "server/output_budget.py",
             "server/native_approval.py",
             "server/models.py",
             "server/routes.py",
