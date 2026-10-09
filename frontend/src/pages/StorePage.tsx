@@ -4,6 +4,7 @@ import { Crown, Lock, Search, Sparkles } from 'lucide-react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 import { HireDialog } from '../components/team/HireDialog';
+import { AgencySpecialistDetails } from '../components/team/AgencySpecialistDetails';
 import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
@@ -114,6 +115,7 @@ export function StorePage() {
                 </div>
               </div>
               <p className="fb-muted flex-1 text-sm leading-relaxed">{t(`tpl.${tpl.slug}.tagline` as TKey)}</p>
+              <AgencySpecialistDetails slug={tpl.slug} />
               <div className="flex flex-wrap gap-1.5">
                 {tpl.tools.slice(0, 3).map((k) => (
                   <span key={k.tool} className="fb-chip">{k.tool}</span>
