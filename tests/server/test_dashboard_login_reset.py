@@ -130,3 +130,55 @@ class ResetTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     reset.reset_password(path, pathlib.Path(folder), password)
             restart.assert_not_called()
+
+
+class TerminalTests(unittest.TestCase):
+    def test_hidden_input_on_real_controlling_terminal(self):
+        import os
+        import pty
+        import select
+        import signal
+        import time
+
+        password = b"test-TTY-password-123"
+        pid, fd = pty.fork()
+        if pid == 0:
+            try:
+                value = reset.read_password()
+                os._exit(0 if value.encode() == password else 2)
+            except BaseException:
+                os._exit(3)
+        transcript = b""
+        sent = 0
+        status = None
+        deadline = time.monotonic() + 8
+        try:
+            while time.monotonic() < deadline:
+                if select.select([fd], [], [], 0.1)[0]:
+                    try:
+                        chunk = os.read(fd, 4096)
+                    except OSError:
+                        break
+                    transcript += chunk
+                    if sent == 0 and b"12+ characters): " in transcript:
+                        os.write(fd, password + b"\n")
+                        sent = 1
+                    if sent == 1 and b"Repeat NEW password: " in transcript:
+                        os.write(fd, password + b"\n")
+                        sent = 2
+                done, result = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    status = result
+                    break
+            if status is None:
+                done, result = os.waitpid(pid, os.WNOHANG)
+                if done:
+                    status = result
+            self.assertEqual(sent, 2, transcript)
+            self.assertEqual(status, 0, transcript)
+            self.assertNotIn(password, transcript)
+        finally:
+            if status is None:
+                os.kill(pid, signal.SIGKILL)
+                os.waitpid(pid, 0)
+            os.close(fd)

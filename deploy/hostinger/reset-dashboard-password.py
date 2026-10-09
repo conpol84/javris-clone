@@ -153,6 +153,19 @@ def reset_password(path, backup_root, password):
         raise
 
 
+def read_password():
+    # Explicit /dev/tty and warnings-as-errors prevent echoed stdin fallback.
+    with open("/dev/tty", "w") as tty, warnings.catch_warnings():
+        require(tty.isatty(), "interactive_terminal_required")
+        warnings.simplefilter("error", getpass.GetPassWarning)
+        password = getpass.getpass("NEW Jarvis password (12+ characters): ", stream=tty)
+        require(
+            password == getpass.getpass("Repeat NEW password: ", stream=tty),
+            "passwords_do_not_match",
+        )
+    return password
+
+
 def main():
     require(
         os.geteuid() == 0 and socket.gethostname() == "srv2027143",
@@ -169,15 +182,7 @@ def main():
         and hashlib.sha256(paths[0].read_bytes()).hexdigest() == MODULE_HASH,
         "installed_login_version_changed",
     )
-    # Explicit /dev/tty and warnings-as-errors prevent echoed stdin fallback.
-    with open("/dev/tty", "r+") as tty, warnings.catch_warnings():
-        require(tty.isatty(), "interactive_terminal_required")
-        warnings.simplefilter("error", getpass.GetPassWarning)
-        password = getpass.getpass("NEW Jarvis password (12+ characters): ", stream=tty)
-        require(
-            password == getpass.getpass("Repeat NEW password: ", stream=tty),
-            "passwords_do_not_match",
-        )
+    password = read_password()
     fd = os.open(
         "/run/lock/firbo-dashboard-password.lock",
         os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW,
