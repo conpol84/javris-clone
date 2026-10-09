@@ -61,9 +61,12 @@ catch (error) { console.log(JSON.stringify({error:error.message})); }
 try:
     frame = perform({"action": "observe"})
     assert frame["image"] and frame["width"] <= 1280
-    for text in ["Μαζωνάκης Ώρες Μικρές"] * 5 + ["Ελληνικά ABC 123 " * 35]:
+    for text in ["Μαζωνάκης Ώρες Μικρές"] * 5 + ["Ελληνικά ABC 123 " * 70]:
         entry.delete(0, tk.END)
+        started = time.monotonic()
         perform({"action": "type", "text": text})
+        if len(text) > 1000:
+            assert time.monotonic() - started > 30, "long-input deadline not exercised"
         assert entry.get() == text, repr(entry.get())
     perform({"action": "key", "key": "Home"})
     root.update()
@@ -82,7 +85,10 @@ try:
         * frame["height"]
         / frame["screen_height"]
     )
-    perform({**frame, "action": "click", "x": x, "y": y})
+    geometry = {
+        k: frame[k] for k in ("width", "height", "screen_width", "screen_height")
+    }
+    perform({**geometry, "action": "click", "x": x, "y": y})
     root.update()
     assert clicked == [True], clicked
     # Stop during a long input, not only before the first action.
