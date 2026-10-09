@@ -114,8 +114,8 @@ export function CeoPage() {
           </section>
 
           <section className="fb-glass fb-col gap-3 p-4">
-            <CeoSessionHistory lang={lang} sessions={sessions} activeId={activeSessionId}
-              loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError||!canWrite}
+            <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
+              loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
               onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
             <div className="flex flex-wrap gap-2">
               {(canTalk || state !== 'idle') &&
