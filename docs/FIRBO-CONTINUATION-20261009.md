@@ -1,5 +1,12 @@
 # FIRBO continuation checkpoint — 9 October 2026
 
+> Updated owner evidence and full next-chat handoff: [FIRBO-HANDOFF-20261009.md](FIRBO-HANDOFF-20261009.md).
+> The owner has now confirmed `VPS_WORKER_DISPATCH_INSTALLED`, backup
+> `/var/backups/firbo-worker-dispatch-83ipejzv`. Installer-waiting statements below
+> are historical. Do not repeat installation. Matched rollout and physical task
+> acceptance remain open. The handoff adds Tavily secret-name, native Memory 503
+> and Agency Agents findings without claiming new runtime deployments.
+
 This checkpoint continues [master Issue52](https://github.com/conpol84/javris-clone/issues/52).
 It does not replace that plan, reopen completed stages, or declare FIRBO finished.
 Record **Changed / Tested / Passed / Failed / Remains** at each release boundary.
