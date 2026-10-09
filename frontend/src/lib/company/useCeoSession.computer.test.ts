@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
 const fixture=vi.hoisted(()=>({index:0,refIndex:0,states:[] as unknown[],refs:[] as {current:any}[],effects:[] as (()=>void|(()=>void))[],setters:[] as ReturnType<typeof vi.fn>[]}));
-const prepare=vi.hoisted(()=>vi.fn());const dispatch=vi.hoisted(()=>vi.fn());const sendChat=vi.hoisted(()=>vi.fn());const listen=vi.hoisted(()=>vi.fn());
+const prepare=vi.hoisted(()=>vi.fn());const dispatch=vi.hoisted(()=>vi.fn());const sendChat=vi.hoisted(()=>vi.fn());const listen=vi.hoisted(()=>vi.fn());const recover=vi.hoisted(()=>vi.fn());
 vi.mock('react',async original=>({...await original<typeof import('react')>(),
  useState:()=>{const i=fixture.index++;const setter=vi.fn();fixture.setters[i]=setter;return[fixture.states[i],setter]},
  useRef:(initial:unknown)=>{const i=fixture.refIndex++;return fixture.refs[i]??(fixture.refs[i]={current:initial})},
@@ -11,6 +11,7 @@ vi.mock('./data',()=>({listAgents:async()=>[],createConversation:vi.fn(),loadOrg
 vi.mock('./runner',async original=>({...await original<typeof import('./runner')>(),sendChat}));
 vi.mock('./voice',()=>({unlockAudio:vi.fn(),speak:async()=>({status:'completed'}),listenSmart:listen}));
 vi.mock('./laptop-bridge',async original=>({...await original<typeof import('./laptop-bridge')>(),prepareDirectComputerCommand:prepare,dispatchDirectComputerCommand:dispatch}));
+vi.mock('./computer-continuation',async original=>({...await original<typeof import('./computer-continuation')>(),resolveUnlockContinuation:recover}));
 import {useCeoSession} from './useCeoSession';
 import {createConversation} from './data';
 
@@ -96,5 +97,32 @@ it('passes positive Debian command with negative guardrails to dispatcher',async
  expect(prepare).toHaveBeenCalledOnce();
  expect(dispatch).toHaveBeenCalledOnce();
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d8'});
+ expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('owner unlock follow-up resumes only latest verified Debian goal through central dispatcher',async()=>{
+ const goal='open website youtube and search mazonakis and play the song ores mikres';
+ recover.mockResolvedValue({recognized:true,proposal:{kind:'desktop_task',description:goal,params:{goal},target:'My shell',deviceId:'d8'},reply:'resume'});
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Job queued; outcome pending'});
+ const hook=session();await hook.ask('ok tora einai unlock');
+ expect(recover).toHaveBeenCalledWith('org','owner','ok tora einai unlock','el',expect.any(AbortSignal));
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({kind:'desktop_task',target:'My shell',deviceId:'d8',params:{goal},ownerFullControlRequired:true});
+ expect(sendChat).not.toHaveBeenCalled();
+});
+it('no confirmed owner job after unlock remains in the computer lane, never CEO market sizing',async()=>{
+ recover.mockResolvedValue({recognized:true,proposal:null,reply:'Δεν βρέθηκε προηγούμενη εργασία. Δεν μπήκε νέα εργασία στην ουρά.'});
+ const hook=session();await hook.ask('ok tora einai unlock');
+ expect(recover).toHaveBeenCalledOnce();expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).at(-1).text).toContain('Δεν μπήκε');
+});
+it('Greeklish direct playback after unlock keeps named My shell instead of Mac fallback',async()=>{
+ const goal='re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Queued'});
+ const hook=session();await hook.ask(goal);
+ expect(recover).not.toHaveBeenCalled();expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d8',params:{goal}});
  expect(sendChat).not.toHaveBeenCalled();
 });
