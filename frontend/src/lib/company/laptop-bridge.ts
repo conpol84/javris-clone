@@ -87,7 +87,7 @@ export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
  if(self)return'approve';
  if(/^(?:no|nope|oxi|οχι)(?:\s|$)/u.test(plain))return'reject';
- if(/^(?:yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
+ if(/^(?:yes|yeah|yep|approve|approved|proceed|go ahead|go nai|go ναι|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
  return null;
 }
 function youtubeQuery(text:string){
