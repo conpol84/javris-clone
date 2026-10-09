@@ -75,7 +75,12 @@ function fixture(options={}) {
       return{data:null,error:null};
     }
     state.reads.push(info);
-    if(table==='conversations')return{data:options.missingConversation?null:{id:CONVO,organization_id:ORG,user_id:options.foreignConversation?'foreign':USER,agent_id:AGENT,title:'Test',status:'active'},error:null};
+    if(table==='conversations'){
+      // An authorized old-session LIST is a collection, unlike the current
+      // conversation maybeSingle. Keep its company/user/CEO query observable.
+      if(selection?.includes('updated_at'))return{data:options.pastCeoSessions??[],error:null};
+      return{data:options.missingConversation?null:{id:CONVO,organization_id:ORG,user_id:options.foreignConversation?'foreign':USER,agent_id:AGENT,title:'Test',status:'active'},error:null};
+    }
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
@@ -112,7 +117,8 @@ function fixture(options={}) {
       return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
     }
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
-    if(table==='memories'||table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
+    if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
+    if(table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
     if(table==='knowledge_chunks')return{data:null,count:options.knowledgeCount??0,error:null};
     if(table==='integrations'){
