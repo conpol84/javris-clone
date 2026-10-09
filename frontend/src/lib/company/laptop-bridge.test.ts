@@ -378,3 +378,62 @@ describe('CEO shows real failed computer receipts rather than silent generic fai
   expect(out.reply).not.toContain('<script>');
  });
 });
+
+describe('truthful CEO computer progress and safe read-only recovery',()=>{
+ const goal='Open browser and play first YouTube result for mazonakis';
+ const proposal={kind:'desktop_task' as const,params:{goal},description:goal};
+ const machine:DeviceRow={...device('verified-shell','My shell',true),platform:'linux x64',
+  capabilities:{job_kinds:['desktop_task','browser_task','browser_open'],full_control:true}};
+ it('reports only acknowledged queue/running stages, never fabricated intermediate steps',async()=>{
+  let clock=now,attempts=0,dispatches=0;
+  const events:Array<{stage:string;jobId:string;deviceName:string}>=[];
+  const out=await dispatchDirectComputerCommand('org',proposal,'el',undefined,{
+   now:()=>clock,loadDevices:async()=>[machine],
+   queue:async()=>{dispatches++;return{job_id:'job-progress'}},
+   loadJobs:async()=>{
+    attempts++;
+    return [{id:'job-progress',device_id:machine.id,kind:'desktop_task',params:proposal.params,
+     status:attempts<3?'running':'error',error:'desktop_model_unavailable',
+     result:null,created_at:'',finished_at:''} as JobRow];
+   },
+   sleep:async(ms)=>{clock+=ms;},
+   onProgress:event=>events.push(event)
+  });
+  expect(dispatches).toBe(1);
+  expect(events.map(e=>e.stage)).toEqual(['queued','running']);
+  expect(events.every(e=>e.jobId==='job-progress'&&e.deviceName==='My shell')).toBe(true);
+  expect(out.status).toBe('failed');
+  expect(out.reply).toContain('desktop_model_unavailable');
+ });
+ it('does not cancel or replay an ACKnowledged worker job when status polling disconnects',async()=>{
+  let polls=0,queued=0,cancelled=0,clock=now;
+  const stages:string[]=[];
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>clock,loadDevices:async()=>[machine],
+   queue:async()=>{queued++;return{job_id:'job-network-disconnect'}},
+   loadJobs:async()=>{polls++;throw new Error('network unreachable');},
+   cancel:async()=>{cancelled++;},
+   sleep:async(ms)=>{clock+=ms;},
+   onProgress:event=>stages.push(event.stage)
+  });
+  expect(queued).toBe(1);
+  expect(cancelled).toBe(0);
+  expect(polls).toBe(3);
+  expect(stages).toEqual(['queued','status_unavailable']);
+  expect(out).toMatchObject({handled:true,status:'queued',job_id:'job-network-disconnect'});
+  expect(out.reply).toContain('NOT verified');
+ });
+ it('ignores exceptions thrown by rendering progress so they cannot stop devices',async()=>{
+  let executions=0;
+  const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>now,loadDevices:async()=>[machine],
+   queue:async()=>{executions++;return{job_id:'job-ui-failure'}},
+   loadJobs:async()=>[{id:'job-ui-failure',device_id:machine.id,kind:'desktop_task',
+    params:proposal.params,status:'error',error:'desktop_capture_blank',
+    created_at:'',finished_at:''} as JobRow],
+   onProgress:()=>{throw new Error('UI exception');}
+  });
+  expect(executions).toBe(1);
+  expect(out).toMatchObject({status:'failed',job_id:'job-ui-failure'});
+ });
+});
