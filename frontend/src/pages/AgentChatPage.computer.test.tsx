@@ -154,3 +154,14 @@ it('CEO chat keeps a named Debian target despite trailing Μην safety wording'
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'debian'});
  expect(sendChat).not.toHaveBeenCalled();
 });
+
+
+it('owner Greeklish playback goes to dispatcher instead of CEO model handoff',async()=>{
+ const phrase="re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser";
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'debian',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Worker terminal observation pending'});
+ await elements(page(phrase)).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(prepare).toHaveBeenCalledExactlyOnceWith('org',expect.objectContaining({kind:'desktop_task',params:{goal:phrase}}),'en',expect.any(AbortSignal));
+ expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',expect.objectContaining({kind:'desktop_task',params:{goal:phrase},deviceId:'debian',ownerFullControlRequired:true}),'en',expect.any(AbortSignal));
+ expect(sendChat).not.toHaveBeenCalled();
+});
