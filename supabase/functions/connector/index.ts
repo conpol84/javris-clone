@@ -6,6 +6,7 @@
 // The computer's owner stays in control locally: the program enforces its own allowed folders and refuses anything
 // it was not started with (no writing, no commands) no matter what this service sends.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';
 import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';
 
 const cors = {
@@ -36,7 +37,7 @@ function randomToken(): string {
 }
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : '');
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task','open_app','shortcut']);
+const DEVICE_JOB_KINDS = new Set(['list','read','write','exec','browser_open','browser_task','open_app','shortcut','desktop_task']);
 function browserUrl(value: unknown): string | null {
   const raw = str(value, 2048).trim();
   if (!raw || /[\r\n\0]/.test(raw)) return null;
@@ -52,7 +53,7 @@ function cleanClientCapabilities(value: unknown): { job_kinds: string[]; roots?:
   const kinds = Array.isArray(record.job_kinds) ? record.job_kinds.filter((x): x is string => typeof x === 'string' && DEVICE_JOB_KINDS.has(x)) : [];
   // The computer's allowed folders, so AI employees ask for paths that exist. Plain path strings only.
   const roots = Array.isArray(record.roots) ? record.roots.filter((x): x is string => typeof x === 'string' && x.length <= 300 && !/[\0\r\n]/.test(x)) : [];
-  const base = { job_kinds: [...new Set(kinds)].slice(0, 8), ...(record.full_control === true ? { full_control: true } : {}) };
+  const base = { job_kinds: [...new Set(kinds)].slice(0, 9), ...(record.full_control === true ? { full_control: true } : {}) };
   return roots.length ? { ...base, roots: roots.slice(0, 8) } : base;
 }
 
@@ -156,15 +157,32 @@ Deno.serve(async (req) => {
     return json(200, { token, device_name: dev.name });
   }
 
-  if (action === 'poll' || action === 'report' || action === 'capabilities' || action === 'control') {
+  if (action === 'poll' || action === 'report' || action === 'capabilities' || action === 'control' || action === 'desktop_plan') {
     const token = str(body.token, 100);
     if (!/^[a-f0-9]{64}$/.test(token)) return json(401, { error: 'unauthorized' });
     const { data: sec, error: secretError } = await admin.from('connector_secrets').select('device_id').eq('token_hash', await sha256(token)).maybeSingle();
     if (secretError) return json(503, { error: 'device_auth_unavailable' });
     if (!sec) return json(401, { error: 'unauthorized' });
-    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at').eq('id', sec.device_id).maybeSingle();
+    const { data: dev, error: deviceError } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, capabilities, agent_policy').eq('id', sec.device_id).maybeSingle();
     if (deviceError) return json(503, { error: 'device_auth_unavailable' });
     if (!dev || dev.revoked_at || dev.paired !== true) return json(401, { error: 'revoked' });
+
+    if (action === 'desktop_plan') {
+      const {data:job,error}=await admin.from('connector_jobs').select('id,kind,params,organization_id,device_id,created_by,status,cancel_requested_at')
+        .eq('id',str(body.job_id,60)).eq('device_id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+      if(error||!job||job.kind!=='desktop_task'||!await desktopAuthorization(admin,dev,job))return json(403,{error:'desktop_not_authorized'});
+      try {
+        const next=await planDesktopStep(admin,dev,job,body,req.signal,name=>Deno.env.get(name));
+        // Authorization can change while the provider is thinking. The client
+        // also calls control before applying input.
+        const [{data:fresh},{data:current}]=await Promise.all([
+          admin.from('connector_devices').select('*').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle(),
+          admin.from('connector_jobs').select('*').eq('id',job.id).eq('device_id',dev.id).eq('organization_id',dev.organization_id).maybeSingle(),
+        ]);
+        if(!current||!await desktopAuthorization(admin,fresh,current))return json(403,{error:'desktop_not_authorized'});
+        return json(200,next);
+      }catch(error){return json(503,{error:error instanceof Error&&/^desktop_[a-z_]+$/.test(error.message)?error.message:'desktop_planning_failed'});}
+    }
 
     if (action === 'capabilities') {
       const capabilities = cleanClientCapabilities(body.client_capabilities);
@@ -183,7 +201,7 @@ Deno.serve(async (req) => {
       const jobId = str(body.job_id, 60);
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return json(400, { error: 'bad_request' });
       const { data: job, error: controlError } = await admin.from('connector_jobs')
-        .select('id,status,cancel_requested_at')
+        .select('id,status,cancel_requested_at,kind,organization_id,device_id,created_by')
         .eq('id', jobId).eq('device_id', dev.id).eq('organization_id', dev.organization_id).maybeSingle();
       if (controlError) return json(503, { error: 'control_unavailable' });
       if (!job) return json(404, { error: 'not_found' });
@@ -192,7 +210,7 @@ Deno.serve(async (req) => {
         ok: true,
         job_id: job.id,
         status: job.status,
-        stop: job.status === 'running' && !!job.cancel_requested_at,
+        stop: job.status === 'running' && (!!job.cancel_requested_at || (job.kind==='desktop_task' && !await desktopAuthorization(admin,dev,job))),
         terminal: ['done','error','cancelled'].includes(job.status),
       });
     }
@@ -365,13 +383,23 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'create_job') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
+    if(advancedComputerKind(kind)){
+      const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
+      if(error)return json(503,{error:'entitlement_unavailable'});
+      if(!desktopEntitled(org))return json(403,{error:'business_plan_required'});
+    }
     const p = (body.params ?? {}) as Record<string, unknown>;
     let params: Record<string, unknown>;
-    if (kind === 'list') {
+    if(kind==='desktop_task'){
+      if(body.confirm!==true)return json(400,{error:'confirm_required'});
+      if(dev.agent_policy?.enabled!==true||dev.agent_policy?.control!=='full'||dev.capabilities?.full_control!==true||!dev.capabilities?.job_kinds?.includes(kind)||!dev.last_seen_at||!Number.isFinite(Date.parse(dev.last_seen_at))||Date.now()-Date.parse(dev.last_seen_at)>60000)return json(409,{error:'device_not_ready'});
+      if(typeof p.goal!=='string'||!p.goal.trim()||p.goal.length>4000)return json(400,{error:'bad_request'});
+      params={goal:p.goal.trim()};
+    } else if (kind === 'list') {
       params = { path: str(p.path, 500) };
     } else if (kind === 'read') {
       params = { path: str(p.path, 500) };

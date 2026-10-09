@@ -110,6 +110,16 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
         await sayDirect(lang==='el'?'Ο έλεγχος υπολογιστή απαιτεί Owner/Admin. Δεν μπήκε εργασία στην ουρά.':'Computer control requires Owner/Admin. No job was queued.');return;
       }
       if(canComputer){
+        if(proposal?.kind==='desktop_task'&&decision!=='reject'){
+          const readiness=await prepareDirectComputerCommand(orgId,proposal.kind,lang,active.signal);
+          if(!valid(id)||!active.current())return;
+          if(!readiness.ready){await sayDirect(readiness.reply);return;}
+          pendingComputer.current=null;
+          const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId},lang,active.signal);
+          if(!valid(id)||!active.current())return;
+          await sayDirect(remote.reply);return;
+        }
+
         if(computerRequest&&decision==='reject'){
           pendingComputer.current=null;await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;
         }

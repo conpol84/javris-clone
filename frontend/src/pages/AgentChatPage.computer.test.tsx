@@ -69,7 +69,7 @@ it('never dispatches an explicit rejected app command', async () => {
 });
 it('routes the exact incomplete owner transcript to readiness rather than the model',async()=>{
   await elements(page('mporis na anixis to mac kai na valis tragoudia apo youtube ?')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
-  expect(prepare).toHaveBeenCalledWith('org','browser_task','en',expect.any(AbortSignal));
+  expect(prepare).toHaveBeenCalledWith('org','desktop_task','en',expect.any(AbortSignal));
   expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(fixture.refs[1].current).toBeNull();
   const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
   expect(update([]).slice(-1)[0].content).toContain('No job was queued');

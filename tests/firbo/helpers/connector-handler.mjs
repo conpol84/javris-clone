@@ -3,13 +3,14 @@
 import fs from 'node:fs/promises';
 import { stripTypeScriptTypes } from 'node:module';
 import { createHash, webcrypto, randomUUID } from 'node:crypto';
+import * as desktopPlanner from '../../../supabase/functions/_shared/desktop-planner.ts';
 import * as computerPolicy from '../../../supabase/functions/_shared/computer-policy.ts';
 export const TOKEN = 'a'.repeat(64), ORG = '22222222-2222-4222-8222-222222222222', DEVICE = '33333333-3333-4333-8333-333333333333';
 export async function makeHandler() {
  const state = { rows: {
   connector_secrets: [{device_id:DEVICE,token_hash:createHash('sha256').update(TOKEN).digest('hex')}],
   connector_devices: [{id:DEVICE,organization_id:ORG,name:'Synthetic laptop',platform:'test',paired:true,capabilities:{},revoked_at:null}],
-  connector_jobs: [], organization_members: [], audit_log: [],
+  organizations:[{id:ORG,plan:'enterprise',plan_status:'active',status:'active'}], connector_jobs: [], organization_members: [], audit_log: [],
  }, writes:[], reads:[], failures:[], user:null };
  function builder(table) {
   const filters=[];let update=null,select=null,limit=Infinity,insert=null;
@@ -68,9 +69,10 @@ export async function makeHandler() {
  if(!source.includes(original))throw new Error('test adapter must be reviewed after SDK import changes');
  const policyImport="import { APP_NAME, browserTaskParams, cleanPolicy } from '../_shared/computer-policy.ts';";
  if(!source.includes(policyImport))throw new Error('test adapter must be reviewed after policy import changes');
- const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
+ const desktopImport="import { advancedComputerKind, desktopEntitled, desktopAuthorization, planDesktopStep } from '../_shared/desktop-planner.ts';";
+ const code=stripTypeScriptTypes(source.replace(original,'').replace(policyImport,'').replace(desktopImport,'').replace(/\bexport\s+(?=(?:const|function)\s)/g,''));let handler;
  const deno={env:{get:key=>({SUPABASE_URL:'https://synthetic.invalid',SUPABASE_ANON_KEY:'synthetic-public',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service'})[key]},serve:fn=>handler=fn};
- new Function('Deno','createClient','crypto','APP_NAME','browserTaskParams','cleanPolicy',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.browserTaskParams,computerPolicy.cleanPolicy);
+ new Function('Deno','createClient','crypto','APP_NAME','browserTaskParams','cleanPolicy','advancedComputerKind','desktopEntitled','desktopAuthorization','planDesktopStep',code)(deno,()=>sdk,webcrypto,computerPolicy.APP_NAME,computerPolicy.browserTaskParams,computerPolicy.cleanPolicy,desktopPlanner.advancedComputerKind,desktopPlanner.desktopEntitled,desktopPlanner.desktopAuthorization,desktopPlanner.planDesktopStep);
  const invoke=body=>handler(new Request('https://synthetic.invalid/connector',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}));
  return {state,handler,invoke};
 }

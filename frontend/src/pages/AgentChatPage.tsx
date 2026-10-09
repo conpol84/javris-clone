@@ -168,6 +168,7 @@ export function AgentChatPage() {
     try {
       if (activeIsCeo) {
         const proposal = parseDirectComputerCommand(msg);
+
         const decision = parseOwnerDecision(msg);
         const pending = pendingComputer.current;
         const computerRequest = !!proposal || isComputerControlRequest(msg);
@@ -189,6 +190,16 @@ export function AgentChatPage() {
             directMessage(lang === 'el' ? 'Εντάξει, δεν θα το εκτελέσω.' : 'Okay, I will not run it.');
             return;
           }
+        if(proposal?.kind==='desktop_task'){
+          const controller=new AbortController();computerRun.current=controller;setComputerRunning(true);
+          try{
+            const readiness=await prepareDirectComputerCommand(orgId,proposal.kind,lang,controller.signal);
+            if(voiceScopeRef.current!==scopeAtSend)return;
+            const remote=readiness.ready?await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId},lang,controller.signal):readiness;
+            if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
+          }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
+          return;
+        }
           if (computerRequest && (!proposal || decision !== 'approve')) {
             const controller = new AbortController();
             computerRun.current = controller; setComputerRunning(true);

@@ -27,7 +27,7 @@ export function parseLaptopBrowserCommand(input:string){
 }
 
 export type DirectComputerProposal={
- kind:'browser_task'|'open_app';
+ kind:'browser_task'|'open_app'|'desktop_task';
  params:Record<string,unknown>;
  description:string;
  deviceId?:string;
@@ -40,8 +40,8 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 export function isComputerControlRequest(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
  const plain=plainText(input);
- const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|safari|chrome|youtube|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη)(?:\s|$)/u.test(plain);
- const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*)(?:\s|$)/u.test(plain);
+ const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*)(?:\s|$)/u.test(plain);
  // Research and instructions about controlling a computer are ordinary work.
  if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
  return target&&action;
@@ -49,6 +49,7 @@ export function isComputerControlRequest(input:string){
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
+ if(/^(?:stop|pause) (?:youtube|the music|music|playback|the video|video)$/.test(plain))return null;
  // ‘No, do it yourself’ rejects delegation, not the pending computer action.
  const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
  const veto=/(?:^|\s)(cancel|stop|μην|min|do not|dont|don t)(?:\s|$)/u.test(plain);
@@ -77,8 +78,12 @@ const APP_ALIASES:[string,string[]][]=[
  ['Numbers',['numbers']],['Pages',['pages']],['Keynote',['keynote']],
 ];
 export function parseDirectComputerCommand(input:string):DirectComputerProposal|null{
- if(typeof input!=='string'||!input.trim()||input.length>500)return null;
+ if(typeof input!=='string'||!input.trim()||input.length>4000)return null;
  const text=input.trim(),plain=plainText(text);
+ if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
+  for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app}};
+ }
+ if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()}};
  if(/youtube/u.test(plain)&&/(search|serch|ψαξ|αναζητ|vale|βαλε|play|παιξ|pekse|proto|πρωτ|first)/u.test(plain)){
   const query=youtubeQuery(text);
   if(query){
@@ -89,14 +94,12 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
    ]}};
   }
  }
- if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
-  for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.includes(a)))return{kind:'open_app',description:`Open ${app}`,params:{app}};
- }
+
  return null;
 }
 function directReady(d:DeviceRow,kind:DirectComputerProposal['kind'],now:number){
  const p=policyOf(d),k=d.capabilities?.job_kinds??[];
- return d.paired&&!d.revoked_at&&isOnline(d,now)&&p.enabled&&p.control==='full'&&d.capabilities?.full_control===true&&k.includes(kind);
+ return d.paired&&!d.revoked_at&&isOnline(d,now)&&p.enabled&&p.control==='full'&&d.capabilities?.full_control===true&&(k.includes(kind)||(kind==='open_app'&&k.includes('desktop_task')));
 }
 function directSelection(rows:DeviceRow[],kind:DirectComputerProposal['kind'],selected:string|null,now:number,lang:string){
  const greek=lang==='el';
@@ -162,20 +165,22 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
   // Capture the owner's exact approval and selection before the first await.
   if(!proposal.params||Array.isArray(proposal.params)||Object.getPrototypeOf(proposal.params)!==Object.prototype)throw new Error('Invalid action parameters');
   const approved={kind:proposal.kind,description:proposal.description,selected:proposal.deviceId??getVoiceLaptop(orgId,s),params:actionJson(proposal.params)};
-  if(!['browser_task','open_app'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>1000|| (approved.selected!==null&&typeof approved.selected!=='string'))throw new Error('Invalid approved action');
+  if(!['browser_task','open_app','desktop_task'].includes(approved.kind)||typeof approved.description!=='string'||approved.description.length>4000|| (approved.selected!==null&&typeof approved.selected!=='string'))throw new Error('Invalid approved action');
   const approvedParams=JSON.parse(approved.params) as Record<string,unknown>;
   const rows=await load(orgId);if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
   const selected=approved.selected,selection=directSelection(rows,approved.kind,selected,now(),lang);
   if(!selection.ready)return{handled:true,status:selection.status,reply:selection.reply};
   const device=selection.device;
+  if(approved.kind==='open_app'&&!device.capabilities?.job_kinds?.includes('open_app')&&device.capabilities?.job_kinds?.includes('desktop_task')){approved.kind='desktop_task';approved.params=actionJson({goal:approved.description});}
   if(device.id!==selected)setVoiceLaptop(orgId,device.id,s);
   const job=await queue(device.id,approved.kind,JSON.parse(approved.params),true);jobId=job.job_id;
-  const deadline=now()+45_000;
+  const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
   while(now()<deadline&&!signal?.aborted){
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
    let verified=false;
-   try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(approved.kind==='browser_task'?row.result?.completed===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
+   try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
+   if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:`${device.name}: ${row.result.summary}`};
    if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
    if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`};
    if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?`Το ${device.name} δεν ολοκλήρωσε την ενέργεια.`:`${device.name} did not complete the action.`};

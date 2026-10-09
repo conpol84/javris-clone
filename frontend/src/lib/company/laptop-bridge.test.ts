@@ -73,7 +73,7 @@ describe('CEO direct Full Control',()=>{
   expect(queued).toEqual({deviceId:'d1',kind:'open_app',params:{app:'Microsoft Word'}});expect(out.status).toBe('done');expect(out.reply).toContain('Open Word');
  });
  it('rejects completed rows for different parameters or a requested Stop',async()=>{
-  const proposal=parseDirectComputerCommand('YouTube search Mazonaki and play first result')!;
+  const proposal={kind:'browser_task' as const,description:'Legacy browser plan (playback unverified)',params:{steps:[{action:'open',url:'https://www.youtube.com/'}]}};
   for(const mismatch of ['params','stop']){
    const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
     storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Laptop',true)],queue:async()=>({job_id:'exact'}),
@@ -101,9 +101,9 @@ describe('CEO direct Full Control',()=>{
  });
  it('recognises YouTube search/play and app-open commands without an LLM',()=>{
   const y=parseDirectComputerCommand('anikse to youtube kai vale mazonaki sto serchto proto tragoudi kane play');
-  expect(y?.kind).toBe('browser_task');expect(JSON.stringify(y?.params)).toContain('Mazonaki'.toLowerCase().slice(0,4));
+  expect(y?.kind).toBe('desktop_task');expect(JSON.stringify(y?.params)).toContain('Mazonaki'.toLowerCase().slice(0,4));
   const liveWording=parseDirectComputerCommand('anixeto youtube vale oikonomopoulo sto serch vr to proto tragoudi varto na pezi');
-  expect(liveWording?.kind).toBe('browser_task');expect(JSON.stringify(liveWording?.params)).toContain('oikonomopoulo');
+  expect(liveWording?.kind).toBe('desktop_task');expect(JSON.stringify(liveWording?.params)).toContain('oikonomopoulo');
   expect(parseDirectComputerCommand('Άνοιξε το Microsoft Word')?.kind).toBe('open_app');
  });
  it('treats one natural owner reply as approval or rejection',()=>{
@@ -126,7 +126,7 @@ describe('CEO direct Full Control',()=>{
  });
  it('queues one owner-confirmed browser_task and reports done from its durable row',async()=>{
   let queued:any;
-  const proposal=parseDirectComputerCommand('YouTube search Mazonaki and play first result')!;
+  const proposal={kind:'browser_task' as const,description:'Legacy browser plan (playback unverified)',params:{steps:[{action:'open',url:'https://www.youtube.com/'}]}};
   const out=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984',true)],
    queue:async(deviceId,kind,params,confirm)=>(queued={deviceId,kind,params,confirm},{job_id:'j2'}),
@@ -137,7 +137,7 @@ describe('CEO direct Full Control',()=>{
  });
  it('requests remote Stop if the owner stops a running direct action',async()=>{
   const ac=new AbortController();let cancelled='';let cancels=0;
-  const proposal=parseDirectComputerCommand('YouTube search Mazonaki and play first result')!;
+  const proposal={kind:'browser_task' as const,description:'Legacy browser plan (playback unverified)',params:{steps:[{action:'open',url:'https://www.youtube.com/'}]}};
   const running=dispatchDirectComputerCommand('org',proposal,'en',ac.signal,{
    storage:memory(),now:()=>now,loadDevices:async()=>[device('d1','Polis1984',true)],
    queue:async()=>({job_id:'j3'}),loadJobs:async()=>{ac.abort();return[{id:'j3',device_id:'d1',kind:'browser_task',params:proposal.params,status:'done',result:{completed:true},error:null,created_at:'',finished_at:''} as JobRow]},cancel:async id=>{cancelled=id;cancels++},sleep:async()=>{},
@@ -169,7 +169,7 @@ describe('owner transcript control requests and readiness',()=>{
  it('keeps incomplete Greeklish and spoken Greek actions out of delegated model chat',()=>{
   for(const text of ['mporis na anixis to mac kai na valis tragoudia apo youtube ?', 'Μπορείς να ανοίξεις το Mac και να βάλεις τραγούδια από YouTube;', 'run the prepared AppleScript on Polis1984', 'open Safari'])expect(isComputerControlRequest(text)).toBe(true);
   for(const text of ['Research YouTube music trends', 'How can I run AppleScript on a Mac?', 'Explain Safari automation', 'write a report about computer work', 'what did the company finish?', 'go nai kanta'])expect(isComputerControlRequest(text)).toBe(false);
-  expect(parseDirectComputerCommand('mporis na anixis to mac kai na valis tragoudia apo youtube ?')).toBeNull();
+  expect(parseDirectComputerCommand('mporis na anixis to mac kai na valis tragoudia apo youtube ?')).toMatchObject({kind:'desktop_task',params:{goal:'mporis na anixis to mac kai na valis tragoudia apo youtube ?'}});
   expect(parseDirectComputerCommand('mporis na anixis safari')?.params).toEqual({app:'Safari'});
  });
  it('checks the actual online connector before offering approval and makes no mutation',async()=>{
@@ -195,9 +195,9 @@ describe('owner transcript control requests and readiness',()=>{
   const controller=new AbortController();
   await expect(prepareDirectComputerCommand('org','browser_task','en',controller.signal,{loadDevices:async()=>{controller.abort();return[device('d1','Mac',true)]},storage:memory(),now:()=>now})).rejects.toMatchObject({name:'AbortError'});
  });
- it('does not label a YouTube click plan as verified playback',()=>{
+ it('preserves the complete goal for observed playback, without a fixed first-result selector',()=>{
   const proposal=parseDirectComputerCommand('YouTube search Nikos Oikonomopoulos and play first result')!;
-  expect(proposal.description).toContain('playback unverified');
+  expect(proposal.kind).toBe('desktop_task');expect(proposal.params).toEqual({goal:'YouTube search Nikos Oikonomopoulos and play first result'});expect(proposal.params).not.toHaveProperty('steps');
  });
 });
 

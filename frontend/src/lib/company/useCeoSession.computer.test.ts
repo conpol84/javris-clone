@@ -24,7 +24,7 @@ beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({re
 afterEach(()=>vi.unstubAllGlobals());
 it('Command/Talk incomplete request reads capabilities and never asks an LLM to queue it',async()=>{
  const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
- expect(prepare).toHaveBeenCalledWith('org','browser_task','el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
+ expect(prepare).toHaveBeenCalledWith('org','desktop_task','el',expect.any(AbortSignal));expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
  const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toContain('Δεν μπήκε εργασία');
 });
 it('sends a VPS artifact read to server chat without requiring a laptop',async()=>{
