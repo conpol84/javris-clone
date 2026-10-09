@@ -30,5 +30,7 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '24'
+      - name: Pin reviewed Debian Connector assets by exact SHA256
+        run: sha256sum frontend/public/firbo-connector.mjs frontend/public/firbo-browser.mjs frontend/public/firbo-desktop.mjs frontend/public/firbo-desktop.py
       - name: Test exact desktop planner, no provider requests or device input
         run: node --test tests/firbo/desktop-control.test.mjs tests/firbo/desktop-diagnostics.test.mjs
