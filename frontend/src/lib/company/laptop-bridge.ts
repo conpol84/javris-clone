@@ -42,6 +42,11 @@ const plainText=(value:string)=>value.normalize('NFD').replace(/\p{Diacritic}/gu
 // Only a leading/trailing device clause is routing intent. Mentions inside
 // page searches or text to type must not redirect an action to another device.
 function deviceClause(plain:string){
+ // A device named in the leading *owner command* is binding even when the
+ // sentence starts with "execute this task exclusively on ...". Never infer
+ // device targets from page text, quoted content, URLs or trailing restrictions.
+ const scoped=plain.match(/^(?:execute|run|εκτελε\p{L}*)\s+(?:.{1,110}?\s+)?(?:exclusively|only|αποκλειστικα)\s+(?:on|στον|στο|ston|sto)\s+(?:(?:the|τον|το)\s+)?(?:computer|υπολογιστη|υπολογιστης)\s+(my shell|polis1984|mac mini|macbook|mac|debian|linux|windows)(?=\s|$)/u);
+ if(scoped)return{target:scoped[1],action:plain};
  const label='(mac mini|macbook|mac|debian|linux|windows|polis1984|my shell)';
  const clause='(?:from|on|using|apo|sto|ston|απο|στο|στον)\\s+(?:(?:my|the|το|τον)\\s+)?'+label;
  const prefix=plain.match(new RegExp('^'+clause+'\\s+','u'));
@@ -61,8 +66,8 @@ function targetMatches(d:DeviceRow,target:string){
 export function isComputerControlRequest(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
  const plain=plainText(input);
- const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη)(?:\s|$)/u.test(plain);
- const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*)(?:\s|$)/u.test(plain);
+ const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη|website|site|ιστοσελιδα|ιστοσελιδες)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
  // Research and instructions about controlling a computer are ordinary work.
  if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
  return target&&action;
@@ -70,14 +75,19 @@ export function isComputerControlRequest(input:string){
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
  const plain=plainText(input);
+ if(!plain)return null;
  if(/^(?:stop|pause) (?:youtube|the music|music|playback|the video|video)$/.test(plain))return null;
- // ‘No, do it yourself’ rejects delegation, not the pending computer action.
- const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
- const veto=/(?:^|\s)(cancel|stop|μην|min|do not|dont|don t)(?:\s|$)/u.test(plain);
+ // Only a leading, explicit veto cancels an owner action. A later "μην",
+ // "do not" or "don't" is often a *safety constraint* in a positive task:
+ // "Open example.com. Don't switch to Mac or claim success without evidence".
+ const veto=/^(?:(?:please|σε παρακαλω)\s+)?(?:cancel|stop|μην|μη|min|do not|dont|don t)(?:\s|$)/u.test(plain);
  if(veto)return'reject';
+ // "No, do it yourself" rejects delegation, not the pending action. An
+ // explicit leading veto always wins over later "κάντο εσύ".
+ const self=/(?:kanto|καντο|κανε το|καν το|do it)\s+(?:esi|εσυ|yourself)/u.test(plain);
  if(self)return'approve';
- if(/(?:^|\s)(no|nope|cancel|stop|oxi|οχι|μην|min)(?:\s|$)/u.test(plain))return'reject';
- if(/(?:^|\s)(yes|yeah|yep|approve|approved|proceed|go ahead|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
+ if(/^(?:no|nope|oxi|οχι)(?:\s|$)/u.test(plain))return'reject';
+ if(/^(?:yes|yeah|yep|approve|approved|proceed|go ahead|go nai|go ναι|do it|start|begin|ok|okay|nai|ναι|egkrino|εγκρινω|kanto|καντο|prohora|προχωρα|ksekina|xekina|ksekinise|ξεκινα|ξεκινησε)(?:\s|$)/u.test(plain))return'approve';
  return null;
 }
 function youtubeQuery(text:string){
@@ -106,6 +116,11 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app},...target};
  }
  if(/^(?:open|launch|ανοιξε|anoikse|anikse|anixe)\s+(?:(?:the|το|to)\s+)?(?:browser|φυλλομετρητη)(?:\s+(?:here|εδω))?$/u.test(plain))return{kind:'browser_open',description:'Open browser',params:{url:'https://www.google.com/'},...target};
+ // An ability question without a destination is *not* authority to queue
+ // a vague desktop job. The control lane will probe real worker capabilities
+ // and request a specific URL instead of inventing an Operations handoff.
+ const websiteQuestion=/^(?:μπορεις|mporis|can you|are you able to)(?:\s+(?:να|na))?\s+(?:μπεις|mpis|bis|visit|open|access)\s+(?:(?:σε|se|sto|to|a|an|the)\s+)*(?:(?:ενα|ena)\s+)?(?:website|site|ιστοσελιδα)(?:\s|$)/u.test(plain);
+ if(websiteQuestion&&!/https?:\/\//i.test(text))return null;
  if(isComputerControlRequest(input))return {kind:'desktop_task',description:input.trim(),params:{goal:input.trim()},...target};
  if(/youtube/u.test(plain)&&/(search|serch|ψαξ|αναζητ|vale|βαλε|play|παιξ|pekse|proto|πρωτ|first)/u.test(plain)){
   const query=youtubeQuery(text);
@@ -178,6 +193,10 @@ const centralRequest=(orgId:string,proposal:DirectComputerProposal,action:'previ
  * retained only for isolated legacy executor tests, never as a runtime fallback. */
 export type DirectComputerReadiness={ready:true;deviceId:string;deviceName:string;nativeDesktop?:true;requestId?:string;ownerFullControl?:boolean}|{ready:false;status:string;reply:string};
 export async function prepareDirectComputerCommand(orgId:string,request:DirectComputerProposal['kind']|DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{loadDevices?:(o:string)=>Promise<DeviceRow[]>;storage?:StorageLike|null;now?:()=>number;dispatcher?:typeof dispatchWorkerRequest}):Promise<DirectComputerReadiness>{
+ // The live dispatcher validates action parameters even for preview. A kind
+ // without a URL, browser plan or native goal is NOT a valid capability probe:
+ // ask for actionable details without a fabricated server/worker receipt.
+ if(typeof request==='string'&&!deps?.loadDevices&&!deps?.dispatcher)return{ready:false,status:'details_required',reply:incompleteComputerReply(lang)};
  const kind=typeof request==='string'?request:request.kind,target=typeof request==='string'?undefined:request.target,app=typeof request==='string'?undefined:request.params.app;
  if(deps?.loadDevices&&!deps.dispatcher){
   const selected=typeof request==='object'&&request.deviceId?request.deviceId:null;
@@ -195,8 +214,8 @@ export async function prepareDirectComputerCommand(orgId:string,request:DirectCo
  }catch(error){if(signal?.aborted||error instanceof DOMException&&error.name==='AbortError')throw new DOMException('Cancelled','AbortError');return dispatchFailure(lang,error);}
 }
 export const incompleteComputerReply=(lang:string)=>lang==='el'
- ?'Δεν μπήκε εργασία στην ουρά. Δώσε ακριβή εντολή, π.χ. «Άνοιξε Safari» ή «YouTube search Nikos Oikonomopoulos». Το browser plan ανοίγει αποτέλεσμα· δεν επιβεβαιώνει συνεχή αναπαραγωγή, screenshot ή εκτέλεση AppleScript.'
- :'No job was queued. Give an exact command, for example “Open Safari” or “YouTube search Nikos Oikonomopoulos”. The browser plan opens a result; it does not verify sustained playback, a screenshot or AppleScript execution.';
+ ?'Δεν μπήκε εργασία στην ουρά. Δώσε συγκεκριμένο URL για το website, π.χ. «Άνοιξε https://example.com στον My shell», ή άλλη ακριβή εντολή. Το browser plan δεν αποδεικνύει από μόνο του αναπαραγωγή βίντεο ή screenshot.'
+ :'No job was queued. Give the specific website URL, for example “Open https://example.com on My shell”, or another exact instruction. A browser plan alone does not prove video playback or a screenshot.';
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
  loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest
@@ -226,15 +245,23 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    device=receipt.worker;approved.kind=receipt.job.kind;approved.params=actionJson(receipt.job.params);job={job_id:receipt.job_id!};
   }
   jobId=job.job_id;
+  // Expose the real correlated job identity and receipt provenance. A device
+  // summary alone is not proof; missing/invalid receipt fields remain explicit.
+  const terminalEvidence=(row:JobRow)=>{
+   const receipt=row.receipt;
+   const digest=typeof row.report_sha256==='string'&&/^[a-f0-9]{64}$/i.test(row.report_sha256)?row.report_sha256:null;
+   const validReceipt=receipt?.ok===true&&receipt.job_id===job.job_id&&receipt.device_id===device.id&&digest!==null&&receipt.report_sha256===digest;
+   return `\nJob ID: ${job.job_id}\nWorker: ${device.name} (${device.id})\nTerminal receipt: ${validReceipt?`matched SHA-256 ${digest}`:'not independently confirmed; inspect Computers'}`;
+  };
   const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
   while(now()<deadline&&!signal?.aborted){
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
    let verified=false;
    try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:approved.kind==='browser_open'?row.result?.launched===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
-   if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:`${device.name}: ${row.result.summary}`};
+   if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:verified?`${device.name}: ${row.result.summary}${terminalEvidence(row)}`:`${device.name}: completion not verified; ${row.result.summary}${terminalEvidence(row)}`};
    if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
-   if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`};
+   if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:(greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`)+terminalEvidence(row)};
    if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?`Το ${device.name} δεν ολοκλήρωσε την ενέργεια.`:`${device.name} did not complete the action.`};
    await sleep(650,signal);
   }

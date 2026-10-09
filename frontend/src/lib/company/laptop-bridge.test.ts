@@ -260,3 +260,64 @@ describe('explicit owner device target',()=>{
   expect(out.ready).toBe(false);if(!out.ready)expect(out.reply).toContain('has local Full Control');
  });
 });
+
+
+describe('CEO device-intent regression: positive task with negative guardrails',()=>{
+ const observedGoal="Εκτέλεσε αυτή την εργασία αποκλειστικά στον υπολογιστή My shell (Debian). Άνοιξε browser, επισκέψου το https://example.com και διάβασε την κύρια επικεφαλίδα. Επέστρεψε το πραγματικό URL, την επικεφαλίδα, το job ID, τη συσκευή που εκτέλεσε την εργασία και το τελικό execution receipt. Μην αλλάξεις σε Mac ή άλλον worker. Μη δηλώσεις επιτυχία χωρίς πραγματική παρατήρηση.";
+ it('does not cancel an action because its trailing safeguards say Μην / Μη',()=>{
+  expect(parseOwnerDecision(observedGoal)).toBeNull();
+  expect(parseOwnerDecision('Open the browser on Debian. Do not switch to Mac.')).toBeNull();
+  expect(parseOwnerDecision('Άνοιξε browser στο Debian, μην αλλάξεις συσκευή.')).toBeNull();
+  expect(parseOwnerDecision('do not open Microsoft Word')).toBe('reject');
+  expect(parseOwnerDecision('μην ανοίξεις Microsoft Word')).toBe('reject');
+  expect(parseOwnerDecision('Όχι, μην το κάνεις')).toBe('reject');
+ });
+ it('retains the explicitly targeted My shell identity and exact full goal',()=>{
+  const proposal=parseDirectComputerCommand(observedGoal);
+  expect(isComputerControlRequest(observedGoal)).toBe(true);
+  expect(proposal).toMatchObject({kind:'desktop_task',target:'my shell',description:observedGoal,params:{goal:observedGoal}});
+  expect(parseDirectComputerCommand('Run this task exclusively on computer My shell (Debian). Open browser and read example.com.')?.target).toBe('my shell');
+  expect(parseDirectComputerCommand('from mac open chrome')?.target).toBe('mac');
+  expect(parseDirectComputerCommand('write on mac in the browser search field')?.target).toBeUndefined();
+ });
+ it('answers an incomplete website-capability question via computer readiness, not invented work',()=>{
+  for(const question of ['μπορείς να μπεις σε ένα website ?', 'mporis na mpis se ena website ?', 'Can you visit a website?']){
+   expect(isComputerControlRequest(question)).toBe(true);
+   expect(parseDirectComputerCommand(question)).toBeNull();
+  }
+ });
+});
+
+
+it('kind-only requests are incomplete, never malformed live VPS previews',async()=>{
+ for(const kind of ['browser_task','desktop_task'] as const){
+  const result=await prepareDirectComputerCommand('org',kind,'el');
+  expect(result).toMatchObject({ready:false,status:'details_required'});
+  if(!result.ready)expect(result.reply).toContain('https://example.com');
+ }
+});
+
+
+it('CEO terminal reply exposes actual worker, job id, observed heading and receipt hash',async()=>{
+ const goal='Open https://example.com and read heading';
+ const proposal={kind:'desktop_task' as const,description:goal,params:{goal},target:'my shell'};
+ const machine:DeviceRow={...device('d1','My shell',true),platform:'linux x64',capabilities:{job_kinds:['desktop_task'],full_control:true}};
+ const digest='a'.repeat(64);
+ const row:JobRow={id:'j-real',device_id:'d1',kind:'desktop_task',params:{goal},status:'done',
+  result:{completed:true,summary:'https://example.com — Example Domain',observations:2,last_frame_sha256:'b'.repeat(64)},
+  error:null,created_at:'',finished_at:'',report_sha256:digest,
+  receipt:{ok:true,job_id:'j-real',device_id:'d1',report_sha256:digest}};
+ const result=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+  now:()=>now,loadDevices:async()=>[machine],queue:async()=>({job_id:'j-real'}),loadJobs:async()=>[row],sleep:async()=>{}
+ });
+ expect(result.status).toBe('done');
+ expect(result.reply).toContain('Example Domain');
+ expect(result.reply).toContain('Job ID: j-real');
+ expect(result.reply).toContain('Worker: My shell (d1)');
+ expect(result.reply).toContain('Terminal receipt: matched SHA-256 '+digest);
+ row.receipt={...row.receipt,report_sha256:'f'.repeat(64)};
+ const invalid=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+  now:()=>now,loadDevices:async()=>[machine],queue:async()=>({job_id:'j-real'}),loadJobs:async()=>[row],sleep:async()=>{}
+ });
+ expect(invalid.reply).toContain('not independently confirmed');
+});
