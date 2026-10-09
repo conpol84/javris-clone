@@ -423,6 +423,24 @@ describe('truthful CEO computer progress and safe read-only recovery',()=>{
   expect(out).toMatchObject({handled:true,status:'queued',job_id:'job-network-disconnect'});
   expect(out.reply).toContain('NOT verified');
  });
+ it('keeps fast initial status, backs off long-running work, and never redispatches',async()=>{
+  let clock=now,attempts=0,queues=0;
+  const waits:number[]=[];
+  const result=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+   now:()=>clock,loadDevices:async()=>[machine],
+   queue:async()=>{queues++;return{job_id:'job-long'}},
+   loadJobs:async()=>{
+    attempts++;
+    return [{id:'job-long',device_id:machine.id,kind:'desktop_task',params:proposal.params,
+     status:attempts<41?'running':'error',error:'desktop_model_timeout',result:null,
+     created_at:'',finished_at:''} as JobRow];
+   },
+   sleep:async(ms)=>{waits.push(ms);clock+=ms;}
+  });
+  expect(queues).toBe(1);
+  expect(result).toMatchObject({status:'failed',job_id:'job-long'});
+  expect(new Set(waits)).toEqual(new Set([650,1300,2500]));
+ });
  it('missing already-queued job is not treated as an invitation to requeue',async()=>{
   let clock=now,queued=0,polls=0,cancels=0;
   const stages:string[]=[];
