@@ -20,7 +20,7 @@ const evidence={contract:'openjarvis-execution/v1',mode:'agent',tool_count:1,fai
 async function invoke(options={}) {
  current={admin:true,...options};const calls=[];
  globalThis.fetch=async(url,init)=>{calls.push({url,init});return Response.json(String(url).endsWith('/v1/info')?{model:'model',runtime:options.runtime}:{choices:[{message:{content:'Done'}}],execution:options.execution});};
- const response=await handler(new Request('https://functions.test/server-jarvis',{method:'POST',headers:{authorization:'Bearer synthetic-user'},body:JSON.stringify({action:options.action??'chat',message:'Run the job'})}));
+ const response=await handler(new Request('https://functions.test/server-jarvis',{method:'POST',headers:{authorization:'Bearer synthetic-user'},body:JSON.stringify({action:options.action??'chat',message:'Run the job',...options.body})}));
  return {response,body:await response.json(),calls};
 }
 test('anonymous and non-admin callers cannot retrieve tool outputs',async()=>{
@@ -33,6 +33,14 @@ test('actual admin bridge opts in and returns failures separately from the answe
  assert.equal(JSON.parse(call.init.body).firbo_include_execution,true);
  assert.equal(call.init.headers.authorization,'Bearer synthetic-server-key');
  assert.ok(!JSON.stringify(r.body).includes('synthetic-server-key'));
+});
+test('native admin requests explicitly bound total agent output and ignore browser overrides',async()=>{
+ for(const body of [{},{max_tokens:100000},{max_tokens:-1},{firbo_include_execution:false}]){
+  const r=await invoke({body});assert.equal(r.response.status,200);
+  const request=JSON.parse(r.calls.find(c=>String(c.url).endsWith('/v1/chat/completions')).init.body);
+  assert.equal(request.max_tokens,2400);assert.equal(request.firbo_include_execution,true);
+  assert.equal(request.stream,false);
+ }
 });
 test('old or malformed server receipt is explicitly unverified',async()=>{
  for(const execution of [undefined,'Done',{...evidence,failed_count:0}]){const r=await invoke({execution});assert.equal(r.body.execution,null);assert.equal(r.body.reply,'Done');}

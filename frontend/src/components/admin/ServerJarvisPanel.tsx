@@ -7,10 +7,8 @@ import { ServerRuntimeInventory } from './ServerRuntimeInventory';
 import { ServiceAccessPanel } from '../gateway/ServiceAccessPanel';
 import { ServerToolCheck } from './ServerToolCheck';
 import { serverExecution } from '../../../../supabase/functions/_shared/server-execution';
-
-// Normal Firbo-authenticated entrypoint. The legacy VPS dashboard may still exist
-// separately, but users should not need a browser Basic-Auth prompt to reach Jarvis.
-const DASHBOARD = (import.meta.env.VITE_SERVER_AGENT_DASHBOARD as string | undefined) || 'https://javris.firboai.app/coding';
+import { JARVIS_DASHBOARD } from '../../lib/company/service-dashboards';
+import { ServerManagementLinks } from './ServerManagementLinks';
 
 interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string; runtime?: unknown }
 interface Turn { q: string; a: string; meta: string; error?: boolean; execution?: unknown }
@@ -69,12 +67,13 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
           <span className="fb-chip">{t('jv.engine')}: {status.engine || '—'}</span>
         </>}
         <button className="fb-btn fb-btn--ghost" onClick={() => void refresh()}>{t('jv.refresh')}</button>
-        <a className="fb-btn fb-btn--primary" href={DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
+        <a className="fb-btn fb-btn--primary" href={JARVIS_DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
       </div>
       {status && !status.configured && <p className="fb-dim mt-2 text-xs">{t('jv.setup')}</p>}
       {status?.online && <ServerRuntimeInventory value={status.runtime} />}
       {status?.online && <ServerToolCheck runtime={status.runtime} disabled={busy} />}
     </Panel>
+    <ServerManagementLinks />
     {status?.online && <Panel title={t('jv.ask')}>
       <form onSubmit={send} className="flex flex-col gap-2">
         {!!status.models?.length && <select className="fb-input" value={model} onChange={e => setModel(e.target.value)} aria-label={t('jv.model')}>

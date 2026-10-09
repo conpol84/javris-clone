@@ -7,7 +7,10 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createTask, listAgents } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
-import { RunError, runErrorText, runTask } from '../lib/company/runner';
+import { runErrorText, runOutcomeNotice, runTask, type RunOutcome } from '../lib/company/runner';
+import { useRunScope } from '../lib/company/useRunScope';
+import { ComputerExecutionView } from '../components/company/ComputerExecutionView';
+import { Link } from 'react-router';
 import { notifyPlanLimit } from '../lib/company/limits';
 import { createShift, deleteShift, listShifts, setShiftEnabled, type Cadence, type ShiftRow } from '../lib/company/shifts';
 import { agentColor } from '../lib/company/status';
@@ -34,6 +37,9 @@ export function ShiftsPage() {
   const [cadence, setCadence] = useState<Cadence>('daily');
   const [hour, setHour] = useState(8);
   const [weekday, setWeekday] = useState(1);
+  const [acknowledgement, setAcknowledgement] = useState<RunOutcome | null>(null);
+  const captureScope = useRunScope(`${orgId}:${user?.id}:${current?.role}`);
+  useEffect(() => { setAcknowledgement(null); setBusy(null); }, [orgId, user?.id, current?.role]);
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 
   const reload = useCallback(async () => {
@@ -119,15 +125,20 @@ export function ShiftsPage() {
 
   const runNow = async (s: ShiftRow) => {
     if (!user) return;
+    const currentScope = captureScope();
     setBusy(s.id);
     try {
       const id = await createTask({ orgId, userId: user.id, title: s.title, description: s.instruction, priority: 'normal', agentId: s.agent_id, shiftId: s.id });
+      if (!currentScope()) return;
       const out = await runTask(id, lang);
-      toast.success(out.queued > 0 ? t('run.queued', { count: out.queued }) : t('run.completed'));
+      if (!currentScope()) return;
+      setAcknowledgement(out);
+      const notice = runOutcomeNotice(t, out);
+      toast[notice.tone](notice.text);
     } catch (err) {
-      toast.error(runErrorText(t, err));
+      if (currentScope()) toast.error(runErrorText(t, err));
     } finally {
-      setBusy(null);
+      if (currentScope()) setBusy(null);
     }
   };
 
@@ -139,6 +150,10 @@ export function ShiftsPage() {
           <h1 className="mt-1 flex items-center gap-2 text-2xl font-semibold"><Clock3 size={22} style={{ color: 'var(--fb-accent)' }} /> {t('shift.title')}</h1>
           <p className="fb-muted mt-1 text-sm">{t('shift.sub')}</p>
         </header>
+        {acknowledgement?.status === 'running' && <div role="status" aria-live="polite" className="fb-glass p-3 text-sm">
+          {runOutcomeNotice(t, acknowledgement).text} <Link className="underline" to="/tasks">{t('nav.tasks')}</Link>
+          <ComputerExecutionView execution={acknowledgement.computer_execution ?? null} compact />
+        </div>}
 
         <section className="fb-glass relative h-[340px] overflow-hidden md:h-[400px]" style={{ padding: 0 }}>
           <div className="fb-scan" />

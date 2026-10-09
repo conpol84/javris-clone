@@ -11,7 +11,10 @@ import type { TKey } from '../../i18n/locales/en';
 import { useCompanyAuth } from '../../lib/company/AuthProvider';
 import { createTask } from '../../lib/company/data';
 import { agentLabel } from '../../lib/company/labels';
-import { RunError, runErrorText, runTask } from '../../lib/company/runner';
+import { refreshComputerOutcome, runErrorText, runOutcomeNotice, runTask, type RunOutcome } from '../../lib/company/runner';
+import { useRunScope } from '../../lib/company/useRunScope';
+import { ComputerExecutionView } from '../company/ComputerExecutionView';
+import { Link } from 'react-router';
 import { agentColor, deriveAgentStates, STATE_KEY } from '../../lib/company/status';
 import { MANAGER_ROLES, WRITER_ROLES, type TaskPriority } from '../../lib/company/types';
 import { useCeoSession } from '../../lib/company/useCeoSession';
@@ -58,6 +61,9 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const [assignee, setAssignee] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('normal');
   const [busy, setBusy] = useState(false);
+  const [acknowledgement, setAcknowledgement] = useState<{ taskId: string; outcome: RunOutcome } | null>(null);
+  const captureScope = useRunScope(`${orgId}:${user?.id}:${role}`);
+  useEffect(() => { setAcknowledgement(null); setBusy(false); }, [orgId, user?.id, role]);
   const [now, setNow] = useState(() => new Date());
   const log = useRef<HTMLUListElement>(null);
   const closeBtn = useRef<HTMLButtonElement>(null);
@@ -71,6 +77,8 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
   const lastCeo = [...lines].reverse().find((l) => l.who === 'ceo')?.text ?? '';
   const caption = useTypewriter(state === 'speaking' || state === 'idle' ? lastCeo : '');
   const ceoName = ceo ? agentLabel(ceo, i18n).name : t('talk.title');
+  const visibleAcknowledgement = acknowledgement
+    ? refreshComputerOutcome(acknowledgement.outcome, org.tasks.find(task => task.id === acknowledgement.taskId)?.result) : null;
 
   useEffect(() => {
     closeBtn.current?.focus();
@@ -111,23 +119,28 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
     const target = team.find((a) => a.id === assignee) ?? ceo;
     if (!command || !current || !user) return;
     if (!target) return void toast.error(t('cmd.noCeo'));
+    if (busy) return;
+    const currentScope = captureScope();
     setBusy(true);
     try {
       const id = await createTask({ orgId: current.organization.id, userId: user.id, title: command.slice(0, 200), description: command.length > 200 ? command : undefined, priority, agentId: target.id });
+      if (!currentScope()) return;
       toast.success(t('cmd.sent', { agent: agentLabel(target, i18n).name }));
       setCmd('');
       try {
         const out = await runTask(id, lang);
-        if (out.queued > 0) toast.message(t('run.queued', { count: out.queued }));
+        if (!currentScope()) return;
+        setAcknowledgement({ taskId: id, outcome: out });
+        const notice = runOutcomeNotice(t, out);
+        toast[notice.tone](notice.text);
       } catch (err) {
-        toast.error(runErrorText(t, err));
+        if (currentScope()) toast.error(runErrorText(t, err));
       }
-      void org.reload();
+      if (currentScope()) void org.reload();
     } catch (err) {
-      console.error(err);
-      toast.error(t('tasks.createError'));
+      if (currentScope()) { console.error(err); toast.error(t('tasks.createError')); }
     } finally {
-      setBusy(false);
+      if (currentScope()) setBusy(false);
     }
   };
 
@@ -159,6 +172,10 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
           </button>
         </header>
         <VoiceProfileControl />
+        {visibleAcknowledgement && <div role="status" aria-live="polite" className="fb-glass p-3 text-sm">
+          {runOutcomeNotice(t, visibleAcknowledgement).text} <Link className="underline" to="/tasks">{t('nav.tasks')}</Link>
+          <ComputerExecutionView execution={visibleAcknowledgement.computer_execution ?? null} compact />
+        </div>}
 
         <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[1.35fr_1fr]">
           <section className="fb-glass relative min-h-[360px] overflow-hidden">

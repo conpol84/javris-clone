@@ -26,7 +26,8 @@ let current, captured;
 globalThis.__firboTestCreateClient=(...args)=>current.client(...args);
 globalThis.Deno={env:{get:key=>current.env[key]},serve:handler=>{captured=handler;}};
 const handlers={};
-for (const name of ['agent-chat','agent-runner']) {
+const textHandlers=['agent-chat','agent-runner'];
+for (const name of [...textHandlers,'mission-runner']) {
   const source=await readFile(new URL(`supabase/functions/${name}/index.ts`,root),'utf8');
   const replacement="const createClient = (...args: any[]) => (globalThis as any).__firboTestCreateClient(...args);";
   const code=source.replace("import { createClient } from 'npm:@supabase/supabase-js@2';",replacement)
@@ -44,8 +45,10 @@ function fixture(options={}) {
     ...((options.tools??[]).some(t=>t.tool_name==='computer_use')?{OPENJARVIS_URL:'https://jarvis.example.test',OPENJARVIS_API_KEY:'selection-test'}:{}),
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
-  const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??'pending',priority:'normal',assigned_agent_id:AGENT,result:options.result??null};
-  const agent={id:AGENT,name:'Test agent',type:options.agentType??'custom',model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[]};
+  const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??(options.mission?'running':'pending'),priority:'normal',assigned_agent_id:AGENT,result:options.result??null,
+    ...(options.mission?{kind:'mission',metadata:{}}:{})};
+  const agent={id:AGENT,name:'Test agent',type:options.agentType??(options.mission?'ceo':'custom'),model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[],
+    ...(options.mission?{slug:'ceo'}:{})};
   const execute=(table,op,payload,filters,selection,single=false)=>{
     const info={table,op,payload,filters,selection};
     if(op!=='select'){
@@ -76,7 +79,13 @@ function fixture(options={}) {
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
+      if(options.mission&&!single)return{data:options.foreignAgent||options.disabled?[]:[agent],error:null};
       return{data:options.foreignAgent?null:{...agent,...(selection?.includes('autonomy')&&state.rpcs?.some(r=>r.fn==='claim_task_run')?{autonomy:options.freshAutonomy??agent.autonomy,enabled:options.freshAgentEnabled??agent.enabled}:{})},error:null};
+    }
+    if(options.mission&&table==='tasks'&&filters.some(([k,v])=>k==='parent_task_id'&&v===TASK)){
+      if(options.missionStepsThrow)throw new Error('private database transport failure');
+      return{data:Object.hasOwn(options,'missionSteps')?options.missionSteps:[{id:CHAT_REQUEST,organization_id:ORG,parent_task_id:TASK,title:'Research delivered',status:'completed',assigned_agent_id:AGENT,result:{report:'Observed completed research.'}}],
+        error:options.missionStepsError?{message:'private database failure'}:null};
     }
     if(table==='tasks'&&selection==='id,organization_id,status,run_claim,result'&&options.reconciliationReadConflict)return{data:{...task,status:'completed',run_claim:null},error:null};
     if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
@@ -238,14 +247,15 @@ function fixture(options={}) {
 // A report that already meets the professional standard (sections, enough substance): it needs no quality pass.
 const FULL_REPORT=['## Executive summary','The market grew. '.repeat(40),'## Findings','Sales rose in every region. '.repeat(25),'## Recommendations','1. Expand online. '.repeat(25)].join('\n');
 async function invoke(name,options={},bodyExtra={}){
-  const state=fixture(options);
-  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',request_id:CHAT_REQUEST,...bodyExtra}:{task_id:TASK,...bodyExtra};
+  const state=fixture({...options,mission:name==='mission-runner'});
+  const payload=name==='agent-chat'?{conversation_id:CONVO,message:'Test message',request_id:CHAT_REQUEST,...bodyExtra}
+    :name==='mission-runner'?{mission_id:TASK,action:'synthesize',...bodyExtra}:{task_id:TASK,...bodyExtra};
   const headers={'content-type':'application/json',authorization:'Bearer user-test',...(options.cron?{'x-cron-secret':options.cron}:{})};
   const response=await handlers[name](new Request('https://db.example.test/functions/v1/'+name,{method:'POST',headers,body:JSON.stringify(payload)}));
   return{state,response,body:await response.json()};
 }
 
-for(const name of Object.keys(handlers)){
+for(const name of textHandlers){
   test(`${name}: selected gateway route uses one request and keeps company accounting`,async()=>{
     const {state,response,body}=await invoke(name);
     assert.equal(response.status,200);assert.equal(state.calls.length,1);assert.ok(state.calls[0].url.startsWith('https://gateway.firboai.app/v1/'));
@@ -560,6 +570,96 @@ test('mission-runner moves only free-plan companies to the free combo and report
   assert.equal((source.match(/await askAccounted\(/g)||[]).length,4);
   assert.equal((source.match(/fetch\(/g)||[]).length,1);
 });
+
+function missionExecution(status='completed',jobStatus='done',extra={}){
+  const job={job_id:CHAT_REQUEST,request_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:jobStatus,
+    result:{completed:jobStatus==='done'},
+    receipt:{contract:'firbo-execution-receipt/v1',job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',report_sha256:'a'.repeat(64),ok:jobStatus==='done'}};
+  return{contract:'firbo-worker-execution/v1',status,verified_success:status==='completed',jobs:[job],...extra};
+}
+function missionStep(status='completed',result={report:'Observed employee work.'}){
+  return{id:CHAT_REQUEST,organization_id:ORG,parent_task_id:TASK,title:'Employee work',status,assigned_agent_id:AGENT,result};
+}
+const unresolvedMissionSteps=[
+  ['pending step',missionStep('pending')],
+  ['running step',missionStep('running')],
+  ['approval still pending',missionStep('awaiting_approval')],
+  ['unknown step status',missionStep('unknown')],
+  ['completed row with pending computer work',missionStep('completed',{computer_execution:missionExecution('pending','queued')})],
+  ['failed row with unknown computer dispatch',missionStep('failed',{computer_execution:missionExecution('unknown','unknown')})],
+  ['terminal marker with queued receipt',missionStep('completed',{computer_execution:missionExecution('completed','queued')})],
+  ['completed computer marker without verified success',missionStep('completed',{computer_execution:missionExecution('completed','done',{verified_success:false})})],
+  ['computer marker with unknown contract',missionStep('completed',{computer_execution:missionExecution('completed','done',{contract:'untrusted/v1'})})],
+  ['completed computer job with no receipt',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'done'}]})})],
+  ['computer receipt belongs to another job',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],receipt:{...missionExecution().jobs[0].receipt,job_id:TASK}}]})})],
+  ['native receipt without observed completion',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],result:{completed:false}}]})})],
+  ['native receipt with blocked result',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],result:{completed:true,blocked:true}}]})})],
+  ['browser receipt without observed completion',missionStep('completed',{computer_execution:missionExecution('completed','done',{jobs:[{...missionExecution().jobs[0],kind:'browser_task',receipt:{...missionExecution().jobs[0].receipt,kind:'browser_task'},result:{completed:false}}]})})],
+  ['step reconciliation required',missionStep('failed',{reconcile_required:true,error:'usage_save_failed'})],
+  ['step accounting still needs reconciliation',missionStep('completed',{accounting:{status:'reconcile_required'}})],
+];
+for(const [label,step] of unresolvedMissionSteps){
+  test(`mission synthesis: ${label} stops before provider, reservation and completion`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:[step]});
+    assert.equal(response.status,409);assert.ok(['not_runnable','reconciliation_required'].includes(body.error));
+    assert.equal(state.calls.length,0);
+    assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+    assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  });
+}
+test('mission synthesis: failed child read cannot spend or publish completion',async()=>{
+  const {state,response,body}=await invoke('mission-runner',{missionSteps:[],missionStepsError:true});
+  assert.equal(response.status,503);assert.equal(body.error,'steps_unavailable');
+  assert.equal(state.calls.length,0);assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  assert.ok(!JSON.stringify(body).includes('private database'));
+});
+test('mission synthesis: thrown child read fails closed without inference or completion',async()=>{
+  const {state,response,body}=await invoke('mission-runner',{missionStepsThrow:true});
+  assert.equal(response.status,503);assert.equal(body.error,'steps_unavailable');assert.equal(state.calls.length,0);
+  assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+  assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  assert.ok(!JSON.stringify(body).includes('private database'));
+});
+for(const [label,steps] of [['empty',[]],['null',null],['nonarray',{}]]){
+  test(`mission synthesis: ${label} child result cannot claim team completion`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:steps});
+    assert.equal(response.status,409);assert.equal(body.error,'not_runnable');assert.equal(state.calls.length,0);
+    assert.ok(!state.rpcs?.some(r=>r.fn==='firbo_reserve_inference'));
+    assert.ok(!state.writes.some(w=>w.table==='tasks'&&w.payload?.status==='completed'));
+  });
+}
+for(const [label,steps] of [
+  ['completed research and terminal failed employee',[missionStep(),{...missionStep('failed',{error:'Research unavailable'}),id:ACCOUNTING}]],
+  ['explicitly cancelled employee',[missionStep('cancelled',{error:'Owner cancelled this step'})]],
+  ['completed computer work',[missionStep('completed',{report:'Chrome opened.',computer_execution:missionExecution()})]],
+  ['confirmed terminal computer error',[missionStep('failed',{error:'App unavailable',computer_execution:missionExecution('failed','error')})]],
+  ['terminal blocked native goal',[missionStep('blocked',{report:'Native work was blocked before goal completion.',computer_execution:missionExecution('blocked','done',{jobs:[{...missionExecution().jobs[0],result:{completed:false,blocked:true}}]})})]],
+  ['terminal blocked browser goal',[missionStep('blocked',{report:'Browser work was blocked before goal completion.',computer_execution:missionExecution('blocked','done',{jobs:[{...missionExecution().jobs[0],kind:'browser_task',receipt:{...missionExecution().jobs[0].receipt,kind:'browser_task'},result:{completed:false,blocked:true}}]})})]],
+  ['terminal computer failure without success receipt',[missionStep('failed',{error:'App unavailable',computer_execution:missionExecution('failed','error',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'error',receipt:null}]})})]],
+  ['confirmed computer cancellation',[missionStep('failed',{error:'Owner stopped the job',computer_execution:missionExecution('failed','cancelled',{jobs:[{job_id:CHAT_REQUEST,device_id:CONVO,kind:'desktop_task',status:'cancelled',receipt:null}]})})]],
+]){
+  test(`mission synthesis: ${label} preserves current accounting and tenant scope`,async()=>{
+    const {state,response,body}=await invoke('mission-runner',{missionSteps:steps});
+    assert.equal(response.status,200);assert.equal(body.status,'completed');assert.equal(state.calls.length,1);
+    assert.equal(String(state.calls[0].url),'https://api.openai.com/v1/chat/completions');
+    if(steps.some(step=>step.status==='blocked')){
+      const prompt=JSON.parse(state.calls[0].init.body).messages[1].content;
+      assert.match(prompt,/Status: blocked/);assert.match(prompt,/was blocked before goal completion/);
+    }
+    const childRead=state.reads.find(r=>r.table==='tasks'&&r.filters.some(([k,v])=>k==='parent_task_id'&&v===TASK));
+    assert.ok(childRead.filters.some(([k,v])=>k==='organization_id'&&v===ORG),'child read must be bound to verified organization');
+    const reserve=state.rpcs.find(r=>r.fn==='firbo_reserve_inference'),settle=state.rpcs.find(r=>r.fn==='firbo_settle_inference');
+    assert.equal(reserve.args.p_org,ORG);assert.equal(reserve.args.p_user,USER);assert.equal(reserve.args.p_agent,AGENT);
+    assert.equal(reserve.args.p_source,'mission-runner');assert.equal(settle.args.p_request,ACCOUNTING);
+    assert.equal(settle.args.p_model,'openai:test-model');assert.equal(settle.args.p_input_tokens,100);assert.equal(settle.args.p_output_tokens,20);
+    assert.equal(settle.args.p_cost_usd,0.0006);assert.ok(reserve.args.p_reserved_usd>settle.args.p_cost_usd);
+    assert.deepEqual(body.accounting,{requests:[{request_id:ACCOUNTING,agent_id:AGENT,status:'settled'}],status:'settled'});
+    const completed=state.writes.find(w=>w.table==='tasks'&&w.payload?.status==='completed');
+    assert.equal(completed.payload.result.steps,steps.length);assert.equal(completed.payload.result.reconcile_required,false);
+    assert.deepEqual(completed.payload.result.accounting,body.accounting);
+  });
+}
 
 const OWN='sk-own-company-key-1234567890';
 for (const name of ['agent-chat','agent-runner']) {

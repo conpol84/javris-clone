@@ -38,6 +38,9 @@ function client() {
         return { data: null, error: null };
       }
       if (table === 'tasks' && q.filters.some(([k, v]) => k === 'id' && v === MEET)) return { data: state.meeting, error: null };
+      if (table === 'tasks' && q.filters.some(([k]) => k === 'parent_task_id')) {
+        assert.ok(q.filters.some(([k,v])=>k==='organization_id'&&v===ORG),'mission children must belong to the verified organization');
+      }
       if (table === 'tasks') return { data: state.recent, error: null };
       if (table === 'organization_members') return { data: { role: 'owner' }, error: null };
       if (table === 'agents') return { data: [CEO, SALES, RESEARCH, SUPPORT], error: null };
@@ -166,7 +169,9 @@ test('meet: lost usage settlement stops without fallback and retains ambiguous r
 
 test('plan and synthesis reserve and settle the CEO call before publishing tasks/reports', async () => {
   for(const action of ['plan','synthesize']) {
-    setup({status:action==='plan'?'pending':'running'});state.recent=[];
+    setup({status:action==='plan'?'pending':'running'});
+    state.recent=action==='synthesize'?[{id:'55555555-5555-4555-8555-555555555555',organization_id:ORG,parent_task_id:MEET,
+      title:'Completed market research',status:'completed',assigned_agent_id:RESEARCH.id,result:{report:'Observed competitor prices.'}}]:[];
     const res=await call({action});assert.equal(res.status,200);
     assert.equal(state.calls.length,1);assert.equal(state.reservations.size,1);
     assert.equal(state.writes.filter(w=>w.table==='usage_events'&&w.op==='rpc').length,1);
