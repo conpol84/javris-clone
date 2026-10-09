@@ -257,8 +257,8 @@ export function TalkConsole({ onClose, autoBriefing = false }: { onClose: () => 
 
               {tab === 'talk' ? (
                 <>
-                  <CeoSessionHistory compact lang={lang} sessions={sessions} activeId={activeSessionId}
-                    loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError||!canWrite}
+                  <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} compact lang={lang} sessions={sessions} activeId={activeSessionId}
+                    loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
                     onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
                   <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('ceo.quickAria')}>
                     {QUICK.map((k) => (
