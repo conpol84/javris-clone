@@ -3,6 +3,7 @@
 
 import argparse
 import ast
+import contextlib
 import fcntl
 import hashlib
 import json
@@ -43,10 +44,116 @@ def run(args):
     return subprocess.run(args, check=True, capture_output=True, timeout=45).stdout
 
 
-def regular(path):
-    info = path.lstat()
-    require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, "unexpected_file_link")
-    return info
+def file_check_failed(code, role, info):
+    kind = next(
+        (
+            name
+            for predicate, name in (
+                (stat.S_ISREG, "regular"),
+                (stat.S_ISLNK, "symlink"),
+                (stat.S_ISDIR, "directory"),
+                (stat.S_ISFIFO, "fifo"),
+                (stat.S_ISSOCK, "socket"),
+            )
+            if predicate(info.st_mode)
+        ),
+        "other",
+    )
+    print(
+        "FILE_CHECK:",
+        json.dumps({"role": role, "kind": kind, "nlink": info.st_nlink}),
+        flush=True,
+    )
+    raise RuntimeError(code)
+
+
+def identity(info):
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_mode,
+        info.st_uid,
+        info.st_gid,
+        info.st_nlink,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+@contextlib.contextmanager
+def parent_directory(path, role):
+    """Anchor every operation to directories opened without following symlinks."""
+    path = pathlib.Path(path).absolute()
+    require(".." not in path.parts, "unexpected_parent_path")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open(path.anchor, flags)
+    try:
+        for part in path.parent.parts[1:]:
+            info = os.stat(part, dir_fd=descriptor, follow_symlinks=False)
+            if not stat.S_ISDIR(info.st_mode):
+                file_check_failed("unexpected_parent_link", role + "_parent", info)
+            opened = os.open(part, flags, dir_fd=descriptor)
+            if (os.fstat(opened).st_dev, os.fstat(opened).st_ino) != (
+                info.st_dev,
+                info.st_ino,
+            ):
+                os.close(opened)
+                raise RuntimeError("concurrent_parent_change")
+            os.close(descriptor)
+            descriptor = opened
+        yield descriptor
+    finally:
+        os.close(descriptor)
+
+
+def read_regular_at(descriptor, name, role, *, allow_hardlinks=False, missing_ok=False):
+    try:
+        info = os.stat(name, dir_fd=descriptor, follow_symlinks=False)
+    except FileNotFoundError:
+        if missing_ok:
+            return None, None
+        raise
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink < 1:
+        file_check_failed("unexpected_file_link", role, info)
+    if info.st_nlink > 1 and not allow_hardlinks:
+        file_check_failed("unexpected_file_link", role, info)
+    # NONBLOCK avoids hanging if another process swaps a regular file for a FIFO.
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+    fd = os.open(name, flags, dir_fd=descriptor)
+    with os.fdopen(fd, "rb") as stream:
+        opened = os.fstat(stream.fileno())
+        require(identity(opened) == identity(info), "concurrent_file_change")
+        data = stream.read()
+        require(
+            identity(os.fstat(stream.fileno())) == identity(info),
+            "concurrent_file_change",
+        )
+    return data, info
+
+
+def read_regular(path, role, *, allow_hardlinks=False, missing_ok=False):
+    with parent_directory(path, role) as descriptor:
+        return read_regular_at(
+            descriptor,
+            path.name,
+            role,
+            allow_hardlinks=allow_hardlinks,
+            missing_ok=missing_ok,
+        )
+
+
+def unchanged(current, expected):
+    data, info = current
+    before, original = expected
+    return data == before and (
+        (info is None and original is None)
+        or (
+            info is not None
+            and original is not None
+            and identity(info) == identity(original)
+        )
+    )
 
 
 def patch_app(original):
@@ -91,19 +198,47 @@ def patch_app(original):
     return changed
 
 
-def replace(path, data, *, uid, gid, mode):
-    fd, name = tempfile.mkstemp(prefix=".firbo-dispatch-", dir=path.parent)
-    staged = pathlib.Path(name)
-    try:
-        with os.fdopen(fd, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.chown(staged, uid, gid)
-        staged.chmod(mode)
-        os.replace(staged, path)
-    finally:
-        staged.unlink(missing_ok=True)
+def replace(path, data, *, uid, gid, mode, expected, role, allow_hardlinks=False):
+    """Replace only this directory entry; never modify a linked cache/checkout peer."""
+    with parent_directory(path, role) as descriptor:
+        name = ".firbo-dispatch-" + uuid.uuid4().hex
+        fd = os.open(
+            name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+            0o600,
+            dir_fd=descriptor,
+        )
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fchown(stream.fileno(), uid, gid)
+                os.fchmod(stream.fileno(), mode)
+                os.fsync(stream.fileno())
+                current = read_regular_at(
+                    descriptor,
+                    path.name,
+                    role,
+                    allow_hardlinks=allow_hardlinks,
+                    missing_ok=True,
+                )
+                require(unchanged(current, expected), "concurrent_file_change")
+                os.replace(
+                    name, path.name, src_dir_fd=descriptor, dst_dir_fd=descriptor
+                )
+                return os.fstat(stream.fileno())
+        finally:
+            try:
+                os.unlink(name, dir_fd=descriptor)
+            except FileNotFoundError:
+                pass
+
+
+def remove(path, expected, role):
+    with parent_directory(path, role) as descriptor:
+        current = read_regular_at(descriptor, path.name, role)
+        require(unchanged(current, expected), "concurrent_change_manual_recovery")
+        os.unlink(path.name, dir_fd=descriptor)
 
 
 def service_pid(unit):
@@ -193,16 +328,18 @@ def install(
     require(callable(verify), "acceptance_check_required")
     module_path = app_path.parent / "firbo_dispatch.py"
     require(hashlib.sha256(module).hexdigest() == MODULE_HASH, "module_hash_mismatch")
-    app_info = regular(app_path)
-    original_app = app_path.read_bytes()
+    original_app, app_info = read_regular(app_path, "app", allow_hardlinks=True)
     changed_app = patch_app(original_app)
     originals = {app_path: (original_app, app_info)}
+    roles = {app_path: "app", module_path: "module", dropin: "dropin"}
+    require(dropin.parent.is_dir(), "service_dropin_directory_missing")
     for path in (module_path, dropin):
-        if path.exists() or path.is_symlink():
-            info = regular(path)
-            originals[path] = (path.read_bytes(), info)
-        else:
-            originals[path] = (None, None)
+        originals[path] = read_regular(
+            path,
+            roles[path],
+            allow_hardlinks=path == module_path,
+            missing_ok=True,
+        )
     if originals[module_path][0] is not None:
         require(
             hashlib.sha256(originals[module_path][0]).hexdigest() == MODULE_HASH,
@@ -210,10 +347,6 @@ def install(
         )
     if originals[dropin][0] is not None:
         require(originals[dropin][0] == ENABLE, "existing_dispatch_dropin_changed")
-    require(
-        dropin.parent.is_dir() and not dropin.parent.is_symlink(),
-        "service_dropin_directory_missing",
-    )
     backup = pathlib.Path(
         tempfile.mkdtemp(prefix="firbo-worker-dispatch-", dir=backup_root)
     )
@@ -222,46 +355,47 @@ def install(
             (backup / path.name).write_bytes(data)
     print("BACKUP:", backup, flush=True)
     updates = {module_path: module, app_path: changed_app, dropin: ENABLE}
-    applied = []
+    applied = {}
     restart = restart or (lambda: run(["systemctl", "restart", "openjarvis.service"]))
     reload = reload or (lambda: run(["systemctl", "daemon-reload"]))
     try:
         for path, data in updates.items():
             before, info = originals[path]
-            require(
-                (before is None and not path.exists() and not path.is_symlink())
-                or (
-                    before is not None and regular(path) and path.read_bytes() == before
-                ),
-                "concurrent_file_change",
-            )
-            replace(
+            applied[path] = replace(
                 path,
                 data,
                 uid=info.st_uid if info else (0 if path == dropin else app_info.st_uid),
                 gid=info.st_gid if info else (0 if path == dropin else app_info.st_gid),
-                mode=info.st_mode & 0o777 if info else 0o644,
+                mode=stat.S_IMODE(info.st_mode) if info else 0o644,
+                expected=originals[path],
+                role=roles[path],
+                allow_hardlinks=path != dropin,
             )
-            applied.append(path)
         reload()
         restart()
         verify()
     except BaseException:
         for path in reversed(applied):
+            try:
+                current = read_regular(path, roles[path])
+            except (OSError, RuntimeError):
+                raise RuntimeError("concurrent_change_manual_recovery") from None
             require(
-                regular(path) and path.read_bytes() == updates[path],
+                unchanged(current, (updates[path], applied[path])),
                 "concurrent_change_manual_recovery",
             )
             before, info = originals[path]
             if before is None:
-                path.unlink()
+                remove(path, current, roles[path])
             else:
                 replace(
                     path,
                     before,
                     uid=info.st_uid,
                     gid=info.st_gid,
-                    mode=info.st_mode & 0o777,
+                    mode=stat.S_IMODE(info.st_mode),
+                    expected=current,
+                    role=roles[path],
                 )
         reload()
         restart()
@@ -294,8 +428,8 @@ def main():
         )
     )
     require(len(paths) == 1, "installed_app_not_unique")
-    regular(paths[0])
-    patch_app(paths[0].read_bytes())
+    original_app, _ = read_regular(paths[0], "app", allow_hardlinks=True)
+    patch_app(original_app)
     key = api_key()
     before = runtime(key)
     box_pid = service_pid("openjarvis-box.service")
