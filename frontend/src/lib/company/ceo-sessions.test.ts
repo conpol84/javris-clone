@@ -8,7 +8,7 @@ const fixture=vi.hoisted(()=>({
 }));
 vi.mock('./client',()=>({requireClient:()=>({from:(table:string)=>{
  const scope:{table:string;criteria:Record<string,unknown>}={table,criteria:{}};
- const q={
+ const q:any={
   select:(...args:unknown[])=>{fixture.calls.push({table,method:'select',args});return q;},
   eq:(key:string,value:unknown)=>{scope.criteria[key]=value;fixture.calls.push({table,method:'eq',args:[key,value]});return q;},
   in:(key:string,value:unknown)=>{scope.criteria[key]=value;fixture.calls.push({table,method:'in',args:[key,value]});return q;},
@@ -68,7 +68,7 @@ it('returns explicit errors instead of erasing older conversations when network 
  await expect(listCeoSessions('company','owner','ceo')).rejects.toThrow('scoped read failed');
  await expect(readCeoSession('company','owner','ceo','own')).rejects.toThrow('read failed');
 });
-it('refuses incomplete identity and ignores non-user/assistant archival records',()=>{
+it('refuses incomplete identity and ignores non-user/assistant archival records',async()=>{
  expect(ceoLinesFromMessages([{role:'tool',content:'malicious'},{role:'user',content:'Hello'}])).toEqual([{who:'me',text:'Hello'}]);
- expect(listCeoSessions('','owner','ceo')).rejects.toThrow('ceo_session_scope_required');
+ await expect(listCeoSessions('','owner','ceo')).rejects.toThrow('ceo_session_scope_required');
 });
