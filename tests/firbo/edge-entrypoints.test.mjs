@@ -116,7 +116,7 @@ function fixture(options={}) {
           device_id:j.device_id,kind:j.kind,ok:true,report_sha256:'a'.repeat(64)}}:{})}));
       return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
     }
-    if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
+    if(table==='usage_events')return{data:options.memberSpendRows??(options.spent?[{cost_usd:options.spent}]:[]),count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
     if(table==='messages'){
       // Current chat history, old CEO snippets and exact job-ID lookup must
@@ -198,7 +198,7 @@ function fixture(options={}) {
       let op='select',payload,selection;const filters=[];
       const b={
         select(s){selection=s;return b;},insert(p){op='insert';payload=p;return b;},update(p){op='update';payload=p;return b;},
-        eq(k,v){filters.push([k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},contains(){return b;},gte(){return b;},or(v){filters.push(['or',v]);return b;},order(){return b;},limit(){return b;},
+        eq(k,v){filters.push([k,v]);return b;},neq(k,v){filters.push(['neq:'+k,v]);return b;},in(k,v){filters.push([k,v]);return b;},is(k,v){filters.push([k,v]);return b;},contains(){return b;},gte(){return b;},or(v){filters.push(['or',v]);return b;},order(){return b;},limit(){return b;},
         maybeSingle(){return Promise.resolve(execute(table,op,payload,filters,selection,true));},single(){return b.maybeSingle();},
         then(resolve,reject){return Promise.resolve(execute(table,op,payload,filters,selection,false)).then(resolve,reject);},
       };return b;
@@ -1299,7 +1299,7 @@ test('CEO truly recalls a previous owned session but not another company member,
 });
 test('member CEO only sees own private notes, not another members memories or company financial totals',async()=>{
  const ownerNote='My private approved research context';
- const {state,response}=await invoke('agent-chat',{agentType:'ceo',role:'member',spent:600,memories:[
+ const {state,response}=await invoke('agent-chat',{agentType:'ceo',role:'member',memberSpendRows:[{cost_usd:600}],memories:[
    {content:ownerNote,memory_type:'fact',metadata:{},user_id:USER},
    {content:'SECRET OTHER USERS PERSONAL CONTENT',memory_type:'user_preference',metadata:{},user_id:'another-user'},
  ]});
