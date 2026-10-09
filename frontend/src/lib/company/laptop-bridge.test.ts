@@ -296,3 +296,28 @@ it('kind-only requests are incomplete, never malformed live VPS previews',async(
   if(!result.ready)expect(result.reply).toContain('https://example.com');
  }
 });
+
+
+it('CEO terminal reply exposes actual worker, job id, observed heading and receipt hash',async()=>{
+ const goal='Open https://example.com and read heading';
+ const proposal={kind:'desktop_task' as const,description:goal,params:{goal},target:'my shell'};
+ const machine:DeviceRow={...device('d1','My shell',true),platform:'linux x64',capabilities:{job_kinds:['desktop_task'],full_control:true}};
+ const digest='a'.repeat(64);
+ const row:JobRow={id:'j-real',device_id:'d1',kind:'desktop_task',params:{goal},status:'done',
+  result:{completed:true,summary:'https://example.com — Example Domain',observations:2,last_frame_sha256:'b'.repeat(64)},
+  error:null,created_at:'',finished_at:'',report_sha256:digest,
+  receipt:{ok:true,job_id:'j-real',device_id:'d1',report_sha256:digest}};
+ const result=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+  now:()=>now,loadDevices:async()=>[machine],queue:async()=>({job_id:'j-real'}),loadJobs:async()=>[row],sleep:async()=>{}
+ });
+ expect(result.status).toBe('done');
+ expect(result.reply).toContain('Example Domain');
+ expect(result.reply).toContain('Job ID: j-real');
+ expect(result.reply).toContain('Worker: My shell (d1)');
+ expect(result.reply).toContain('Terminal receipt: matched SHA-256 '+digest);
+ row.receipt={...row.receipt,report_sha256:'f'.repeat(64)};
+ const invalid=await dispatchDirectComputerCommand('org',proposal,'en',undefined,{
+  now:()=>now,loadDevices:async()=>[machine],queue:async()=>({job_id:'j-real'}),loadJobs:async()=>[row],sleep:async()=>{}
+ });
+ expect(invalid.reply).toContain('not independently confirmed');
+});
