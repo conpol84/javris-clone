@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'frontend/**'
+      - 'supabase/functions/agent-speak/**'
+      - 'tests/firbo/voice/**'
       - '.github/workflows/firbo-ceo-mobile-voice.yml'
   workflow_dispatch:
 
@@ -39,6 +41,8 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run voice regression
         run: npm test -- --run src/lib/company/voice.test.ts
+      - name: Regression: external TTS rate limit preserves authorization and quota
+        run: node --test ../tests/firbo/voice/tts-provider-fallback.test.mjs
       - name: Run complete frontend suite
         run: npm test
       - name: Typecheck and production build
