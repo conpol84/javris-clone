@@ -213,13 +213,10 @@ Deno.serve(async (req) => {
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null)
     .order('importance', { ascending: false }).limit(12);
-  // Fail closed for legacy ownerless records: NULL user_id is NOT consent to share.
-  // Explicit organization visibility is only an interim compatibility check;
-  // it must be backed by trusted DB provenance/RLS before shared-memory launch.
-  const accessibleMemory=(memRows??[]).filter((m:any)=>
-    m.user_id===user.id ||
-    (m.memory_type==='company' && m.metadata?.visibility==='company' &&
-      m.metadata?.source!=='learned' && m.metadata?.deleted_at==null));
+  // User-controlled metadata cannot grant cross-user visibility. Until a
+  // server-attested company-memory sharing path exists, use only same-user
+  // rows for inference. This intentionally fails closed for legacy NULL owners.
+  const accessibleMemory=(memRows??[]).filter((m:any)=>m.user_id===user.id);
   const memoryBlock = memoryBlocks(accessibleMemory).join('\n');
   let previousCeoSessions='';
   let pastSessionsUnavailable=false;
