@@ -259,7 +259,11 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       busy.current=false;handsFreeRef.current=false;setHandsFreeValue(false);setState('idle');
       if(active.signal.aborted){note(voiceMessages(lang).stopped);return;}
       active.finish(true);note(voiceMessages(lang).server);
-      toast.error(runErrorText(t, error));
+      const detail=runErrorText(t, error);
+      // A toast alone disappears; preserve a visible CEO turn so the user
+      // never sees an endless unanswered "thinking" state after a failure.
+      setLines(lines=>[...lines,{who:'ceo',text:detail}]);
+      toast.error(detail);
     }
   };
   const listen=()=>{
