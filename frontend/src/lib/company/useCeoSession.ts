@@ -11,7 +11,7 @@ import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
 import { isUnlockContinuation, resolveUnlockContinuation } from './computer-continuation';
-import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from './laptop-bridge';
+import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
 export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
@@ -30,6 +30,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const [handsFree,setHandsFreeValue]=useState(false);
   const [voiceStatus,setVoiceStatus]=useState('');
   const [voiceLog,setVoiceLog]=useState<string[]>([]);
+  const [computerProgress,setComputerProgress]=useState<DirectComputerProgress|null>(null);
   const [sessions,setSessions]=useState<CeoSessionPreview[]>([]);
   const [activeSessionId,setActiveSessionId]=useState<string|null>(null);
   const [historyLoading,setHistoryLoading]=useState(false);
@@ -48,7 +49,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     stopListen.current=()=>{};sendListen.current=()=>{};
   };
   useEffect(()=>{
-    live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setState('idle');setHandsFreeValue(false);
+    live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setComputerProgress(null);setState('idle');setHandsFreeValue(false);
     setSessions([]);setActiveSessionId(null);setHistoryError(false);setHistoryLoading(true);
     const id=epoch.current;
     if(orgId&&userId)void listAgents(orgId).then(async agents=>{
@@ -108,16 +109,16 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     resumeTimer.current=setTimeout(()=>{if(valid(id)&&handsFreeRef.current&&!busy.current)listenRef.current();},delay);
   };
   const stop=()=>{
-    pendingComputer.current=null;clear();setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
+    pendingComputer.current=null;clear();setComputerProgress(null);setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
   };
   const newSession=()=>{
     if(busy.current||historyLoading||historyError)return;
-    pendingComputer.current=null;clear();convo.current=null;setActiveSessionId(null);
+    pendingComputer.current=null;clear();setComputerProgress(null);convo.current=null;setActiveSessionId(null);
     setLines([]);setState('idle');setInterim('');setHistoryError(false);
   };
   const openSession=async(conversationId:string)=>{
     if(!ceo||!userId||busy.current||historyLoading||!sessions.some(x=>x.id===conversationId))return;
-    pendingComputer.current=null;clear();setState('idle');setHistoryLoading(true);
+    pendingComputer.current=null;clear();setComputerProgress(null);setState('idle');setHistoryLoading(true);
     const id=epoch.current;
     try{
       const recovered=await readCeoSession(orgId,userId,ceo.id,conversationId);
@@ -151,8 +152,9 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     // Surface a durable progress signal if inference/tool calls take unusually long.
     // This does not imply the task has completed or fabricate a CEO answer.
     const progressTimer=setTimeout(()=>{if(valid(id)&&active.current())note(lang==='el'?'Ο CEO επεξεργάζεται ακόμη το αίτημα. Μπορείς να πατήσεις Stop.':'CEO is still processing. You can press Stop.');},12_000);
-    setInterim('');setLines(lines=>[...lines,{who:'me',text:message}]);
+    setInterim('');setComputerProgress(null);setLines(lines=>[...lines,{who:'me',text:message}]);
     const sayDirect=async(content:string)=>{
+      setComputerProgress(null);
       setLines(lines=>[...lines,{who:'ceo',text:content}]);
       if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
       const spoken=await speak(orgId,content,lang,{turn:active});
@@ -211,7 +213,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           }
           if(readiness.ownerFullControl===true){
             pendingComputer.current=null;
-            const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,active.signal);
+            const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,active.signal,{onProgress:p=>{if(valid(id)&&active.current())setComputerProgress(p)}});
             if(!valid(id)||!active.current())return;
             await sayComputer(remote);return;
           }
@@ -220,14 +222,14 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
         }
         if(proposal&&decision==='approve'){
           pendingComputer.current=null;
-          const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal);
+          const remote=await dispatchDirectComputerCommand(orgId,proposal,lang,active.signal,{onProgress:p=>{if(valid(id)&&active.current())setComputerProgress(p)}});
           if(!valid(id)||!active.current())return;
           await sayComputer(remote);return;
         }
         if(pendingComputer.current&&decision){
           const pending=pendingComputer.current;pendingComputer.current=null;
           if(decision==='reject'){await sayDirect(lang==='el'?'Εντάξει, δεν θα το εκτελέσω.':'Okay, I will not run it.');return;}
-          const remote=await dispatchDirectComputerCommand(orgId,pending,lang,active.signal);
+          const remote=await dispatchDirectComputerCommand(orgId,pending,lang,active.signal,{onProgress:p=>{if(valid(id)&&active.current())setComputerProgress(p)}});
           if(!valid(id)||!active.current())return;
           await sayComputer(remote);return;
         }
@@ -259,7 +261,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
     }catch(error){
       if(!valid(id))return;
-      busy.current=false;handsFreeRef.current=false;setHandsFreeValue(false);setState('idle');
+      busy.current=false;setComputerProgress(null);handsFreeRef.current=false;setHandsFreeValue(false);setState('idle');
       if(active.signal.aborted){note(voiceMessages(lang).stopped);return;}
       active.finish(true);note(voiceMessages(lang).server);
       const detail=runErrorText(t, error);
@@ -306,6 +308,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const scoped=loadedScope===scope;
   return {ceo:scoped?ceo:null,state:scoped?state:'idle' as HoloState,lines:scoped?lines:[],interim:scoped?interim:'',voiceStatus:scoped?voiceStatus:'',voiceLog:scoped?voiceLog:[],
     sendNow:()=>sendListen.current(),muted,setMuted,handsFree:scoped&&handsFree,setHandsFree,canTalk,ask,listen,stop,briefing,
+    computerProgress:scoped?computerProgress:null,
     sessions:scoped?sessions:[],activeSessionId:scoped?activeSessionId:null,historyLoading,historyError,
     openSession,newSession,retryHistory};
 }
