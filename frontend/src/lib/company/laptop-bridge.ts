@@ -224,9 +224,15 @@ export async function prepareDirectComputerCommand(orgId:string,request:DirectCo
 export const incompleteComputerReply=(lang:string)=>lang==='el'
  ?'Δεν μπήκε εργασία στην ουρά. Δώσε συγκεκριμένο URL για το website, π.χ. «Άνοιξε https://example.com στον My shell», ή άλλη ακριβή εντολή. Το browser plan δεν αποδεικνύει από μόνο του αναπαραγωγή βίντεο ή screenshot.'
  :'No job was queued. Give the specific website URL, for example “Open https://example.com on My shell”, or another exact instruction. A browser plan alone does not prove video playback or a screenshot.';
+export interface DirectComputerProgress {
+ jobId:string; deviceName:string;
+ stage:'queued'|'running'|'status_unavailable';
+ elapsedSeconds:number;
+}
 export async function dispatchDirectComputerCommand(orgId:string,proposal:DirectComputerProposal,lang:string,signal?:AbortSignal,deps?:{
  loadDevices?:(o:string)=>Promise<DeviceRow[]>;queue?:(d:string,k:JobRow['kind'],p:Record<string,unknown>,c?:boolean)=>Promise<{job_id:string}>;
- loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest
+ loadJobs?:(o:string,d:string)=>Promise<JobRow[]>;cancel?:(j:string)=>Promise<unknown>;storage?:StorageLike|null;now?:()=>number;sleep?:(m:number,s?:AbortSignal)=>Promise<void>;dispatcher?:typeof dispatchWorkerRequest;
+ onProgress?:(state:DirectComputerProgress)=>void
 }){
  const greek=lang==='el',loadJobs=deps?.loadJobs??listJobs,cancel=deps?.cancel??cancelJob,now=deps?.now??Date.now,sleep=deps?.sleep??delay;
  let jobId:string|undefined;
@@ -253,6 +259,16 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    device=receipt.worker;approved.kind=receipt.job.kind;approved.params=actionJson(receipt.job.params);job={job_id:receipt.job_id!};
   }
   jobId=job.job_id;
+  const pollingStarted=now();
+  let lastReportedStage:DirectComputerProgress['stage']|null=null;
+  const reportStage=(stage:DirectComputerProgress['stage'])=>{
+   if(lastReportedStage===stage||signal?.aborted)return;
+   lastReportedStage=stage;
+   // An observational UI callback must never trigger cancellation, redelivery,
+   // or an unsupported claim about the running physical computer.
+   try{deps?.onProgress?.({jobId:job.job_id,deviceName:device.name,stage,elapsedSeconds:Math.max(0,Math.floor((now()-pollingStarted)/1000))})}catch{/* UI only */ }
+  };
+  reportStage('queued');
   // Expose the real correlated job identity and receipt provenance. A device
   // summary alone is not proof; missing/invalid receipt fields remain explicit.
   const terminalEvidence=(row:JobRow)=>{
@@ -262,9 +278,28 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    return `\nJob ID: ${job.job_id}\nWorker: ${device.name} (${device.id})\nTerminal receipt: ${validReceipt?`matched SHA-256 ${digest}`:'not independently confirmed; inspect Computers'}`;
   };
   const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
+  let consecutiveReadFailures=0;
   while(now()<deadline&&!signal?.aborted){
-   const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
+   let row:JobRow|undefined;
+   try{
+    row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
+    consecutiveReadFailures=0;
+   }catch{
+    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+    // Retries are read-only. A brief status outage must NOT cancel or
+    // re-execute an acknowledged physical action.
+    if(++consecutiveReadFailures>=3){
+     reportStage('status_unavailable');
+     return{handled:true,status:'queued',job_id:job.job_id,reply:greek?
+      `Η εργασία ${job.job_id} στάλθηκε στο ${device.name}, αλλά διακόπηκε η ανάκτηση της κατάστασης. Η ολοκλήρωση ΔΕΝ επιβεβαιώθηκε. Έλεγξε τους Υπολογιστές πριν τη στείλεις ξανά.`:
+      `Job ${job.job_id} was sent to ${device.name}, but status updates are unavailable. Completion is NOT verified. Check Computers before sending it again.`};
+    }
+    await sleep(1000,signal);
+    continue;
+   }
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+   if(row&&row.device_id===device.id&&row.kind===approved.kind&&['queued','running'].includes(row.status))
+    reportStage(row.status as 'queued'|'running');
    let verified=false;
    try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:approved.kind==='browser_open'?row.result?.launched===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
    if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:verified?`${device.name}: ${row.result.summary}${terminalEvidence(row)}`:`${device.name}: completion not verified; ${row.result.summary}${terminalEvidence(row)}`};
@@ -284,7 +319,10 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
     const verified=greek?'Δεν επιβεβαιώθηκε η ζητούμενη ενέργεια.':'The requested action was not verified.';
     return{handled:true,status:'failed',job_id:job.job_id,reply:`${device.name}: ${detail} ${verified} Job ID: ${job.job_id}. ${greek?'Δες τη συγκεκριμένη εργασία στους Υπολογιστές.':'Open that job in Computers.'}`};
    }
-   await sleep(650,signal);
+   const elapsed=Math.max(0,now()-pollingStarted);
+   // Fast initial acknowledgement, bounded overhead for long desktop tasks.
+   // Remote Stop remains independently armed while status is polled.
+   await sleep(elapsed<10_000?650:elapsed<30_000?1300:2500,signal);
   }
   if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
   return{handled:true,status:'queued',job_id:job.job_id,reply:greek?`Η εργασία ${job.job_id} μπήκε στην ουρά για ${device.name}, αλλά η εκτέλεση δεν έχει επιβεβαιωθεί ακόμη.`:`Job ${job.job_id} was queued for ${device.name}; execution is not confirmed yet.`};
