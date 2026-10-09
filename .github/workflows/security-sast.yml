@@ -90,11 +90,14 @@ jobs:
 
   semgrep:
     name: Semgrep (rules)
-    runs-on: ubuntu-latest
-    container:
-      image: semgrep/semgrep
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
+      - name: Install pinned Semgrep without Docker Hub
+        run: |
+          python3 -m venv .semgrep-venv
+          .semgrep-venv/bin/python -m pip install --disable-pip-version-check semgrep==1.180.0
+          .semgrep-venv/bin/semgrep --version
       - name: Run Semgrep (audit ruleset)
         continue-on-error: true
-        run: semgrep --config=p/python --config=p/security-audit --error --skip-unknown-extensions src/openjarvis
+        run: .semgrep-venv/bin/semgrep --config=p/python --config=p/security-audit --error --skip-unknown-extensions src/openjarvis
