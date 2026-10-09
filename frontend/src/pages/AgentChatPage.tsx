@@ -17,6 +17,7 @@ import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company
 import { beginVoiceTurn, type VoiceTurn } from '../lib/company/voiceActivity';
 import { voiceMessages } from '../lib/company/voiceMessages';
 import { isUnlockContinuation, resolveUnlockContinuation } from '../lib/company/computer-continuation';
+import { journalCeoComputerJob } from '../lib/company/ceo-device-journal';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import { dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
@@ -187,6 +188,20 @@ export function AgentChatPage() {
             const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
             setMessages((m) => [...m.filter((x) => x.id !== temp.id), temp, assistant]);
           };
+          const directResult=async(remote:{reply:string;status?:string;job_id?:string},signal?:AbortSignal)=>{
+            let narrative=remote.reply;
+            if(remote.job_id&&['done','failed'].includes(remote.status??'')){
+              try{
+                await journalCeoComputerJob(active.id,remote.job_id,signal);
+                if(voiceScopeRef.current!==scopeAtSend)return;
+                void reloadList();
+              }catch{
+                narrative+=lang==='el'?' (Η εργασία υπάρχει στους Υπολογιστές, αλλά δεν καταγράφηκε στο ιστορικό CEO.)'
+                  :' (The job remains in Computers, but CEO chat history could not record it.)';
+              }
+            }
+            if(voiceScopeRef.current===scopeAtSend)directMessage(narrative);
+          };
           if (!canComputer) {
             pendingComputer.current = null;
             const role = current?.role ?? 'viewer';
@@ -218,7 +233,7 @@ export function AgentChatPage() {
               pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
               try{
                 const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,controller.signal);
-                if(voiceScopeRef.current===scopeAtSend)directMessage(remote.reply);
+                await directResult(remote,controller.signal);
               }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
               return;
             }
@@ -239,7 +254,7 @@ export function AgentChatPage() {
             if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
           }
           if (voiceScopeRef.current !== scopeAtSend) return;
-          directMessage(remote.reply);
+          await directResult(remote,controller.signal);
           return;
         }
       }
