@@ -8,6 +8,10 @@ DROP POLICY IF EXISTS "members read" ON public.memories;
 DROP POLICY IF EXISTS "writers insert" ON public.memories;
 DROP POLICY IF EXISTS "writers update" ON public.memories;
 DROP POLICY IF EXISTS "managers delete" ON public.memories;
+DROP POLICY IF EXISTS "sgmem01 owner select" ON public.memories;
+DROP POLICY IF EXISTS "sgmem01 owner insert" ON public.memories;
+DROP POLICY IF EXISTS "sgmem01 owner update" ON public.memories;
+DROP POLICY IF EXISTS "sgmem01 owner delete" ON public.memories;
 CREATE POLICY "sgmem01 owner select" ON public.memories FOR SELECT TO authenticated
  USING (user_id = (SELECT auth.uid()) AND private.is_member(organization_id));
 CREATE POLICY "sgmem01 owner insert" ON public.memories FOR INSERT TO authenticated
