@@ -119,8 +119,9 @@ function fixture(options={}) {
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
     if(table==='messages'){
-      // Current chat history and older CEO session snippets use different
-      // conversation scopes; the fake must not bypass the real predicate.
+      // Current chat history, old CEO snippets and exact job-ID lookup must
+      // match their distinct real Postgres query return types.
+      if(single&&filters.some(([k])=>k==='id'))return{data:options.existingJournalMessage??null,error:null};
       const archived=filters.find(([k,v])=>k==='conversation_id'&&Array.isArray(v));
       return{data:archived?options.pastCeoMessages??[]:options.messages??[],error:null};
     }
@@ -1310,4 +1311,54 @@ test('member CEO only sees own private notes, not another members memories or co
  assert.ok(!prompt.includes('Spend this month: $600'));
  const ownTask=state.reads.find(r=>r.table==='tasks'&&r.selection?.includes('assigned_agent_id'));
  assert.ok(ownTask.filters.some(([k,v])=>k==='created_by'&&v===USER));
+});
+
+
+test('CEO journal writes only a verified terminal owner job from server ledger and never invokes LLM',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const {state,response,body}=await invoke('agent-chat',{
+  agentType:'ceo',computerTerminalReceipt:true,
+  existingComputerJobs:[{id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',
+   kind:'desktop_task',params:{goal:'Play Mazonakis Ores Mikres on YouTube'},dispatch_request:{goal:'Play Mazonakis Ores Mikres on YouTube'}}],
+  computerJobResult:{completed:false,summary:'Screen black due to lock. Playback was not confirmed.'},
+ },{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(response.status,200);assert.equal(body.journaled,true);
+ assert.equal(body.goal_observed,false);assert.equal(body.receipt_verified,true);
+ assert.equal(state.calls.length,0,'journal must not invoke model or execute worker');
+ const saved=state.writes.filter(x=>x.table==='messages'&&x.op==='insert');
+ assert.equal(saved.length,1);assert.equal(saved[0].payload.id,jobId);
+ assert.equal(saved[0].payload.conversation_id,CONVO);assert.equal(saved[0].payload.role,'assistant');
+ assert.match(saved[0].payload.content,/GOAL NOT VERIFIED/);
+ assert.match(saved[0].payload.content,/Mazonakis/);
+ assert.match(saved[0].payload.content,/terminal receipt: job\/device\/hash matched/);
+});
+test('CEO journal denies non-owner jobs, pending results and other users without generating chat content',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const base={agentType:'ceo',computerTerminalReceipt:true,existingComputerJobs:[
+  {id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',kind:'desktop_task',params:{goal:'Open YouTube'}}
+ ]};
+ for(const [label,options,code] of [
+  ['other user',{existingComputerJobs:[{...base.existingComputerJobs[0],created_by:'other-user'}]},404],
+  ['agent-origin',{existingComputerJobs:[{...base.existingComputerJobs[0],origin:'agent'}]},404],
+  ['job running',{computerJobStatus:'running'},409],
+  ['viewer',{role:'member'},403],
+  ['not CEO',{agentType:'custom'},403],
+ ]){
+  const {state,response}=await invoke('agent-chat',{...base,...options},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+  assert.equal(response.status,code,label);
+  assert.equal(state.writes.filter(x=>x.table==='messages').length,0,label);
+  assert.equal(state.calls.length,0,label);
+ }
+});
+test('CEO journal duplicate job is idempotent and cannot move its receipt into another session',async()=>{
+ const jobId='12121212-1212-4212-8212-121212121212',deviceId='13131313-1313-4313-8313-131313131313';
+ const base={agentType:'ceo',computerTerminalReceipt:true,existingComputerJobs:[{
+  id:jobId,organization_id:ORG,device_id:deviceId,created_by:USER,origin:'owner',kind:'desktop_task',params:{goal:'YouTube'}
+ }]};
+ const first=await invoke('agent-chat',{...base,existingJournalMessage:{id:jobId,conversation_id:CONVO}},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(first.response.status,200);assert.equal(first.body.duplicate,true);
+ assert.equal(first.state.writes.filter(x=>x.table==='messages').length,0);
+ const second=await invoke('agent-chat',{...base,existingJournalMessage:{id:jobId,conversation_id:'another-conversation'}},{message:'',action:'journal_computer_job',computer_job_id:jobId});
+ assert.equal(second.response.status,409);assert.equal(second.body.error,'journal_belongs_to_another_conversation');
+ assert.equal(second.state.writes.filter(x=>x.table==='messages').length,0);
 });
