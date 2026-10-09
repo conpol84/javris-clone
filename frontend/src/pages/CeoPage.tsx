@@ -1,5 +1,5 @@
 import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CeoActions } from '../components/company/CeoActions';
 import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
@@ -44,6 +44,15 @@ export function CeoPage() {
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
     sessions, activeSessionId, historyLoading, historyError, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
+  const transcriptRef = useRef<HTMLUListElement>(null);
+  const followLatestRef = useRef(true);
+  // Follow new replies without pulling the user away while reading older messages.
+  useEffect(() => {
+    if (!followLatestRef.current) return;
+    const transcript = transcriptRef.current;
+    if (transcript) transcript.scrollTop = transcript.scrollHeight;
+  }, [lines.length, activeSessionId]);
+  useEffect(() => { followLatestRef.current = true; }, [activeSessionId]);
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
   const satellites: Satellite[] = useMemo(
@@ -168,7 +177,7 @@ export function CeoPage() {
                 <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{voiceLog.join('\n')}</pre>
               </details>
             )}
-            <ul className="fb-col min-h-[220px] min-w-0 flex-1 gap-2 overflow-x-hidden overflow-y-auto" style={{ maxHeight: 480 }} aria-live="polite">
+            <ul ref={transcriptRef} onScroll={e => { const el = e.currentTarget; followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64; }} className="fb-col min-h-[220px] min-w-0 flex-1 gap-2 overflow-x-hidden overflow-y-auto" style={{ maxHeight: 480 }} aria-live="polite" aria-label="CEO conversation" data-ceo-transcript="true">
               {lines.length === 0 && <li className="fb-dim text-sm">{t('ceo.empty')}</li>}
               {lines.map((l, i) => (
                 <li key={i} className="fb-row min-w-0 break-words [overflow-wrap:anywhere] p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
