@@ -290,6 +290,7 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
   };
   const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
   let consecutiveReadFailures=0;
+  let consecutiveMissingRows=0;
   while(now()<deadline&&!signal?.aborted){
    let row:JobRow|undefined;
    try{
@@ -309,6 +310,16 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
     continue;
    }
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+   if(!row){
+    // A paginated/stale status feed can omit the job. Missing is not a
+    // completion signal; stop polling rather than issuing another dispatch.
+    if(++consecutiveMissingRows>=4){
+     reportStage('status_unavailable');
+     return{handled:true,status:'queued',job_id:job.job_id,reply:greek?
+      `Δεν βρίσκω την κατάσταση της ήδη σταλμένης εργασίας ${job.job_id} στο ${device.name}. Δεν επιβεβαιώθηκε εκτέλεση. Έλεγξε τους Υπολογιστές πριν την επανάληψη.`:
+      `Previously dispatched job ${job.job_id} is absent from ${device.name} status results. Nothing is verified. Check Computers before retrying.`};
+    }
+   }else consecutiveMissingRows=0;
    if(row&&row.device_id===device.id&&row.kind===approved.kind&&['queued','running'].includes(row.status))
     reportStage(row.status as 'queued'|'running');
    let verified=false;
