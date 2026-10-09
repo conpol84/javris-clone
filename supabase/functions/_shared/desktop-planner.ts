@@ -45,7 +45,7 @@ Return only a JSON object, no markdown. Actions:
 {"action":"click","x":100,"y":200,"button":"left","count":1}; move uses x,y; drag adds to_x,to_y. Coordinates are screenshot pixels.
 {"action":"type","text":"Unicode text"}; {"action":"key","key":"ctrl+l"} (X11 key names, e.g. Return, Tab, Escape, ctrl+a, alt+F2); {"action":"scroll","amount":3} positive down; {"action":"wait","ms":2000}; {"action":"shell","command":"..."} only if local shell permission is true.
 {"action":"done","summary":"What you actually observed and accomplished"} or {"action":"blocked","summary":"What needs owner input"}.
-Observe after every action. Do not declare success merely because a click/command ran. For media, match BOTH requested artist and title, dismiss irrelevant overlays, start playback and observe the playback clock advancing across two screenshots. Leave playback and apps open. If asked to stop playback, actually pause it and verify. For browsing, read the relevant page and include the requested finding in the final summary. A task Stop halts AI input; it does not undo effects or pause media automatically. Never invent a result. When blocked, explain the observed reason. Do not repeatedly perform an action whose effect is uncertain.`;
+Observe after every action. Do not declare success merely because a click/command ran. For music with an explicitly named artist AND song title, verify both. If the owner instead requests the FIRST YouTube song/result for an artist without naming a title, choose the first visible matching musical result for that artist; do not invent or require a missing title. Start playback and observe the playback clock advancing across two screenshots. Dismiss only irrelevant overlays as needed. Leave playback and apps open. If asked to stop playback, actually pause it and verify. For browsing, read the relevant page and include the requested finding in the final summary. A task Stop halts AI input; it does not undo effects or pause media automatically. Never invent a result. When blocked, explain the observed reason. Do not repeatedly perform an action whose effect is uncertain.`;
 
 /** Called only after token/job/owner/tenant/plan authorization. The image is
  * ephemeral provider input; it is not written to messages, logs or job receipts. */
@@ -79,7 +79,16 @@ export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:
   const started=Date.now();let accounted=false;
   try{
     const response=await fetchImpl(`${route.base}/chat/completions`,{method:'POST',headers:{'content-type':'application/json',authorization:`Bearer ${route.key}`},body:JSON.stringify(payload),signal:AbortSignal.any([signal,AbortSignal.timeout(75000)])});
-    if(!response.ok)throw new Error('desktop_model_failed');
+    if(!response.ok) {
+      // Preserve bounded diagnostic classes, never provider response bodies.
+      // No retry here: the provider may have processed or billed this attempt.
+      const cause=response.status===429?'desktop_model_rate_limited':
+        [401,403].includes(response.status)?'desktop_model_auth_failed':
+        [408,504].includes(response.status)?'desktop_model_timeout':
+        response.status>=500?'desktop_model_unavailable':'desktop_model_failed';
+      void response.body?.cancel().catch(()=>{});
+      throw new Error(cause);
+    }
     // Limit streamed provider output before parsing.
     const reader=response.body?.getReader();if(!reader)throw new Error('desktop_model_failed');
     let size=0;const parts:Uint8Array[]=[];
@@ -92,5 +101,11 @@ export async function planDesktopStep(db:any,device:any,job:any,body:any,signal:
     accounted=true;
     if(settled!=='settled')throw new Error('desktop_budget_overrun');
     return {action:validateDesktopAction(JSON.parse(result.choices?.[0]?.message?.content)),request_id:reservation.requestId};
-  }catch(error){if(!accounted)await markInferenceAmbiguous(db,reservation.requestId,'desktop_step_failed');throw error;}
+  }catch(error){
+    // Keep ambiguous provider accounting fail-closed; the safe error category
+    // makes future failed jobs diagnosable without exposing prompts or keys.
+    const reason=error instanceof Error&&/^desktop_[a-z_]{3,58}$/.test(error.message)?error.message:'desktop_step_failed';
+    if(!accounted)await markInferenceAmbiguous(db,reservation.requestId,reason);
+    throw error;
+  }
 }
