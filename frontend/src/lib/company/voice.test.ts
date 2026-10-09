@@ -106,8 +106,26 @@ describe('speech output',()=>{
  it('stop cancels browser synthesis even if the engine never sends onend',async()=>{
   mocks.invoke.mockResolvedValue({data:null,error:new Error('unavailable')});const p=speak('org','Hello','en');await flush();utterance!.onstart?.();stopSpeaking();expect((await p).status).toBe('cancelled');expect(synth.cancel).toHaveBeenCalled();
  });
- it.each([401,402,403,429])('does not bypass server status %s with another voice service',async(status)=>{
+ it.each([401,402,403])('does not bypass authorization or plan status %s with another voice service',async(status)=>{
   mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{}',{status}))});const p=speak('org','Hello','en');await flush();expect((await p).status).toBe('failed');expect(synth.speak).not.toHaveBeenCalled();
+ });
+ it('recovers cloud TTS 429 via labeled zero-cost browser speech, with no provider retry',async()=>{
+  setVoiceProfile('firbo-dark-v1');
+  mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{"error":"rate_limited"}',{status:429}))});
+  const p=speak('org','Cloud voice at limit','en');
+  await flush();
+  expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  expect(synth.speak).toHaveBeenCalledTimes(1);
+  expect(getVoiceSnapshot().source).toBe('browser');
+  utterance!.onstart?.();utterance!.onend?.();
+  expect(await p).toMatchObject({status:'completed',source:'browser'});
+ });
+ it('respects explicit no-local-fallback on rate limit',async()=>{
+  setVoiceProfile('firbo-dark-v1');
+  mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{"error":"rate_limited"}',{status:429}))});
+  const result=await speak('org','Rate limited','en',{allowBrowserFallback:false});
+  expect(result.status).toBe('failed');
+  expect(synth.speak).not.toHaveBeenCalled();
  });
  it('rejects nonaudio data rather than playing an HTML fallback',async()=>{
   mocks.invoke.mockResolvedValue({data:new Blob(['html'],{type:'text/html'}),error:null});const p=speak('org','Hello','en',{allowBrowserFallback:false});await flush();expect((await p).status).toBe('failed');expect(AudioMock.instances).toHaveLength(0);
