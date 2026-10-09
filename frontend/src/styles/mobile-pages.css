@@ -64,3 +64,35 @@ main[data-firbo-route='/companies'] .fb-wide { width: 100%; }
     border-block-end-width: 1px;
   }
 }
+
+
+/* CEO-only mobile composer: the fixed thumb navigation must NEVER obscure typing.
+   Keep transcript room so older replies remain readable; do not affect other routes. */
+@media (max-width: 767px) {
+  /* Backdrop-filter creates a fixed-position containing block in Chromium/Safari. */
+  main[data-firbo-route='/ceo'] section[data-ceo-chatpanel='true'] {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  main[data-firbo-route='/ceo'] form[data-ceo-composer='true'] {
+    position: fixed;
+    inset-inline: 12px;
+    bottom: calc(var(--fb-bottomnav-height, 76px) + 10px);
+    z-index: 30;
+    min-width: 0;
+    width: auto;
+    margin: 0;
+    padding: 8px;
+    border-radius: 14px;
+    border: 1px solid var(--fb-border);
+    background: #081321;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+  }
+  main[data-firbo-route='/ceo'] [data-ceo-transcript] {
+    padding-bottom: 96px;
+    scroll-padding-bottom: 96px;
+  }
+  main[data-firbo-route='/ceo'] [data-firbo-voice='ceo'] {
+    padding-bottom: calc(var(--fb-bottomnav-height, 76px) + 112px);
+  }
+}

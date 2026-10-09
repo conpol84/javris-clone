@@ -106,8 +106,26 @@ describe('speech output',()=>{
  it('stop cancels browser synthesis even if the engine never sends onend',async()=>{
   mocks.invoke.mockResolvedValue({data:null,error:new Error('unavailable')});const p=speak('org','Hello','en');await flush();utterance!.onstart?.();stopSpeaking();expect((await p).status).toBe('cancelled');expect(synth.cancel).toHaveBeenCalled();
  });
- it.each([401,402,403,429])('does not bypass server status %s with another voice service',async(status)=>{
+ it.each([401,402,403])('does not bypass authorization or plan status %s with another voice service',async(status)=>{
   mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{}',{status}))});const p=speak('org','Hello','en');await flush();expect((await p).status).toBe('failed');expect(synth.speak).not.toHaveBeenCalled();
+ });
+ it('recovers cloud TTS 429 via labeled zero-cost browser speech, with no provider retry',async()=>{
+  setVoiceProfile('firbo-dark-v1');
+  mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{"error":"rate_limited"}',{status:429}))});
+  const p=speak('org','Cloud voice at limit','en');
+  await flush();
+  expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  expect(synth.speak).toHaveBeenCalledTimes(1);
+  expect(getVoiceSnapshot().source).toBe('browser');
+  utterance!.onstart?.();utterance!.onend?.();
+  expect(await p).toMatchObject({status:'completed',source:'browser'});
+ });
+ it('respects explicit no-local-fallback on rate limit',async()=>{
+  setVoiceProfile('firbo-dark-v1');
+  mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{"error":"rate_limited"}',{status:429}))});
+  const result=await speak('org','Rate limited','en',{allowBrowserFallback:false});
+  expect(result.status).toBe('failed');
+  expect(synth.speak).not.toHaveBeenCalled();
  });
  it('rejects nonaudio data rather than playing an HTML fallback',async()=>{
   mocks.invoke.mockResolvedValue({data:new Blob(['html'],{type:'text/html'}),error:null});const p=speak('org','Hello','en',{allowBrowserFallback:false});await flush();expect((await p).status).toBe('failed');expect(AudioMock.instances).toHaveLength(0);
@@ -219,6 +237,7 @@ describe('explicit Dark preset',()=>{
  const darkWave=()=>{const b=new Uint8Array(48),v=new DataView(b.buffer);for(const [at,s] of [[0,'RIFF'],[8,'WAVE'],[12,'fmt '],[36,'data']] as const){for(let i=0;i<s.length;i++)b[at+i]=s.charCodeAt(i);}v.setUint32(4,40,true);v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,24000,true);v.setUint32(28,48000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);v.setUint32(40,4,true);return new Blob([b],{type:'application/octet-stream'});};
  it('requests the processed preset and plays a valid server WAV',async()=>{setVoiceProfile('firbo-dark-v1');mocks.invoke.mockResolvedValue({data:darkWave(),error:null});const p=speak('org','Hello','en');await flush();expect(mocks.invoke.mock.calls[0][1].body).toMatchObject({voice_profile:'firbo-dark-v1',audio_format:'wav'});const el=AudioMock.instances[0];expect(el).toBeDefined();el.start();el.end();expect((await p).status).toBe('completed');});
  it('does not disguise browser synthesis as Firbo Dark on a server error',async()=>{setVoiceProfile('firbo-dark-v1');mocks.invoke.mockResolvedValue({data:null,error:new Error('down')});const p=speak('org','Hello','en');await flush();expect((await p).status).toBe('failed');expect(synth.speak).not.toHaveBeenCalled();});
+ it('falls back to labeled browser speech on server 502, without claiming Dark synthesis',async()=>{setVoiceProfile('firbo-dark-v1');mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{}',{status:502}))});const p=speak('org','Hello','en');await flush();expect(synth.speak).toHaveBeenCalledTimes(1);utterance!.onstart?.();utterance!.onend?.();expect(await p).toMatchObject({status:'completed',source:'browser'});});
  it('rejects an old MP3 response instead of calling it the processed Dark voice',async()=>{setVoiceProfile('firbo-dark-v1');mocks.invoke.mockResolvedValue({data:blob(),error:null});const p=speak('org','Hello','en');await flush();expect((await p).status).toBe('failed');expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();});
  it('can Stop a pending Dark response without late playback',async()=>{setVoiceProfile('firbo-dark-v1');let resolve:(v:unknown)=>void=()=>{};mocks.invoke.mockImplementation(()=>new Promise(r=>{resolve=r;}));const p=speak('org','Hello','en');await flush();stopSpeaking();expect((await p).status).toBe('cancelled');resolve({data:darkWave(),error:null});await flush();expect(AudioMock.instances).toHaveLength(0);});
 });

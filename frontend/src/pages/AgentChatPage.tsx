@@ -19,7 +19,7 @@ import { voiceMessages } from '../lib/company/voiceMessages';
 import { isUnlockContinuation, resolveUnlockContinuation } from '../lib/company/computer-continuation';
 import { journalCeoComputerJob } from '../lib/company/ceo-device-journal';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
-import { dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProposal } from '../lib/company/laptop-bridge';
+import { computerProgressLabel, dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 
 /** Continuous chat with any AI employee, with saved history. */
@@ -46,13 +46,23 @@ export function AgentChatPage() {
       return false;
     }
   });
+  // A CEO is voice-first in both entrypoints; ordinary employees stay text-first.
+  // Persist CEO preference separately, honor a prior explicit shared voice choice.
+  const [ceoSpeakOn, setCeoSpeakOn] = useState(() => {
+    try {
+      const preferred = localStorage.getItem('firbo.ceo.speak');
+      if (preferred === '0' || preferred === '1') return preferred === '1';
+      return localStorage.getItem('firbo.chat.speak') !== '0';
+    } catch { return true; }
+  });
   const stopListen = useRef<() => void>(() => {});
   const pendingComputer = useRef<DirectComputerProposal | null>(null);
   const computerRun = useRef<AbortController | null>(null);
   const [computerRunning, setComputerRunning] = useState(false);
+  const [computerProgress, setComputerProgress] = useState<DirectComputerProgress|null>(null);
   const canTalk = typeof MediaRecorder !== 'undefined' && !!navigator.mediaDevices?.getUserMedia;
   const voiceTurn = useRef<VoiceTurn | null>(null);
-  const speakOnRef = useRef(speakOn); speakOnRef.current = speakOn;
+  const speakOnRef = useRef(speakOn);
   const end = useRef<HTMLDivElement>(null);
   const activeId = params.get('c');
   const copy = useWorkspaceCopy();
@@ -62,7 +72,7 @@ export function AgentChatPage() {
   const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
   useEffect(() => {
     pendingComputer.current = null;
-    computerRun.current?.abort(); computerRun.current = null; setComputerRunning(false);
+    computerRun.current?.abort(); computerRun.current = null; setComputerRunning(false); setComputerProgress(null);
     setListening(false); setInterim(''); setSending(false);
     return () => { computerRun.current?.abort(); stopListen.current(); voiceTurn.current?.cancel(); };
   }, [voiceScope]);
@@ -71,6 +81,8 @@ export function AgentChatPage() {
   const nameOf = (a: AgentRow | null) => (a ? agentLabel(a, i18n).name : t('unassigned'));
   const activeAgent = agentOf(active?.agent_id ?? null);
   const activeIsCeo = !!activeAgent && (activeAgent.type === 'ceo' || activeAgent.slug.startsWith('ceo'));
+  const effectiveSpeakOn = activeIsCeo ? ceoSpeakOn : speakOn;
+  speakOnRef.current = effectiveSpeakOn;
 
   // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
   const [listLoaded, setListLoaded] = useState(false);
@@ -162,11 +174,22 @@ export function AgentChatPage() {
     const msg = (override ?? text).trim();
     if (!msg || !active || sending || !canWrite) return;
     const scopeAtSend = voiceScope;
+    setComputerProgress(null);
     unlockAudio();
     setSending(true);
     setText('');
     const temp: ChatMessage = { id: `tmp-${Date.now()}`, role: 'user', content: msg, created_at: new Date().toISOString() };
     setMessages((m) => [...m, temp]);
+    // The same user-selected voice must deliver BOTH ordinary chat responses
+    // and verified direct computer outcomes. Neither path replays a device job.
+    const speakReply = (content: string) => {
+      if (voiceScopeRef.current !== scopeAtSend || !speakOnRef.current || !content.trim()) return;
+      const turn = beginVoiceTurn(); voiceTurn.current = turn;
+      void speak(orgId, content, lang, { turn }).then(result => {
+        if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend)
+          toast.error(voiceMessages(lang).playback);
+      });
+    };
     try {
       if (activeIsCeo) {
         const unlockNotice=isUnlockContinuation(msg);
@@ -187,6 +210,7 @@ export function AgentChatPage() {
           const directMessage = (content: string) => {
             const assistant: ChatMessage = { id: `direct-${crypto.randomUUID()}`, role: 'assistant', content, created_at: new Date().toISOString() };
             setMessages((m) => [...m.filter((x) => x.id !== temp.id), temp, assistant]);
+            speakReply(content);
           };
           const directResult=async(remote:{reply:string;status?:string;job_id?:string},signal?:AbortSignal)=>{
             let narrative=remote.reply;
@@ -226,15 +250,15 @@ export function AgentChatPage() {
             try {
               readiness = await prepareDirectComputerCommand(orgId, proposal ?? 'browser_task', lang, controller.signal);
             } finally {
-              if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
+              if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); setComputerProgress(null); }
             }
             if (voiceScopeRef.current !== scopeAtSend || controller.signal.aborted) return;
             if(readiness.ready&&readiness.ownerFullControl===true&&proposal){
               pendingComputer.current=null;computerRun.current=controller;setComputerRunning(true);
               try{
-                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,controller.signal);
+                const remote=await dispatchDirectComputerCommand(orgId,{...proposal,deviceId:readiness.deviceId,requestId:readiness.requestId,ownerFullControlRequired:true},lang,controller.signal,{onProgress:p=>{if(voiceScopeRef.current===scopeAtSend&&!controller.signal.aborted)setComputerProgress(p)}});
                 await directResult(remote,controller.signal);
-              }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
+              }finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);setComputerProgress(null);}}
               return;
             }
             pendingComputer.current = readiness.ready && proposal ? { ...proposal, deviceId: readiness.deviceId, requestId: readiness.requestId } : null;
@@ -249,25 +273,20 @@ export function AgentChatPage() {
           computerRun.current = controller; setComputerRunning(true);
           let remote;
           try {
-            remote = await dispatchDirectComputerCommand(orgId, chosen, lang, controller.signal);
+            remote = await dispatchDirectComputerCommand(orgId, chosen, lang, controller.signal,{onProgress:p=>{if(voiceScopeRef.current===scopeAtSend&&!controller.signal.aborted)setComputerProgress(p)}});
           } finally {
-            if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); }
+            if (computerRun.current === controller) { computerRun.current = null; setComputerRunning(false); setComputerProgress(null); }
           }
           if (voiceScopeRef.current !== scopeAtSend) return;
           await directResult(remote,controller.signal);
           return;
         }
       }
-      const out = await sendChat(active.id, msg, lang, speakOn);
+      const out = await sendChat(active.id, msg, lang, effectiveSpeakOn);
       if (voiceScopeRef.current !== scopeAtSend) return;
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
-      if (speakOnRef.current) {
-        const turn = beginVoiceTurn(); voiceTurn.current = turn;
-        void speak(orgId, parseHandoff(out.message.content).text, lang, { turn }).then(result => {
-          if (result.status === 'failed' && voiceScopeRef.current === scopeAtSend) toast.error(voiceMessages(lang).playback);
-        });
-      }
+      speakReply(parseHandoff(out.message.content).text);
     } catch (err) {
       if (voiceScopeRef.current !== scopeAtSend) return;
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -283,11 +302,13 @@ export function AgentChatPage() {
   };
 
   const toggleSpeak = () => {
-    const next = !speakOn;
-    speakOnRef.current = next; setSpeakOn(next);
+    const next = !effectiveSpeakOn;
+    speakOnRef.current = next;
+    if (activeIsCeo) setCeoSpeakOn(next);
+    else setSpeakOn(next);
     if (!next) voiceTurn.current?.cancel();
     try {
-      localStorage.setItem('firbo.chat.speak', next ? '1' : '0');
+      localStorage.setItem(activeIsCeo ? 'firbo.ceo.speak' : 'firbo.chat.speak', next ? '1' : '0');
     } catch {
       /* the choice just is not remembered */
     }
@@ -427,6 +448,12 @@ export function AgentChatPage() {
                 </div>
                 );
               })}
+              {computerRunning && computerProgress && (
+                <div role="status" aria-live="polite" data-ceo-job-progress="true"
+                  className="fb-dim rounded-lg border px-3 py-2 text-xs" style={{borderColor:'var(--fb-border)'}}>
+                  {computerProgressLabel(computerProgress,lang)}
+                </div>
+              )}
               {sending && (
                 <div className="fb-dim flex items-center gap-2 text-sm" aria-live="polite">
                   <Wave color="var(--fb-accent)" /> {t('chat.thinking', { agent: nameOf(activeAgent) })}
@@ -446,8 +473,8 @@ export function AgentChatPage() {
                 placeholder={interim || t('chat.placeholder', { agent: nameOf(activeAgent) })}
                 aria-label={t('chat.placeholder', { agent: nameOf(activeAgent) })}
               />
-              <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={speakOn} aria-label={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(speakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
-                {speakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
+              <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-pressed={effectiveSpeakOn} aria-label={t(effectiveSpeakOn ? 'voice.speakOff' : 'voice.speakOn')} title={t(effectiveSpeakOn ? 'voice.speakOff' : 'voice.speakOn')} onClick={toggleSpeak}>
+                {effectiveSpeakOn ? <Volume2 size={16} /> : <VolumeX size={16} />}
               </button>
               {computerRunning && <button type="button" className="fb-btn fb-btn--ghost" style={{ height: 44 }} aria-label={t('ceo.stop')} onClick={() => computerRun.current?.abort()}><Square size={16} /> {t('ceo.stop')}</button>}
               {canTalk ? (

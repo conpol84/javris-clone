@@ -1,5 +1,5 @@
 import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { CeoActions } from '../components/company/CeoActions';
 import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
@@ -12,6 +12,7 @@ import { agentColor, deriveAgentStates } from '../lib/company/status';
 import { useOrgData } from '../lib/company/useOrgData';
 import { agentLabel } from '../lib/company/labels';
 import { useCeoSession } from '../lib/company/useCeoSession';
+import { computerProgressLabel } from '../lib/company/laptop-bridge';
 import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
 import '../styles/voice-experience.css';
@@ -42,8 +43,17 @@ export function CeoPage() {
   const canWrite = WRITER_ROLES.includes(role);
   const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
-    sessions, activeSessionId, historyLoading, historyError, openSession, newSession, retryHistory } = session;
+    sessions, activeSessionId, historyLoading, historyError, computerProgress, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
+  const transcriptRef = useRef<HTMLUListElement>(null);
+  const followLatestRef = useRef(true);
+  useEffect(() => { followLatestRef.current = true; }, [activeSessionId]);
+  // Follow new replies without pulling the user away while reading older messages.
+  useEffect(() => {
+    if (!followLatestRef.current) return;
+    const transcript = transcriptRef.current;
+    if (transcript) transcript.scrollTop = transcript.scrollHeight;
+  }, [lines.length, activeSessionId]);
   const org = useOrgData(orgId, false, 12_000);
   const states = useMemo(() => deriveAgentStates(org.agents, org.tasks, org.approvals), [org.agents, org.tasks, org.approvals]);
   const satellites: Satellite[] = useMemo(
@@ -58,6 +68,8 @@ export function CeoPage() {
     const m = text.trim();
     if (!m || state === 'thinking') return;
     setText('');
+    const field = e.currentTarget.querySelector('textarea');
+    if (field) field.style.height = '';
     void ask(m);
   };
 
@@ -65,7 +77,7 @@ export function CeoPage() {
   const name = ceo ? agentLabel(ceo, i18n).name : t('ceo.title');
 
   return (
-    <div data-firbo-voice="ceo" className="fb-root fb-col gap-4 p-4 pt-14 lg:p-6" style={{ minHeight: "100%" }}>
+    <div data-firbo-voice="ceo" className="fb-root fb-col min-w-0 gap-3 px-3 pb-4 pt-14 sm:p-4 sm:pt-14 lg:p-6" style={{ minHeight: "100%" }}>
       <header>
         <div className="fb-eyebrow">{t('ceo.eyebrow')}</div>
         <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
@@ -76,8 +88,8 @@ export function CeoPage() {
       {!ceo ? (
         <div className="fb-glass p-6 text-sm">{t('ceo.none')}</div>
       ) : (
-        <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-          <section className="fb-glass fb-voice-stage relative overflow-hidden">
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:gap-4">
+          <section className="fb-glass fb-voice-stage relative order-2 min-h-[210px] overflow-hidden lg:order-1">
             <div className="absolute inset-0 fb-scan opacity-40" aria-hidden />
             <div className="absolute inset-0">
               <CeoStage state={state} satellites={satellites} labels={{ noWebgl: t('office.noWebgl') }} />
@@ -113,10 +125,17 @@ export function CeoPage() {
             </div>
           </section>
 
-          <section className="fb-glass fb-col gap-3 p-4">
+          <section data-ceo-chatpanel="true" className="fb-glass fb-col order-1 min-w-0 gap-3 p-3 sm:p-4 lg:order-2">
             <CeoSessionHistory key={`${orgId}:${user?.id}`} canCreate={canWrite} lang={lang} sessions={sessions} activeId={activeSessionId}
               loading={historyLoading} error={historyError} disabled={state!=='idle'||historyError}
               onSelect={id=>void openSession(id)} onNew={newSession} onRetry={retryHistory}/>
+            {computerProgress && (
+              <div role="status" aria-live="polite" data-ceo-job-progress="true"
+                className="fb-dim rounded-xl border px-3 py-2 text-xs"
+                style={{borderColor:'var(--fb-border)'}}>
+                {computerProgressLabel(computerProgress,lang)}
+              </div>
+            )}
             <div className="flex flex-wrap gap-2">
               {(canTalk || state !== 'idle') &&
                 (state === 'listening' ? (
@@ -168,18 +187,22 @@ export function CeoPage() {
                 <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap" style={{ fontFamily: 'JetBrains Mono, monospace' }}>{voiceLog.join('\n')}</pre>
               </details>
             )}
-            <ul className="fb-col flex-1 gap-2 overflow-y-auto" style={{ maxHeight: 320 }} aria-live="polite">
+            <ul ref={transcriptRef} onScroll={e => { const el = e.currentTarget; followLatestRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 64; }} className="fb-col min-h-[220px] min-w-0 flex-1 gap-2 overflow-x-hidden overflow-y-auto" style={{ maxHeight: 480 }} aria-live="polite" aria-label="CEO conversation" data-ceo-transcript="true">
               {lines.length === 0 && <li className="fb-dim text-sm">{t('ceo.empty')}</li>}
               {lines.map((l, i) => (
-                <li key={i} className="fb-row p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
+                <li key={i} className="fb-row min-w-0 break-words [overflow-wrap:anywhere] p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                   <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : name}</div>
                   {l.text}
                   <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app} />
                 </li>
               ))}
             </ul>
-            <form onSubmit={submit} className="flex gap-2">
-              <input className="fb-input flex-1" value={text} maxLength={500} disabled={!canWrite} onChange={(e) => setText(e.target.value)} placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
+            <form data-ceo-composer="true" onSubmit={submit} className="flex min-w-0 items-end gap-2">
+              <textarea className="fb-input min-w-0 flex-1 resize-none leading-relaxed" rows={2} value={text} maxLength={4000} disabled={!canWrite}
+                onChange={(e) => setText(e.target.value)}
+                onInput={(e) => { const el = e.currentTarget; el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 136) + 'px'; }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }}
+                placeholder={t('ceo.placeholder')} aria-label={t('ceo.placeholder')} />
               <button className="fb-btn fb-btn--primary" type="submit" disabled={!canWrite || !text.trim() || state === 'thinking'} aria-label={t('ceo.send')}>
                 <Send size={15} />
               </button>

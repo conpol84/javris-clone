@@ -172,8 +172,16 @@ export async function speak(orgId: string, text: string, lang: string, options: 
     } catch (error) {
       if (!turn.current()) return { status:'cancelled', source, truncated };
       const status = error instanceof FunctionsHttpError ? error.context.status : 0;
-      // Do not bypass authentication/budget/rate limits or repeat a partially spoken reply.
-      if (dark || options.allowBrowserFallback === false || [401,402,403,429].includes(status) || (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
+      // Paid cloud TTS is still denied on HTTP 429; DO NOT retry or charge it.
+      // Device/browser speech is an explicit, locally executed zero-API-cost
+      // capability. Its provenance is exposed as 'browser' (never Firbo Dark).
+      // Authentication/plan denials remain hard failures, and no partly-spoken
+      // answer may be repeated by another engine.
+      const serverUnavailable = status >= 500 && status <= 599;
+      const localOnlyRecovery = serverUnavailable || status === 429;
+      if ((dark && !localOnlyRecovery) || options.allowBrowserFallback === false ||
+          [401,402,403].includes(status) ||
+          (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
       source = 'browser'; turn.phase('preparing', 'browser'); await browserSpeech(clean, lang, turn);
     }
     if (!turn.current()) return { status:'cancelled', source, truncated };

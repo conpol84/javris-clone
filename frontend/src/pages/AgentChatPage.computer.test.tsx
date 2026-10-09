@@ -32,9 +32,10 @@ function elements(node: ReactNode): Element[] {
   const element = node as Element;
   return [element, ...elements(element.props.children)];
 }
-function page(text = 'yes', running = false) {
+function page(text = 'yes', running = false, progress: {jobId:string;deviceName:string;stage:'queued'|'running'|'status_unavailable';elapsedSeconds:number}|null = null) {
   fixture.index = 0; fixture.refIndex = 0; fixture.effects = [];
-  fixture.states = [[{ id: 'ceo', slug: 'ceo', type: 'ceo', name: 'CEO' }], [{ id: 'chat', agent_id: 'ceo' }], [], text, false, false, false, '', false, running, true];
+  // Explicitly muted synthetic CEO; independent state indexes track actual running jobs.
+  fixture.states = [[{ id: 'ceo', slug: 'ceo', type: 'ceo', name: 'CEO' }], [{ id: 'chat', agent_id: 'ceo' }], [], text, false, false, false, '', false, false, running, progress, true];
   return AgentChatPage();
 }
 beforeEach(() => {
@@ -65,7 +66,7 @@ it('runs the same pending action for no, do it yourself without delegating', asy
   const proposal = { kind: 'open_app', params: { app: 'Microsoft Word' }, description: 'Open Word' };
   fixture.refs[1].current = proposal; dispatch.mockResolvedValue({ reply: 'confirmed' });
   await elements(page('no, do it yourself')).find(e => e.type === 'form')!.props.onSubmit?.({ preventDefault: vi.fn() });
-  expect(dispatch).toHaveBeenCalledOnce(); expect(dispatch).toHaveBeenCalledWith('org', proposal, 'en', expect.any(AbortSignal));
+  expect(dispatch).toHaveBeenCalledOnce(); expect(dispatch).toHaveBeenCalledWith('org', proposal, 'en', expect.any(AbortSignal), expect.objectContaining({onProgress:expect.any(Function)}));
   expect(fixture.refs[1].current).toBeNull();
 });
 it('never dispatches an explicit rejected app command', async () => {
@@ -124,7 +125,7 @@ it.each(['open browser','open Microsoft Word','Open YouTube and play Μαζων�
  expect(dispatch).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();const pending=fixture.refs[1].current;
  const update=fixture.setters[2].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].content).toContain('Do you approve?');
  await elements(page('approve')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
- expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',pending,'en',expect.any(AbortSignal));expect(pending).not.toHaveProperty('ownerFullControlRequired');expect(fixture.refs[1].current).toBeNull();
+ expect(prepare).toHaveBeenCalledOnce();expect(dispatch).toHaveBeenCalledExactlyOnceWith('org',pending,'en',expect.any(AbortSignal),expect.objectContaining({onProgress:expect.any(Function)}));expect(pending).not.toHaveProperty('ownerFullControlRequired');expect(fixture.refs[1].current).toBeNull();
 });
 
 it('keeps a missing central Full Control marker guarded even with native desktop capability',async()=>{
@@ -211,4 +212,26 @@ it('does not claim CEO session persistence when journal failed',async()=>{
  expect(journal).toHaveBeenCalledOnce();
  const update=fixture.setters[2].mock.calls.slice(-1)[0][0];
  expect(update([]).at(-1).content).toContain('could not record it');
+});
+
+it('renders the worker stage separately from thinking with no fabricated playback',()=>{
+ const tree=elements(page('unused',true,{jobId:'15992c52-e6c3-4623-8e71-21206d863175',
+  deviceName:'My shell',stage:'running',elapsedSeconds:9}));
+ const status=tree.find(e=>(e.props as Record<string,unknown>)['data-ceo-job-progress']==='true');
+ expect(status).toBeDefined();
+ expect(String(status!.props.children)).toContain('My shell');
+ expect(String(status!.props.children)).toContain('Waiting for verified results');
+ expect(String(status!.props.children)).not.toContain('playback confirmed');
+});
+it('relays actual worker queued/running transitions into CEO UI without dispatching twice',async()=>{
+ const progress={jobId:'j-confirmed',deviceName:'My shell',stage:'running' as const,elapsedSeconds:7};
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d7',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockImplementation(async(_org,_proposal,_lang,_signal,deps)=>{
+  deps.onProgress(progress);
+  return{reply:'Worker not yet verified',status:'queued',job_id:progress.jobId};
+ });
+ await elements(page('open browser')).find(e=>e.type==='form')!.props.onSubmit?.({preventDefault:vi.fn()});
+ expect(dispatch).toHaveBeenCalledOnce();
+ expect(fixture.setters[11]).toHaveBeenCalledWith(progress);
+ expect(sendChat).not.toHaveBeenCalled();
 });

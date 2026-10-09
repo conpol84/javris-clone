@@ -380,6 +380,27 @@ export async function runJob(job, cfg, { signal, commandTimeoutMs = 60_000, brow
 /** One bounded request; failed report delivery is NOT retried by rerunning work.
  * fetchImpl/timeoutMs are local test seams, never accepted from a remote job.
  */
+/** Only trusted, bounded machine-readable desktop errors cross the Connector boundary.
+ * Never reproduce raw provider messages, page text, server HTML, or tokens.
+ * The outer request AbortSignal/deadline still owns this read. */
+async function boundedDesktopErrorCode(res) {
+  if (!res.body || !res.headers.get('content-type')?.toLowerCase().includes('application/json')) return null;
+  const reader=res.body.getReader();
+  let size=0; const chunks=[];
+  try {
+    while (true) {
+      const item=await reader.read();
+      if (item.done) break;
+      size+=item.value.byteLength;
+      if (size>2048) return null;
+      chunks.push(Buffer.from(item.value));
+    }
+    const payload=JSON.parse(Buffer.concat(chunks).toString('utf8'));
+    const code=payload?.error;
+    return typeof code==='string' && /^desktop_[a-z_]{3,58}$/.test(code)?code:null;
+  } catch { return null; }
+  finally { await reader.cancel().catch(()=>{}); }
+}
 export async function connectorCall(action, body, { fetchImpl = fetch, timeoutMs, signal } = {}) {
   validateConnectorURL(API);
   if (signal?.aborted) throw new Error('connector_stopped');
@@ -401,8 +422,12 @@ export async function connectorCall(action, body, { fetchImpl = fetch, timeoutMs
       headers: { 'content-type': 'application/json', apikey: ANON }, body: payload,
     });
     if (!res.ok) {
+      // Desktop planner failures are typed and safe. An opaque 503 hides the
+      // diagnosis as "local_operation_failed" for every model/network error.
+      // Read at most 2KiB only for desktop_plan, never raw exception bodies.
+      const code=action==='desktop_plan'?await boundedDesktopErrorCode(res):null;
       void res.body?.cancel().catch(() => {});
-      throw Object.assign(new Error(`connector_http_${res.status}`), { status: res.status });
+      throw Object.assign(new Error(code??`connector_http_${res.status}`), { status: res.status });
     }
     if (!res.headers.get('content-type')?.toLowerCase().includes('application/json') || !res.body) {
       void res.body?.cancel().catch(() => {});

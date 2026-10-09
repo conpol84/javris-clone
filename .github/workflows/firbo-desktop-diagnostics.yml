@@ -1,0 +1,53 @@
+name: FIRBO Desktop worker error contract
+
+on:
+  pull_request:
+    paths:
+      - 'frontend/public/firbo-connector.mjs'
+      - 'frontend/public/firbo-desktop.mjs'
+      - 'supabase/functions/_shared/desktop-planner.ts'
+      - 'tests/firbo/desktop-control.test.mjs'
+      - 'tests/firbo/desktop-diagnostics.test.mjs'
+      - 'tools/debian/install-desktop.py'
+      - '.github/workflows/firbo-desktop-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firbo-desktop-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-diagnostics:
+    name: Safe desktop planner/connector diagnostics
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: Pin reviewed Debian Connector assets by exact SHA256
+        run: sha256sum frontend/public/firbo-connector.mjs frontend/public/firbo-browser.mjs frontend/public/firbo-desktop.mjs frontend/public/firbo-desktop.py
+      - name: Assert immutable Debian installer manifest matches reviewed source bytes
+        run: |
+          python3 - <<'PY'
+          import importlib.util
+          import hashlib
+          from pathlib import Path
+          file = Path('tools/debian/install-desktop.py')
+          spec = importlib.util.spec_from_file_location('firbo_desktop_install', file)
+          module = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(module)
+          for name, expected in module.FILES.items():
+              actual = hashlib.sha256((Path('frontend/public')/name).read_bytes()).hexdigest()
+              if actual != expected:
+                  raise AssertionError(f'{name}: installer/source SHA256 mismatch')
+          print('Reviewed Debian Connector asset pinning verified')
+          PY
+      - name: Test exact desktop planner, no provider requests or device input
+        run: node --test tests/firbo/desktop-control.test.mjs tests/firbo/desktop-diagnostics.test.mjs

@@ -1,0 +1,55 @@
+name: FIRBO TTS provider recovery exact-source test
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/agent-speak/**'
+      - 'frontend/src/lib/company/laptop-bridge.ts'
+      - 'frontend/src/lib/company/laptop-bridge.test.ts'
+      - 'frontend/src/lib/company/voice.ts'
+      - 'frontend/src/lib/company/useCeoSession.ts'
+      - 'tests/firbo/voice/**'
+      - '.github/workflows/firbo-tts-provider-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tts-rate-and-auth:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+      - name: Assert provider throttling is recoverable but quota and auth remain enforced
+        run: node --test tests/firbo/voice/tts-provider-fallback.test.mjs
+
+  ceo-frontend:
+    name: CEO browser-command and voice full regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install npm pinned and lockfile dependencies
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run every frontend regression and TypeScript production build
+        run: |
+          npm test
+          npm run build

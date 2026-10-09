@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { History, MessageSquarePlus, Search } from 'lucide-react';
+import { ChevronDown, History, MessageSquarePlus, Search } from 'lucide-react';
 import type { CeoSessionPreview } from '../../lib/company/ceo-sessions';
 
 const labels:Record<string,{title:string;newChat:string;search:string;empty:string;showAll:string;showLess:string;active:string;loading:string;error:string}>={
@@ -23,6 +23,7 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
  const copy=labels[lang]??labels.en;
  const [query,setQuery]=useState('');
  const [expanded,setExpanded]=useState(false);
+ const [open,setOpen]=useState(()=>typeof window !== 'undefined' && !!window.matchMedia?.('(min-width: 1024px)').matches);
  const visible=useMemo(()=>{
   const needle=query.trim().normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
   const filtered=needle?sessions.filter(s=>[s.title,s.preview].join(' ').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase().includes(needle)):sessions;
@@ -30,11 +31,14 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
  },[sessions,query,expanded,compact]);
  return <section className="fb-glass fb-col gap-2 p-3" aria-label={copy.title} data-ceo-session-history="true">
    <div className="flex flex-wrap items-center justify-between gap-2">
-     <span className="text-sm font-semibold inline-flex items-center gap-2"><History size={15}/>{copy.title}</span>
+     <button type="button" onClick={()=>setOpen(v=>!v)} aria-expanded={open} aria-controls="firbo-ceo-history-list" className="inline-flex min-w-0 items-center gap-2 text-start text-sm font-semibold">
+       <History size={15} className="shrink-0"/><span className="truncate">{copy.title}</span><span className="fb-dim text-xs">({sessions.length})</span><ChevronDown size={15} className={`shrink-0 transition-transform ${open?'rotate-180':''}`}/>
+     </button>
      <button type="button" className="fb-btn fb-btn--ghost" disabled={disabled||loading||!canCreate} onClick={onNew} aria-label={copy.newChat}>
        <MessageSquarePlus size={14}/>{copy.newChat}
      </button>
    </div>
+   {open&&<div id="firbo-ceo-history-list" className="fb-col gap-2 min-w-0">
    {loading&&<span role="status" className="fb-dim text-xs">{copy.loading}</span>}
    {error&&<div role="alert" className="text-xs fb-muted">{copy.error} <button type="button" className="underline" onClick={onRetry}>{lang==='el'?'Ξανά':'Retry'}</button></div>}
    {!loading&&!error&&<>
@@ -61,5 +65,6 @@ export function CeoSessionHistory({lang,sessions,activeId,loading,error,disabled
        {expanded?copy.showLess:`${copy.showAll} (${sessions.length})`}
      </button>}
    </>}
+   </div>}
  </section>;
 }

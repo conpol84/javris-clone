@@ -31,6 +31,24 @@ function plannerRig(){
 }
 test('vision provider admission and settlement precede returning an action',async()=>{const r=plannerRig();let transports=0;const out=await planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,r.env,async(url,options)=>{transports++;assert.equal(r.calls.at(-1).name,'firbo_reserve_inference');const payload=JSON.parse(options.body);assert.equal(payload.messages[1].content[1].type,'image_url');assert.equal(JSON.parse(payload.messages[1].content[0].text).goal,job.params.goal);return Response.json({choices:[{message:{content:JSON.stringify({action:'done',summary:'Observed result'})}}],usage:{prompt_tokens:100,completion_tokens:20}})});assert.equal(transports,1);assert.equal(out.action.action,'done');assert.equal(r.calls.at(-1).name,'firbo_settle_inference');assert.equal(r.calls.at(-1).args.p_cost_usd,0.00014);});
 test('failed/ambiguous vision request is charged for reconciliation and never retried',async()=>{const r=plannerRig();let transports=0;await assert.rejects(planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,r.env,async()=>{transports++;throw Error('network loss')}));assert.equal(transports,1);assert.equal(r.calls.at(-1).name,'firbo_mark_inference_ambiguous');});
+test('vision provider 429 is not retried and carries a safe accounting reason',async()=>{
+ const r=plannerRig();let attempts=0;
+ await assert.rejects(planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,r.env,async()=>{
+  attempts++;return new Response('provider private message must not reach user',{status:429});
+ }), /desktop_model_rate_limited/);
+ assert.equal(attempts,1);
+ assert.equal(r.calls.at(-1).name,'firbo_mark_inference_ambiguous');
+ assert.equal(r.calls.at(-1).args.p_reason,'desktop_model_rate_limited');
+});
+test('vision provider timeout/error classification keeps uncertain billing fail-closed',async()=>{
+ for(const [status,code] of [[504,'desktop_model_timeout'],[503,'desktop_model_unavailable'],[401,'desktop_model_auth_failed']]){
+  const r=plannerRig();
+  await assert.rejects(planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,r.env,
+   async()=>new Response('do not surface this message',{status})),new RegExp(code));
+  assert.equal(r.calls.at(-1).name,'firbo_mark_inference_ambiguous');
+  assert.equal(r.calls.at(-1).args.p_reason,code);
+ }
+});
 test('missing vision config makes zero provider or accounting calls',async()=>{const r=plannerRig();let transports=0;await assert.rejects(planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,()=>undefined,async()=>{transports++;throw Error()}),/desktop_vision_not_configured/);assert.equal(transports,0);assert.equal(r.calls.length,0);});
 test('malformed model action is settled for actual usage without returning an executable plan',async()=>{const r=plannerRig();await assert.rejects(planDesktopStep(r.db,r.device,r.stored,r.body,new AbortController().signal,r.env,async()=>Response.json({choices:[{message:{content:'not JSON'}}],usage:{prompt_tokens:100,completion_tokens:20}})));assert.equal(r.calls.at(-1).name,'firbo_settle_inference');assert.equal(r.calls.some(x=>x.name==='firbo_mark_inference_ambiguous'),false);});
 test('Free/Pro cannot bypass advanced control through direct shell jobs',async()=>{for(const plan of ['free','pro']){const r=await owner();r.state.rows.organizations[0].plan=plan;const res=await r.invoke({action:'create_job',device_id:DEVICE,kind:'exec',confirm:true,params:{command:'xdotool click 1'}});assert.equal(res.status,403);assert.equal(r.state.rows.connector_jobs.length,0);}});
