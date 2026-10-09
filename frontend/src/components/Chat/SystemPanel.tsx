@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../lib/store';
 import { getBase } from '../../lib/api';
+import { LEADERBOARD_ENABLED } from '../../lib/supabase';
 
 interface EnergyData {
   total_energy_j?: number;
@@ -210,7 +211,8 @@ export function SystemPanel() {
 
         </section>
 
-        {/* Leaderboard / Share */}
+        {/* Leaderboard / Share (upstream feature; off unless a leaderboard backend is configured) */}
+        {LEADERBOARD_ENABLED && (
         <section>
           <h4
             className="text-[11px] font-medium uppercase tracking-wide mb-2"
@@ -269,6 +271,7 @@ export function SystemPanel() {
             View Leaderboard
           </a>
         </section>
+        )}
       </div>
     </div>
   );

@@ -1,0 +1,39 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": []
+  },
+  "files": [
+    "edge-typecheck.d.ts",
+    "../../supabase/functions/_shared/gateway-routing.ts",
+    "../../supabase/functions/agent-chat/index.ts",
+    "../../supabase/functions/mission-runner/index.ts",
+    "../../supabase/functions/agent-runner/index.ts",
+    "../../supabase/functions/server-jarvis/index.ts",
+    "../../supabase/functions/_shared/own-keys.ts",
+    "../../supabase/functions/_shared/task-briefing.ts",
+    "../../supabase/functions/_shared/model-json.ts",
+    "../../supabase/functions/provider-keys/index.ts",
+    "../../supabase/functions/_shared/agent-loop.ts",
+    "../../supabase/functions/_shared/free-search.ts",
+    "../../supabase/functions/_shared/agent-tools.ts",
+    "../../supabase/functions/_shared/runner-inference-accounting.ts",
+    "../../supabase/functions/_shared/company-pulse.ts",
+    "../../supabase/functions/knowledge/index.ts",
+    "../../supabase/functions/workflow-runner/index.ts",
+    "../../supabase/functions/channel-inbound/index.ts",
+    "../../supabase/functions/integrations/index.ts",
+    "../../supabase/functions/mcp/index.ts"
+  ]
+}

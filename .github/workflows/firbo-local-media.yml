@@ -1,0 +1,38 @@
+name: FIRBO local media
+on:
+  pull_request:
+    branches: [claude/gifted-dijkstra-rph5j8]
+    paths:
+      - frontend/public/firbo-media.mjs
+      - tests/firbo/local-media-capture.test.mjs
+      - tests/firbo/local-media-browser.mjs
+      - .github/workflows/firbo-local-media.yml
+      - docs/FIRBO-LOCAL-MEDIA-20261008.md
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  local-capture:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - run: node --test tests/firbo/local-media-capture.test.mjs
+  chromium-page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - run: npm ci --prefix tools/firbo-browser-runtime --no-audit --no-fund
+      - run: tools/firbo-browser-runtime/node_modules/.bin/playwright install --with-deps chromium
+      - run: node --test tests/firbo/local-media-browser.mjs

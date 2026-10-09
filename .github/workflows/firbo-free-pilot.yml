@@ -1,0 +1,45 @@
+name: Firbo no-paid text inference pilot
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['src/openjarvis/server/free_inference.py','src/openjarvis/server/firbo_free_app.py','supabase/functions/**','deploy/hostinger/*ollama*','deploy/hostinger/local_model_capacity.py','tests/firbo/**','.github/workflows/firbo-free-pilot.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['src/openjarvis/server/**','supabase/functions/**','deploy/hostinger/**','tests/firbo/**','.github/workflows/firbo-free-pilot.yml']
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Native auth, real SQLite and bounded fallback without live providers
+        run: |
+          python3 -m venv /tmp/firbo-free-python
+          /tmp/firbo-free-python/bin/pip install -r tests/firbo/requirements.txt
+          mkdir -p /tmp/firbo-free-evidence
+          set -o pipefail
+          /tmp/firbo-free-python/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py tests/firbo/test_local_capacity.py | tee /tmp/firbo-free-evidence/python.txt
+      - name: Actual Edge entrypoints and shared routing with synthetic transport
+        run: |
+          set -o pipefail
+          node --experimental-strip-types --test tests/firbo/gateway-routing.test.mjs tests/firbo/edge-entrypoints.test.mjs tests/firbo/free-routing.test.mjs | tee /tmp/firbo-free-evidence/node.txt
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+        working-directory: frontend
+      - name: Strict Edge types and existing frontend regression
+        working-directory: frontend
+        run: |
+          npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+          npm test
+          npm run build:tauri
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-free-pilot-evidence
+          path: /tmp/firbo-free-evidence/
+          retention-days: 7

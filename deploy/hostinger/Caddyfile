@@ -1,0 +1,22 @@
+# Automatic HTTPS (Let's Encrypt). Both names must have an A record pointing at this server first.
+{$API_DOMAIN} {
+	encode zstd gzip
+	# The OpenJarvis server agent (systemd on the host, port 8765; ufw admits only Docker networks). Its own key guards /v1.
+	# Customer sandbox instance (port 8766): only throw-away Docker code runs, no shared memory or files.
+	handle_path /jarvis-box/* {
+		reverse_proxy 172.17.0.1:8766
+	}
+	handle_path /jarvis/* {
+		reverse_proxy 172.17.0.1:8765
+	}
+	reverse_proxy firbo-api:8000
+}
+
+{$GATEWAY_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy omniroute:20128 {
+		# Let the Firbo site (and only it) show the gateway console inside its Admin page.
+		header_down -X-Frame-Options
+		header_down Content-Security-Policy "frame-ancestors [^;]*" "frame-ancestors 'self' https://{$FRONTEND_DOMAIN:firboai.app}"
+	}
+}

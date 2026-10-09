@@ -1,0 +1,8 @@
+# Optional overlay for the REVIEWED unified control-plane rollout.
+# Apply with the existing docker-compose.yml only after staging verification.
+# It creates no new service, public port, inference route, or scheduled job.
+services:
+  firbo-api:
+    environment:
+      FIRBO_CONTROL_WRITES_ENABLED: ${FIRBO_CONTROL_WRITES_ENABLED:-false}
+      FIRBO_CONTROL_AUDIT_DB: /home/openjarvis/firbo-control-audit.sqlite3

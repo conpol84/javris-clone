@@ -1,0 +1,134 @@
+name: Firbo multilingual Piper proof
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['.github/workflows/firbo-piper-proof.yml','src/openjarvis/server/firbo_piper_server.py','deploy/hostinger/local_voice_rollout.py']
+permissions:
+  contents: read
+jobs:
+  prove:
+    if: github.repository == 'conpol84/javris-clone'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with: {python-version: '3.12'}
+      - name: Install exact Piper release
+        run: |
+          python -m venv /tmp/piper
+          /tmp/piper/bin/pip install --upgrade pip
+          /tmp/piper/bin/pip install 'piper-tts[http,zh]==1.8.0'
+          mkdir -p /tmp/firbo-piper-evidence/voices /tmp/firbo-piper-evidence/wav
+          /tmp/piper/bin/pip freeze > /tmp/firbo-piper-evidence/pip-freeze.txt
+      - name: Build the exact VPS Piper image
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/firbo-piper-image
+          cp src/openjarvis/server/firbo_piper_server.py /tmp/firbo-piper-image/
+          cat > /tmp/firbo-piper-image/Dockerfile <<'EOF'
+          FROM python:3.12.14-slim-bookworm@sha256:1aaa65a85fda306ffb8b910824d4e93bdce61e212c7e87168123ea3073b41a1a
+          RUN pip install --no-cache-dir "piper-tts[zh]==1.8.0" \
+           && python -c "import importlib.metadata as m; assert m.version('piper-tts')=='1.8.0'; assert m.version('g2pW')=='0.1.1'" \
+           && mkdir -p /opt/firbo-resources/g2pW \
+           && python -c "from piper.phonemize_chinese import download_model; download_model('/opt/firbo-resources/g2pW')" \
+           && test -s /opt/firbo-resources/g2pW/g2pw.onnx \
+           && chmod -R a=rX /opt/firbo-resources
+          RUN install -d -m 0755 /opt/firbo-voice
+          COPY --chmod=0444 firbo_piper_server.py /opt/firbo-voice/server.py
+          ENV HOME=/tmp FIRBO_PIPER_DATA=/voices FIRBO_PIPER_RESOURCES=/opt/firbo-resources
+          USER 10001:10001
+          ENTRYPOINT ["python","/opt/firbo-voice/server.py"]
+          EOF
+          docker build --progress=plain --pull=false -t firbo-piper-proof:exact /tmp/firbo-piper-image
+          docker run --rm --entrypoint python firbo-piper-proof:exact -c "import importlib.metadata,json;print(json.dumps({'piper':importlib.metadata.version('piper-tts'),'g2pw':importlib.metadata.version('g2pW')}))"
+          docker run --rm --user 10001:10001 --entrypoint python firbo-piper-proof:exact -c "open('/opt/firbo-voice/server.py','rb').read(16);print('FIRBO_ENTRYPOINT_READ_OK')"
+          mkdir -p /tmp/firbo-piper-docker-voices
+          sudo chown 10001:10001 /tmp/firbo-piper-docker-voices
+          docker run --rm --user 10001:10001 --mount type=bind,src=/tmp/firbo-piper-docker-voices,dst=/voices --entrypoint python firbo-piper-proof:exact -m piper.download_voices --data-dir /voices el_GR-rapunzelina-low zh_CN-chaowen-medium
+          docker run -d --name firbo-piper-exact --user 10001:10001 --read-only --tmpfs /tmp:rw,nosuid,nodev,size=128m,uid=10001,gid=10001 --mount type=bind,src=/tmp/firbo-piper-docker-voices,dst=/voices,readonly -p 127.0.0.1:15000:5000 firbo-piper-proof:exact
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:15000/health >/dev/null && break; sleep 1; done
+          python - <<'PY'
+          import json,urllib.request,wave,io
+          for voice,text in [('el_GR-rapunzelina-low','Γεια σου. Είμαι ο Firbo.'),('zh_CN-chaowen-medium','你好，我是 Firbo。')]:
+              req=urllib.request.Request('http://127.0.0.1:15000/synthesize',data=json.dumps({'text':text,'voice':voice,'length_scale':1.04},ensure_ascii=False).encode(),headers={'content-type':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as r:
+                  raw=r.read(6_000_001)
+                  assert r.headers.get_content_type()=='audio/wav'
+              assert raw[:4]==b'RIFF' and raw[8:12]==b'WAVE'
+              with wave.open(io.BytesIO(raw),'rb') as w:
+                  assert w.getnchannels()==1 and w.getsampwidth()==2 and w.getnframes()>0
+          print('FIRBO_EXACT_DOCKER_SYNTH_OK')
+          PY
+          docker rm -f firbo-piper-exact
+      - name: Download all reviewed server voices
+        run: |
+          set -euo pipefail
+          cd /tmp/firbo-piper-evidence/voices
+          /tmp/piper/bin/python -m piper.download_voices             en_US-joe-medium el_GR-rapunzelina-low es_ES-davefx-medium             pt_BR-cadu-medium fr_FR-gilles-low de_DE-thorsten-medium             zh_CN-chaowen-medium
+          sha256sum *.onnx *.onnx.json | sort > ../voice-sha256.txt
+      - name: Run actual speech for seven languages through one private HTTP server
+        run: |
+          set -euo pipefail
+          cd /tmp/firbo-piper-evidence/voices
+          FIRBO_PIPER_HOST=127.0.0.1 FIRBO_PIPER_PORT=5000 FIRBO_PIPER_DATA=/tmp/firbo-piper-evidence/voices /tmp/piper/bin/python "$GITHUB_WORKSPACE/src/openjarvis/server/firbo_piper_server.py" >/tmp/firbo-piper-evidence/piper.log 2>&1 &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true' EXIT
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:5000/health >/dev/null && break; sleep 1; done
+          /tmp/piper/bin/python - <<'PY'
+          import json,time,urllib.request,urllib.error,wave,pathlib,hashlib
+          cases={
+            'en':('en_US-joe-medium','Hello, I am Firbo.'),
+            'el':('el_GR-rapunzelina-low','Γεια σου. Είμαι ο Firbo.'),
+            'es':('es_ES-davefx-medium','Hola. Soy Firbo.'),
+            'pt-BR':('pt_BR-cadu-medium','Olá. Eu sou o Firbo.'),
+            'fr':('fr_FR-gilles-low','Bonjour. Je suis Firbo.'),
+            'de':('de_DE-thorsten-medium','Hallo. Ich bin Firbo.'),
+            'zh-CN':('zh_CN-chaowen-medium','你好，我是 Firbo。'),
+          }
+          out=pathlib.Path('/tmp/firbo-piper-evidence')
+          rows=[]
+          for lang,(voice,text) in cases.items():
+            payload=json.dumps({'text':text,'voice':voice,'length_scale':1.04},ensure_ascii=False).encode()
+            req=urllib.request.Request('http://127.0.0.1:5000/synthesize',data=payload,headers={'content-type':'application/json'})
+            start=time.monotonic()
+            try:
+              with urllib.request.urlopen(req,timeout=60) as r:
+                raw=r.read(6_000_001);ctype=r.headers.get('content-type')
+            except urllib.error.HTTPError as e:
+              body=e.read(4096).decode('utf-8','replace')
+              print(json.dumps({'failed_lang':lang,'voice':voice,'http':e.code,'body':body},ensure_ascii=False))
+              raise
+            p=out/'wav'/f'{lang}.wav';p.write_bytes(raw)
+            with wave.open(str(p),'rb') as w:
+              meta={'rate':w.getframerate(),'channels':w.getnchannels(),'width':w.getsampwidth(),'frames':w.getnframes()}
+            rows.append({'lang':lang,'voice':voice,'seconds':round(time.monotonic()-start,3),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest(),'content_type':ctype,**meta})
+            assert ctype.split(';')[0]=='audio/wav' and raw[:4]==b'RIFF' and raw[8:12]==b'WAVE' and meta['channels']==1 and meta['width']==2
+          (out/'results.json').write_text(json.dumps({'contract':'firbo-piper-proof/v1','rows':rows,'all_passed':True,'paid_api_calls':0},ensure_ascii=False,indent=2))
+          PY
+      - name: Show Piper log on prior failure
+        if: failure()
+        run: cat /tmp/firbo-piper-evidence/piper.log || true
+      - name: Test Firbo DSP and full current Python contracts
+        run: |
+          /tmp/piper/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/piper/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo             tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py             tests/firbo/test_local_tts.py
+      - name: Capture package and voice metadata
+        run: |
+          /tmp/piper/bin/python - <<'PY'
+          import importlib.metadata,json,pathlib,platform
+          out=pathlib.Path('/tmp/firbo-piper-evidence')
+          d=importlib.metadata.distribution('piper-tts')
+          (out/'package.json').write_text(json.dumps({'version':d.version,'license':d.metadata.get('License'),'python':platform.python_version()},indent=2))
+          PY
+      - name: Record exact source digests
+        run: |
+          sha256sum deploy/hostinger/local_voice_rollout.py | tee /tmp/firbo-piper-evidence/installer-sha256.txt
+          sha256sum src/openjarvis/server/firbo_piper_server.py | tee /tmp/firbo-piper-evidence/server-sha256.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-piper-proof
+          path: /tmp/firbo-piper-evidence/
+          retention-days: 7

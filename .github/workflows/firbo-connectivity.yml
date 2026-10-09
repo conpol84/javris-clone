@@ -1,0 +1,35 @@
+name: Firbo connectivity candidate
+on:
+  push:
+    branches: [codex/firbo-connectivity-hotfix, codex/firbo-unified-gateway]
+    paths: ['frontend/**', 'tests/firbo/gateway-proxy-config.test.mjs', '.github/workflows/firbo-connectivity.yml']
+  pull_request:
+    branches: [claude/omniroute-engine, main]
+    paths: ['frontend/**', 'tests/firbo/gateway-proxy-config.test.mjs', '.github/workflows/firbo-connectivity.yml']
+permissions:
+  contents: read
+concurrency:
+  group: firbo-connectivity-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - run: npm ci
+      - run: npm audit --audit-level=low
+      - run: npm audit --omit=dev --audit-level=low
+      - run: npm test
+      - run: node --test ../tests/firbo/gateway-proxy-config.test.mjs
+      - run: npx tsc -b
+      - run: npm run build:tauri

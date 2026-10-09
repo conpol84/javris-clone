@@ -1,0 +1,20 @@
+name: Firbo local voice rollout guards
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/local_voice_rollout.py','src/openjarvis/server/local_tts.py','src/openjarvis/server/firbo_piper_server.py','src/openjarvis/server/firbo_free_app.py','tests/firbo/test_local_voice_rollout.py','.github/workflows/firbo-local-voice-rollout.yml']
+  pull_request:
+    branches: [claude/omniroute-engine, claude/gifted-dijkstra-rph5j8]
+permissions: {contents: read}
+jobs:
+  guards:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - run: |
+          python3 -m venv /tmp/fv
+          /tmp/fv/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/fv/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_local_voice_rollout.py tests/firbo/test_local_tts.py
+          /tmp/fv/bin/python -m py_compile deploy/hostinger/local_voice_rollout.py src/openjarvis/server/firbo_piper_server.py src/openjarvis/server/local_tts.py

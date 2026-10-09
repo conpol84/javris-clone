@@ -1,0 +1,44 @@
+# Optional overlay for the existing Firbo Compose project. Start only this service.
+# Upstream source reviewed at a6b2158c7c36ce19f888d0411846a1a0f2aa3f06.
+services:
+  freellmapi:
+    image: ${FREELLMAPI_IMAGE:?Set an immutable ghcr.io image digest after review}
+    profiles: [freellmapi]
+    restart: unless-stopped
+    # Run directly as node: cap_drop ALL blocks the root entrypoint's setpriv.
+    user: "1000:1000"
+    env_file: .env.freellmapi
+    environment:
+      NODE_ENV: production
+      PORT: "3001"
+      FREEAPI_CONFIG_PATH: /run/freellmapi/bootstrap.json
+      FALLBACK_TIME_BUDGET_MS: "15000"
+      TTFB_BUDGET_DISABLED: "1"
+      MAX_CONSECUTIVE_UPSTREAM_FAILS: "2"
+      RESPONSE_CACHE: "false"
+      RESPONSE_CACHE_PERSIST: "false"
+      FREELLMAPI_COMPRESSION: "off"
+      FREEAPI_BLOCK_PRIVATE_PROVIDER_URLS: "true"
+      FREELLMAPI_UPDATE_CHECK: "off"
+      REQUEST_ANALYTICS_RETENTION_DAYS: "7"
+      REQUEST_ANALYTICS_MAX_ROWS: "10000"
+    ports: ["127.0.0.1:3001:3001"]
+    volumes:
+      - freellmapi-data:/app/server/data
+      - ./freellmapi-bootstrap.json:/run/freellmapi/bootstrap.json:ro
+    mem_limit: 512m
+    cpus: "0.50"
+    pids_limit: 128
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    logging:
+      driver: json-file
+      options: {max-size: "10m", max-file: "3"}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/ping').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+volumes:
+  freellmapi-data:

@@ -1,0 +1,65 @@
+name: Firbo free model catalogue
+on:
+  push:
+    branches: [codex/firbo-unified-gateway]
+    paths: ['deploy/hostinger/free_models*.py', 'tests/firbo/test_free_models*.py', '.github/workflows/firbo-free-models.yml']
+  pull_request:
+    branches: [claude/omniroute-engine]
+    paths: ['deploy/hostinger/free_models*.py', 'tests/firbo/test_free_models*.py', '.github/workflows/firbo-free-models.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-free-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify bounded discovery and guarded registration using mocks
+        run: python3 -m unittest discover -s tests/firbo -p 'test_free_models*.py' -v
+      - name: Verify exact pinned helper and guard together with mocked services
+        run: |
+          python3 - <<'PY'
+          import importlib.util, tempfile
+          from pathlib import Path
+          from unittest.mock import patch
+          spec=importlib.util.spec_from_file_location('guard_tests', 'tests/firbo/test_free_models_guarded.py')
+          t=importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(t)
+          f=t.g.load_helper()
+          assert f.GATEWAY == 'https://gateway.firboai.app'
+          with tempfile.TemporaryDirectory() as tmp:
+              fake=t.Helper(Path(tmp))
+              def transport(key,path,body=None):
+                  value=fake.gateway(key,path,body)
+                  if path=='/api/providers?limit=200':
+                      for row in value['connections']: row['isActive']=True
+                  return value
+              with patch.object(f,'discover',fake.discover), patch.object(f,'runtime',fake.runtime), patch.object(f,'gateway',transport), patch.object(f,'Journal',fake.Journal), patch.object(f,'JOURNAL_ROOT',fake.JOURNAL_ROOT):
+                  report,code=t.g.run(f,True,lambda *_:{'pools':[],'total':0})
+                  assert code==0, report.get('error')
+                  assert len(report['registered_models'])==1
+                  assert len(fake.posts)==1 and fake.posts[0]['apiFormat']=='chat-completions'
+                  assert report['inference_requests']==0
+                  report,code=t.g.run(f,True,lambda *_:{'pools':[],'total':0})
+                  assert code==0 and report['status']=='no_new_models_for_connected_providers'
+                  assert len(fake.posts)==1
+          print('PINNED_HELPER_GUARD_INTEGRATION_PASS: registration and safe repeat, mocked services only')
+          PY
+      - name: Record both reviewed script checksums
+        run: sha256sum deploy/hostinger/free_models.py deploy/hostinger/free_models_guarded.py
+  public-catalogue:
+    if: github.repository == 'conpol84/javris-clone'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Verify current official public sources; no keys, Docker or inference
+        run: python3 deploy/hostinger/free_models.py --public-only

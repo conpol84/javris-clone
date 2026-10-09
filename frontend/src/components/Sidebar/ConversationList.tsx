@@ -1,6 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router';
 import { useAppStore } from '../../lib/store';
+import { CHAT_PATH } from '../../lib/company/routes';
 
 interface Props {
   searchQuery: string;
@@ -64,7 +65,7 @@ export function ConversationList({ searchQuery }: Props) {
             <button
               onClick={() => {
                 selectConversation(conv.id);
-                navigate('/');
+                navigate(CHAT_PATH);
               }}
               className="flex-1 text-left px-3 py-2 min-w-0 cursor-pointer"
             >
