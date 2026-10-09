@@ -245,15 +245,23 @@ export async function dispatchDirectComputerCommand(orgId:string,proposal:Direct
    device=receipt.worker;approved.kind=receipt.job.kind;approved.params=actionJson(receipt.job.params);job={job_id:receipt.job_id!};
   }
   jobId=job.job_id;
+  // Expose the real correlated job identity and receipt provenance. A device
+  // summary alone is not proof; missing/invalid receipt fields remain explicit.
+  const terminalEvidence=(row:JobRow)=>{
+   const receipt=row.receipt;
+   const digest=typeof row.report_sha256==='string'&&/^[a-f0-9]{64}$/i.test(row.report_sha256)?row.report_sha256:null;
+   const validReceipt=receipt?.ok===true&&receipt.job_id===job.job_id&&receipt.device_id===device.id&&digest!==null&&receipt.report_sha256===digest;
+   return `\nJob ID: ${job.job_id}\nWorker: ${device.name} (${device.id})\nTerminal receipt: ${validReceipt?`matched SHA-256 ${digest}`:'not independently confirmed; inspect Computers'}`;
+  };
   const deadline=now()+(approved.kind==='desktop_task'?16*60_000:45_000);
   while(now()<deadline&&!signal?.aborted){
    const row=(await loadJobs(orgId,device.id)).find(x=>x.id===job.job_id);
    if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
    let verified=false;
    try{verified=!!row&&row.kind===approved.kind&&row.device_id===device.id&&!row.cancel_requested_at&&actionJson(row.params)===approved.params&&(['browser_task','desktop_task'].includes(approved.kind)?row.result?.completed===true:approved.kind==='browser_open'?row.result?.launched===true:row.result?.opened===true&&row.result?.app===approvedParams.app)}catch{/* Malformed evidence cannot confirm execution. */}
-   if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:`${device.name}: ${row.result.summary}`};
+   if(row?.status==='done'&&approved.kind==='desktop_task'&&row.kind===approved.kind&&row.device_id===device.id&&actionJson(row.params)===approved.params&&typeof row.result?.summary==='string')return {handled:true,status:verified?'done':'failed',job_id:job.job_id,reply:verified?`${device.name}: ${row.result.summary}${terminalEvidence(row)}`:`${device.name}: completion not verified; ${row.result.summary}${terminalEvidence(row)}`};
    if(row?.status==='done'&&!verified)return{handled:true,status:'failed',job_id:job.job_id,reply:greek?'Ο υπολογιστής επέστρεψε ελλιπή επιβεβαίωση. Δες την εργασία στους Υπολογιστές.':'The computer returned an incomplete confirmation. Check the job in Computers.'};
-   if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`};
+   if(row?.status==='done'&&verified)return{handled:true,status:'done',job_id:job.job_id,reply:(greek?`Έγινε στο ${device.name}: ${approved.description}.`:`Done on ${device.name}: ${approved.description}.`)+terminalEvidence(row)};
    if(row&&['error','cancelled'].includes(row.status))return{handled:true,status:'failed',job_id:job.job_id,reply:greek?`Το ${device.name} δεν ολοκλήρωσε την ενέργεια.`:`${device.name} did not complete the action.`};
    await sleep(650,signal);
   }
