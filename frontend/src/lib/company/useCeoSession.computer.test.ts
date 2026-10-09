@@ -87,3 +87,14 @@ it('passes the explicit Mac target through Talk readiness and the bound approval
  expect(prepare).toHaveBeenCalledWith('org',{kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'mac'},'el',expect.any(AbortSignal));
  expect(dispatch.mock.calls[0][1]).toMatchObject({target:'mac',deviceId:'mac',params:{app:'Google Chrome'}});expect(sendChat).not.toHaveBeenCalled();
 });
+
+it('passes positive Debian command with negative guardrails to dispatcher',async()=>{
+ const goal='Εκτέλεσε αποκλειστικά στον υπολογιστή My shell (Debian). Άνοιξε browser. Μην αλλάξεις σε Mac.';
+ prepare.mockResolvedValue({ready:true,deviceName:'My shell',deviceId:'d8',ownerFullControl:true,requestId:'11111111-1111-4111-8111-111111111111'});
+ dispatch.mockResolvedValue({reply:'Pending verification'});
+ const hook=session();await hook.ask(goal);
+ expect(prepare).toHaveBeenCalledOnce();
+ expect(dispatch).toHaveBeenCalledOnce();
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'d8'});
+ expect(sendChat).not.toHaveBeenCalled();
+});
