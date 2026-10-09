@@ -321,3 +321,27 @@ it('CEO terminal reply exposes actual worker, job id, observed heading and recei
  });
  expect(invalid.reply).toContain('not independently confirmed');
 });
+
+
+describe('real Greeklish CEO media request uses the controlled worker path',()=>{
+ const ownerPhrase="re to shell einai unlock pexe to tragoudi tou mazonaki ores mikres sto youtube browser";
+ it('keeps a Greeklish YouTube play request out of model-only delegation',()=>{
+  expect(isComputerControlRequest(ownerPhrase)).toBe(true);
+  expect(parseOwnerDecision(ownerPhrase)).toBeNull();
+  expect(parseDirectComputerCommand(ownerPhrase)).toMatchObject({
+   kind:'desktop_task',description:ownerPhrase,params:{goal:ownerPhrase}
+  });
+  // "shell" alone is not a globally authoritative machine name. VPS chooses
+  // only an eligible company worker or returns an ambiguity, never the Mac by guess.
+  expect(parseDirectComputerCommand(ownerPhrase)?.target).toBeUndefined();
+ });
+ it.each(['pexe','paixe','paikse','pekse'])('accepts direct YouTube Greeklish %s on owner command',verb=>{
+  const phrase=`on my shell ${verb} tragoudi tou mazonaki sto youtube`;
+  expect(isComputerControlRequest(phrase)).toBe(true);
+  expect(parseDirectComputerCommand(phrase)).toMatchObject({kind:'desktop_task',target:'my shell',params:{goal:phrase}});
+ });
+ it('preserves explicit cancellations and non-control research questions',()=>{
+  expect(parseOwnerDecision('μην παίξεις το τραγούδι στο YouTube')).toBe('reject');
+  expect(isComputerControlRequest('Research music streaming trends on YouTube')).toBe(false);
+ });
+});
