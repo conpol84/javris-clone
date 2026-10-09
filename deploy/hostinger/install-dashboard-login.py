@@ -26,7 +26,7 @@ DOMAIN = "jarvis.firboai.app"
 ORIGIN = "https://" + DOMAIN
 LIB_ROOT = pathlib.Path("/home/jarvis/.openjarvis/.venv/lib")
 BACKUP_ROOT = pathlib.Path("/var/backups")
-MODULE_HASH = "f4bd58ab0e2e2a62d11623def83066e9299bb33d22763f67f7d5d930697ea3e5"
+MODULE_HASH = "b4e107a7cdbb41e5bed35f214731eadcfeaf4e9ef2b276cd05bb9b88c9ec2e64"
 CONFIG = pathlib.Path("/home/jarvis/.openjarvis/dashboard-login.json")
 DROPIN = pathlib.Path(
     "/etc/systemd/system/openjarvis.service.d/90-firbo-dashboard-login.conf"

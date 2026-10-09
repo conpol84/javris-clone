@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.testclient import TestClient
+from starlette.websockets import WebSocketDisconnect
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location(
@@ -54,7 +55,12 @@ class HTTPTests(unittest.TestCase):
                 return
             await ws.accept()
             await ws.send_text("authenticated")
-            await ws.close()
+            try:
+                while True:
+                    await ws.receive_text()
+                    await ws.send_text("still_authenticated")
+            except WebSocketDisconnect:
+                return
 
         salt = b"b" * 32
         self.app.add_middleware(
@@ -87,6 +93,15 @@ class HTTPTests(unittest.TestCase):
                 headers={"Origin": login.ORIGIN},
             ) as ws:
                 self.assertEqual(ws.receive_text(), "authenticated")
+                self.assertEqual(
+                    client.post(
+                        login.LOGOUT, headers={"Origin": login.ORIGIN}
+                    ).status_code,
+                    303,
+                )
+                ws.send_text("must_not_run_after_logout")
+                with self.assertRaises(WebSocketDisconnect):
+                    ws.receive_text()
             self.assertEqual(
                 client.post(login.LOGOUT, headers={"Origin": login.ORIGIN}).status_code,
                 303,

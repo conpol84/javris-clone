@@ -249,7 +249,39 @@ class DashboardLoginMiddleware:
         # The key stays server-side. Client Authorization can never override it.
         forwarded = [(k, v) for k, v in pairs if k not in (b"authorization", b"cookie")]
         forwarded.append((b"authorization", b"Bearer " + self.api_key))
-        await self.app({**scope, "headers": forwarded}, receive, send)
+        closed = False
+
+        async def live_session():
+            nonlocal closed
+            valid = self.sessions.get(session, 0) > time.monotonic()
+            if not valid and not closed:
+                closed = True
+                await send({"type": "websocket.close", "code": 1008})
+            return valid and not closed
+
+        async def guarded_receive():
+            event = await receive()
+            if scope["type"] == "websocket" and not await live_session():
+                return {"type": "websocket.disconnect", "code": 1008}
+            return event
+
+        async def guarded_send(message):
+            if scope["type"] == "websocket":
+                if not await live_session():
+                    return
+            elif message["type"] == "http.response.start":
+                response_headers = [
+                    (k, v)
+                    for k, v in message.get("headers", [])
+                    if k.lower() != b"cache-control"
+                ]
+                message = {
+                    **message,
+                    "headers": response_headers + [(b"cache-control", b"no-store")],
+                }
+            await send(message)
+
+        await self.app({**scope, "headers": forwarded}, guarded_receive, guarded_send)
 
 
 def install_dashboard_login(app):

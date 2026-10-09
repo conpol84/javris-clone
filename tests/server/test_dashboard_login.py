@@ -101,6 +101,7 @@ class LoginTests(unittest.IsolatedAsyncioTestCase):
             headers=[(b"cookie", cookie), (b"authorization", b"Basic stale")],
         )
         self.assertEqual(result[0]["status"], 200)
+        self.assertEqual(dict(result[0]["headers"])[b"cache-control"], b"no-store")
         headers = dict(self.seen[-1]["headers"])
         self.assertEqual(headers[b"authorization"], b"Bearer server-only-api-key")
         self.assertNotIn(b"cookie", headers)
