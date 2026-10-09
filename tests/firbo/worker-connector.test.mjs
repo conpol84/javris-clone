@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {makeHandler,ORG,DEVICE} from './helpers/connector-handler.mjs';
+import {makeHandler,ORG,DEVICE,TOKEN} from './helpers/connector-handler.mjs';
 const ID='44444444-4444-4444-8444-444444444444';
 async function owner(){const r=await makeHandler();r.state.user={id:'owner'};r.state.rows.organization_members.push({organization_id:ORG,user_id:'owner',role:'owner'});Object.assign(r.state.rows.connector_devices[0],{platform:'linux x64',last_seen_at:new Date().toISOString(),agent_policy:{enabled:true,control:'full'},capabilities:{full_control:true,job_kinds:['desktop_task','exec']}});return r;}
 const body={action:'create_job',request_id:ID,device_id:DEVICE,kind:'exec',params:{command:'pwd',cwd:''},confirm:true};
@@ -18,4 +18,13 @@ test('native Inbox approval cannot change VPS selected device or stored goal',as
 });
 test('native approval reaches the transactional RPC with exact stored goal and worker',async()=>{const r=await owner();const payload={goal:'Find the requested page',device_id:DEVICE};r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',payload}];
  const res=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,payload});assert.equal(res.status,409);assert.equal(r.state.decisions[0].p_kind,'desktop_task');assert.deepEqual(r.state.decisions[0].p_params,{goal:payload.goal});assert.equal(r.state.decisions[0].p_device,DEVICE);
+});
+test('actual native control reads agent provenance and stops when current computer power is revoked',async()=>{
+ const r=await owner(),agent='55555555-5555-4555-8555-555555555555',task='66666666-6666-4666-8666-666666666666',claim='77777777-7777-4777-8777-777777777777';
+ r.state.rows.connector_jobs=[{id:ID,organization_id:ORG,device_id:DEVICE,created_by:'owner',kind:'desktop_task',status:'running',origin:'agent',agent_task_id:task,agent_id:agent,agent_run_claim:claim,cancel_requested_at:null}];
+ r.state.rows.agents=[{id:agent,organization_id:ORG,enabled:true,autonomy:'auto'}];r.state.rows.agent_tools=[{organization_id:ORG,agent_id:agent,tool_name:'computer_use',enabled:true,policy:'allow'}];
+ r.state.rows.tasks=[{id:task,organization_id:ORG,status:'running',run_claim:claim,assigned_agent_id:agent,result:{}}];
+ const first=await r.invoke({action:'control',token:TOKEN,job_id:ID});assert.equal((await first.json()).stop,false);
+ const projection=r.state.reads.find(x=>x.table==='connector_jobs').select.split(',');for(const field of ['origin','agent_task_id','agent_id','agent_run_claim'])assert.ok(projection.includes(field));
+ r.state.rows.agent_tools[0].enabled=false;const second=await r.invoke({action:'control',token:TOKEN,job_id:ID});assert.equal((await second.json()).stop,true);
 });

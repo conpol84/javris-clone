@@ -17,7 +17,11 @@ globalThis.__connectorTestClient=()=>({auth:{getUser:async()=>({data:{user:optio
   throw Error('Unexpected fixture query');
  }};return q;
 }});
-const source=(await readFile(new URL('../../supabase/functions/connector/index.ts',import.meta.url),'utf8')).replace("import { createClient } from 'npm:@supabase/supabase-js@2';",'const createClient = (...args: any[]) => (globalThis as any).__connectorTestClient(...args);').replace("from '../_shared/desktop-planner.ts'",`from '${new URL('../../supabase/functions/_shared/desktop-planner.ts',import.meta.url).href}'`).replace("from '../_shared/computer-policy.ts'",`from '${new URL('../../supabase/functions/_shared/computer-policy.ts',import.meta.url).href}'`);
+const source=(await readFile(new URL('../../supabase/functions/connector/index.ts',import.meta.url),'utf8'))
+ .replace("import { createClient } from 'npm:@supabase/supabase-js@2';",'const createClient = (...args: any[]) => (globalThis as any).__connectorTestClient(...args);')
+ // The handler is relocated to /tmp; every shared import still loads the
+ // actual committed helper, including worker dispatch and execution.
+ .replace(/from ['"]\.\.\/_shared\/([a-z0-9-]+\.ts)['"]/g,(_match,file)=>`from '${new URL(`../../supabase/functions/_shared/${file}`,import.meta.url).href}'`);
 const path=join(dir,'handler.ts');await writeFile(path,source);await import(pathToFileURL(path).href);
 after(async()=>{globalThis.Deno=originalDeno;delete globalThis.__connectorTestClient;await rm(dir,{recursive:true,force:true});});
 for(const [name,opt,status] of [['queued',{},200],['already claimed',{race:true},409],['failed persistence',{dbError:true},503],['anonymous',{unsigned:true},401],['wrong company',{denied:true},403],['viewer',{role:'viewer'},403],['missing',{missing:true},404]]){

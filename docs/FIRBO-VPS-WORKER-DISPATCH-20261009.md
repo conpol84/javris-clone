@@ -66,7 +66,7 @@ is still a separate unfinished product item.
 
 Local candidate checks: 673 frontend tests and production build; 24 Python
 selector/auth/real-file rollback tests; 280 employee/handler/policy tests; 16
-actual shared-helper/Edge dispatch tests; 8 Connector idempotency/approval tests;
+actual shared-helper/Edge dispatch tests; 9 Connector idempotency/approval tests;
 17 terminal receipt/authorization tests; strict Edge TypeScript. Native approval
 SQL passed against embedded PostgreSQL 17.5 with the actual prerequisite
 migrations. Stock PostgreSQL and exact-source CI are release checks, not inferred

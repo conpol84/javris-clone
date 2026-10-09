@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
       const jobId = str(body.job_id, 60);
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(jobId)) return json(400, { error: 'bad_request' });
       const { data: job, error: controlError } = await admin.from('connector_jobs')
-        .select('id,status,cancel_requested_at,kind,organization_id,device_id,created_by')
+        .select('id,status,cancel_requested_at,kind,organization_id,device_id,created_by,origin,agent_task_id,agent_id,agent_run_claim')
         .eq('id', jobId).eq('device_id', dev.id).eq('organization_id', dev.organization_id).maybeSingle();
       if (controlError) return json(503, { error: 'control_unavailable' });
       if (!job) return json(404, { error: 'not_found' });
