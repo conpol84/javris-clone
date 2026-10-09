@@ -118,7 +118,13 @@ function fixture(options={}) {
     }
     if(table==='usage_events')return{data:options.spent?[{cost_usd:options.spent}]:[],count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
-    if(table==='messages'||table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
+    if(table==='messages'){
+      // Current chat history and older CEO session snippets use different
+      // conversation scopes; the fake must not bypass the real predicate.
+      const archived=filters.find(([k,v])=>k==='conversation_id'&&Array.isArray(v));
+      return{data:archived?options.pastCeoMessages??[]:options.messages??[],error:null};
+    }
+    if(table==='approvals'||table==='skills'||table==='platform_admins')return{data:options[table]??[],error:null};
     if(table==='report_feedback')return{data:options.feedback??[],error:null};
     if(table==='knowledge_chunks')return{data:null,count:options.knowledgeCount??0,error:null};
     if(table==='integrations'){
@@ -1268,4 +1274,40 @@ test('compact local chat keeps finance evidence rules within its request bound',
   assert.match(request.messages[0].content,/Finance: show inputs, units and calculations; missing values are unknown/);
   assert.match(request.messages[0].content,/Never claim sent\/saved\/done without matching execution evidence/);
   assert.ok(new TextEncoder().encode(JSON.stringify(request.messages)).length<=2700);
+});
+
+
+test('CEO truly recalls a previous owned session but not another company member, using actual Edge handler',async()=>{
+ const past=[{id:'prev-1',organization_id:ORG,user_id:USER,agent_id:AGENT,title:'YouTube experiment',updated_at:'2026-10-09T16:30:00Z'},
+   {id:'prev-other-user',organization_id:ORG,user_id:'another-user',agent_id:AGENT,title:'YouTube secret',updated_at:'2026-10-09T16:31:00Z'}];
+ const {state,response}=await invoke('agent-chat',{agentType:'ceo',pastCeoSessions:past,pastCeoMessages:[
+   {conversation_id:'prev-1',role:'user',content:'Asked to play Mazonakis Ores Mikres on My shell',created_at:'2026-10-09T16:30:00Z'},
+   {conversation_id:'prev-1',role:'assistant',content:'Firefox screen stayed black; playback unverified.',created_at:'2026-10-09T16:31:00Z'},
+   {conversation_id:'prev-other-user',role:'user',content:'SECRET PRIVATE CEO CONVERSATION',created_at:'2026-10-09T16:32:00Z'}
+ ]},{message:'Remember YouTube Mazonakis music from our previous session?'});
+ assert.equal(response.status,200);
+ const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.match(prompt,/PAST CEO SESSIONS/);
+ assert.match(prompt,/Mazonakis Ores Mikres/);
+ assert.match(prompt,/Prior AI reply \(UNVERIFIED/);
+ assert.ok(!prompt.includes('SECRET PRIVATE CEO CONVERSATION'));
+ const read=state.reads.find(r=>r.table==='conversations'&&r.selection?.includes('updated_at'));
+ assert.ok(read.filters.some(([key,value])=>key==='organization_id'&&value===ORG));
+ assert.ok(read.filters.some(([key,value])=>key==='user_id'&&value===USER));
+ assert.ok(read.filters.some(([key,value])=>key==='agent_id'&&value===AGENT));
+});
+test('member CEO only sees own private notes, not another members memories or company financial totals',async()=>{
+ const ownerNote='My private approved research context';
+ const {state,response}=await invoke('agent-chat',{agentType:'ceo',role:'member',spent:600,memories:[
+   {content:ownerNote,memory_type:'fact',metadata:{},user_id:USER},
+   {content:'SECRET OTHER USERS PERSONAL CONTENT',memory_type:'user_preference',metadata:{},user_id:'another-user'},
+ ]});
+ assert.equal(response.status,200);
+ const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.ok(prompt.includes(ownerNote));
+ assert.ok(!prompt.includes('SECRET OTHER USERS PERSONAL CONTENT'));
+ assert.ok(prompt.includes('Company spend: not available for this role.'));
+ assert.ok(!prompt.includes('Spend this month: $600'));
+ const ownTask=state.reads.find(r=>r.table==='tasks'&&r.selection?.includes('assigned_agent_id'));
+ assert.ok(ownTask.filters.some(([k,v])=>k==='created_by'&&v===USER));
 });
