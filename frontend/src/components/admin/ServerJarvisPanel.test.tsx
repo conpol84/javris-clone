@@ -38,4 +38,23 @@ describe('server panel execution response',()=>{
   await vi.waitFor(()=>expect(fixture.setters[0]).toHaveBeenLastCalledWith(status));
   expect(fixture.invoke).toHaveBeenCalledExactlyOnceWith('server-jarvis',{body:{action:'status'}});
  });
+ it('exposes the distinct VPS login path and a truthful native API 401 explanation',()=>{
+  fixture.states[0]={configured:true,online:false,reason:'http_401'};
+  const tree=elements(ServerJarvisPanel());
+  const login=tree.find(e=>e.type==='a' && (e.props as Record<string,unknown>)['data-native-jarvis-login']==='true');
+  expect(login?.props.href).toBe('https://jarvis.firboai.app/_firbo/login');
+  const description=tree.find(e=>e.type==='div'&&(e.props as Record<string,unknown>)['data-native-jarvis-backend']==='true');
+  expect(description).toBeDefined();
+  expect(tree.some(e=>e.type==='p'&&String(e.props.children).includes('Native API returned 401'))).toBe(true);
+  expect(tree.some(e=>e.type==='p'&&String(e.props.children).includes('dashboard login is separate'))).toBe(true);
+  expect(fixture.invoke).not.toHaveBeenCalled();
+ });
+ it('does not call native server or imply it is online when the bridge is unconfigured',()=>{
+  fixture.states[0]={configured:false};
+  const tree=elements(ServerJarvisPanel());
+  expect(tree.some(e=>e.type==='p'&&String(e.props.children).includes('missing the native API URL'))).toBe(true);
+  expect(tree.some(e=>e.type==='p'&&String(e.props.children).includes('authenticated native OpenJarvis API replied'))).toBe(false);
+  expect(fixture.invoke).not.toHaveBeenCalled();
+ });
+
 });
