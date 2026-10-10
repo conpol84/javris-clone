@@ -1,0 +1,67 @@
+name: FIRBO Computer Receipt Truthfulness and Continuation Regression
+on:
+  push:
+    branches:
+      - codex/firbo-computer-continuation-status-20261010
+    paths:
+      - frontend/src/lib/company/computer-state.ts
+      - frontend/src/lib/company/computer-state.test.ts
+      - frontend/src/lib/company/computer-manager-labels.ts
+      - frontend/src/pages/ComputersPage.tsx
+      - .github/workflows/firbo-computer-continuation-status.yml
+  pull_request:
+    branches:
+      - codex/firbo-omni-isolated-docker-canary-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  truthfully-present-durable-computer-receipts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Locked frontend dependencies
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Physical receipt, localized continuation and existing no-replay security tests
+        working-directory: frontend
+        run: |
+          npm test -- src/lib/company/computer-state.test.ts src/lib/company/computer-continuation.test.ts
+      - name: Preserve full existing desktop/CEO/voice and RLS presentation regressions
+        working-directory: frontend
+        run: npm test
+      - name: Type-check and compile existing frontend without nav or protocol changes
+        working-directory: frontend
+        run: npm run build:tauri
+      - name: Require actual Computers page integration and no DB/ACK status mutation
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+          const page = fs.readFileSync('frontend/src/pages/ComputersPage.tsx', 'utf8');
+          const state = fs.readFileSync('frontend/src/lib/company/computer-state.ts', 'utf8');
+          const strings = fs.readFileSync('frontend/src/lib/company/computer-manager-labels.ts', 'utf8');
+          if (!page.includes('computerJobNeedsContinuation(j) ? l.needsContinuation')) {
+            throw Error('Computers history does not display incomplete advanced work');
+          }
+          if (!page.includes("computerJobNeedsContinuation(j) ? 'var(--fb-warn)'")) {
+            throw Error('Incomplete advanced work must not use green success');
+          }
+          if (!state.includes("job.result?.completed === false")) {
+            throw Error('Explicit false continuation guard missing');
+          }
+          if (!strings.includes('Χρειάζεται συνέχεια') || !strings.includes('Needs continuation')) {
+            throw Error('Localized task completion distinction missing');
+          }
+          if (page.includes("connector_finish_execution") || state.includes("connector_finish_execution")) {
+            throw Error('Computer UI may not mutate execution receipts');
+          }
+          console.log('firbo_computer_receipt_truthfulness_source=true');
+          JS
