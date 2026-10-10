@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'tools/firbo-public-surface-probe.sh'
+      - 'tests/firbo/public-jarvis-login-browser.mjs'
       - 'frontend/src/lib/company/jarvis-vps-status*'
       - 'frontend/src/components/admin/ServerJarvisPanel*'
       - '.github/workflows/firbo-vps-surface-probe.yml'
@@ -48,3 +49,31 @@ jobs:
         run: |
           npm test
           npm run build
+
+  real-vps-login-visual:
+    name: Real VPS login rendering - no password or form submission
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: tools/firbo-browser-runtime/package-lock.json
+      - name: Install pinned read-only Chromium runtime
+        run: |
+          npm ci --prefix tools/firbo-browser-runtime --ignore-scripts --no-audit --no-fund
+          npx --prefix tools/firbo-browser-runtime playwright install --with-deps chromium
+      - name: Assert actual public OpenJarvis login displays at phone and desktop
+        run: node tests/firbo/public-jarvis-login-browser.mjs
+      - name: Publish only public login UI screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: firbo-vps-public-login-evidence
+          path: /tmp/firbo-vps-login-evidence/*.png
+          if-no-files-found: ignore
+          retention-days: 3
