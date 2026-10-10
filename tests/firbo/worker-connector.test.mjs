@@ -12,6 +12,17 @@ test('atomic dispatch record binds original adapted app as well as native goal',
  const native={...body,kind:'desktop_task',params:{goal:'Open browser'},dispatch_request:record};assert.equal((await r.invoke(native)).status,200);
  const altered=await r.invoke({...native,dispatch_request:{...record,params:{app:'Safari'}}});assert.equal(altered.status,409);assert.equal(r.state.rows.connector_jobs.length,1);assert.deepEqual(r.state.rows.connector_jobs[0].dispatch_request,record);
 });
+test('an administrator in the same company cannot queue a direct job on another user\'s laptop',async()=>{
+ const r=await owner();
+ r.state.user={id:'second-admin'};
+ r.state.rows.organization_members.push({organization_id:ORG,user_id:'second-admin',role:'admin'});
+ const refused=await r.invoke(body);
+ assert.equal(refused.status,403);
+ assert.equal(r.state.rows.connector_jobs.length,0,'no job is created for another owner');
+ r.state.user={id:'owner'};
+ assert.equal((await r.invoke(body)).status,200,'actual device creator can still queue work');
+ assert.equal(r.state.rows.connector_jobs.length,1);
+});
 test('another tenant cannot reuse or replace an existing request',async()=>{const r=await owner();await r.invoke(body);r.state.rows.organization_members=[];assert.equal((await r.invoke(body)).status,403);assert.equal(r.state.rows.connector_jobs.length,1);});
 test('native Inbox approval cannot change VPS selected device or stored goal',async()=>{const r=await owner();r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',payload:{goal:'Find the requested page',device_id:DEVICE}}];
  const response=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,payload:{goal:'Different task',device_id:DEVICE}});assert.equal(response.status,409);assert.equal(r.state.decisions,undefined);
