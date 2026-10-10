@@ -95,8 +95,13 @@ def summarize(payload, now=None):
     }
 
 
-def probe():
-    key = os.environ.get("OMNIROUTE_MANAGEMENT_KEY", "")
+def probe(management_key=None):
+    """An optional in-process key avoids exporting or printing Compose secrets."""
+    key = (
+        management_key
+        if management_key is not None
+        else os.environ.get("OMNIROUTE_MANAGEMENT_KEY", "")
+    )
     if not key or len(key) > 4096 or any(c.isspace() for c in key):
         return {
             "read_only": True,

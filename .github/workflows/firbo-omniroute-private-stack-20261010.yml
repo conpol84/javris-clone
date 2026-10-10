@@ -1,0 +1,33 @@
+name: FIRBO OmniRoute Protected Compose Quota Readback
+on:
+  pull_request:
+    branches:
+      - codex/firbo-freellmapi-runtime-acceptance-20261010
+    paths:
+      - deploy/hostinger/omniroute_ceo_quota_probe.py
+      - deploy/hostinger/omniroute_ceo_quota_stack.py
+      - tests/firbo/test_omniroute_ceo_quota_probe.py
+      - tests/firbo/test_omniroute_ceo_quota_stack.py
+      - .github/workflows/firbo-omniroute-private-stack-20261010.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  read-only-key-and-quota:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Isolated pinned Python tools
+        run: |
+          python3 -m venv /tmp/firbo-omni-private-stack
+          /tmp/firbo-omni-private-stack/bin/pip install pytest==9.1.1 ruff==0.16.7
+      - name: Zero-network tests; no real credentials or provider inference
+        run: |
+          /tmp/firbo-omni-private-stack/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_omniroute_ceo_quota_probe.py tests/firbo/test_omniroute_ceo_quota_stack.py
+      - name: Strict Python lint and format, no weakening
+        run: |
+          /tmp/firbo-omni-private-stack/bin/ruff check deploy/hostinger/omniroute_ceo_quota_probe.py deploy/hostinger/omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_ceo_quota_probe.py tests/firbo/test_omniroute_ceo_quota_stack.py
+          /tmp/firbo-omni-private-stack/bin/ruff format --check deploy/hostinger/omniroute_ceo_quota_probe.py deploy/hostinger/omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_ceo_quota_probe.py tests/firbo/test_omniroute_ceo_quota_stack.py
