@@ -19,8 +19,10 @@ audit = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(audit)
 
 KEYS = (
-    "OMNIROUTE_API_KEY", "OMNIROUTE_MANAGEMENT_KEY",
-    "OPENJARVIS_API_KEY", "INITIAL_PASSWORD",
+    "OMNIROUTE_API_KEY",
+    "OMNIROUTE_MANAGEMENT_KEY",
+    "OPENJARVIS_API_KEY",
+    "INITIAL_PASSWORD",
 )
 
 
@@ -31,7 +33,7 @@ def test_duplicate_names_and_line_numbers_only_without_provider_secrets():
         "OMNIROUTE_API_KEY=api-secret\n"
         "OMNIROUTE_MANAGEMENT_KEY=" + secret1 + "\n"
         "# comment and unrelated app setting\n"
-        "INITIAL_PASSWORD=\"secret-password\"\n"
+        'INITIAL_PASSWORD="secret-password"\n'
         "OMNIROUTE_MANAGEMENT_KEY=" + secret2 + "\n"
         "INITIAL_PASSWORD='secret-password'\n"
     ).encode()
@@ -40,10 +42,14 @@ def test_duplicate_names_and_line_numbers_only_without_provider_secrets():
     assert result["requires_manual_config_review"] is True
     assert result["duplicates"] == {
         "INITIAL_PASSWORD": {
-            "count": 2, "lines": [4, 6], "identical_values": True,
+            "count": 2,
+            "lines": [4, 6],
+            "identical_values": True,
         },
         "OMNIROUTE_MANAGEMENT_KEY": {
-            "count": 2, "lines": [2, 5], "identical_values": False,
+            "count": 2,
+            "lines": [2, 5],
+            "identical_values": False,
         },
     }
     assert result["keys_or_values_disclosed"] is False
@@ -60,15 +66,20 @@ def test_names_of_noncredential_variables_never_enter_the_report():
     assert "UNRELATED" not in json.dumps(result)
 
 
-@pytest.mark.parametrize("value,reason", [
-    (b"\xff", "configuration_not_utf8"),
-    (b"x" * 1_000_001, "configuration_too_large"),
-])
+@pytest.mark.parametrize(
+    "value,reason",
+    [
+        (b"\xff", "configuration_not_utf8"),
+        (b"x" * 1_000_001, "configuration_too_large"),
+    ],
+)
 def test_garbled_or_oversized_config_fails_closed(value, reason):
     assert audit.duplicate_summary(value, KEYS)["reason"] == reason
 
 
-def test_source_uses_the_existing_hardened_private_reader_and_no_file_writes(monkeypatch):
+def test_source_uses_the_existing_hardened_private_reader_and_no_file_writes(
+    monkeypatch,
+):
     raw = b"OMNIROUTE_API_KEY=one\nOMNIROUTE_API_KEY=two\n"
     calls = []
     source = SimpleNamespace(
@@ -84,11 +95,16 @@ def test_source_uses_the_existing_hardened_private_reader_and_no_file_writes(mon
     assert report["keys_or_values_disclosed"] is False
 
 
-@pytest.mark.parametrize("fail_at,expected", [
-    ("runtime", "inspect_running_compose"),
-    ("read_private", "read_verified_private_env"),
-])
-def test_runtime_and_private_reader_fail_closed_with_no_leak(monkeypatch, fail_at, expected):
+@pytest.mark.parametrize(
+    "fail_at,expected",
+    [
+        ("runtime", "inspect_running_compose"),
+        ("read_private", "read_verified_private_env"),
+    ],
+)
+def test_runtime_and_private_reader_fail_closed_with_no_leak(
+    monkeypatch, fail_at, expected
+):
     secret = "Bearer confidential-private-password"
     source = SimpleNamespace(
         runtime=lambda: {"env_path": Path("/private/.env")},
