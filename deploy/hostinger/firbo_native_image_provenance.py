@@ -28,9 +28,8 @@ def git_blob_sha1(content: bytes) -> str:
 
 def route_present(app: object) -> bool:
     for route in getattr(app, "routes", []):
-        if (
-            getattr(route, "path", None) == ROUTE
-            and "POST" in (getattr(route, "methods", None) or set())
+        if getattr(route, "path", None) == ROUTE and "POST" in (
+            getattr(route, "methods", None) or set()
         ):
             return True
     return False
