@@ -13,7 +13,7 @@ import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
 import { voiceMessages } from './voiceMessages';
 import { isUnlockContinuation, resolveUnlockContinuation } from './computer-continuation';
-import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from './laptop-bridge';
+import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
 export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
@@ -40,7 +40,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   const live=useRef(false); const epoch=useRef(0); const turn=useRef<VoiceTurn|null>(null);
   const resumeTimer=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
   const busy=useRef(false);const mutedRef=useRef(false);const handsFreeRef=useRef(false);
-  const convo=useRef<string|null>(null);const pendingComputer=useRef<DirectComputerProposal|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
+  const convo=useRef<string|null>(null);const pendingComputer=useRef<DirectComputerProposal|null>(null);const failedTarget=useRef<{proposal:DirectComputerProposal;until:number}|null>(null);const stopListen=useRef(()=>{});const sendListen=useRef(()=>{});
   const listenRef=useRef(()=>{}); const tRef=useRef(t);tRef.current=t;
   const canTalk=typeof MediaRecorder!=='undefined' && typeof navigator!=='undefined' && !!navigator.mediaDevices?.getUserMedia;
   const valid=(id:number)=>live.current&&scopeRef.current===scope&&epoch.current===id;
@@ -51,7 +51,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     stopListen.current=()=>{};sendListen.current=()=>{};
   };
   useEffect(()=>{
-    live.current=true;clear();convo.current=null;pendingComputer.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setComputerProgress(null);setState('idle');setHandsFreeValue(false);
+    live.current=true;clear();convo.current=null;pendingComputer.current=null;failedTarget.current=null;setLoadedScope(scope);setCeo(null);setLines([]);setInterim('');setVoiceStatus('');setVoiceLog([]);setComputerProgress(null);setState('idle');setHandsFreeValue(false);
     setSessions([]);setActiveSessionId(null);setHistoryError(false);setHistoryLoading(true);
     const id=epoch.current;
     if(orgId&&userId)void listAgents(orgId).then(async agents=>{
@@ -113,18 +113,18 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     resumeTimer.current=setTimeout(()=>{if(valid(id)&&handsFreeRef.current&&!busy.current)listenRef.current();},delay);
   };
   const stop=()=>{
-    pendingComputer.current=null;clear();setComputerProgress(null);setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
+    pendingComputer.current=null;failedTarget.current=null;clear();setComputerProgress(null);setHandsFreeValue(false);setState('idle');setInterim('');note(voiceMessages(lang).stopped);
   };
   const newSession=()=>{
     if(busy.current||historyLoading||historyError)return;
-    pendingComputer.current=null;clear();setComputerProgress(null);
+    pendingComputer.current=null;failedTarget.current=null;clear();setComputerProgress(null);
     if(ceo&&userId)rememberCeoSession(orgId,userId,ceo.id,null);
     convo.current=null;setActiveSessionId(null);
     setLines([]);setState('idle');setInterim('');setHistoryError(false);
   };
   const openSession=async(conversationId:string)=>{
     if(!ceo||!userId||busy.current||historyLoading||!sessions.some(x=>x.id===conversationId))return;
-    pendingComputer.current=null;clear();setComputerProgress(null);setState('idle');setHistoryLoading(true);
+    pendingComputer.current=null;failedTarget.current=null;clear();setComputerProgress(null);setState('idle');setHistoryLoading(true);
     const id=epoch.current;
     try{
       const recovered=await readCeoSession(orgId,userId,ceo.id,conversationId);
@@ -200,7 +200,13 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
         ?await voiceDeadline(signal=>resolveUnlockContinuation(orgId,userId,message,lang,signal),active.signal,24_000)
         :null;
       if(!valid(id)||!active.current())return;
-      const proposal=recovered?.recognized&&recovered.proposal?recovered.proposal:parseDirectComputerCommand(message);
+      // Only an explicit short follow-up may retarget a recently rejected,
+      // never-queued command. Use the new turn's fresh dispatch request ID.
+      const saved=failedTarget.current;
+      const retarget=canComputer&&saved&&saved.until>Date.now()
+        ?retargetFailedComputerCommand(message,saved.proposal):null;
+      failedTarget.current=null;
+      const proposal=recovered?.recognized&&recovered.proposal?recovered.proposal:(parseDirectComputerCommand(message)??retarget);
       // "ok now unlocked" is NOT a blanket approval for any older pending job.
       const decision=unlockNotice?null:parseOwnerDecision(message);
       const computerRequest=!!proposal||isComputerControlRequest(message)||unlockNotice;
@@ -220,7 +226,10 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           const readiness=await voiceDeadline(signal=>prepareDirectComputerCommand(orgId,proposal??'browser_task',lang,signal),active.signal,24_000);
           if(!valid(id)||!active.current())return;
           if(!readiness.ready||!proposal){
-            pendingComputer.current=null;await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;
+            pendingComputer.current=null;
+            if(proposal&&!readiness.ready&&['target_unavailable','upgrade_required','device_not_ready','no_eligible_worker','device_required'].includes(readiness.status))
+              failedTarget.current={proposal,until:Date.now()+90_000};
+            await sayDirect(readiness.ready?incompleteComputerReply(lang):readiness.reply);return;
           }
           if(readiness.ownerFullControl===true){
             pendingComputer.current=null;

@@ -16,7 +16,7 @@ export function parseLaptopBrowserCommand(input:string){
  const isPath=(token:string)=>/^(?:\/|\.\.?\/|~\/|[a-z]:[\\/]|file:)/i.test(token)||(!/^https?:\/\//i.test(token)&&token.includes('\\'));
  const isAddress=(token:string)=>/^https?:\/\//i.test(token)||/^(?:[a-z0-9](?:[a-z0-9-]{0,62})\.)+[a-z]{2,63}(?:[/?#][^\s]*)?$/i.test(token);
  const words=tokens.filter(token=>!isPath(token)&&!isAddress(token)).join(' ').normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
- const action=/(?:^|[^\p{L}\p{N}_])(?:open|launch|browse|search|ανοιξ\p{L}*|ψαξ\p{L}*|αναζητ\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(words);
+ const action=/(?:^|[^\p{L}\p{N}_])(?:open|launch|browse|search|anice|anici|anoice|ανοιξ\p{L}*|ψαξ\p{L}*|αναζητ\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(words);
  const target=/(?:^|[^\p{L}\p{N}_])(?:browser|chrome|laptop|computer|φυλλομετρητ\p{L}*|λαπτοπ|υπολογιστ\p{L}*)(?=$|[^\p{L}\p{N}_])/u.test(words);
  const direct=tokens.find(token=>!isPath(token)&&isAddress(token)&&(
   /^https?:\/\//i.test(token)||!/\.(?:md|txt|json|py|ts|csv|pdf|docx|xlsx|pptx|log|toml|ya?ml)$/i.test(token)
@@ -72,10 +72,27 @@ export function isComputerControlRequest(input:string){
  if(typeof input!=='string'||!input.trim()||input.length>4000)return false;
  const plain=plainText(input);
  const target=/(?:^|\s)(mac|laptop|computer|polis1984|browser|desktop|pc|shell|debian|music|player|μουσικη|safari|chrome|youtube|word|excel|applescript|osascript|υπολογιστη|υπολογιστης|φυλλομετρητη|website|site|ιστοσελιδα|ιστοσελιδες)(?:\s|$)/u.test(plain);
- const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pexe|peks|paixe|paikse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
+ const action=/(?:^|\s)(?:open|launch|play|run|execute|click|type|scroll|pause|stop|σταματ\p{L}*|browse|search|find|write|save|ψαξ\p{L}*|βρες|γραψ\p{L}*|πατη\p{L}*|anix\p{L}*|anoix\p{L}*|anik\p{L}*|anoik\p{L}*|anice|anici|anoice|ανοιξ\p{L}*|βαλ\p{L}*|val\p{L}*|βαλε|vale|παιξ\p{L}*|παιζ\p{L}*|pekse|pexe|peks|paixe|paikse|pezi|trex\p{L}*|τρεξ\p{L}*|εκτελε\p{L}*|μπεις|μπω|mpis|bis|visit|navigate|access)(?:\s|$)/u.test(plain);
  // Research and instructions about controlling a computer are ordinary work.
  if(/^(?:how (?:do|can|to)|explain|research|write (?:a |an )?(?:report|guide)|πως|εξηγησε|γραψε (?:οδηγιες|αναφορα))/u.test(plain))return false;
  return target&&action;
+}
+
+/** After an UNQUEUED target-specific failure, an explicit new owner utterance
+ * such as "Sto shell" may select another worker for the SAME described action.
+ * Never invent consent, reuse a request ID, select on the user's behalf or
+ * switch silently after an already-queued/uncertain request.
+ */
+export function retargetFailedComputerCommand(input:string,prior:DirectComputerProposal|null):DirectComputerProposal|null {
+ if(!prior?.target||typeof input!=='string'||input.length>100)return null;
+ const utterance=plainText(input);
+ const match=utterance.match(/^(?:sto|ston|to|στο|στον|on|using)\s+(?:(?:my|the|to|το|τον)\s+)?(my shell|shell|mac mini|macbook|mac|polis1984|debian|linux|windows)(?:\s+(?:instead|tora|τωρα|now|αντι))?$/u);
+ if(!match)return null;
+ const target=match[1]==='shell'?'my shell':match[1];
+ if(target===prior.target)return null;
+ const params=JSON.parse(actionJson(prior.params)) as Record<string,unknown>;
+ // Never carry the old (failed) selection, reservation ID or Full Control flag.
+ return{kind:prior.kind,description:prior.description,params,target};
 }
 
 export function parseOwnerDecision(input:string):'approve'|'reject'|null{
@@ -120,7 +137,7 @@ export function parseDirectComputerCommand(input:string):DirectComputerProposal|
  // computer; in particular "research" must not match the substring "search".
  if(/^(?:research|explain|how (?:do|can|to)|write (?:a |an )?(?:report|guide)|ερευνα|εξηγησε|γραψε (?:οδηγιες|αναφορα))(?:\s|$)/u.test(plain))return null;
  const target=routing.target?{target:routing.target}:{};
- if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
+ if(/(?:^|\s)(open|launch|start|anoikse|anikse|anixe|anice|anici|anoice|anixis|anoixis|ανοιξε|ανοιξ|ανοιξεις)(?:\s|$)/u.test(plain)){
   for(const [app,aliases] of APP_ALIASES)if(aliases.some(a=>plain.endsWith(a)))return{kind:'open_app',description:`Open ${app}`,params:{app},...target};
  }
  if(/^(?:open|launch|ανοιξε|anoikse|anikse|anixe)\s+(?:(?:the|το|to)\s+)?(?:browser|φυλλομετρητη)(?:\s+(?:here|εδω))?$/u.test(plain))return{kind:'browser_open',description:'Open browser',params:{url:'https://www.google.com/'},...target};
