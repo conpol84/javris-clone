@@ -26,7 +26,7 @@ export interface AgentForPlan { slug?: string|null; enabled?: boolean|null }
 const paid=new Set(['pro','business','enterprise']);
 export function premiumAgentSlug(slug:unknown):boolean{
  if(typeof slug!=='string'||!slug.trim())return false;
- return premium.has(slug.replace(/-[2-9]\d*$/, ''));
+ return premium.has(slug.replace(/-\d+$/, ''));
 }
 export function agentPlanDecision(org:AgentPlan|null|undefined,agent:AgentForPlan):{
  allowed:boolean;reason:AgentPlanReason|null;
