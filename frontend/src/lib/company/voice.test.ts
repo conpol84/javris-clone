@@ -150,7 +150,7 @@ describe('Talk to CEO local Piper recovery (no paid TTS replay)',()=>{
   it('tries the authorized fixed local Piper service once after cloud 429 before device speech',async()=>{
     setVoiceProfile('firbo-dark-v1');
     mocks.invoke.mockResolvedValue({data:null,error:limited()});
-    const localFetch=vi.fn(async()=>new Response(localWav(),{status:200,headers:{'content-type':'audio/wav'}}));
+    const localFetch=vi.fn(async(_input:RequestInfo|URL,_options?:RequestInit)=>new Response(localWav(),{status:200,headers:{'content-type':'audio/wav'}}));
     vi.stubGlobal('fetch',localFetch);
     const result=speak('owner-org','Γεια σου','el',{allowLocalFallback:true});
     await vi.advanceTimersByTimeAsync(1); await flush();
