@@ -44,46 +44,91 @@ def _load_existing(name: str, alias: str):
         raise DiagnosticUnavailable("source_unavailable") from None
 
 
+# These are constant, audited error codes emitted by gateway-credentials.py.
+# Never surface an arbitrary exception string or Docker stderr; it could
+# contain a provider key, stack path or a private account identifier.
+_SAFE_BLOCKED_CODES = frozenset({
+    "docker_not_installed",
+    "local_command_failed_or_timed_out",
+    "local_command_failed",
+    "local_response_too_large",
+    "invalid_local_response",
+    "unsafe_or_symlinked_path",
+    "expected_container_not_running",
+    "invalid_compose_labels",
+    "wrong_compose_service",
+    "compose_labels_missing",
+    "unsafe_compose_directory_permissions",
+    "invalid_compose_project",
+    "compose_file_outside_stack_directory",
+    "mixed_compose_projects",
+    "configuration_not_regular_file",
+    "configuration_owned_by_another_user",
+    "configuration_too_large",
+    "configuration_changed",
+    "configuration_not_utf8",
+    "duplicate_credential_configuration",
+})
+
+
+def _failure(stage: str, error: Exception | None = None, source=None):
+    """Provide a stage + optional audited code, never a raw secret exception."""
+    reason = "stage_unavailable"
+    if source is not None and isinstance(error, source.Blocked):
+        message = str(error)
+        if message in _SAFE_BLOCKED_CODES:
+            reason = message
+    return {
+        "read_only": True,
+        "quota_telemetry_read": False,
+        "stage": stage,
+        "reason": reason,
+    }
+
+
 def inspect_stored_credential():
+    """Stage-safe audit; never guess another .env when ownership checks fail."""
     try:
         source = _load_existing("gateway-credentials.py", "firbo_private_stack")
         quota = _load_existing("omniroute_ceo_quota_probe.py", "firbo_quota")
-        stack = source.runtime()  # Existing running firbo-api + OmniRoute Compose IDs
-        contents = source.read_private(stack["env_path"])  # Read-only, no symlinks
-        configured = source.values(contents)
-        management_key = configured.get("OMNIROUTE_MANAGEMENT_KEY", "")
-        inference_key = configured.get("OMNIROUTE_API_KEY", "")
-        if not management_key:
-            return {
-                "read_only": True,
-                "quota_telemetry_read": False,
-                "reason": "management_key_missing_in_verified_stack",
-            }
-        if management_key == inference_key:
-            return {
-                "read_only": True,
-                "quota_telemetry_read": False,
-                "reason": "management_and_inference_key_not_separated",
-            }
-        # Pass ONLY within this process. No global environment mutation.
-        result = quota.probe(management_key=management_key)
-        if not isinstance(result, dict) or result.get("read_only") is not True:
-            raise DiagnosticUnavailable("quota_contract_unverified")
-        return result
-    except DiagnosticUnavailable as exc:
-        return {
-            "read_only": True,
-            "quota_telemetry_read": False,
-            "reason": str(exc),
-        }
+    except DiagnosticUnavailable:
+        return _failure("load_reviewed_source")
     except Exception:
-        # Existing helper raises a private Blocked code or OS exception.
-        # Never echo raw Docker stderr, stack paths or credential values.
+        return _failure("load_reviewed_source")
+    try:
+        stack = source.runtime()
+    except Exception as error:
+        return _failure("inspect_running_compose", error, source)
+    try:
+        contents = source.read_private(stack["env_path"])
+    except Exception as error:
+        return _failure("read_verified_private_env", error, source)
+    try:
+        configured = source.values(contents)
+    except Exception as error:
+        return _failure("parse_private_key_presence", error, source)
+    management_key = configured.get("OMNIROUTE_MANAGEMENT_KEY", "")
+    inference_key = configured.get("OMNIROUTE_API_KEY", "")
+    if not management_key:
         return {
             "read_only": True,
             "quota_telemetry_read": False,
-            "reason": "verified_compose_credentials_unavailable",
+            "reason": "management_key_missing_in_verified_stack",
         }
+    if management_key == inference_key:
+        return {
+            "read_only": True,
+            "quota_telemetry_read": False,
+            "reason": "management_and_inference_key_not_separated",
+        }
+    try:
+        # No shell export or global environment modification. One fixed GET.
+        result = quota.probe(management_key=management_key)
+    except Exception:
+        return _failure("read_gateway_telemetry")
+    if not isinstance(result, dict) or result.get("read_only") is not True:
+        return _failure("validate_quota_contract")
+    return result
 
 
 if __name__ == "__main__":
