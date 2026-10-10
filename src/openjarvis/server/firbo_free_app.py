@@ -67,7 +67,7 @@ def organizations(name: str) -> set[str]:
         raise FreeError("free_company_configuration_invalid") from None
 
 
-async def require_member(org: str, principal: Principal) -> None:
+async def require_member(org: str, principal: Principal) -> str:
     rows = await _supabase(
         principal,
         "/rest/v1/organization_members?select=organization_id,user_id,role"
@@ -82,15 +82,16 @@ async def require_member(org: str, principal: Principal) -> None:
         or row.get("role") not in {"owner", "admin", "manager", "member"}
     ):
         raise FreeError("free_membership_required", 403)
+    return row["role"]
 
 
-async def require_pilot(org: str, principal: Principal) -> None:
+async def require_pilot(org: str, principal: Principal) -> str:
     if org not in organizations("FIRBO_FREE_ORGANIZATIONS"):
         if os.environ.get(
             "FIRBO_FREE_ADMIN_PILOT"
         ) != "true" or not await _platform_admin(principal):
             raise FreeError("free_company_not_enabled", 403)
-    await require_member(org, principal)
+    return await require_member(org, principal)
 
 
 @lru_cache(maxsize=1)
@@ -183,6 +184,43 @@ def create_free_app():
                 [m.model_dump() for m in body.messages],
                 cloud_allowed=org in organizations("FIRBO_FREE_CLOUD_ORGANIZATIONS"),
             )
+        except FreeError as exc:
+            raise HTTPException(exc.status, exc.code) from None
+        except (sqlite3.Error, OSError):
+            raise HTTPException(503, "free_state_unavailable") from None
+
+    @app.post("/v1/firbo/free/local/chat/completions")
+    async def local_only_chat(
+        body: FreeRequest, principal: Principal = Depends(require_user)
+    ):
+        """New, owner-scoped request. Never uses OpenRouter or paid fallback.
+
+        This route is intentionally distinct from the existing free engine route.
+        Existing clients keep their original contract without a hidden provider
+        change; a new CEO turn may use this only after explicit owner enablement.
+        """
+        try:
+            if os.environ.get("FIRBO_FREE_ENABLED") != "true":
+                raise FreeError("free_runtime_disabled")
+            org = str(body.organization_id)
+            role = await require_pilot(org, principal)
+            if role not in {"owner", "admin"}:
+                raise FreeError("free_owner_required", 403)
+            result = await engine().infer(
+                org,
+                principal.user_id,
+                str(body.request_id),
+                [m.model_dump() for m in body.messages],
+                cloud_allowed=False,
+            )
+            if (
+                not isinstance(result, dict)
+                or not str(result.get("model", "")).startswith("ollama:")
+                or result.get("firbo", {}).get("cost_basis")
+                != "self_hosted_no_metered_fee"
+            ):
+                raise FreeError("local_model_not_verified")
+            return result
         except FreeError as exc:
             raise HTTPException(exc.status, exc.code) from None
         except (sqlite3.Error, OSError):
