@@ -1,0 +1,54 @@
+name: FIRBO OmniRoute Read-only Capability Discovery
+on:
+  pull_request:
+    branches:
+      - codex/firbo-native-image-offhost-acceptance-20261010
+    paths:
+      - deploy/hostinger/firbo_omniroute_readonly_probe.py
+      - tests/firbo/test_omniroute_readonly_probe.py
+      - docs/FIRBO-OMNIROUTE-STAGE4-STAGE6-GATES-20261010.md
+      - .github/workflows/firbo-omniroute-discovery.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  omni-discovery-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Synthetic OmniRoute metadata/auth/SSRF and no-tool-execution tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/firbo-omni-discovery
+          /tmp/firbo-omni-discovery/bin/pip install pytest==9.0.2 ruff==0.16.7
+          /tmp/firbo-omni-discovery/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo \
+            tests/firbo/test_omniroute_readonly_probe.py
+          /tmp/firbo-omni-discovery/bin/ruff check \
+            deploy/hostinger/firbo_omniroute_readonly_probe.py \
+            tests/firbo/test_omniroute_readonly_probe.py
+          /tmp/firbo-omni-discovery/bin/ruff format --check \
+            deploy/hostinger/firbo_omniroute_readonly_probe.py \
+            tests/firbo/test_omniroute_readonly_probe.py
+      - name: Verify fixed private-only GET allowlist and zero credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          p = Path('deploy/hostinger/firbo_omniroute_readonly_probe.py')
+          data = p.read_text()
+          ast.parse(data)
+          assert 'PRIVATE_GATEWAY = "http://omniroute:20128"' in data
+          assert 'urllib.request.ProxyHandler({})' in data
+          assert 'method="GET"' in data
+          assert 'MAX_BODY = 262_144' in data
+          assert 'POST /a2a' not in data
+          assert '/api/mcp/sse' not in data
+          assert '/api/keys' not in data
+          assert 'Authorization' not in data
+          print('private_fixed_read_only_gateway_contract=true')
+          PY
