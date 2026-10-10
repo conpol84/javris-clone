@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -15,8 +16,6 @@ spec = importlib.util.spec_from_file_location(
     ROOT / "freellmapi_acceptance.py",
 )
 # The actual CLI finds its sibling module via its script directory.
-import sys
-
 sys.path.insert(0, str(ROOT))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
