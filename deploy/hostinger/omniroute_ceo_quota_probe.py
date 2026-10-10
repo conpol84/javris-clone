@@ -98,37 +98,49 @@ def summarize(payload, now=None):
 def probe():
     key = os.environ.get("OMNIROUTE_MANAGEMENT_KEY", "")
     if not key or len(key) > 4096 or any(c.isspace() for c in key):
-        return {"read_only": True, "quota_telemetry_read": False,
-                "reason": "management_key_required"}
-    opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), NoRedirect()
-    )
+        return {
+            "read_only": True,
+            "quota_telemetry_read": False,
+            "reason": "management_key_required",
+        }
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     request = urllib.request.Request(
-        URL, method="GET",
+        URL,
+        method="GET",
         headers={"Authorization": "Bearer " + key, "Accept": "application/json"},
     )
     try:
         with opener.open(request, timeout=10) as response:
             raw = response.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
-            return {"read_only": True, "quota_telemetry_read": False,
-                    "reason": "response_too_large"}
+            return {
+                "read_only": True,
+                "quota_telemetry_read": False,
+                "reason": "response_too_large",
+            }
         parsed = summarize(json.loads(raw))
         if parsed is None:
-            return {"read_only": True, "quota_telemetry_read": False,
-                    "reason": "quota_contract_unverified"}
+            return {
+                "read_only": True,
+                "quota_telemetry_read": False,
+                "reason": "quota_contract_unverified",
+            }
         return parsed
     except urllib.error.HTTPError as exc:
         reason = (
-            "management_key_denied" if exc.code in {401, 403}
-            else "gateway_telemetry_rate_limited" if exc.code == 429
+            "management_key_denied"
+            if exc.code in {401, 403}
+            else "gateway_telemetry_rate_limited"
+            if exc.code == 429
             else "gateway_telemetry_unavailable"
         )
-        return {"read_only": True, "quota_telemetry_read": False,
-                "reason": reason}
+        return {"read_only": True, "quota_telemetry_read": False, "reason": reason}
     except (OSError, ValueError, TypeError):
-        return {"read_only": True, "quota_telemetry_read": False,
-                "reason": "gateway_telemetry_unavailable"}
+        return {
+            "read_only": True,
+            "quota_telemetry_read": False,
+            "reason": "gateway_telemetry_unavailable",
+        }
 
 
 if __name__ == "__main__":
