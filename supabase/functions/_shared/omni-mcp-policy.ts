@@ -37,3 +37,13 @@ export function isOmniReadOnlyMcpTool(value: unknown): value is typeof OMNI_READ
 export function filterOmniReadOnlyTools<T extends { name: string }>(tools: readonly T[]): T[] {
   return tools.filter(tool => isOmniReadOnlyMcpTool(tool.name));
 }
+
+/** Source-only pilot gate. The shared gateway has platform-wide data and must
+ * stay OFF until the operator has verified actual OAuth/API key scopes, live
+ * OMNIROUTE_MCP_ENFORCE_SCOPES and Streamable HTTP transport on the gateway.
+ * Not a grant: ordinary FIRBO tenant RBAC, provider scopes and confirmation
+ * must ALSO pass. All unrelated MCP connectors remain unchanged.
+ */
+export function omniMcpPilotEnabled(env: (key: string) => string | undefined): boolean {
+  return env('FIRBO_OMNI_MCP_PILOT_ENABLED') === 'true';
+}
