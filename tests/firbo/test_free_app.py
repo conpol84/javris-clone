@@ -82,6 +82,85 @@ def payload():
 AUTH = {"authorization": "Bearer synthetic-user"}
 
 
+
+def test_local_only_owner_route_rejects_unauthenticated_requests(app_env):
+    client, state = app_env
+    r = client.post("/v1/firbo/free/local/chat/completions", json=payload())
+    assert r.status_code == 401
+    assert state["requests"] == []
+
+
+@pytest.mark.parametrize("role,allowed", [("member", False), ("manager", False), ("viewer", False), ("owner", True), ("admin", True)])
+def test_local_only_owner_route_respects_real_org_role(app_env, role, allowed):
+    client, state = app_env
+    state["role"] = role
+    p = payload()
+    response = client.post("/v1/firbo/free/local/chat/completions", json=p, headers=AUTH)
+    assert response.status_code == (200 if allowed else 403)
+    if allowed:
+        body = response.json()
+        assert body["model"] == "ollama:qwen3:1.7b"
+        assert body["firbo"]["cost_basis"] == "self_hosted_no_metered_fee"
+        assert body["firbo"]["policy"] == "no-paid-fallback"
+        assert body["firbo"]["request_id"] == p["request_id"]
+        assert client.post(
+            "/v1/firbo/free/local/chat/completions", json=p, headers=AUTH
+        ).status_code == 409
+    else:
+        assert all(req.url.host == "identity.test" for req in state["requests"])
+
+
+def test_local_only_route_never_invokes_cloud_even_when_org_cloud_enabled(app_env, monkeypatch):
+    client, state = app_env
+    state["role"] = "owner"
+    monkeypatch.setenv("FIRBO_FREE_CLOUD_ORGANIZATIONS", ORG)
+    original = a.engine()
+    engine = f.FreeEngine(
+        [
+            f.Route("openrouter", "test/model:free", "test-test-key"),
+            f.Route("ollama", "qwen3:1.7b"),
+        ],
+        original.ledger,
+    )
+    monkeypatch.setattr(a, "engine", lambda: engine)
+    response = client.post("/v1/firbo/free/local/chat/completions", json=payload(), headers=AUTH)
+    assert response.status_code == 200
+    assert response.json()["model"] == "ollama:qwen3:1.7b"
+    assert not any(req.url.host == "openrouter.ai" for req in state["requests"])
+    assert len([req for req in state["requests"] if req.url.host == "firbo-ollama"]) == 1
+
+
+def test_local_only_route_fails_closed_when_only_cloud_routes_exist(app_env, monkeypatch):
+    client, state = app_env
+    state["role"] = "owner"
+    monkeypatch.setenv("FIRBO_FREE_CLOUD_ORGANIZATIONS", ORG)
+    original = a.engine()
+    monkeypatch.setattr(
+        a,
+        "engine",
+        lambda: f.FreeEngine(
+            [f.Route("openrouter", "test/model:free", "test-test-key")],
+            original.ledger,
+        ),
+    )
+    response = client.post("/v1/firbo/free/local/chat/completions", json=payload(), headers=AUTH)
+    assert response.status_code in {429, 503}
+    assert all(req.url.host == "identity.test" for req in state["requests"])
+
+
+def test_local_only_rejects_client_model_or_provider_override(app_env):
+    client, state = app_env
+    state["role"] = "owner"
+    for extra in ({"cloud_allowed": True}, {"model": "openrouter/test"}, {"url": "https://other.example"}, {"tools": [{"x": 1}]}):
+        response = client.post(
+            "/v1/firbo/free/local/chat/completions",
+            json={**payload(), **extra},
+            headers=AUTH,
+        )
+        assert response.status_code == 422
+    assert all(req.url.host == "identity.test" for req in state["requests"])
+
+
 def test_free_endpoint_requires_real_auth_dependency(app_env):
     client, state = app_env
     assert (
