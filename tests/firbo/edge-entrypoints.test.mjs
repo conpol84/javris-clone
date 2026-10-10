@@ -99,7 +99,7 @@ function fixture(options={}) {
         run_claim:options.taskChangedAfterSelection&&state.workerSelections?.length?null:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
     if(table==='connector_devices'){
       const initialPolicy={enabled:true,apps:['Safari'],shortcuts:[],writes:'auto',commands:'safe',hours:null};
-      const device={id:'13131313-1313-4313-8313-131313131313',organization_id:ORG,name:'Synthetic Mac',platform:'darwin',last_seen_at:new Date().toISOString(),
+      const device={id:'13131313-1313-4313-8313-131313131313',organization_id:ORG,created_by:USER,name:'Synthetic Mac',platform:'darwin',last_seen_at:new Date().toISOString(),
         paired:true,revoked_at:null,capabilities:{job_kinds:['list','read','write','browser_task'],roots:['Documents']},
         agent_policy:single?(options.freshDevicePolicy??initialPolicy):initialPolicy};
       const devices=options.devices??[device];
@@ -132,7 +132,7 @@ function fixture(options={}) {
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'integration read must be bound to verified organization');
       return{data:options.integrations??[],error:options.integrationsError?{message:'db unavailable'}:null};
     }
-    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan,plan_status:options.planStatus??'active',status:'active'},error:null};
+    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan??'pro',plan_status:options.planStatus??'active',status:'active'},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
@@ -388,10 +388,10 @@ const NATIVE_MAC='14141414-1414-4414-8414-141414141414';
 const NATIVE_DEBIAN='15151515-1515-4515-8515-151515151515';
 const nativeEnv={FIRBO_DESKTOP_VISION_MODEL:'openai/test-vision',FIRBO_DESKTOP_PRICE_IN_PER_M:'5',FIRBO_DESKTOP_PRICE_OUT_PER_M:'30'};
 const nativeDevices=()=>[
-  {id:NATIVE_MAC,organization_id:ORG,name:'Synthetic Catalina Mac',platform:'darwin',paired:true,revoked_at:null,
+  {id:NATIVE_MAC,organization_id:ORG,created_by:USER,name:'Synthetic Catalina Mac',platform:'darwin',paired:true,revoked_at:null,
     last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','browser_open'],roots:['Documents']},
     agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
-  {id:NATIVE_DEBIAN,organization_id:ORG,name:'Synthetic Debian',platform:'linux',paired:true,revoked_at:null,
+  {id:NATIVE_DEBIAN,organization_id:ORG,created_by:USER,name:'Synthetic Debian',platform:'linux',paired:true,revoked_at:null,
     last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','desktop_task'],roots:['/home/firbo'],full_control:true},
     agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
 ];
