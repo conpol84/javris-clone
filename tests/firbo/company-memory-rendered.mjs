@@ -82,7 +82,7 @@ try{
    assert.equal(check[0].organization_id,'synthetic-company-a');
    assert.equal(check[0].source_memory_id,'proposal-one');
    assert.equal(check[0].confirm_reviewed,true);
-   assert.equal(await root.locator('button[aria-pressed]').count(),0,'Published proposal must leave pending review list');
+   await page.waitForFunction(()=>document.querySelectorAll('[data-company-memory-review] button[aria-pressed]').length===0,undefined,{timeout:10000});
    page.once('dialog',dialog=>void dialog.accept());
    await root.getByRole('button',{name:labels.revoke}).click();
    await page.waitForFunction(()=>window.harness.publications.length===0);
