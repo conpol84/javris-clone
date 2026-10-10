@@ -28,7 +28,7 @@ function testRig({user=OWNER,role='owner',authenticated=true}={}){
   const criteria=[];let operation='get',write=null;
   const matches=(row)=>criteria.every(([k,v])=>{
    if(k==='metadata->>source')return row.metadata?.source===v;
-   return row[k]===v;
+   return (row[k]??null)===v;
   });
   const rows=()=>state[table==='organization_members'?'members':table==='memories'?'memories':'publications']
    .filter(matches);
