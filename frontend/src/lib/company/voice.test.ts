@@ -214,6 +214,42 @@ describe('Talk to CEO local Piper recovery (no paid TTS replay)',()=>{
     expect((await result).status).toBe('failed');
     expect(synth.speak).not.toHaveBeenCalled();
   });
+  it('caps local WAV bytes before allocation and falls back to browser only',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    const tooLarge=new Uint8Array(6_000_001);
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(tooLarge,{headers:{'content-type':'audio/wav'}})));
+    const result=speak('owner-org','oversized local audio','en',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(AudioMock.instances).toHaveLength(0);
+    expect(synth.speak).toHaveBeenCalledTimes(1);
+    utterance!.onstart?.();utterance!.onend?.();
+    expect(await result).toMatchObject({status:'completed',source:'browser'});
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+  });
+  it('Stop also cancels a pending session lookup before any local request',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    mocks.getSession.mockImplementationOnce(()=>new Promise(()=>{}));
+    const localFetch=vi.fn();vi.stubGlobal('fetch',localFetch);
+    const result=speak('owner-org','pending session','en',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(mocks.getSession).toHaveBeenCalledTimes(1);
+    stopSpeaking();
+    expect((await result).status).toBe('cancelled');
+    expect(localFetch).not.toHaveBeenCalled();
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
+  it('manual local voice cannot replay a partially spoken sentence after playback error',async()=>{
+    setVoiceProfile('firbo-local-dark-v1');
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(localWav(),{headers:{'content-type':'audio/wav'}})));
+    const result=speak('owner-org','Once in Local mode','en');
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(AudioMock.instances).toHaveLength(1);
+    AudioMock.instances[0].start();AudioMock.instances[0].error();
+    expect((await result).status).toBe('failed');
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
 });
 
 describe('microphone lifecycle',()=>{
