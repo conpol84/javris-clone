@@ -29,10 +29,15 @@ export function legacyProviderFailureCode(error: unknown): string {
  * gateway combos or multiple target chains are never auto-replayed.
  */
 export function approvedFreeCeoFallback(input: {
-  organizationId: string; isCeo: boolean; hasOwnKey: boolean;
-  alreadyFree: boolean; directTargetCount: number; errorCode: string; env: EnvReader;
+  organizationId: string; isCeo: boolean; isOwnerOrAdmin: boolean;
+  isUserSession: boolean; hasOwnKey: boolean; alreadyFree: boolean;
+  directTargetCount: number; directProvider: string; directBase: string;
+  errorCode: string; env: EnvReader;
 }): boolean {
-  if (!input.isCeo || input.hasOwnKey || input.alreadyFree || input.directTargetCount !== 1
+  if (!input.isCeo || !input.isOwnerOrAdmin || !input.isUserSession
+    || input.hasOwnKey || input.alreadyFree || input.directTargetCount !== 1
+    // OmniRoute may have done upstream work before returning 429: no auto-replay.
+    || input.directProvider !== 'openai' || input.directBase !== 'https://api.openai.com/v1'
     || input.errorCode !== 'model_provider_rate_limited'
     || input.env('FIRBO_ALLOW_LOCAL_FALLBACK') !== 'on') return false;
   try { return freeForOrganization(input.organizationId, input.env); }
