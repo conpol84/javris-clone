@@ -47,28 +47,30 @@ def _load_existing(name: str, alias: str):
 # These are constant, audited error codes emitted by gateway-credentials.py.
 # Never surface an arbitrary exception string or Docker stderr; it could
 # contain a provider key, stack path or a private account identifier.
-_SAFE_BLOCKED_CODES = frozenset({
-    "docker_not_installed",
-    "local_command_failed_or_timed_out",
-    "local_command_failed",
-    "local_response_too_large",
-    "invalid_local_response",
-    "unsafe_or_symlinked_path",
-    "expected_container_not_running",
-    "invalid_compose_labels",
-    "wrong_compose_service",
-    "compose_labels_missing",
-    "unsafe_compose_directory_permissions",
-    "invalid_compose_project",
-    "compose_file_outside_stack_directory",
-    "mixed_compose_projects",
-    "configuration_not_regular_file",
-    "configuration_owned_by_another_user",
-    "configuration_too_large",
-    "configuration_changed",
-    "configuration_not_utf8",
-    "duplicate_credential_configuration",
-})
+_SAFE_BLOCKED_CODES = frozenset(
+    {
+        "docker_not_installed",
+        "local_command_failed_or_timed_out",
+        "local_command_failed",
+        "local_response_too_large",
+        "invalid_local_response",
+        "unsafe_or_symlinked_path",
+        "expected_container_not_running",
+        "invalid_compose_labels",
+        "wrong_compose_service",
+        "compose_labels_missing",
+        "unsafe_compose_directory_permissions",
+        "invalid_compose_project",
+        "compose_file_outside_stack_directory",
+        "mixed_compose_projects",
+        "configuration_not_regular_file",
+        "configuration_owned_by_another_user",
+        "configuration_too_large",
+        "configuration_changed",
+        "configuration_not_utf8",
+        "duplicate_credential_configuration",
+    }
+)
 
 
 def _failure(stage: str, error: Exception | None = None, source=None):
