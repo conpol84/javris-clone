@@ -4,7 +4,7 @@ on:
     branches: [codex/firbo-jarvis-vps-dashboard-recovery-20261010]
     paths:
       - supabase/functions/agent-chat/index.ts
-      - supabase/functions/_shared/free-routing.ts
+      - supabase/functions/_shared/ceo-model-recovery.ts
       - tests/firbo/ceo-local-recovery.test.mjs
       - .github/workflows/firbo-ceo-local-recovery.yml
   workflow_dispatch:
