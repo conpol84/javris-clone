@@ -55,7 +55,7 @@ class FakeOmni:
                 "scopesEnforced": True,
             }
         )
-        self.advertised = advertised or [
+        self.advertised = advertised if advertised is not None else [
             "omniroute_get_health",
             "omniroute_check_quota",
             "omniroute_cost_report",
@@ -297,3 +297,89 @@ def test_unauthorized_http_response_is_sanitized():
     with pytest.raises(module.AcceptanceError, match="http_401") as exc:
         module.request_once(Denied(), TOKEN, "GET", module.STATUS_URL)
     assert "SECRET_EXAMPLE" not in str(exc.value)
+
+
+def test_live_sized_catalog_over_100_is_read_only_and_sanitized():
+    # Dashboard "37 tools" lists one surface; the actual gateway also registers
+    # memory/skills/plugins/compression tools. Do not turn valid discovery into
+    # "too_many_advertised_tools" just because the catalog exceeds 100.
+    names = list(module.ALLOWED_TOOL_IDS) + [
+        f"unapproved_executable_{i}" for i in range(145)
+    ]
+    gateway = FakeOmni(advertised=names)
+    result = module.acceptance(gateway, TOKEN)
+    assert result["advertised_tool_count"] == 150
+    assert result["firbo_five_readonly_tools_advertised"] == sorted(
+        module.ALLOWED_TOOL_IDS
+    )
+    assert result["mcp_tool_called"] is False
+    assert "unapproved_executable" not in json.dumps(result)
+    assert gateway.calls.count("tools/list") == 1
+    assert "tools/call" not in gateway.calls
+
+
+def test_catalog_at_exact_hard_cap_is_read_only_even_with_explicit_health():
+    gateway = FakeOmni(
+        advertised=["omniroute_get_health"]
+        + [f"unapproved_{i}" for i in range(module.MAX_TOOLS - 1)]
+    )
+    result = module.acceptance(gateway, TOKEN, read_health=False)
+    assert result["advertised_tool_count"] == module.MAX_TOOLS
+    assert result["mcp_tool_called"] is False
+    assert gateway.calls.count("tools/call") == 0
+
+
+def test_catalog_above_hard_cap_still_denies_optional_tool_call():
+    gateway = FakeOmni(
+        advertised=["omniroute_get_health"]
+        + [f"unapproved_{i}" for i in range(module.MAX_TOOLS)]
+    )
+    with pytest.raises(module.AcceptanceError, match="too_many_advertised_tools"):
+        module.acceptance(gateway, TOKEN, read_health=True)
+    assert gateway.calls.count("tools/call") == 0
+    assert gateway.calls.count("tools/list") == 1
+
+
+class PagedFakeOmni(FakeOmni):
+    def open(self, req, timeout):
+        if req.get_method() != "POST":
+            return super().open(req, timeout)
+        parsed = json.loads(req.data)
+        if parsed.get("method") != "tools/list":
+            return super().open(req, timeout)
+        self.calls.append("tools/list")
+        cursor = parsed.get("params", {}).get("cursor")
+        start = int(cursor) if cursor is not None else 0
+        end = min(len(self.advertised), start + 70)
+        next_cursor = str(end) if end < len(self.advertised) else None
+        result = {"tools": [{"name": n} for n in self.advertised[start:end]]}
+        if next_cursor is not None:
+            result["nextCursor"] = next_cursor
+        return FakeReply({
+            "jsonrpc": "2.0",
+            "id": parsed["id"],
+            "result": result,
+        })
+
+
+def test_paged_catalog_over_100_is_finite_and_never_calls_other_tools():
+    names = list(module.ALLOWED_TOOL_IDS) + [
+        f"omniroute_unapproved_{i}" for i in range(206)
+    ]
+    gateway = PagedFakeOmni(advertised=names)
+    result = module.acceptance(gateway, TOKEN)
+    assert result["advertised_tool_count"] == 211
+    assert result["firbo_five_readonly_tools_advertised"] == sorted(
+        module.ALLOWED_TOOL_IDS
+    )
+    assert gateway.calls.count("tools/list") == 4
+    assert "tools/call" not in gateway.calls
+
+
+def test_invalid_empty_catalog_is_preserved_instead_of_fixture_default():
+    gateway = FakeOmni(advertised=[])
+    result = module.acceptance(gateway, TOKEN)
+    assert result["advertised_tool_count"] == 0
+    assert result["firbo_five_readonly_tools_advertised"] == []
+    assert result["health_tool_advertised"] is False
+    assert "tools/call" not in gateway.calls
