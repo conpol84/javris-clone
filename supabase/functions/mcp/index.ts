@@ -13,6 +13,7 @@ import {
   filterOmniReadOnlyTools,
   isOmniReadOnlyMcpTool,
   omniMcpEndpoint,
+  omniMcpPilotEnabled,
 } from '../_shared/omni-mcp-policy.ts';
 
 const cors = {
@@ -194,6 +195,7 @@ Deno.serve(async (req) => {
     if (!orgId || !name || !u || omni === 'wrong_path') return json(422, { error: 'invalid_fields' });
     if (!(await isManager(orgId))) return json(403, { error: 'forbidden' });
     if (omni === 'shared' && !(await isPlatformAdmin())) return json(403, { error: 'forbidden' });
+    if (omni === 'shared' && !omniMcpPilotEnabled(name => Deno.env.get(name))) return json(503, { error: 'omni_pilot_disabled' });
     const counted = await admin.from('integrations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId);
     const limited = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'integrations' });
     const cap = Number(limited.data);
@@ -224,6 +226,13 @@ Deno.serve(async (req) => {
   if (integrationError) return json(503, { error: 'integration_unavailable' });
   if (!integ || integ.kind !== 'mcp') return json(404, { error: 'not_found' });
   if (!(await isManager(integ.organization_id))) return json(403, { error: 'forbidden' });
+  const serverUrl = String((integ.config as Record<string, unknown>)?.server_url ?? '');
+  const omni = omniMcpEndpoint(serverUrl);
+  if (!publicHttps(serverUrl) || omni === 'wrong_path') return json(400, { error: 'bad_request' });
+  // Reject global OmniRoute access before even reading its encrypted company
+  // credential. The pilot is OFF unless explicitly enabled by the operator.
+  if (omni === 'shared' && !(await isPlatformAdmin())) return json(403, { error: 'forbidden' });
+  if (omni === 'shared' && !omniMcpPilotEnabled(name => Deno.env.get(name))) return json(503, { error: 'omni_pilot_disabled' });
   const { data: sec, error: secretError } = await admin.from('integration_secrets').select('secret').eq('integration_id', id).maybeSingle();
   if (secretError || !sec) return json(503, { error: 'credentials_unavailable' });
   let token = '';
@@ -232,10 +241,6 @@ Deno.serve(async (req) => {
   } catch {
     return json(503, { error: 'credentials_unavailable' });
   }
-  const serverUrl = String((integ.config as Record<string, unknown>)?.server_url ?? '');
-  const omni = omniMcpEndpoint(serverUrl);
-  if (!publicHttps(serverUrl) || omni === 'wrong_path') return json(400, { error: 'bad_request' });
-  if (omni === 'shared' && !(await isPlatformAdmin())) return json(403, { error: 'forbidden' });
 
   if (body.action !== 'tools' && body.action !== 'call') return json(400, { error: 'bad_request' });
   let tool = '';
