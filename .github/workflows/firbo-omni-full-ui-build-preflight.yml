@@ -1,0 +1,182 @@
+name: FIRBO OmniRoute Pinned Full UI Build and Hostinger Release Preflight
+on:
+  push:
+    branches:
+      - codex/firbo-omni-full-ui-build-release-preflight-20261010
+    paths:
+      - .github/workflows/firbo-omni-full-ui-build-preflight.yml
+      - docs/FIRBO-OMNI-ROLLBACK-FIRST-RELEASE.md
+  pull_request:
+    branches:
+      - codex/firbo-omni-key-ci-bridge-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-only-release-audit:
+    name: Verify exact source, volume safety and no extra MCP
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          persist-credentials: false
+          path: omniroute
+      - name: Verify independent full application source and release constraints
+        run: |
+          set -euo pipefail
+          test "$(git -C omniroute rev-parse HEAD)" = 26e14038151e8e74c825334a33b77702286892ab
+          test "$(git -C omniroute remote get-url origin)" = "https://github.com/conpol84/OmniRoute"
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path("omniroute")
+          docker=(root/"Dockerfile").read_text()
+          compose=(root/"docker-compose.yml").read_text()
+          config=(root/"next.config.mjs").read_text()
+          cli=(root/"src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx").read_text()
+          policy=(root/"src/server/authz/policies/clientApi.ts").read_text()
+          keys=(root/"src/shared/constants/firboMcpReadOnlyKey.ts").read_text()
+          assert 'FROM node:26-trixie-slim AS base' in docker
+          assert 'target: runner-base' in compose
+          assert './data:/app/data' in compose
+          assert 'DATA_DIR=/app/data' in compose
+          assert 'stop_grace_period: 40s' in compose
+          assert 'restart: unless-stopped' in compose
+          assert 'healthcheck:' in compose
+          assert 'const withNextIntl' in config
+          assert 'firboMcpCopy.title' in cli
+          assert 'firboMcpEdit.convert' in cli
+          assert 'MCP_ONLY_KEY' in policy
+          assert keys.count('"read:health"') == 1
+          assert all(x in keys for x in ('"read:quota"','"read:usage"','"read:models"','"read:combos"','"mcp:connect"'))
+          print("pin_sha_checked=true")
+          print("data_volume_preservation_source=true")
+          print("existing_only_mcp_key_ui_and_client_policy=true")
+          print("full_ui_release_gate=REQUIRES_APPROVED_HIGH_RAM_ISOLATED_BUILDER")
+          PY
+
+  offline-backend-next-build:
+    name: Compile existing OmniRoute API routes with dashboard intentionally omitted
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DISABLE_SQLITE_AUTO_BACKUP: "true"
+      OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+      OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
+      OMNIROUTE_BUILD_PROFILE: "contributor"
+      OMNIROUTE_SKIP_STANDALONE: "1"
+      OMNIROUTE_USE_TURBOPACK: "0"
+      OMNIROUTE_BUILD_MEMORY_MB: "8192"
+      CIRCLE_NODE_TOTAL: "1"
+      OMNIROUTE_MITM_STUB: "1"
+      OMNIROUTE_BETTER_SQLITE3_STUB: "1"
+      API_KEY_SECRET: "ci-api-build-synthetic-not-a-real-key"
+      JWT_SECRET: "ci-api-build-synthetic-not-a-real-key"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          persist-credentials: false
+          path: omniroute
+      - name: Verify exact OmniRoute commit
+        run: |
+          set -euo pipefail
+          test "$(git -C omniroute rev-parse HEAD)" = "26e14038151e8e74c825334a33b77702286892ab"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Use locked npm and install dependencies
+        working-directory: omniroute
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build entire API routing graph in repository-native contributor mode
+        working-directory: omniroute
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build/build-next-isolated.mjs
+      - name: Prove production-independent API build, no source drift, no dashboard claim
+        working-directory: omniroute
+        run: |
+          set -euo pipefail
+          test -s .build/next/BUILD_ID
+          test -d .build/next/server/app/api
+          git diff --exit-code -- src/app src/instrumentation.ts src/instrumentation-node.ts
+          echo "omni_backend_api_route_compile=true"
+          echo "omni_dashboard_not_verified=true"
+          echo "omni_standalone_not_packaged=true"
+          echo "production_changes=false"
+
+  offline-full-next-build:
+    # The upstream OmniRoute fork explicitly reports that hosted ~7 GB runners
+    # cannot reliably build this Next tree (19/30 shutdowns). A green source
+    # PR is NOT a green production image. Only a dedicated isolated >= 31GB
+    # owner-approved builder may run the *full UI* gate; it never deploys.
+    if: ${{ vars.FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED == 'true' }}
+    name: FULL UI build — high-RAM isolated builder only (manual resource gate)
+    runs-on: [self-hosted, firbo-omni-build]
+    timeout-minutes: 120
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DISABLE_SQLITE_AUTO_BACKUP: "true"
+      OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+      OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
+      OMNIROUTE_BUILD_MEMORY_MB: "12288"
+      OMNIROUTE_USE_TURBOPACK: "1"
+      OMNIROUTE_SKIP_STANDALONE: "1"
+      OMNIROUTE_BUILD_WORKERS: "1"
+      # Dockerfile passes this to Next's build worker pool; keep CI equivalent.
+      CIRCLE_NODE_TOTAL: "1"
+      OMNIROUTE_MITM_STUB: "1"
+      OMNIROUTE_BETTER_SQLITE3_STUB: "1"
+      API_KEY_SECRET: "ci-build-synthetic-do-not-use-in-production"
+      JWT_SECRET: "ci-build-synthetic-do-not-use-in-production"
+      OMNIROUTE_PEER_STAMP_TOKEN: "ci-build-synthetic-mcp-sentinel-do-not-deploy"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          persist-credentials: false
+          path: omniroute
+      - name: Confirm exact OmniRoute source
+        run: |
+          set -euo pipefail
+          test "$(git -C omniroute rev-parse HEAD)" = 26e14038151e8e74c825334a33b77702286892ab
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install pinned npm
+        run: npm install --global npm@11.19.0
+      - name: Locked packages with install scripts disabled
+        working-directory: omniroute
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile full existing Next.js UI + API with 12GB heap, Turbopack and one worker
+        working-directory: omniroute
+        run: |
+          set -euo pipefail
+          node scripts/build/build-next-isolated.mjs
+      - name: Verify actual compiled Next build output
+        working-directory: omniroute
+        run: |
+          set -euo pipefail
+          test -s .build/next/BUILD_ID
+          test -d .build/next/server/app
+          # Avoid SIGPIPE from 'find | grep -q' under pipefail on 600+ compiled routes.
+          # Require a real compiled API Manager page without hiding source failures.
+          page="$(find .build/next/server/app -type f -path '*/dashboard/api-manager/page.js' -print -quit)"
+          if [ -z "$page" ]; then
+            echo "FIRBO_API_MANAGER_PAGE_NOT_COMPILED"
+            exit 1
+          fi
+          test -s "$page"
+          echo "omni_next_ui_build_compiled=true"
+          echo "production_deployment=false"
+          echo "standalone_image_packaging=false"
