@@ -36,8 +36,11 @@ ALLOWED_TOOL_IDS = frozenset(
     }
 )
 MAX_BODY_BYTES = 262_144
-MAX_TOOLS = 100
-MAX_PAGES = 5
+# OmniRoute's live MCP registry includes extra memory, plugin and skill tools
+# beyond the dashboard's phase-one count. This remains a hard bounded limit,
+# NOT authorization to invoke or print any of those executable tools.
+MAX_TOOLS = 256
+MAX_PAGES = 8
 
 
 class AcceptanceError(Exception):
