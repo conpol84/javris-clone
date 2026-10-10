@@ -93,7 +93,12 @@ function fixture(options={}) {
         error:options.missionStepsError?{message:'private database failure'}:null};
     }
     if(table==='tasks'&&selection==='id,organization_id,status,run_claim,result'&&options.reconciliationReadConflict)return{data:{...task,status:'completed',run_claim:null},error:null};
-    if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
+    if(table==='tasks'&&filters.some(([k])=>k==='neq:id')&&filters.some(([k,v])=>k==='created_by'&&v===USER)){
+       // The new specialist historical-work query is a collection. Its
+       // content must not accidentally reuse the current task singleton.
+       return{data:options.previousAgentTasks??[],error:null};
+     }
+     if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
       ...(selection?.includes('run_claim')&&(state.rpcs?.some(r=>r.fn==='claim_task_run')||options.taskStatus==='running')?{
         status:options.taskChangedAfterSelection&&state.workerSelections?.length?'completed':'running',
         run_claim:options.taskChangedAfterSelection&&state.workerSelections?.length?null:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
