@@ -38,9 +38,7 @@ def test_reviewed_native_module_file_has_pinned_git_blob_hash():
     ],
 )
 def test_route_present_rejects_missing_method(methods, expected):
-    app = SimpleNamespace(
-        routes=[SimpleNamespace(path=probe.ROUTE, methods=methods)]
-    )
+    app = SimpleNamespace(routes=[SimpleNamespace(path=probe.ROUTE, methods=methods)])
     assert probe.route_present(app) is expected
 
 
@@ -60,9 +58,7 @@ def test_loopback_http_404_and_405_are_reported_without_retry(monkeypatch):
 
     monkeypatch.setattr(probe.request, "urlopen", fake)
     assert probe.check_loopback_get() == 405
-    assert attempts == [
-        ("GET", "http://127.0.0.1:8000" + probe.ROUTE, 5)
-    ]
+    assert attempts == [("GET", "http://127.0.0.1:8000" + probe.ROUTE, 5)]
 
 
 def test_inspect_reports_different_installed_source_not_repaired(monkeypatch, tmp_path):
@@ -72,7 +68,8 @@ def test_inspect_reports_different_installed_source_not_repaired(monkeypatch, tm
         routes=[SimpleNamespace(path="/health", methods={"GET"})]
     )
     monkeypatch.setattr(
-        probe.importlib, "import_module",
+        probe.importlib,
+        "import_module",
         lambda _name: SimpleNamespace(__file__=str(old), app=fake_app),
     )
     monkeypatch.setattr(probe, "check_loopback_get", lambda: 404)
