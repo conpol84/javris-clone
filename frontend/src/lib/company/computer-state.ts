@@ -8,6 +8,21 @@ export function devicePresence(device: HeartbeatDevice, now = Date.now()): Devic
   const age = now - seen;
   return Number.isFinite(now) && Number.isFinite(seen) && age >= 0 && age < 60_000 ? 'online' : 'offline';
 }
+/** A durable delivery receipt is not proof the requested user task finished.
+ * Explicit false for an advanced UI job means the worker delivered a truthful
+ * incomplete result (e.g. locked screen). Do NOT rewrite the DB's `done` status:
+ * that marks the terminal report and is used for idempotent ACK accounting.
+ */
+export function computerJobNeedsContinuation(job: {
+  kind: string;
+  status: string;
+  result: Record<string, unknown> | null;
+}): boolean {
+  return (job.kind === 'desktop_task' || job.kind === 'browser_task')
+    && job.status === 'done'
+    && job.result?.completed === false;
+}
+
 export function formatComputerResult(job: { kind: string; result: Record<string, unknown> | null }): string {
   const r = job.result;
   if (!r) return '';
