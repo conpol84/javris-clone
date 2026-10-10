@@ -7,8 +7,10 @@ const other = '22222222-2222-4222-8222-222222222222';
 const config = { FIRBO_ALLOW_LOCAL_FALLBACK: 'on', FIRBO_FREE_ORGANIZATIONS: org };
 const env = (settings = config) => (name) => settings[name];
 const eligible = (changes = {}) => approvedFreeCeoFallback({
-  organizationId: org, isCeo: true, hasOwnKey: false, alreadyFree: false,
-  directTargetCount: 1, errorCode: 'model_provider_rate_limited',
+  organizationId: org, isCeo: true, isOwnerOrAdmin: true, isUserSession: true,
+  hasOwnKey: false, alreadyFree: false, directTargetCount: 1,
+  directProvider: 'openai', directBase: 'https://api.openai.com/v1',
+  errorCode: 'model_provider_rate_limited',
   env: env(), ...changes,
 });
 
@@ -49,6 +51,11 @@ test('local CEO fallback is off without explicit owner configuration', () => {
 test('local CEO fallback applies only to one definite rejected direct provider', () => {
   assert.equal(eligible(), true);
   assert.equal(eligible({ isCeo: false }), false);
+  assert.equal(eligible({ isOwnerOrAdmin: false }), false);
+  assert.equal(eligible({ isUserSession: false }), false);
+  assert.equal(eligible({ directProvider: 'omniroute' }), false);
+  assert.equal(eligible({ directBase: 'https://gateway.firboai.app/v1' }), false);
+  assert.equal(eligible({ directProvider: 'openai', directBase: 'https://example.com/v1' }), false);
   assert.equal(eligible({ hasOwnKey: true }), false);
   assert.equal(eligible({ alreadyFree: true }), false);
   assert.equal(eligible({ directTargetCount: 0 }), false);
