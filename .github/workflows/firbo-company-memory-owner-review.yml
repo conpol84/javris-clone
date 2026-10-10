@@ -1,0 +1,38 @@
+name: FIRBO company memory owner review security
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261010011500_company_memory_owner_review.sql'
+      - 'supabase/functions/company-memory-review/**'
+      - 'tests/firbo/sql/cmem01_company_memory.sql'
+      - 'tests/firbo/company-memory-review.test.mjs'
+      - 'frontend/src/lib/company/company-memory*'
+      - 'frontend/src/pages/MemoryPage.tsx'
+      - '.github/workflows/firbo-company-memory-owner-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cmem01:
+    name: Owner review API + real PostgreSQL isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22.22.0'
+      - name: Owner review API cannot expose/publish outside permission boundary
+        run: node --test tests/firbo/company-memory-review.test.mjs
+      - name: Install native postgres for disposable RLS tests
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16 postgresql-client-16
+          sudo pg_ctlcluster 16 main start || sudo pg_ctlcluster 16 main status
+      - name: Execute exact migration against synthetic companies and identities
+        run: sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres -f tests/firbo/sql/cmem01_company_memory.sql
