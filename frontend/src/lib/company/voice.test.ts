@@ -164,8 +164,10 @@ describe('Talk to CEO local Piper recovery (no paid TTS replay)',()=>{
     expect(JSON.parse(String(opts.body))).toMatchObject({organization_id:'owner-org',lang:'el'});
     expect(synth.speak).not.toHaveBeenCalled();
     expect(AudioMock.instances).toHaveLength(1);
-    AudioMock.instances[0].start();AudioMock.instances[0].end();
-    expect(await result).toMatchObject({status:'completed',source:'server'});
+    AudioMock.instances[0].start();
+    expect(getVoiceSnapshot()).toMatchObject({phase:'speaking',source:'local'});
+    AudioMock.instances[0].end();
+    expect(await result).toMatchObject({status:'completed',source:'local'});
   });
   it('unavailable local Piper uses browser voice without a second cloud TTS request',async()=>{
     setVoiceProfile('firbo-dark-v1');
