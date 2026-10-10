@@ -177,3 +177,19 @@ def test_noninteractive_fails_without_key_or_request(monkeypatch, capsys):
     assert module.main() == 4
     output = capsys.readouterr().out
     assert "interactive_owner_terminal_required" in output
+
+
+def test_echoing_terminal_is_rejected_before_network(monkeypatch, capsys):
+    def insecure_echo(*args, **kwargs):
+        raise module.getpass.GetPassWarning("Password input may be echoed")
+
+    monkeypatch.setattr(module.getpass, "getpass", insecure_echo)
+    monkeypatch.setattr(
+        module,
+        "fetch_status",
+        lambda token: pytest.fail("must never send from an echoed prompt"),
+    )
+    assert module.main() == 4
+    output = capsys.readouterr().out
+    assert "interactive_owner_terminal_required" in output
+    assert "Password input may be echoed" not in output
