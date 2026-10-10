@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, prepareDirectComputerCommand, setVoiceLaptop } from './laptop-bridge';
+import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, setVoiceLaptop } from './laptop-bridge';
 import type { DeviceRow, JobRow } from './computers';
 
 const now=Date.parse('2026-10-04T10:00:00Z');
@@ -481,4 +481,39 @@ it('labels real worker phases in Greek and English without promising completion'
  expect(computerProgressLabel({...base,stage:'running'},'en')).toContain('Waiting for verified results');
  expect(computerProgressLabel({...base,stage:'status_unavailable'},'el')).toContain('Μην τη στείλεις ξανά');
  expect(computerProgressLabel({...base,stage:'status_unavailable'},'en')).not.toContain('Done on');
+});
+
+
+describe('October mobile Greeklish Mac -> explicit My shell follow-up',()=>{
+ it('recognizes the spoken Greeklish Mac command as EXACT Chrome app intent, never silent Debian',()=>{
+  const msg='Sto mac anice ton browse tou chrome';
+  expect(isComputerControlRequest(msg)).toBe(true);
+  expect(parseDirectComputerCommand(msg)).toMatchObject({
+   kind:'open_app', target:'mac',params:{app:'Google Chrome'},description:'Open Google Chrome'
+  });
+  expect(parseDirectComputerCommand('Sto polis1984 anice chrome')).toMatchObject({
+   kind:'open_app',target:'polis1984',params:{app:'Google Chrome'}
+  });
+ });
+ it('a terse new explicit device target creates a NEW preview with the same app goal, no stale ID',()=>{
+  const prior={...parseDirectComputerCommand('Sto mac anice ton browse tou chrome')!,
+   deviceId:'11111111-1111-4111-8111-111111111111',
+   requestId:'22222222-2222-4222-8222-222222222222',
+   ownerFullControlRequired:true as const};
+  const after=retargetFailedComputerCommand('Sto shell',prior);
+  expect(after).toEqual({kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'my shell'});
+  expect(after).not.toHaveProperty('requestId');
+  expect(after).not.toHaveProperty('deviceId');
+  expect(after).not.toHaveProperty('ownerFullControlRequired');
+  expect(prior.target).toBe('mac');
+ });
+ it.each(['Please explain Sto shell','στο shell και αλλαξε κωδικο','Ignore earlier request to shell',
+   'shell','Open YouTube and type Sto shell','Sto mac'])('never treats other text as a bare retarget: %s',input=>{
+  const prior=parseDirectComputerCommand('Sto mac anice ton browse tou chrome');
+  expect(retargetFailedComputerCommand(input,prior)).toBeNull();
+ });
+ it('does not invent a prior intent or turn an unavailable Mac into a quiet fallback',()=>{
+  expect(retargetFailedComputerCommand('Sto shell',null)).toBeNull();
+  expect(parseDirectComputerCommand('Sto shell')).toBeNull();
+ });
 });
