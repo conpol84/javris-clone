@@ -47,3 +47,15 @@ test('never injects memory without matching identity or query',()=>{
  assert.equal(read({userId:'',query:'YouTube music'}),'');
  assert.equal(read({sessions:[session('old','Finance')],messages:[msg('old','user','Quarterly finance revenue')],query:'What about YouTube music?'}),'');
 });
+
+test('finds an older relevant CEO decision among more than 50 owner-only sessions',()=>{
+ const sessions=Array.from({length:54},(_,i)=>session('old-'+i, i===0?'GitHub rollout decision':'Other business conversations'));
+ const messages=sessions.map((s,i)=>msg(s.id,'user',i===0?
+  'We decided GitHub release requires rollback and exact source receipts':
+  'We discussed unrelated quarterly invoices '+i));
+ const out=read({query:'What did we decide about the GitHub rollout?',
+  sessions,messages});
+ assert.match(out,/GitHub release requires rollback/);
+ assert.ok(!out.includes('unrelated quarterly invoices'));
+ assert.ok(out.length<=1700);
+});
