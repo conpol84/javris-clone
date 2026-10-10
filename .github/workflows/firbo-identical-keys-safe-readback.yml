@@ -32,4 +32,4 @@ jobs:
           /tmp/firbo-identical-keys/bin/ruff format --check deploy/hostinger/omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_identical_duplicate_keys.py tests/firbo/test_omniroute_ceo_quota_stack.py
       - name: Preserve original strict gateway credential parsing
         run: |
-          git diff --exit-code 0776789929533f95a70c94a4011ca482208bc930 -- deploy/hostinger/gateway-credentials.py
+          test "$(git hash-object deploy/hostinger/gateway-credentials.py)" = "b05e02c6a7d090f16d5471200465f2a6e02a4a58"
