@@ -1,0 +1,35 @@
+name: FIRBO Existing Identical Credentials Safe Readback
+on:
+  pull_request:
+    branches:
+      - codex/firbo-ceo-ollama-standby-after-cloud-failure-20261010
+    paths:
+      - deploy/hostinger/omniroute_ceo_quota_stack.py
+      - tests/firbo/test_omniroute_ceo_quota_stack.py
+      - tests/firbo/test_omniroute_identical_duplicate_keys.py
+      - .github/workflows/firbo-identical-keys-safe-readback.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-head-source-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Prepare isolated pinned Python tools
+        run: |
+          python3 -m venv /tmp/firbo-identical-keys
+          /tmp/firbo-identical-keys/bin/pip install pytest==9.1.1 ruff==0.16.7
+      - name: Test original strict parser and no-write equality normalization
+        run: |
+          /tmp/firbo-identical-keys/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_omniroute_identical_duplicate_keys.py tests/firbo/test_omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_ceo_quota_probe.py tests/firbo/test_firbo_duplicate_credential_audit.py
+      - name: Strict format and lint
+        run: |
+          /tmp/firbo-identical-keys/bin/ruff check deploy/hostinger/omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_identical_duplicate_keys.py tests/firbo/test_omniroute_ceo_quota_stack.py
+          /tmp/firbo-identical-keys/bin/ruff format --check deploy/hostinger/omniroute_ceo_quota_stack.py tests/firbo/test_omniroute_identical_duplicate_keys.py tests/firbo/test_omniroute_ceo_quota_stack.py
+      - name: Preserve original strict gateway credential parsing
+        run: |
+          git diff --exit-code 0776789929533f95a70c94a4011ca482208bc930 -- deploy/hostinger/gateway-credentials.py
