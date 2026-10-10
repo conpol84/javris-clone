@@ -129,13 +129,48 @@ async function browserSpeech(text: string, lang: string, turn: VoiceTurn): Promi
     try { synth.speak(u); } catch { finish(new Error('speech_playback_failed')); }
   });
 }
+/** Limit the WAV body before allocating audio in the browser. A timeout/Stop
+ * cancels the reader; the bytes are never accepted after a stale voice turn. */
+async function readLocalWave(res: Response, turn: VoiceTurn): Promise<Uint8Array> {
+  const max = 6_000_000;
+  const declared = Number(res.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > max) throw new Error('local_voice_too_large');
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('invalid_local_audio');
+  return voiceDeadline(async signal => {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let completed = false;
+    const abort = () => { void reader.cancel().catch(noop); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      for (;;) {
+        if (signal.aborted || !turn.current()) throw new DOMException('Cancelled', 'AbortError');
+        const part = await reader.read();
+        if (part.done) { completed = true; break; }
+        total += part.value.byteLength;
+        if (total > max) throw new Error('local_voice_too_large');
+        chunks.push(part.value);
+      }
+      const bytes = new Uint8Array(total);
+      let at = 0;
+      for (const part of chunks) { bytes.set(part, at); at += part.byteLength; }
+      return bytes;
+    } finally {
+      signal.removeEventListener('abort', abort);
+      if (!completed) void reader.cancel().catch(noop);
+      try { reader.releaseLock(); } catch { /* A pending read is already cancelled. */ }
+    }
+  }, turn.signal, 3000);
+}
+
 /** Native Piper is a separate first-party, membership-guarded service, not Ollama
  * text inference. No cloud voice call is made by this helper. */
 async function playLocalPiper(
   orgId: string, clean: string, lang: string, turn: VoiceTurn,
   timeoutMs: number, requireWavType: boolean,
 ): Promise<void> {
-  const session = (await requireClient().auth.getSession()).data.session;
+  const session = (await voiceDeadline(() => requireClient().auth.getSession(), turn.signal, 5000)).data.session;
   if (!session) throw new Error('sign_in_required');
   if (!turn.current()) throw new DOMException('Cancelled', 'AbortError');
   const res = await voiceDeadline(signal => fetch(getBase() + '/v1/firbo/free/speech', {
@@ -148,9 +183,8 @@ async function playLocalPiper(
   if (requireWavType && !['audio/wav', 'audio/x-wav'].includes((res.headers.get('content-type') ?? '').split(';')[0])) {
     throw new Error('invalid_local_audio_type');
   }
-  const buffer = await voiceDeadline(() => res.arrayBuffer(), turn.signal, 3000);
+  const bytes = await readLocalWave(res, turn);
   if (!turn.current()) throw new DOMException('Cancelled', 'AbortError');
-  const bytes = new Uint8Array(buffer);
   if (bytes.length < 44 || bytes.length > 6_000_000
     || new TextDecoder().decode(bytes.slice(0, 4)) !== 'RIFF'
     || new TextDecoder().decode(bytes.slice(8, 12)) !== 'WAVE') {
