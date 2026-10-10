@@ -195,3 +195,34 @@ it('AI CEO shows genuine worker stage while awaiting the physical result',async(
  expect(fixture.setters[9]).toHaveBeenCalledWith(stage);
  expect(sendChat).not.toHaveBeenCalled();
 });
+
+
+it('mobile voice/typed CEO keeps Mac failure unqueued and retargets ONLY after owner explicitly says Sto shell',async()=>{
+ const id='33333333-3333-4333-8333-333333333333';
+ prepare.mockResolvedValueOnce({ready:false,status:'target_unavailable',reply:'Mac connector cannot open Chrome yet; no job queued'})
+  .mockResolvedValueOnce({ready:true,deviceId:'linux-device',deviceName:'My shell',ownerFullControl:true,requestId:id});
+ dispatch.mockResolvedValue({status:'done',reply:'My shell verified Chrome launch'});
+ const hook=session();
+ await hook.ask('Sto mac anice ton browse tou chrome');
+ expect(prepare).toHaveBeenCalledTimes(1);
+ expect(prepare.mock.calls[0][1]).toMatchObject({kind:'open_app',target:'mac',params:{app:'Google Chrome'}});
+ expect(dispatch).not.toHaveBeenCalled();
+ expect(sendChat).not.toHaveBeenCalled();
+ await hook.ask('Sto shell');
+ expect(prepare).toHaveBeenCalledTimes(2);
+ expect(prepare.mock.calls[1][1]).toEqual({kind:'open_app',description:'Open Google Chrome',params:{app:'Google Chrome'},target:'my shell'});
+ expect(dispatch).toHaveBeenCalledTimes(1);
+ expect(dispatch.mock.calls[0][1]).toMatchObject({target:'my shell',deviceId:'linux-device',requestId:id,ownerFullControlRequired:true,params:{app:'Google Chrome'}});
+ expect(sendChat).not.toHaveBeenCalled();
+});
+
+it('Stop clears a failed computer request so bare Sto shell cannot replay older work',async()=>{
+ vi.mocked(createConversation).mockResolvedValue({id:'new-regular-chat'} as Awaited<ReturnType<typeof createConversation>>);
+ sendChat.mockResolvedValue({message:{content:'Please specify the goal'}});
+ prepare.mockResolvedValue({ready:false,status:'target_unavailable',reply:'Mac unavailable'});
+ const hook=session();await hook.ask('Sto mac anice ton browse tou chrome');
+ hook.stop();
+ await hook.ask('Sto shell');
+ expect(prepare).toHaveBeenCalledTimes(1);
+ expect(dispatch).not.toHaveBeenCalled();
+});
