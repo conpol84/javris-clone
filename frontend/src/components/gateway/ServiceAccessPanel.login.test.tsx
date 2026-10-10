@@ -20,7 +20,7 @@ describe('platform admin gateway links and private FreeLLMAPI owner tunnel',()=>
     expect(html).toContain('href="http://127.0.0.1:13001/"');
     expect(html).toContain('data-free-ssh-tunnel="true"');
     expect(html).toContain('ssh -N -L 13001:127.0.0.1:3001 root@YOUR_VPS_PUBLIC_IP');
-    expect(html).toContain('same computer');
+    expect(html).toContain('SAME computer');
     expect(html).toContain('href="/admin?tab=console"');
     expect(html).toContain('href="/gateway?tab=free"');
     expect(html.match(/target="_blank" rel="noopener noreferrer"/g)).toHaveLength(3);
