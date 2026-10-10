@@ -56,14 +56,26 @@ def test_safe_catalog_and_mcp_a2a_classification_without_outputting_body():
     assert "SECRET" not in str(result)
     assert "hostile.invalid" not in str(result)
     assert set(result) <= {
-        "contract", "read_only", "authenticated_mcp_verified",
-        "a2a_task_execution_verified", "skills_installed_in_firbo",
-        "gateway_health_http", "gateway_responding", "agent_catalog_http",
-        "catalog_entries_observed", "catalog_safe_ids",
-        "catalog_has_duplicate_ids", "catalog_contract_verified",
-        "agent_card_http", "a2a_card_advertised", "a2a_card_skill_count",
-        "a2a_status_http", "a2a_enabled_reported", "mcp_status_http",
-        "mcp_status_requires_auth", "mcp_unauthenticated_status_access",
+        "contract",
+        "read_only",
+        "authenticated_mcp_verified",
+        "a2a_task_execution_verified",
+        "skills_installed_in_firbo",
+        "gateway_health_http",
+        "gateway_responding",
+        "agent_catalog_http",
+        "catalog_entries_observed",
+        "catalog_safe_ids",
+        "catalog_has_duplicate_ids",
+        "catalog_contract_verified",
+        "agent_card_http",
+        "a2a_card_advertised",
+        "a2a_card_skill_count",
+        "a2a_status_http",
+        "a2a_enabled_reported",
+        "mcp_status_http",
+        "mcp_status_requires_auth",
+        "mcp_unauthenticated_status_access",
     }
 
 
@@ -91,8 +103,15 @@ def test_public_mcp_status_is_flagged_not_accepted_as_authenticated_readiness():
 
 @pytest.mark.parametrize(
     "path",
-    ["/api/keys", "/api/mcp/sse", "/a2a", "/api/agent-skills/omni-cli-tools/raw",
-     "https://example.com", "//other.example", "/api/mcp/tools"],
+    [
+        "/api/keys",
+        "/api/mcp/sse",
+        "/a2a",
+        "/api/agent-skills/omni-cli-tools/raw",
+        "https://example.com",
+        "//other.example",
+        "/api/mcp/tools",
+    ],
 )
 def test_http_probe_never_calls_executable_or_sensitive_endpoints(path):
     with pytest.raises(ValueError, match="probe_path_not_allowed"):
