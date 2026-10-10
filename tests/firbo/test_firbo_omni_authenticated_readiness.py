@@ -6,7 +6,6 @@ import importlib.util
 import json
 from email.message import Message
 from pathlib import Path
-from types import SimpleNamespace
 from urllib import error
 
 import pytest
