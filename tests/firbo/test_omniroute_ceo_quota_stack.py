@@ -118,9 +118,7 @@ def test_private_stack_exception_is_sanitized_without_leaking_secrets(
 
 
 def test_private_stack_never_accepts_arbitrary_source_files():
-    with pytest.raises(
-        bridge.DiagnosticUnavailable, match="unexpected_source_name"
-    ):
+    with pytest.raises(bridge.DiagnosticUnavailable, match="unexpected_source_name"):
         bridge._load_existing("other-user-env.txt", "untrusted")
 
 
