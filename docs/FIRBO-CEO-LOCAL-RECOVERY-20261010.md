@@ -11,9 +11,9 @@ The Ollama and Piper VPS containers were previously reported running, but servic
 ## Source-only change
 
 1. Distinguish definite direct-provider HTTP errors from unknown failures with bounded diagnostic codes, never raw upstream messages, secrets or prompts.
-2. Introduce FIRBO_ALLOW_LOCAL_FALLBACK=on: OFF by default and server-only. Requires tenant UUID already present in FIRBO_FREE_ORGANIZATIONS, an enabled CEO agent, no own-provider key and exactly one direct-provider target.
-3. After a definite direct HTTP 429 rejection (no accepted upstream inference), allow exactly one local Qwen3 request on the existing authenticated text-only zero-provider-fee route with the same request ID.
-4. Never fail over after ambiguous gateway processing, 5xx, timeouts, multi-target paths, own-key usage, cross-tenant requests, or unknown errors. Preserve request accounting and reconcile-required on uncertainty. A failed local request is not automatically retried.
+2. Introduce FIRBO_ALLOW_LOCAL_FALLBACK=on: OFF by default and server-only. Requires tenant UUID already present in FIRBO_FREE_ORGANIZATIONS, an enabled CEO agent, authenticated owner/admin normal user session (not cron), no own-provider key and exactly one direct OpenAI target at the fixed first-party https://api.openai.com/v1 endpoint. OmniRoute and user-configured proxy bases are excluded.
+3. After a definite HTTP 429 rejection from that fixed first-party endpoint (no accepted upstream inference), allow exactly one local Qwen3 request on the existing authenticated text-only zero-provider-fee route with the same request ID.
+4. Never fail over after OmniRoute/gateway processing, custom-base proxies, 5xx, timeouts, multi-target paths, own-key usage, cron identities, unauthorized members, cross-tenant requests, or unknown errors. Preserve request accounting and reconcile-required on uncertainty. A failed local request is not automatically retried.
 5. No TTS preset change, backend credential exposure, audio replay, device operation, or change to other product runtimes.
 
 ## Release gates
@@ -32,3 +32,5 @@ Tested: CI must run on exact PR head.
 Passed: no test result claimed before CI.
 Failed: existing production CEO model_error remains until verified release.
 Remains: all live backend and physical acceptance gates. No production, Supabase or device writes in this stage.
+
+Note: the shared free-routing.ts was restored byte-for-byte to the PR126 baseline after the runner bundle integrity gate rejected a shared-file change. The new ceo-model-recovery.ts is imported ONLY by agent-chat. The future Edge rollout must include this new 13th source file and validate complete import closure; no existing runner bundle hash or manifest is relaxed.
