@@ -85,7 +85,9 @@ def audit(get=fetch_json) -> dict[str, object]:
                 and value.get("status") == "ok"
             )
         elif label == "agent_catalog":
-            skills = value.get("skills") if status == 200 and isinstance(value, dict) else None
+            skills = (
+                value.get("skills") if status == 200 and isinstance(value, dict) else None
+            )
             if isinstance(skills, list) and len(skills) <= 200:
                 safe_ids = []
                 for skill in skills:
@@ -96,12 +98,16 @@ def audit(get=fetch_json) -> dict[str, object]:
                         isinstance(skill_id, str)
                         and 1 <= len(skill_id) <= 80
                         and skill_id.isascii()
-                        and all(c.islower() or c.isdigit() or c == "-" for c in skill_id)
+                        and all(
+                            c.islower() or c.isdigit() or c == "-" for c in skill_id
+                        )
                     ):
                         safe_ids.append(skill_id)
                 report["catalog_entries_observed"] = len(skills)
                 report["catalog_safe_ids"] = len(set(safe_ids))
-                report["catalog_has_duplicate_ids"] = len(safe_ids) != len(set(safe_ids))
+                report["catalog_has_duplicate_ids"] = len(safe_ids) != len(
+                    set(safe_ids)
+                )
             else:
                 report["catalog_contract_verified"] = False
         elif label == "agent_card":
