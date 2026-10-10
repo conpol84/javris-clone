@@ -80,9 +80,13 @@ export async function discoverMcpTools(
 
     const next = result.nextCursor;
     if (next === undefined || next === null || next === '') return tools;
-    if (typeof next !== 'string' || !VALID_CURSOR.test(next) || cursors.has(next)) {
-      throw new Error('bad_response');
+    if (typeof next !== 'string' || !VALID_CURSOR.test(next)) {
+      // Legacy third-party MCPs treated malformed cursors as end-of-list.
+      // The central OmniRoute gateway alone requires complete pagination.
+      if (sharedOmni) throw new Error('bad_response');
+      return tools;
     }
+    if (cursors.has(next)) throw new Error('bad_response');
     cursors.add(next);
     cursor = next;
   }
