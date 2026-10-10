@@ -9,7 +9,7 @@ import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_AP
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
-import { memoryBlocks, type MemoryRow } from '../_shared/company-pulse.ts';
+import { memoryBlocks, approvedCompanyMemoryBlock, type MemoryRow } from '../_shared/company-pulse.ts';
 import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
@@ -219,7 +219,14 @@ Deno.serve(async (req) => {
   // company visibility tag until owner-approved ACL exists. This deliberately
   // preserves 30 legacy model-learned rows without injecting them into prompts.
   const accessibleMemory=ownerVisibleMemory((memRows??[]) as Array<MemoryRow & { user_id:string|null }>,user.id);
-  const memoryBlock = memoryBlocks(accessibleMemory).join('\n');
+  const sharedMemory=await admin.from('company_memory_publications')
+    .select('content,memory_type,importance').eq('organization_id',convo.organization_id)
+    .is('revoked_at',null).order('importance',{ascending:false}).limit(8);
+  // Service-role SELECT is scoped to the authenticated conversation's company.
+  // Only records from this reviewed publication table count; never client-owned
+  // metadata visibility or old NULL-owner model proposals.
+  const trustedBlock=sharedMemory.error?'':approvedCompanyMemoryBlock(sharedMemory.data??[]);
+  const memoryBlock=[...memoryBlocks(accessibleMemory),trustedBlock].filter(Boolean).join('\n');
   let previousCeoSessions='';
   let pastSessionsUnavailable=false;
   if(isCeo){
