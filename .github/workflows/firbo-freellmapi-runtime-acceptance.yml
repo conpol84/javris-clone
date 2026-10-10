@@ -1,0 +1,46 @@
+name: FIRBO FreeLLMAPI Runtime Acceptance
+on:
+  pull_request:
+    branches:
+      - codex/firbo-ceo-native-local-only-primary-20261010
+    paths:
+      - deploy/hostinger/freellmapi_probe.py
+      - deploy/hostinger/freellmapi_acceptance.py
+      - deploy/hostinger/freellmapi_inventory.py
+      - deploy/hostinger/freellmapi_gateway_probe.py
+      - deploy/hostinger/omniroute_ceo_quota_probe.py
+      - deploy/hostinger/compose.freellmapi.yaml
+      - tests/firbo/test_freellmapi_probe.py
+      - tests/firbo/test_freellmapi_acceptance.py
+      - tests/firbo/test_freellmapi_inventory.py
+      - tests/firbo/test_freellmapi_gateway_probe.py
+      - tests/firbo/test_omniroute_ceo_quota_probe.py
+      - .github/workflows/firbo-freellmapi-runtime-acceptance.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  readonly-and-manual-gates:
+    runs-on: ubuntu-latest
+    timeout-minutes: 16
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Isolated pinned Python test environment
+        run: |
+          python3 -m venv /tmp/firbo-freellmapi-verify
+          /tmp/firbo-freellmapi-verify/bin/pip install "pytest==9.1.1" "ruff==0.16.7"
+      - name: Zero-network proof of default read-only and manual inference gates
+        run: |
+          /tmp/firbo-freellmapi-verify/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_freellmapi_probe.py tests/firbo/test_freellmapi_acceptance.py tests/firbo/test_freellmapi_inventory.py tests/firbo/test_freellmapi_gateway_probe.py tests/firbo/test_omniroute_ceo_quota_probe.py
+      - name: Source lint and formatter
+        run: |
+          /tmp/firbo-freellmapi-verify/bin/ruff check deploy/hostinger/freellmapi_probe.py deploy/hostinger/freellmapi_acceptance.py deploy/hostinger/freellmapi_inventory.py deploy/hostinger/freellmapi_gateway_probe.py deploy/hostinger/omniroute_ceo_quota_probe.py tests/firbo/test_freellmapi_probe.py tests/firbo/test_freellmapi_acceptance.py tests/firbo/test_freellmapi_inventory.py tests/firbo/test_freellmapi_gateway_probe.py tests/firbo/test_omniroute_ceo_quota_probe.py
+          /tmp/firbo-freellmapi-verify/bin/ruff format --check deploy/hostinger/freellmapi_probe.py deploy/hostinger/freellmapi_acceptance.py deploy/hostinger/freellmapi_inventory.py deploy/hostinger/freellmapi_gateway_probe.py deploy/hostinger/omniroute_ceo_quota_probe.py tests/firbo/test_freellmapi_probe.py tests/firbo/test_freellmapi_acceptance.py tests/firbo/test_freellmapi_inventory.py tests/firbo/test_freellmapi_gateway_probe.py tests/firbo/test_omniroute_ceo_quota_probe.py
+      - name: Validate immutable isolated Compose overlay without starting services
+        env:
+          FREELLMAPI_IMAGE: ghcr.io/tashfeenahmed/freellmapi@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        run: |
+          printf '%s\n' "ENCRYPTION_KEY=synthetic" > deploy/hostinger/.env.freellmapi
+          docker compose -f deploy/hostinger/compose.freellmapi.yaml --profile freellmapi config --quiet
