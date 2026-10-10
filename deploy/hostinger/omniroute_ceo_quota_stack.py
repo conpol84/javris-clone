@@ -106,6 +106,11 @@ def parse_unambiguous_compose_credentials(source, contents: bytes):
     except source.Blocked as error:
         if str(error) != "duplicate_credential_configuration":
             raise
+    # A changed/mocked strict parser without its original validators must
+    # never silently gain a compatibility path.
+    required = ("MAX_FILE", "PRESENCE_NAMES", "KEY_NAMES", "validate_keys")
+    if any(not hasattr(source, name) for name in required):
+        raise source.Blocked("duplicate_credential_configuration")
     if len(contents) > source.MAX_FILE:
         raise source.Blocked("configuration_too_large")
     try:
