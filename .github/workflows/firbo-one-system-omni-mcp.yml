@@ -1,0 +1,41 @@
+name: FIRBO One-System OmniRoute MCP Guard
+on:
+  pull_request:
+    branches:
+      - codex/firbo-omniroute-readonly-capability-audit-20261010
+    paths:
+      - supabase/functions/_shared/omni-mcp-policy.ts
+      - supabase/functions/mcp/index.ts
+      - frontend/src/lib/company/omni-mcp-copy.ts
+      - frontend/src/lib/company/omni-mcp-copy.test.ts
+      - frontend/src/pages/IntegrationsPage.tsx
+      - tests/firbo/omni-mcp-policy.test.mjs
+      - docs/FIRBO-OMNI-SINGLE-SYSTEM-INTEGRATION-20261010.md
+      - .github/workflows/firbo-one-system-omni-mcp.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  existing-mcp-with-omni-only-allowlist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Verify platform-gateway target and read-only permissions without network
+        run: node --experimental-strip-types --test tests/firbo/omni-mcp-policy.test.mjs
+      - name: Pin npm major
+        run: npm install --global npm@11.19.0
+      - name: Install locked frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Strict Edge TypeScript including existing MCP function
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: All localized UI and existing control/voice regressions
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
