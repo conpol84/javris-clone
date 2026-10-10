@@ -53,3 +53,28 @@ OmniRoute remains the model/provider gateway, with its own internal metadata and
 4. Staged existing FIRBO `mcp` Edge source deployed **only after** review and tenant denial tests; new Integrations preset should be reachable for platform admin, others denied.
 5. Verify tools/list filters to five, representative read call receipt, executable tool rejected before any remote call, no cross-tenant context or extra billing.
 6. Continue Master Issue #52 stages 0–11: CEO identity + long-term memory, Mac/Debian physical control, specialist work delivery, backup/restore, A2A/skills acceptance. No unrelated PF/TA writes.
+
+## Owner live VPS read-only observation — 2026-10-10
+
+Running FIRBO image: `sha256:75d5d4d6a0e09082569d975498b068647d8751ac2a62b7b7e608f6ec5203af46`. Still the old Python module without the native local Qwen endpoint (HTTP 404); the successful GitHub ephemeral image in PR #139 has **not** been delivered to Hostinger.
+
+Uncredentialed calls from inside the existing FIRBO container to the PRIVATE OmniRoute service returned:
+
+| Endpoint | HTTP | Meaning |
+| --- | --- | --- |
+| /api/health | 200 | Gateway process responds |
+| /api/agent-skills | 401 | Read blocked without auth; cannot infer catalog contents |
+| /.well-known/agent.json | 200 | Public A2A *advertisement* available; not task execution |
+| /api/a2a/status | 401 | A2A real enabled state UNKNOWN |
+| /api/mcp/status | 401 | MCP real enabled/transport/scope state UNKNOWN |
+
+These are expected authentication boundaries, not a reason to disable gateway auth, turn off REQUIRE_API_KEY, share a management key, or create another MCP backend.
+
+The dedicated `deploy/hostinger/firbo_omniroute_authenticated_readiness.py` makes exactly ONE read-only HTTPS GET to `https://gateway.firboai.app/api/mcp/status`, with a *separately issued narrowly scoped* MCP-only key entered invisibly on the operator's local TTY. It never stores or displays the key or sends it to another origin, follows no redirects/proxies, emits only four bounded readiness flags and never calls tools/A2A. An HTTP 401/403 reports **not verified**, not "MCP off". A successful response must show `enabled=true`, `online=true`, `transport=streamable-http`, `scopesEnforced=true` before it may be considered **eligible for additional owner review** (NOT permission to deploy).
+
+## Default-OFF FIRBO shared-gateway pilot
+
+The EXISTING FIRBO `mcp` Edge function now includes `FIRBO_OMNI_MCP_PILOT_ENABLED` read through Deno env and requires the literal value `true` for the shared gateway only, in addition to platform-admin + company-manager RBAC and the five read-only tool IDs. Missing, false, typo, "TRUE" or whitespace values DENY the shared gateway connection BEFORE secrets or outbound requests. All other third-party MCP integrations retain their own existing policies. This is NOT enabled in live Supabase.
+
+Only after real scoped-key validation, approved transport, live denied-tenant tests, egress validation, immutable rollback and controlled staged Edge deployment should a trusted operator consider setting the pilot env var and rerunning the same acceptance suite. Do not use current inference/admin keys for this test.
+
