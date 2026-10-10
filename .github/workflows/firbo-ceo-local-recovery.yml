@@ -1,0 +1,38 @@
+name: FIRBO CEO owner-scoped local recovery
+on:
+  pull_request:
+    branches: [codex/firbo-jarvis-vps-dashboard-recovery-20261010]
+    paths:
+      - supabase/functions/agent-chat/index.ts
+      - supabase/functions/_shared/ceo-model-recovery.ts
+      - tests/firbo/ceo-local-recovery.test.mjs
+      - .github/workflows/firbo-ceo-local-recovery.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-head-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install pinned npm required by frontend engines
+        run: npm install --global npm@11.19.0
+      - name: Bounded model fallback and existing routing contracts
+        run: node --experimental-strip-types --test tests/firbo/ceo-local-recovery.test.mjs tests/firbo/free-routing.test.mjs tests/firbo/gateway-routing.test.mjs
+      - name: Install existing locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Compile Supabase Edge contract
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: Full frontend tests and production build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
