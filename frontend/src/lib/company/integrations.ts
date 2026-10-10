@@ -137,7 +137,7 @@ export const CATEGORIES: IntegrationCategory[] = ['messaging', 'email', 'product
 /** Compatibility export: new providers now have explicit setup/read-only flows. */
 export const PLANNED_APPS: {id:string;name:string;color:string;reason:string}[] = [];
 
-export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'save_failed' | 'not_found' | 'reauth' | 'unauthorized' | 'bad_request' | 'credentials_rejected' | 'rate_limited' | 'provider_failed' | 'invalid_response' | 'unknown';
+export type IntegrationErrorCode = 'read_only' | 'invalid_fields' | 'test_failed' | 'send_failed' | 'forbidden' | 'too_many' | 'plan_limit' | 'not_configured' | 'save_failed' | 'not_found' | 'reauth' | 'unauthorized' | 'bad_request' | 'credentials_rejected' | 'rate_limited' | 'provider_failed' | 'invalid_response' | 'omni_pilot_disabled' | 'unknown';
 
 export class IntegrationError extends Error {
   constructor(public code: IntegrationErrorCode, public detail?: { provider?: string; redirect_uri?: string }) {
@@ -145,7 +145,7 @@ export class IntegrationError extends Error {
   }
 }
 
-const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured', 'save_failed', 'not_found', 'reauth', 'unauthorized', 'bad_request', 'credentials_rejected', 'rate_limited', 'provider_failed', 'invalid_response'];
+const KNOWN: IntegrationErrorCode[] = ['read_only', 'invalid_fields', 'test_failed', 'send_failed', 'forbidden', 'too_many', 'plan_limit', 'not_configured', 'save_failed', 'not_found', 'reauth', 'unauthorized', 'bad_request', 'credentials_rejected', 'rate_limited', 'provider_failed', 'invalid_response', 'omni_pilot_disabled'];
 
 const call = <T,>(body: Record<string, unknown>): Promise<T> => callFn<T>('integrations', body);
 
