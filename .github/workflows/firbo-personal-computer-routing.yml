@@ -1,0 +1,92 @@
+name: FIRBO per-user CEO and agent computer ownership acceptance
+on:
+  push:
+    branches:
+      - codex/firbo-owner-computer-routing-20261011
+  pull_request:
+    branches:
+      - codex/firbo-sgmem01-source-reconciliation-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  worker-ownership:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Actual Edge handler + Connector denial / receipt / no-replay tests
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo/worker-dispatch.test.mjs \
+            tests/firbo/worker-connector.test.mjs \
+            tests/firbo/worker-execution.test.mjs \
+            tests/firbo/edge-entrypoints.test.mjs \
+            tests/firbo/computer-policy.test.mjs
+      - name: Preserve exact full 21-file runner closure, read-back, module linking and pricing
+        run: node --experimental-strip-types --test tests/firbo/agent-runner-bundle.test.mjs
+      - name: Deny cross-owner worker selection in real inference sources
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const edge=fs.readFileSync('supabase/functions/computer-dispatch/index.ts','utf8');
+          const connector=fs.readFileSync('supabase/functions/connector/index.ts','utf8');
+          const runner=fs.readFileSync('supabase/functions/agent-runner/index.ts','utf8');
+          const guards=[
+            edge.includes(".eq('created_by',user.id).eq('paired',true)"),
+            edge.includes("if(b.device_id && !devices.some"),
+            edge.includes("fresh,b.organization_id,choice.job.kind,user.id"),
+            connector.includes("if (dev.created_by !== user.id) return json(403"),
+            connector.includes("if(fresh?.created_by!==user.id)return json(403"),
+            connector.includes("if(!ownerDevice||ownerDevice.created_by!==user.id)return json(403"),
+            runner.includes(".eq('created_by',user.id).eq('paired', true)"),
+            runner.includes("fresh.created_by !== user.id"),
+            runner.includes("dispatchRequestRecord(dispatchInput)"),
+          ];
+          if(guards.some(x=>!x))throw Error('Real direct/employee worker ownership or existing receipt guard missing: '+JSON.stringify(guards));
+          console.log('Verified owner-scoped worker selection, queue guards and intact job receipt lineage');
+          JS
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Required npm engine
+        run: npm install --global npm@11.19.0
+      - name: Restore exact frontend dependency versions
+        run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Personal laptop and CEO control tests
+        run: npm test --prefix frontend -- src/lib/company/laptop-bridge.test.ts src/pages/AgentChatPage.computer.test.tsx
+      - name: Full frontend regression
+        run: npm test --prefix frontend
+      - name: TypeScript and compiled desktop/web UI
+        run: npm run build:tauri --prefix frontend
+      - name: Verify website preferences never inherit another owner's laptop
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const page=fs.readFileSync('frontend/src/pages/ComputersPage.tsx','utf8');
+          const chat=fs.readFileSync('frontend/src/pages/AgentChatPage.tsx','utf8');
+          const devices=fs.readFileSync('frontend/src/lib/company/computers.ts','utf8');
+          if(!page.includes('getUserVoiceLaptop(orgId,userId)')||
+            !page.includes('setUserVoiceLaptop(orgId,userId,d.id)')||
+            !page.includes('listDevices(orgId,userId)')||
+            !chat.includes('pinPersonalComputer(orgId,user.id,parsedProposal)')||
+            !devices.includes("query = query.eq('created_by', userId)")) {
+            throw Error('Personal browser/voice laptop selection or user-scoped device read missing');
+          }
+          console.log('Authenticated website uses v2 personal computer preferences, not org-only legacy state');
+          JS
