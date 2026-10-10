@@ -72,7 +72,7 @@ jobs:
 
   real-isolated-image-build:
     name: Full standalone image and no-network synthetic canary (owner-approved 30GiB+)
-    if: \${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/firbo-omni-isolated-docker-canary-20261010' && vars.FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED == 'true' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/firbo-omni-isolated-docker-canary-20261010' && vars.FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED == 'true' }}
     runs-on: [self-hosted, firbo-omni-build]
     timeout-minutes: 120
     concurrency:
