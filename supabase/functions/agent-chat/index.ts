@@ -4,7 +4,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
-import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+import { freeForOrganization, completeViaFree, approvedFreeCeoFallback, legacyProviderFailureCode, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
 import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
@@ -406,7 +406,32 @@ Deno.serve(async (req) => {
       used = target; break;
     } catch (error) {
       // With the company's own key, say what the provider answered (wrong model name, key revoked, no credit).
-      lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : 'model_error';
+      lastError = own && error instanceof Error && /^[a-z0-9_]{1,50}$/.test(error.message) ? `own_key_${error.message}` : legacyProviderFailureCode(error);
+    }
+  }
+  // Optional local Qwen3 recovery is restricted to an explicitly allowlisted
+  // CEO company, exactly one direct target and a definitive HTTP 429 rejection.
+  // The default is OFF. Never automatically replay a timed-out, 5xx, gateway,
+  // own-key or multi-provider request: any of those could already be billed.
+  if (!completion && !used && approvedFreeCeoFallback({
+    organizationId: convo.organization_id, isCeo, hasOwnKey: !!own,
+    alreadyFree: free, directTargetCount: targets.length,
+    errorCode: lastError, env: name => Deno.env.get(name),
+  })) {
+    try {
+      const localMessages = compactForFree({
+        agent, org, profile, snapshot, voice: body.voice === true, lang, past, text,
+      });
+      const localResult = await completeViaFree(
+        convo.organization_id, auth, body.request_id, localMessages, { signal: req.signal },
+      );
+      routed = localResult;
+      completion = localResult.completion;
+      routing = localResult.trace;
+      used = { provider: 'firbo-free', model: localResult.trace.reported_model };
+    } catch (error) {
+      // A failed local attempt is still reconciled, never silently replayed.
+      lastError = error instanceof GatewayError ? error.code : 'free_error';
     }
   }
   if (!completion || !used) {
