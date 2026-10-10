@@ -16,6 +16,7 @@ def verify(mode: str, path: str) -> None:
         raise ValueError("unrecognized_test_mode")
     parsed = json.loads(Path(path).read_text(encoding="utf-8"))
     api = parsed["services"]["firbo-api"]
+    assert api["build"]["args"]["FIRBO_NATIVE_ROUTE_ATTEST"] == "1"
     assert api["entrypoint"] == ["python", "-m", "uvicorn"]
     assert api["command"][1:] == ["--host", "0.0.0.0", "--port", "8000"]
 
