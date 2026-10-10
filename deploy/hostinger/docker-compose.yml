@@ -71,7 +71,7 @@ services:
     restart: unless-stopped
     # Gateway-only API: starts without an inference engine (see openjarvis/server/firbo_app.py).
     entrypoint: ["python", "-m", "uvicorn"]
-    command: ["openjarvis.server.firbo_app:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Default preserves the existing live control API; native free/local endpoints require\n    # explicit owner-approved FIRBO_API_ASGI_APP opt-in after backend/JWT gates.\n    command: ["${FIRBO_API_ASGI_APP:-openjarvis.server.firbo_app:app}", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       # Browsers never see this key: Firbo users authenticate with their own Supabase session instead.
       OPENJARVIS_API_KEY: ${OPENJARVIS_API_KEY}
