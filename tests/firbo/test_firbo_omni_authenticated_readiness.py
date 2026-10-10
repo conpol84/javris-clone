@@ -30,13 +30,38 @@ def test_401_is_protected_not_disabled_or_active():
 @pytest.mark.parametrize(
     "data",
     [
-        {"enabled": False, "online": True, "transport": "streamable-http", "scopesEnforced": True},
-        {"enabled": True, "online": False, "transport": "streamable-http", "scopesEnforced": True},
+        {
+            "enabled": False,
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
+        {
+            "enabled": True,
+            "online": False,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
         {"enabled": True, "online": True, "transport": "sse", "scopesEnforced": True},
-        {"enabled": True, "online": True, "transport": "streamable-http", "scopesEnforced": False},
+        {
+            "enabled": True,
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": False,
+        },
         {"enabled": True, "online": True, "transport": "streamable-http"},
-        {"enabled": "true", "online": True, "transport": "streamable-http", "scopesEnforced": True},
-        {"enabled": True, "online": True, "transport": "unexpected", "scopesEnforced": True},
+        {
+            "enabled": "true",
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
+        {
+            "enabled": True,
+            "online": True,
+            "transport": "unexpected",
+            "scopesEnforced": True,
+        },
         {},
     ],
 )
@@ -78,12 +103,14 @@ def test_one_https_read_only_request_without_redirect_proxy_or_key_output(monkey
 
         def read(self, count):
             assert count == module.MAX_BYTES + 1
-            return json.dumps({
-                "enabled": True,
-                "online": True,
-                "transport": "streamable-http",
-                "scopesEnforced": True,
-            }).encode()
+            return json.dumps(
+                {
+                    "enabled": True,
+                    "online": True,
+                    "transport": "streamable-http",
+                    "scopesEnforced": True,
+                }
+            ).encode()
 
         headers = Message()
         headers["content-type"] = "application/json"
@@ -96,13 +123,19 @@ def test_one_https_read_only_request_without_redirect_proxy_or_key_output(monkey
 
     def fake_builder(*handlers):
         assert any(isinstance(h, module.NoRedirect) for h in handlers)
-        assert any(isinstance(h, module.urllib.request.ProxyHandler) and not h.proxies for h in handlers)
+        assert any(
+            isinstance(h, module.urllib.request.ProxyHandler) and not h.proxies
+            for h in handlers
+        )
         return FakeOpener()
 
     monkeypatch.setattr(module.urllib.request, "build_opener", fake_builder)
     status, data = module.fetch_status(token)
     assert status == 200
-    assert module.summarize(status, data)["readiness"] == "eligible_for_separate_owner_review"
+    assert (
+        module.summarize(status, data)["readiness"]
+        == "eligible_for_separate_owner_review"
+    )
     assert history == [(module.URL, "GET", "7")]
 
 
@@ -121,7 +154,9 @@ def test_http_error_discloses_only_status(monkeypatch):
         def open(self, req, timeout):
             raise error.HTTPError(req.full_url, 403, "key contains SECRET", None, None)
 
-    monkeypatch.setattr(module.urllib.request, "build_opener", lambda *args: FakeOpener())
+    monkeypatch.setattr(
+        module.urllib.request, "build_opener", lambda *args: FakeOpener()
+    )
     status, result = module.fetch_status("x" * 42)
     report = module.summarize(status, result)
     assert status == 403
