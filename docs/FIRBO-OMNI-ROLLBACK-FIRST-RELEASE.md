@@ -12,6 +12,15 @@ OmniRoute Draft PR #1: exact source head 26e14038151e8e74c825334a33b77702286892a
 
 This PR adds an isolated GitHub Actions gate which fetches the public OmniRoute fork at exactly the SHA above and compiles the full Next.js API+dashboard graph under synthetic credentials, telemetry OFF, cloud sync OFF, runtime native stubs, and the repo's native Turbopack path with Next worker pool capped by CIRCLE_NODE_TOTAL=1 (the same setting used in its Dockerfile), excluding standalone packaging. The first off-host Webpack run hit a confirmed V8 heap OOM at 5,600MB (NOT a source TypeScript error); the next exact-source CI compares the lower-V8-pressure Turbopack path without weakening the security/Next build gate. Verify the real output BUILD_ID and compiled API Manager page. A green CI result is an OFF-HOST code/build checkpoint, NOT a production artifact, standalone image, test of real credentials, or deployment authorization.
 
+## Stage A follow-up: separate compilation guarantees (2026-10-10)
+
+Last exact-head full UI test at FIRBO commit 12395b9162e151c73749d78ef0825f120ae3cd86 showed the initial Webpack build V8 heap OOM at 5600 MB. Two later Turbopack attempts ended with a runner SHUTDOWN SIGNAL (one despite CIRCLE_NODE_TOTAL=1). Neither error proves the UI source fails to compile; neither is a successful full build.
+
+Latest CI separates independent assurance levels:
+- Backend contributor mode (repository-owned OMNIROUTE_BUILD_PROFILE=contributor) temporarily stubs all dashboard leaves and compiles the real API routing graph. A successful contributor build is backend-only, NOT a tested user interface or a production image.
+- Full UI/API path uses 8192 MB V8 heap, Webpack, and one worker, with BUILD_ID and a REAL compiled API Manager page required. Success of backend contributor mode must not mask a failure of the full UI path.
+
+Existing PR145 source-only 28/28 security and authorization tests remain passed for the same pinned OmniRoute source. This CI does not change live keys, settings, access scopes, server images, DNS, or provider routing. Full UI and production Docker candidate remain separate release gates even after successful source-only tests.
 ## Stage B — observe LIVE Docker state (read-only; owner terminal only)
 
 Do NOT assume the GitHub Compose file describes the current VPS. Read the live container name/image SHA/health, Compose directory, mounts and port bindings. The fork's original docker-compose.yml maps ./data to /app/data and has persistent Redis; the VPS may differ. Never display Config.Env, any .env file contents, API keys, cookies, database rows, or secrets.
