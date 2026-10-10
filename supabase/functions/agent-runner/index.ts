@@ -8,7 +8,7 @@ import { extractModelJson } from '../_shared/model-json.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeftoverToolRequest, isFinalAnswer, parseToolRequest, sourcesIn, REPAIR_SYSTEM, TOOL_LIST, type LoopStep, type LoopTools } from '../_shared/agent-loop.ts';
 import { freeWebSearch, readPageDirect, readTopPages, tavilySearchWithUsage } from '../_shared/free-search.ts';
-import { learnedFacts, learningProvenance, memoryBlocks, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
+import { learnedFacts, learningProvenance, memoryBlocks, approvedCompanyMemoryBlock, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import {
   calculatorTool,
@@ -479,6 +479,15 @@ Deno.serve(async (req) => {
     .eq('user_id', user.id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
   const memory = memoryBlocks(memRows ?? []);
+  const approvedNotes=await admin.from('company_memory_publications')
+    .select('content,memory_type,importance').eq('organization_id',task.organization_id)
+    .is('revoked_at',null).order('importance',{ascending:false}).limit(8);
+  // Agents only see owner-reviewed shared notes from a separate protected
+  // publication table, never model-learned NULL-owner proposals.
+  if(!approvedNotes.error){
+    const context=approvedCompanyMemoryBlock(approvedNotes.data??[]);
+    if(context)memory.push(context);
+  }
   // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
   const skillsContext = companySkillContext(skillRows, `${task.title ?? ''} ${task.description ?? ''}`);
   if (skillsContext) memory.push(skillsContext);
@@ -712,8 +721,19 @@ Deno.serve(async (req) => {
     let query = admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id).eq('user_id', user.id).or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
     const terms = words.map(w => w.replace(/[^\p{L}\p{N}-]/gu, '')).filter(Boolean);
     if (terms.length) query = query.or(terms.map(w => `content.ilike.%${w}%`).join(','));
-    const { data } = await query.order('importance', { ascending: false }).limit(6);
-    return usableRunnerMemories(data ?? []).map((m: any) => `- ${flat(m.content, 500)}`).join('\n') || 'Nothing saved about that.';
+    const [owned,reviewed]=await Promise.all([
+      query.order('importance',{ascending:false}).limit(6),
+      (()=>{let q=admin.from('company_memory_publications')
+        .select('content,memory_type,importance').eq('organization_id',task.organization_id)
+        .is('revoked_at',null);
+       if(terms.length)q=q.or(terms.map(w=>`content.ilike.%${w}%`).join(','));
+       return q.order('importance',{ascending:false}).limit(6);
+      })(),
+    ]);
+    const ownedMemory=usableRunnerMemories(owned.data??[])
+      .map((m:any)=>`- ${flat(m.content,500)}`).join('\n');
+    const sharedMemory=reviewed.error?'':approvedCompanyMemoryBlock(reviewed.data??[],6);
+    return [ownedMemory,sharedMemory].filter(Boolean).join('\n')||'Nothing saved about that.';
   };
   // Native tools (OpenJarvis's calculator, weather, currency, knowledge search, image tools), each behind its own power.
   if (!free) {

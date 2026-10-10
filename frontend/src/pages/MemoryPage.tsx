@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { MemoryScene } from '../components/scenes/MemoryScene';
+import { CompanyMemoryReview } from '../components/company/CompanyMemoryReview';
 import { agentLabel } from '../lib/company/labels';
 import { agentColor } from '../lib/company/status';
 import { listAgents } from '../lib/company/data';
@@ -250,6 +251,11 @@ export function MemoryWorkspace() {
           )}
         </section>
       </div>
+      {['owner','admin'].includes(current?.role??'')&&orgId&&(
+        <div className="mt-6">
+          <CompanyMemoryReview orgId={orgId}/>
+        </div>
+      )}
     </div>
     </div>
   );
