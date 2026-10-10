@@ -1,0 +1,45 @@
+name: FIRBO Agency specialists
+on:
+  pull_request:
+    paths: ['frontend/**', 'third_party/agency-agents/**', 'tests/firbo/agency-specialists-rendered.mjs', '.github/workflows/firbo-agency-specialists.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: agency-specialists-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  catalog-and-hiring:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend
+      - run: npm --prefix frontend test
+      - run: npm --prefix frontend run build:tauri
+      - run: npm ci --prefix tools/firbo-browser-runtime --ignore-scripts
+      - run: npx --prefix tools/firbo-browser-runtime playwright install --with-deps chromium
+      - name: Real catalog and hiring controls with synthetic RPCs
+        run: |
+          npm --prefix frontend run dev -- --host 127.0.0.1 --port 5227 > /tmp/firbo-agency-vite.log 2>&1 &
+          vite_pid=$!
+          trap 'kill "$vite_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:5227/ > /dev/null; then break; fi
+            sleep 1
+          done
+          node tests/firbo/agency-specialists-rendered.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-agency-specialists-evidence
+          path: /tmp/firbo-agency-evidence/
+          retention-days: 7
