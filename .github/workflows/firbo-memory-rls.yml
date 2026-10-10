@@ -1,0 +1,36 @@
+name: FIRBO memory RLS PostgreSQL acceptance
+
+on:
+  push:
+    branches:
+      - codex/firbo-sgmem01-source-reconciliation-20261011
+  pull_request:
+    branches:
+      - codex/firbo-agent-memory-plan-entitlement-20261011
+    paths:
+      - 'supabase/migrations/**'
+      - 'tests/firbo/sql/**'
+      - '.github/workflows/firbo-memory-rls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  memory-tenant-isolation:
+    name: RLS ownership, legacy and tenant isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Install and start local PostgreSQL
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16 postgresql-client-16
+          sudo pg_ctlcluster 16 main start || sudo pg_ctlcluster 16 main status
+          sudo -u postgres psql --version
+      - name: Execute real migration and tenant fixture
+        run: sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres -f tests/firbo/sql/sgmem01_staging_rls.sql
