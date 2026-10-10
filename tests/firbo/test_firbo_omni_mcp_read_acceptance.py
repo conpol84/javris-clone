@@ -45,12 +45,16 @@ class FakeReply:
 class FakeOmni:
     def __init__(self, *, status=None, advertised=None, reply_error=False):
         self.calls = []
-        self.status = status if status is not None else {
-            "enabled": True,
-            "online": True,
-            "transport": "streamable-http",
-            "scopesEnforced": True,
-        }
+        self.status = (
+            status
+            if status is not None
+            else {
+                "enabled": True,
+                "online": True,
+                "transport": "streamable-http",
+                "scopesEnforced": True,
+            }
+        )
         self.advertised = advertised or [
             "omniroute_get_health",
             "omniroute_check_quota",
@@ -76,35 +80,44 @@ class FakeOmni:
         method = parsed["method"]
         self.calls.append(method)
         if method == "initialize":
-            return FakeReply({
-                "jsonrpc": "2.0",
-                "id": parsed["id"],
-                "result": {"protocolVersion": module.PROTOCOL, "capabilities": {}},
-            }, sid=SESSION)
+            return FakeReply(
+                {
+                    "jsonrpc": "2.0",
+                    "id": parsed["id"],
+                    "result": {"protocolVersion": module.PROTOCOL, "capabilities": {}},
+                },
+                sid=SESSION,
+            )
         assert req.get_header("Mcp-session-id") == SESSION
         if method == "notifications/initialized":
             return FakeReply(status=202)
         if method == "tools/list":
-            return FakeReply({
-                "jsonrpc": "2.0",
-                "id": parsed["id"],
-                "result": {
-                    "tools": [{"name": name} for name in self.advertised],
-                },
-            })
+            return FakeReply(
+                {
+                    "jsonrpc": "2.0",
+                    "id": parsed["id"],
+                    "result": {
+                        "tools": [{"name": name} for name in self.advertised],
+                    },
+                }
+            )
         if method == "tools/call":
             assert parsed["params"] == {
                 "name": "omniroute_get_health",
                 "arguments": {},
             }
-            return FakeReply({
-                "jsonrpc": "2.0",
-                "id": parsed["id"],
-                "result": {
-                    "isError": self.reply_error,
-                    "content": [{"type": "text", "text": "PRIVATE_GATEWAY_DETAILS"}],
-                },
-            })
+            return FakeReply(
+                {
+                    "jsonrpc": "2.0",
+                    "id": parsed["id"],
+                    "result": {
+                        "isError": self.reply_error,
+                        "content": [
+                            {"type": "text", "text": "PRIVATE_GATEWAY_DETAILS"}
+                        ],
+                    },
+                }
+            )
         pytest.fail("Non-readonly action attempted: " + str(method))
 
 
@@ -121,7 +134,10 @@ def test_tools_list_without_ever_calling_a_tool():
     assert "omniroute_route_request" not in str(output)
     assert "PRIVATE_GATEWAY_DETAILS" not in str(output)
     assert gateway.calls == [
-        "status", "initialize", "notifications/initialized", "tools/list",
+        "status",
+        "initialize",
+        "notifications/initialized",
+        "tools/list",
     ]
 
 
@@ -138,12 +154,32 @@ def test_explicit_single_health_probe_without_returning_private_content():
 @pytest.mark.parametrize(
     "status",
     [
-        {"enabled": False, "online": True, "transport": "streamable-http", "scopesEnforced": True},
-        {"enabled": True, "online": False, "transport": "streamable-http", "scopesEnforced": True},
+        {
+            "enabled": False,
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
+        {
+            "enabled": True,
+            "online": False,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
         {"enabled": True, "online": True, "transport": "sse", "scopesEnforced": True},
         {"enabled": True, "online": True, "transport": "stdio", "scopesEnforced": True},
-        {"enabled": True, "online": True, "transport": "streamable-http", "scopesEnforced": False},
-        {"enabled": "true", "online": True, "transport": "streamable-http", "scopesEnforced": True},
+        {
+            "enabled": True,
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": False,
+        },
+        {
+            "enabled": "true",
+            "online": True,
+            "transport": "streamable-http",
+            "scopesEnforced": True,
+        },
         {},
     ],
 )
@@ -160,9 +196,33 @@ def test_no_mcp_session_when_gateway_has_lost_any_readiness_gate(status):
         ("GET", "https://evil.invalid/api/mcp/status", None),
         ("POST", module.STATUS_URL, {"method": "tools/list"}),
         ("GET", module.STREAM_URL, None),
-        ("POST", module.STREAM_URL, {"method": "tools/call", "params": {"name": "omniroute_switch_combo", "arguments": {}}}),
-        ("POST", module.STREAM_URL, {"method": "tools/call", "params": {"name": "omniroute_route_request", "arguments": {}}}),
-        ("POST", module.STREAM_URL, {"method": "tools/call", "params": {"name": "omniroute_get_health", "arguments": {"write": "yes"}}}),
+        (
+            "POST",
+            module.STREAM_URL,
+            {
+                "method": "tools/call",
+                "params": {"name": "omniroute_switch_combo", "arguments": {}},
+            },
+        ),
+        (
+            "POST",
+            module.STREAM_URL,
+            {
+                "method": "tools/call",
+                "params": {"name": "omniroute_route_request", "arguments": {}},
+            },
+        ),
+        (
+            "POST",
+            module.STREAM_URL,
+            {
+                "method": "tools/call",
+                "params": {
+                    "name": "omniroute_get_health",
+                    "arguments": {"write": "yes"},
+                },
+            },
+        ),
         ("POST", module.STREAM_URL, {"method": "prompts/get"}),
     ],
 )
