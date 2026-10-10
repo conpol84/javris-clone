@@ -144,9 +144,7 @@ def parse_unambiguous_compose_credentials(source, contents: bytes):
     normalized = ("\n".join(cleaned) + "\n").encode("utf-8")
     configured = source.values(normalized)
     # Keep all the original security validation for both gateway key scopes.
-    source.validate_keys({
-        name: configured.get(name, "") for name in source.KEY_NAMES
-    })
+    source.validate_keys({name: configured.get(name, "") for name in source.KEY_NAMES})
     return configured, True
 
 
