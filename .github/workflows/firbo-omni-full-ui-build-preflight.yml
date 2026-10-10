@@ -58,6 +58,61 @@ jobs:
           print("existing_only_mcp_key_ui_and_client_policy=true")
           PY
 
+  offline-backend-next-build:
+    name: Compile all existing OmniRoute API routes without dashboard stubs in output
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      DISABLE_SQLITE_AUTO_BACKUP: "true"
+      OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+      OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
+      OMNIROUTE_BUILD_PROFILE: "contributor"
+      OMNIROUTE_SKIP_STANDALONE: "1"
+      OMNIROUTE_USE_TURBOPACK: "0"
+      OMNIROUTE_BUILD_MEMORY_MB: "4096"
+      CIRCLE_NODE_TOTAL: "1"
+      OMNIROUTE_MITM_STUB: "1"
+      OMNIROUTE_BETTER_SQLITE3_STUB: "1"
+      API_KEY_SECRET: "ci-api-build-synthetic-not-a-real-key"
+      JWT_SECRET: "ci-api-build-synthetic-not-a-real-key"
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          persist-credentials: false
+          path: omniroute
+      - name: Verify exact OmniRoute commit
+        run: |
+          set -euo pipefail
+          test "$(git -C omniroute rev-parse HEAD)" = "26e14038151e8e74c825334a33b77702286892ab"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Use locked npm and install dependencies
+        working-directory: omniroute
+        run: |
+          npm install --global npm@11.19.0
+          npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build entire API routing graph in repository-native contributor mode
+        working-directory: omniroute
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/build/build-next-isolated.mjs
+      - name: Prove production-independent API build, no source drift, no dashboard claim
+        working-directory: omniroute
+        run: |
+          set -euo pipefail
+          test -s .build/next/BUILD_ID
+          test -d .build/next/server/app/api
+          git diff --exit-code -- src/app src/instrumentation.ts src/instrumentation-node.ts
+          echo "omni_backend_api_route_compile=true"
+          echo "omni_dashboard_not_verified=true"
+          echo "omni_standalone_not_packaged=true"
+          echo "production_changes=false"
+
   offline-full-next-build:
     name: Compile all OmniRoute production Next.js routes + UI without deployment
     runs-on: ubuntu-24.04
@@ -67,8 +122,8 @@ jobs:
       DISABLE_SQLITE_AUTO_BACKUP: "true"
       OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
       OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
-      OMNIROUTE_BUILD_MEMORY_MB: "5600"
-      OMNIROUTE_USE_TURBOPACK: "1"
+      OMNIROUTE_BUILD_MEMORY_MB: "8192"
+      OMNIROUTE_USE_TURBOPACK: "0"
       OMNIROUTE_SKIP_STANDALONE: "1"
       OMNIROUTE_BUILD_WORKERS: "1"
       # Dockerfile passes this to Next's build worker pool; keep CI equivalent.
@@ -97,7 +152,7 @@ jobs:
       - name: Locked packages with install scripts disabled
         working-directory: omniroute
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Compile full existing Next.js UI + API with Turbopack, one build worker and no standalone packaging
+      - name: Compile full existing Next.js UI + API with 8GB heap, Webpack and one worker
         working-directory: omniroute
         run: |
           set -euo pipefail
