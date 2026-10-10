@@ -21,5 +21,7 @@ check 'OpenJarvis dedicated VPS dashboard' 'https://jarvis.firboai.app/' 'jarvis
 check 'OpenJarvis login form' 'https://jarvis.firboai.app/_firbo/login' 'jarvis.firboai.app'
 check 'OpenJarvis anonymous API protection' 'https://jarvis.firboai.app/v1/info' 'jarvis.firboai.app'
 check 'FIRBO native API health' 'https://api.firboai.app/health' 'api.firboai.app'
+check 'Native Jarvis model info on API root (anonymous)' 'https://api.firboai.app/v1/info' 'api.firboai.app'
+check 'Native Jarvis model info on API subroute (anonymous)' 'https://api.firboai.app/jarvis/v1/info' 'api.firboai.app'
 check 'FIRBO Vercel-proxied backend health' 'https://firboai.app/firbo-backend-health' 'firboai.app'
 check 'FIRBO customer frontend' 'https://javris.firboai.app/' 'javris.firboai.app'
