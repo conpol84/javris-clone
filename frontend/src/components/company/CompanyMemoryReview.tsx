@@ -31,7 +31,10 @@ export function CompanyMemoryReview({orgId}:{orgId:string}){
     loadLegacyProposals(orgId),loadApprovedCompanyMemory(orgId),
    ]);
    if(!live.current||id!==version.current)return;
-   setProposals(raw);setApproved(published);setPhase('ready');
+   // A connector/cache may reuse a mutable array reference. Snapshot its rows
+   // before storing React state so an in-place provider update cannot leave
+   // the pending approval count or review controls stale.
+   setProposals([...raw]);setApproved([...published]);setPhase('ready');
   }catch{
    if(!live.current||id!==version.current)return;
    setPhase('error');
