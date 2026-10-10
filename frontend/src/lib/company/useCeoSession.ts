@@ -102,7 +102,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       const words=voiceMessages(lang);
       if(s.phase==='error')return; // Caller provides the actionable error text.
       if(s.phase==='idle'){setVoiceStatus('');return;}
-      note(s.source==='browser'?(s.phase==='speaking'?words.browserVoice:words.browserListening):words[s.phase]);
+      note(s.source==='local' && s.phase==='speaking' ? words.localVoice : s.source==='browser' ? (s.phase==='speaking'?words.browserVoice:words.browserListening) : words[s.phase]);
     });
     turn.current=next;return next;
   };
