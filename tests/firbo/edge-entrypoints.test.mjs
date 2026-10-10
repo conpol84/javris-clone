@@ -117,6 +117,7 @@ function fixture(options={}) {
       return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
     }
     if(table==='usage_events')return{data:options.memberSpendRows??(options.spent?[{cost_usd:options.spent}]:[]),count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
+    if(table==='company_memory_publications')return{data:options.companyMemoryPublications??[],error:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
     if(table==='messages'){
       // Current chat history, old CEO snippets and exact job-ID lookup must
