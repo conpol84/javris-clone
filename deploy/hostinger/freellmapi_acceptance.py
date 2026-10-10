@@ -56,17 +56,13 @@ def smoke():
     ):
         return {"verified": False, "reason": "specific_model_required"}
 
-    opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), NoRedirect()
-    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     catalog_request = urllib.request.Request(
         CATALOG_URL,
         headers={"Authorization": "Bearer " + key, "Accept": "application/json"},
     )
     try:
-        catalog, _, _ = _read_json(
-            opener, catalog_request, MAX_CATALOG_BYTES
-        )
+        catalog, _, _ = _read_json(opener, catalog_request, MAX_CATALOG_BYTES)
         details = catalog_readiness(catalog)
         if details is None or details["model_count"] == 0:
             return {"verified": False, "reason": "no_connected_ready_model"}
@@ -105,9 +101,7 @@ def smoke():
         choices = response.get("choices") if isinstance(response, dict) else None
         msg = (
             choices[0].get("message")
-            if isinstance(choices, list)
-            and choices
-            and isinstance(choices[0], dict)
+            if isinstance(choices, list) and choices and isinstance(choices[0], dict)
             else None
         )
         text = msg.get("content") if isinstance(msg, dict) else None
