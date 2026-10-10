@@ -56,6 +56,7 @@ jobs:
           print("pin_sha_checked=true")
           print("data_volume_preservation_source=true")
           print("existing_only_mcp_key_ui_and_client_policy=true")
+          print("full_ui_release_gate=REQUIRES_APPROVED_HIGH_RAM_ISOLATED_BUILDER")
           PY
 
   offline-backend-next-build:
@@ -114,15 +115,20 @@ jobs:
           echo "production_changes=false"
 
   offline-full-next-build:
-    name: Compile all OmniRoute production Next.js routes + UI without deployment
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # The upstream OmniRoute fork explicitly reports that hosted ~7 GB runners
+    # cannot reliably build this Next tree (19/30 shutdowns). A green source
+    # PR is NOT a green production image. Only a dedicated isolated >= 31GB
+    # owner-approved builder may run the *full UI* gate; it never deploys.
+    if: ${{ vars.FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED == 'true' }}
+    name: FULL UI build — high-RAM isolated builder only (manual resource gate)
+    runs-on: [self-hosted, firbo-omni-build]
+    timeout-minutes: 120
     env:
       NEXT_TELEMETRY_DISABLED: "1"
       DISABLE_SQLITE_AUTO_BACKUP: "true"
       OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
       OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
-      OMNIROUTE_BUILD_MEMORY_MB: "8192"
+      OMNIROUTE_BUILD_MEMORY_MB: "12288"
       OMNIROUTE_USE_TURBOPACK: "1"
       OMNIROUTE_SKIP_STANDALONE: "1"
       OMNIROUTE_BUILD_WORKERS: "1"
@@ -152,7 +158,7 @@ jobs:
       - name: Locked packages with install scripts disabled
         working-directory: omniroute
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Compile full existing Next.js UI + API with 8GB heap, Turbopack and one worker
+      - name: Compile full existing Next.js UI + API with 12GB heap, Turbopack and one worker
         working-directory: omniroute
         run: |
           set -euo pipefail
