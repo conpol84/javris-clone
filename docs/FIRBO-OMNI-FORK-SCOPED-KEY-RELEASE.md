@@ -11,7 +11,7 @@ Date: 2026-10-10. Existing project only, staged on the FIRBO PR #144 source stac
 
 ## Existing OmniRoute source repair
 
-GitHub [conpol84/OmniRoute PR #1](https://github.com/conpol84/OmniRoute/pull/1) is Draft; its exact reviewed head for this CI is `ac3aa6de9c82c275e795f69cf4805d331919a331`.
+GitHub [conpol84/OmniRoute PR #1](https://github.com/conpol84/OmniRoute/pull/1) is Draft; its exact reviewed head for this CI is `26e14038151e8e74c825334a33b77702286892ab`.
 
 It adds a six-scope FIRBO MCP-only key preset to the existing API Manager create/edit UI and the *existing* `/api/keys` and `/api/keys/[id]` protected endpoints:
 
