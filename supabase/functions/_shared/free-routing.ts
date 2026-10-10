@@ -46,39 +46,3 @@ export async function completeViaFree(org:string, authorization:string, requestI
   }catch(error){throw error instanceof GatewayError?error:new GatewayError('free_transport_error');}
   finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);controller.signal.removeEventListener('abort',stop);controller.abort();if(response?.body&&!response.body.locked)void response.body.cancel().catch(()=>{});}
 }
-
-
-/** Classify legacy direct-provider failures without revealing messages, keys or prompts.
- * These diagnostic codes do not by themselves authorize an automatic retry. */
-export function legacyProviderFailureCode(error: unknown): string {
-  const message = error instanceof Error ? error.message : '';
-  const match = /^[a-z0-9_-]{1,32}_http_(\d{3})$/.exec(message);
-  if (match) {
-    const status = Number(match[1]);
-    if (status === 429) return 'model_provider_rate_limited';
-    if (status === 401 || status === 403) return 'model_provider_auth_error';
-    if (status === 402) return 'model_provider_payment_required';
-    if (status === 400 || status === 404) return 'model_request_rejected';
-    if (status >= 500 && status <= 599) return 'model_provider_unavailable';
-    return 'model_provider_http_error';
-  }
-  if (/^[a-z0-9_-]{1,32}_empty$/.test(message)) return 'model_empty_response';
-  if (error instanceof Error && ['TimeoutError', 'AbortError'].includes(error.name))
-    return 'model_timeout_or_cancelled';
-  return 'model_error';
-}
-
-/** Local CEO text recovery is explicitly opt-in, tenant allowlisted and limited to
- * a definite provider HTTP 429 (rejected before completion). Never replay on
- * transport errors, timeouts, 5xx or an opaque gateway outcome. Own keys, other
- * companies and non-CEO agents are unchanged. Disabled by default. */
-export function approvedFreeCeoFallback(input: {
-  organizationId: string; isCeo: boolean; hasOwnKey: boolean;
-  alreadyFree: boolean; directTargetCount: number; errorCode: string; env: EnvReader;
-}): boolean {
-  if (!input.isCeo || input.hasOwnKey || input.alreadyFree || input.directTargetCount !== 1
-    || input.errorCode !== 'model_provider_rate_limited'
-    || input.env('FIRBO_ALLOW_LOCAL_FALLBACK') !== 'on') return false;
-  try { return freeForOrganization(input.organizationId, input.env); }
-  catch { return false; }
-}
