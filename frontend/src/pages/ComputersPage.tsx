@@ -10,7 +10,7 @@ import { getVoiceLaptop, setVoiceLaptop } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
-import { formatComputerResult } from '../lib/company/computer-state';
+import { computerJobNeedsContinuation, formatComputerResult } from '../lib/company/computer-state';
 import { AgentAccessPanel } from '../components/company/AgentAccessPanel';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { computerManagerLabels } from '../lib/company/computer-manager-labels';
@@ -362,7 +362,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
                         <span className="fb-chip">{kindLabel(j.kind)}</span>
                         {j.origin === 'agent' && <span className="fb-chip" style={{ color: 'var(--fb-accent)' }}>{wc('xByAi')}</span>}
                         <span className="min-w-0 flex-1 truncate font-mono">{String(j.params.path ?? j.params.command ?? j.params.url ?? j.params.app ?? j.params.name ?? '')}</span>
-                        <span style={{ color: j.status === 'done' ? 'var(--fb-ok)' : j.status === 'error' ? 'var(--fb-err)' : 'var(--fb-warn)' }}>{t(`comp.status.${j.status}` as TKey)}</span>
+                        <span data-testid="computer-job-outcome" style={{ color: computerJobNeedsContinuation(j) ? 'var(--fb-warn)' : j.status === 'done' ? 'var(--fb-ok)' : j.status === 'error' ? 'var(--fb-err)' : 'var(--fb-warn)' }}>{computerJobNeedsContinuation(j) ? l.needsContinuation : t(`comp.status.${j.status}` as TKey)}</span>
                         {j.status === 'queued' && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.cancelQueued}</button>}
                         {j.status === 'running' && !j.cancel_requested_at && <button type="button" disabled={busy} className="fb-link cursor-pointer underline" onClick={() => void cancel(j)}>{l.stopRunning}</button>}
                         {j.status === 'running' && j.cancel_requested_at && <span className="fb-chip" role="status">{l.stopRequested}</span>}
