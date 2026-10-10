@@ -21,6 +21,16 @@ Latest CI separates independent assurance levels:
 - Full UI/API path uses 8192 MB V8 heap, Webpack, and one worker, with BUILD_ID and a REAL compiled API Manager page required. Success of backend contributor mode must not mask a failure of the full UI path.
 
 Existing PR145 source-only 28/28 security and authorization tests remain passed for the same pinned OmniRoute source. This CI does not change live keys, settings, access scopes, server images, DNS, or provider routing. Full UI and production Docker candidate remain separate release gates even after successful source-only tests.
+## Stage A latest release resource decision — high RAM is a separate explicit gate
+
+Observed Oct 10 CI evidence at FIRBO PR146 on exactly the same source:
+- Full Webpack compilation DID succeed in earlier run 38082591981: Next.js compiled all routes, statically generated 618/618 pages, and listed the real /dashboard/api-manager route. The subsequent `find | grep -q` verification produced SIGPIPE with Bash pipefail and was a false-red checker bug. This proves source compilability ONCE, but not a production artifact.
+- Next full 8GB Webpack recheck run 38083411586 OOM at V8 heap. Two 8GB/one-worker Turbopack runs also received hosted-runner shutdown/cancellation (one run 38084672586). The 8GB backend contributor-only route build DID PASS in that latter run. SAST and source/volume gates PASS.
+- The upstream conpol84/OmniRoute source itself documents 19/30 recent hosted runner failures even with swap, and normal use of a dedicated 31GB `omni-build` runner for full Next/Docker building. Hosted GitHub CI is underprovisioned for repeatable full OmniRoute builds. Stop burning repeat hosted runs.
+
+Release policy: the full-ui job is now gated by the repository variable `FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED=true` and requires an isolated self-hosted runner with labels `self-hosted, firbo-omni-build`, approximately 31GB RAM or demonstrably sufficient equivalent. The variable must NOT be enabled until the owner has explicitly approved resource/cost, verified the builder is ephemeral, has NO production secrets, host Docker mounts, data volumes or shared network, and its runner label exists. No arbitrary fork code on a production VPS. A SKIPPED full-UI job is NOT a PASS; no production image, rollout or promotion is allowed on source/backend/SAST success alone.
+
+Until such builder is approved, FIRBO PR146 may pass *source-only, backend-only and SAST* checks; the full UI/Docker production gate remains explicitly BLOCKED. Its workflow source retains the full UI job and exact pinned OmniRoute commit, it is not silently deleted or covered by a simulated result. Existing one-time full compilation evidence is retained in GitHub logs.
 ## Stage B — observe LIVE Docker state (read-only; owner terminal only)
 
 Do NOT assume the GitHub Compose file describes the current VPS. Read the live container name/image SHA/health, Compose directory, mounts and port bindings. The fork's original docker-compose.yml maps ./data to /app/data and has persistent Redis; the VPS may differ. Never display Config.Env, any .env file contents, API keys, cookies, database rows, or secrets.
