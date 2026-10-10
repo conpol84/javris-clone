@@ -1,0 +1,129 @@
+name: FIRBO Verify Pinned OmniRoute MCP Key Patch
+on:
+  push:
+    branches:
+      - codex/firbo-omni-key-ci-bridge-20261010
+    paths:
+      - .github/workflows/firbo-omni-fork-key-ci.yml
+      - docs/FIRBO-OMNI-FORK-SCOPED-KEY-RELEASE.md
+  pull_request:
+    branches:
+      - codex/firbo-omni-110-catalog-bridge-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-omni-source-exact-head:
+    name: Pinned OmniRoute MCP-only key security and TypeScript
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      DISABLE_SQLITE_AUTO_BACKUP: "true"
+      API_KEY_SECRET: "ci-local-synthetic-not-a-real-secret"
+      JWT_SECRET: "ci-local-synthetic-jwt-not-a-real-secret"
+      OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
+      OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
+    steps:
+      - name: Fetch exact reviewed PUBLIC OmniRoute fork commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          path: omniroute
+          persist-credentials: false
+      - name: Prove source provenance, no branch drift or credential persistence
+        run: |
+          set -euo pipefail
+          test "$(git -C omniroute rev-parse HEAD)" = 26e14038151e8e74c825334a33b77702286892ab
+          test "$(git -C omniroute remote get-url origin)" = https://github.com/conpol84/OmniRoute
+          test -f omniroute/src/shared/constants/firboMcpReadOnlyKey.ts
+          test -f omniroute/tests/unit/authz/client-api-policy.test.ts
+          echo omniroute_source_exact_head_verified=true
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "24"
+      - name: Use pinned npm
+        run: npm install --global npm@11.19.0
+      - name: Install locked OmniRoute dependencies with scripts disabled
+        working-directory: omniroute
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run exact six-scope schema and real CLIENT_API policy regression tests
+        working-directory: omniroute
+        run: |
+          node --import tsx/esm \
+            --import ./open-sse/utils/setupPolyfill.ts \
+            --import ./tests/_setup/isolateDataDir.ts \
+            --test --test-concurrency=1 \
+            tests/unit/dashboard/firboMcpReadOnlyKey.test.ts \
+            tests/unit/authz/client-api-policy.test.ts
+      - name: ESLint targeted key, management APIs, centralized auth and regression tests
+        working-directory: omniroute
+        run: |
+          npx --no-install eslint --no-cache \
+            --suppressions-location config/quality/eslint-suppressions.json \
+            src/shared/constants/firboMcpReadOnlyKey.ts \
+            src/shared/validation/schemas/keys.ts \
+            src/server/authz/policies/clientApi.ts \
+            src/app/api/keys/route.ts \
+            'src/app/api/keys/[id]/route.ts' \
+            'src/app/(dashboard)/dashboard/api-manager/apiManagerScopes.ts' \
+            'src/app/(dashboard)/dashboard/api-manager/firboMcpKeyCopy.ts' \
+            'src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx' \
+            tests/unit/dashboard/firboMcpReadOnlyKey.test.ts \
+            tests/unit/authz/client-api-policy.test.ts
+      - name: Static minimum rights, no code execution and existing management gate
+        working-directory: omniroute
+        run: |
+          node <<'JS'
+          const fs = require('node:fs');
+          const contract = fs.readFileSync('src/shared/constants/firboMcpReadOnlyKey.ts', 'utf8');
+          const client = fs.readFileSync('src/server/authz/policies/clientApi.ts', 'utf8');
+          const create = fs.readFileSync('src/app/api/keys/route.ts', 'utf8');
+          const update = fs.readFileSync('src/app/api/keys/[id]/route.ts', 'utf8');
+          const editor = fs.readFileSync('src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx', 'utf8');
+          for(const scope of ['mcp:connect','read:health','read:quota','read:usage','read:models','read:combos']) {
+            if(!contract.includes('"'+scope+'"')) throw Error('missing exact read scope '+scope);
+          }
+          if(!client.includes('isDedicatedFirboMcpReadOnlyScopes(metadata.scopes)') ||
+             !client.includes('reject(403, "MCP_ONLY_KEY"')) throw Error('inference/client gate missing');
+          if(!create.includes('requireManagementAuth(request)') ||
+             !update.includes('requireManagementAuth(request)')) throw Error('key admin permission lost');
+          if(!create.includes('mcpReadOnly === true') ||
+             !create.includes('modelAccessMode: dedicatedMcp ? "restricted"')) throw Error('server create guard missing');
+          if(!update.includes('payload.modelAccessMode = "restricted"') ||
+             !update.includes('isDedicatedFirboMcpReadOnlyScopes(scopes)')) throw Error('server edit guard missing');
+          if(!editor.includes('window.confirm(firboMcpEdit.confirm)')) throw Error('explicit confirmation missing');
+          console.log('omniroute_single_system_readonly_key_contract=true');
+          JS
+      - name: Typecheck changed backend/API/auth modules and every imported dependency
+        working-directory: omniroute
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -euo pipefail
+          cat > tsconfig.firbo-mcp-ci.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+              "incremental": false,
+              "noEmit": true
+            },
+            "include": [
+              "next-env.d.ts",
+              "src/shared/constants/firboMcpReadOnlyKey.ts",
+              "src/shared/validation/schemas/keys.ts",
+              "src/server/authz/policies/clientApi.ts",
+              "src/app/api/keys/route.ts",
+              "src/app/api/keys/[id]/route.ts",
+              "src/app/(dashboard)/dashboard/api-manager/apiManagerScopes.ts",
+              "src/app/(dashboard)/dashboard/api-manager/firboMcpKeyCopy.ts",
+              "tests/unit/dashboard/firboMcpReadOnlyKey.test.ts",
+              "tests/unit/authz/client-api-policy.test.ts",
+              "src/**/*.d.ts"
+            ],
+            "exclude": ["node_modules", ".build", ".next", "dist"]
+          }
+          JSON
+          npx --no-install tsc -p tsconfig.firbo-mcp-ci.json --noEmit --pretty false --incremental false
