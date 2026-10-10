@@ -1,5 +1,13 @@
 name: FIRBO OmniRoute Scoped Read-only MCP Acceptance
 on:
+  push:
+    branches:
+      - codex/firbo-omni-mcp-restricted-read-acceptance-20261010
+    paths:
+      - deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py
+      - tests/firbo/test_firbo_omni_mcp_read_acceptance.py
+      - docs/FIRBO-OMNI-MCP-READ-ACCEPTANCE.md
+      - .github/workflows/firbo-omni-mcp-read-acceptance.yml
   pull_request:
     branches:
       - codex/firbo-omni-auth-readonly-pilot-gate-20261010
