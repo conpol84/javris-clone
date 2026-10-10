@@ -10,6 +10,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import stat
 from pathlib import Path
 
@@ -69,6 +70,9 @@ _SAFE_BLOCKED_CODES = frozenset(
         "configuration_changed",
         "configuration_not_utf8",
         "duplicate_credential_configuration",
+        "duplicate_credential_values_conflict",
+        "invalid_gateway_key_format",
+        "gateway_keys_must_be_distinct",
     }
 )
 
@@ -89,6 +93,58 @@ def _failure(stage: str, error: Exception | None = None, source=None):
     }
 
 
+def parse_unambiguous_compose_credentials(source, contents: bytes):
+    """Revalidate identical duplicate keys IN MEMORY; never edit the .env file.
+
+    The original strict values() parser runs first. This compatibility path
+    accepts ONLY equal recognized key values, normalized exactly as values()
+    does, then runs original values() AND validate_keys() on a transient
+    duplicate-free representation. Conflicting keys are always refused.
+    """
+    try:
+        return source.values(contents), False
+    except source.Blocked as error:
+        if str(error) != "duplicate_credential_configuration":
+            raise
+    if len(contents) > source.MAX_FILE:
+        raise source.Blocked("configuration_too_large")
+    try:
+        lines = contents.decode("utf-8").splitlines()
+    except UnicodeError:
+        raise source.Blocked("configuration_not_utf8") from None
+    if len(lines) > 20_000:
+        raise source.Blocked("configuration_too_large")
+    known = frozenset(source.PRESENCE_NAMES)
+    first: dict[str, str] = {}
+    cleaned = []
+    duplicates = 0
+    for line in lines:
+        match = re.match(r"^([A-Z][A-Z0-9_]*)=(.*)$", line)
+        if not match or match[1] not in known:
+            cleaned.append(line)
+            continue
+        key = match[1]
+        value = match[2].strip().strip("\"'")
+        if key not in first:
+            first[key] = value
+            cleaned.append(line)
+        else:
+            # Be conservative: any conflicting assignment blocks the audit.
+            if value != first[key]:
+                raise source.Blocked("duplicate_credential_values_conflict")
+            duplicates += 1
+    if not duplicates:
+        raise source.Blocked("duplicate_credential_configuration")
+    # This is a transient Python string ONLY, not a Docker config rewrite.
+    normalized = ("\n".join(cleaned) + "\n").encode("utf-8")
+    configured = source.values(normalized)
+    # Keep all the original security validation for both gateway key scopes.
+    source.validate_keys({
+        name: configured.get(name, "") for name in source.KEY_NAMES
+    })
+    return configured, True
+
+
 def inspect_stored_credential():
     """Stage-safe audit; never guess another .env when ownership checks fail."""
     try:
@@ -107,7 +163,9 @@ def inspect_stored_credential():
     except Exception as error:
         return _failure("read_verified_private_env", error, source)
     try:
-        configured = source.values(contents)
+        configured, duplicates_accepted = parse_unambiguous_compose_credentials(
+            source, contents
+        )
     except Exception as error:
         return _failure("parse_private_key_presence", error, source)
     management_key = configured.get("OMNIROUTE_MANAGEMENT_KEY", "")
@@ -131,7 +189,10 @@ def inspect_stored_credential():
         return _failure("read_gateway_telemetry")
     if not isinstance(result, dict) or result.get("read_only") is not True:
         return _failure("validate_quota_contract")
-    return result
+    return {
+        **result,
+        "identical_duplicate_keys_checked_in_memory": duplicates_accepted,
+    }
 
 
 if __name__ == "__main__":
