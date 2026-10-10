@@ -1,0 +1,35 @@
+name: FIRBO Mobile CEO Dual-Device Continuation
+on:
+  pull_request:
+    branches:
+      - codex/firbo-native-asgi-entrypoint-gate-20261010
+    paths:
+      - frontend/src/lib/company/laptop-bridge.ts
+      - frontend/src/lib/company/useCeoSession.ts
+      - frontend/src/lib/company/laptop-bridge.test.ts
+      - frontend/src/lib/company/useCeoSession.computer.test.ts
+      - .github/workflows/firbo-mobile-device-handoff.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  mobile-direct-control:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Expected npm major
+        run: npm install --global npm@11.19.0
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Mobile/voice/Command parsing and exact device continuation tests
+        working-directory: frontend
+        run: npx vitest run src/lib/company/laptop-bridge.test.ts src/lib/company/useCeoSession.computer.test.ts src/pages/AgentChatPage.computer.test.tsx
+      - name: Full frontend regression + strict build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
