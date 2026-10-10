@@ -35,7 +35,9 @@ def run_catalog(body, key="synthetic-local-secret"):
         return module.probe(), factory
 
 
-@pytest.mark.parametrize("key", ["", "synthetic secret", "secret\ninjected", "secret\rinjected"])
+@pytest.mark.parametrize(
+    "key", ["", "synthetic secret", "secret\ninjected", "secret\rinjected"]
+)
 def test_invalid_key_never_contacts_service(key):
     with (
         patch.dict(os.environ, {"FREELLMAPI_API_KEY": key}),
@@ -95,7 +97,9 @@ def test_auto_disabled_exhausted_or_unknown_models_never_claim_ready(body):
     assert result["inference_verified"] is False
 
 
-@pytest.mark.parametrize("body", [b"[]", b"{}", b"not-json", b"<html>unavailable</html>"])
+@pytest.mark.parametrize(
+    "body", [b"[]", b"{}", b"not-json", b"<html>unavailable</html>"]
+)
 def test_invalid_or_html_catalog_fails_closed(body):
     result, _ = run_catalog(body)
     assert result["ready"] is False
