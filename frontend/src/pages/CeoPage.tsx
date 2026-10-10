@@ -1,5 +1,6 @@
 import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { Link } from 'react-router';
 import { CeoActions } from '../components/company/CeoActions';
 import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
@@ -80,7 +81,12 @@ export function CeoPage() {
     <div data-firbo-voice="ceo" className="fb-root fb-col min-w-0 gap-3 px-3 pb-4 pt-14 sm:p-4 sm:pt-14 lg:p-6" style={{ minHeight: "100%" }}>
       <header>
         <div className="fb-eyebrow">{t('ceo.eyebrow')}</div>
-        <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+          <h1 className="fb-grad-text text-2xl font-semibold">{t('ceo.title')}</h1>
+          <Link to="/chat?ceo=1" className="fb-btn fb-btn--ghost text-xs" aria-label={`${t('nav.chat')} — ${t('nav.ceo')}`}>
+            {t('nav.chat')} → {t('nav.ceo')}
+          </Link>
+        </div>
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
       <VoiceProfileControl />
