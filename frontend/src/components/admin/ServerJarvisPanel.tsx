@@ -8,6 +8,7 @@ import { ServiceAccessPanel } from '../gateway/ServiceAccessPanel';
 import { ServerToolCheck } from './ServerToolCheck';
 import { serverExecution } from '../../../../supabase/functions/_shared/server-execution';
 import { JARVIS_DASHBOARD } from '../../lib/company/service-dashboards';
+import { NATIVE_JARVIS_LOGIN, diagnoseNativeJarvis, nativeJarvisLabels } from '../../lib/company/jarvis-vps-status';
 import { ServerManagementLinks } from './ServerManagementLinks';
 
 interface Status { configured: boolean; online?: boolean; model?: string; agent?: string; engine?: string; models?: string[]; reason?: string; runtime?: unknown }
@@ -15,7 +16,7 @@ interface Turn { q: string; a: string; meta: string; error?: boolean; execution?
 
 /** The OpenJarvis server on the VPS: live status and a direct line to it (platform admins only, checked by the server). */
 export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: boolean } = {}) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [status, setStatus] = useState<Status | null>(null);
   const [failed, setFailed] = useState(false);
   const [model, setModel] = useState('');
@@ -55,6 +56,8 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
   };
 
   const state = failed ? t('jv.error') : !status ? t('common.loading') : !status.configured ? t('jv.notConfigured') : status.online ? t('jv.online') : t('jv.offline');
+  const native = diagnoseNativeJarvis(status,failed);
+  const nativeCopy = nativeJarvisLabels(lang);
   return <div className="space-y-4">
     <ServiceAccessPanel />
     <Panel title={t('jv.title')}>
@@ -68,6 +71,12 @@ export function ServerJarvisPanel({ coding: codingDefault = false }: { coding?: 
         </>}
         <button className="fb-btn fb-btn--ghost" onClick={() => void refresh()}>{t('jv.refresh')}</button>
         <a className="fb-btn fb-btn--primary" href={JARVIS_DASHBOARD} target="_blank" rel="noopener noreferrer">{t('jv.open')} ↗</a>
+        <a className="fb-btn fb-btn--ghost" href={NATIVE_JARVIS_LOGIN} target="_blank" rel="noopener noreferrer" data-native-jarvis-login="true">{nativeCopy.login} ↗</a>
+      </div>
+      <div data-native-jarvis-backend="true" role="status" className="fb-dim mt-3 space-y-1 text-xs">
+        <p className="font-semibold">{nativeCopy.label}</p>
+        <p>{nativeCopy.details[native]}</p>
+        <p>{nativeCopy.separation}</p>
       </div>
       {status && !status.configured && <p className="fb-dim mt-2 text-xs">{t('jv.setup')}</p>}
       {status?.online && <ServerRuntimeInventory value={status.runtime} />}
