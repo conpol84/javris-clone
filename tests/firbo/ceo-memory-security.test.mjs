@@ -22,7 +22,8 @@ test('live CEO inference query is additionally user scoped despite service-role 
 });
 test('native agent-runner memory prompts and tool search use the same authenticated user scope',async()=>{
  const code=await src('supabase/functions/agent-runner/index.ts');
- const queries=[...code.matchAll(/from\('memories'\)[^\n]*/g)].map(x=>x[0]);
- assert.equal(queries.length,2,'Expected exactly the context and search memory queries');
- for(const query of queries)assert.match(query,/\.eq\('user_id',\s*user\.id\)/);
+ const reads=[...code.matchAll(/from\('memories'\)/g)];
+ const scoped=[...code.matchAll(/from\('memories'\)[\s\S]{0,220}?\.eq\('user_id',\s*user\.id\)/g)];
+ assert.equal(reads.length,2,'Expected context + memory_search queries');
+ assert.equal(scoped.length,reads.length,'All service-role memory reads must constrain authenticated user');
 });
