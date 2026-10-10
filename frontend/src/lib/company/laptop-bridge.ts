@@ -25,12 +25,13 @@ export function setUserVoiceLaptop(org:string,user:string,device:string|null,s:S
  * not already identify another specific device. No cross-user/company fallback,
  * and the backend independently verifies the device's creator on every request.
  */
-export function pinPersonalComputer<T extends {deviceId?:string;target?:string}>(
+export function pinPersonalComputer<T extends object>(
  org:string,user:string,proposal:T,s:StorageLike|null=storage(),
-):T {
- if(!org||!user||proposal.deviceId||proposal.target)return proposal;
+):T & {deviceId?:string;target?:string} {
+ const action=proposal as T & {deviceId?:string;target?:string};
+ if(!org||!user||action.deviceId||action.target)return action;
  const selected=getUserVoiceLaptop(org,user,s);
- return selected?{...proposal,deviceId:selected}:proposal;
+ return selected?{...action,deviceId:selected}:action;
 }
 export const browserReadyDevices=(rows:DeviceRow[],now=Date.now())=>rows.filter(d=>canOpenBrowser(d)&&isOnline(d,now));
 export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return selected?(ready.find(d=>d.id===selected)??null):(ready.length===1?ready[0]:null)}
