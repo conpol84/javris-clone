@@ -58,9 +58,36 @@ jobs:
             --test --test-concurrency=1 \
             tests/unit/dashboard/firboMcpReadOnlyKey.test.ts \
             tests/unit/authz/client-api-policy.test.ts
-      - name: Typecheck full existing OmniRoute source
+      - name: Typecheck ALL changed OmniRoute key/auth/API/UI modules and imported dependencies
         working-directory: omniroute
-        run: npx --no-install tsc --noEmit --pretty false --incremental false
+        env:
+          NODE_OPTIONS: --max-old-space-size=6144
+        run: |
+          set -euo pipefail
+          cat > tsconfig.firbo-mcp-ci.json <<'JSON'
+          {
+            "extends": "./tsconfig.json",
+            "compilerOptions": {
+              "incremental": false,
+              "noEmit": true
+            },
+            "include": [
+              "next-env.d.ts",
+              "src/shared/constants/firboMcpReadOnlyKey.ts",
+              "src/shared/validation/schemas/keys.ts",
+              "src/server/authz/policies/clientApi.ts",
+              "src/app/api/keys/route.ts",
+              "src/app/api/keys/[id]/route.ts",
+              "src/app/(dashboard)/dashboard/api-manager/apiManagerScopes.ts",
+              "src/app/(dashboard)/dashboard/api-manager/firboMcpKeyCopy.ts",
+              "src/app/(dashboard)/dashboard/api-manager/ApiManagerPageClient.tsx",
+              "tests/unit/dashboard/firboMcpReadOnlyKey.test.ts",
+              "tests/unit/authz/client-api-policy.test.ts"
+            ],
+            "exclude": ["node_modules", ".build", ".next", "dist"]
+          }
+          JSON
+          npx --no-install tsc -p tsconfig.firbo-mcp-ci.json --noEmit --pretty false --incremental false
       - name: ESLint targeted key, management APIs, centralized auth and regression tests
         working-directory: omniroute
         run: |
