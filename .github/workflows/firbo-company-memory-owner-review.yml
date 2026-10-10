@@ -7,6 +7,13 @@ on:
       - 'supabase/functions/company-memory-review/**'
       - 'tests/firbo/sql/cmem01_company_memory.sql'
       - 'tests/firbo/company-memory-review.test.mjs'
+      - 'tests/firbo/company-memory-block.test.mjs'
+      - 'tests/firbo/company-memory-boundary.test.mjs'
+      - 'supabase/functions/agent-chat/index.ts'
+      - 'supabase/functions/agent-runner/index.ts'
+      - 'supabase/functions/_shared/company-pulse.ts'
+      - 'deploy/firbo-agent-runner-bundle.json'
+      - 'frontend/src/i18n/locales/**'
       - 'frontend/src/lib/company/company-memory*'
       - 'frontend/src/pages/MemoryPage.tsx'
       - '.github/workflows/firbo-company-memory-owner-review.yml'
@@ -27,8 +34,13 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22.22.0'
-      - name: Owner review API cannot expose/publish outside permission boundary
-        run: node --test tests/firbo/company-memory-review.test.mjs
+      - name: Owner review API and source-checked shared inference scope
+        run: node --test tests/firbo/company-memory-review.test.mjs tests/firbo/company-memory-block.test.mjs tests/firbo/company-memory-boundary.test.mjs
+      - name: Exact agent runner closure and source digest for manifest pinning
+        run: |
+          sha256sum supabase/functions/_shared/company-pulse.ts supabase/functions/agent-runner/index.ts
+          wc -c supabase/functions/_shared/company-pulse.ts supabase/functions/agent-runner/index.ts
+          node --test tests/firbo/agent-runner-bundle.test.mjs
       - name: Install native postgres for disposable RLS tests
         run: |
           sudo apt-get update -qq
