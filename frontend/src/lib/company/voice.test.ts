@@ -43,7 +43,7 @@ beforeEach(()=>{
  setVoiceProfile('natural-v1');
  vi.useFakeTimers();vi.clearAllMocks();mocks.invoke.mockReset();mocks.getSession.mockReset();mocks.getSession.mockResolvedValue({data:{session:{access_token:'synthetic-local-session'}}});AudioMock.instances=[];RecorderMock.instances=[];RecorderMock.fail=false;playMode='normal';utterance=undefined;
  track={stop:vi.fn(),onended:null};getUserMedia=vi.fn(async()=>({getTracks:()=>[track]}));
- vi.stubGlobal('window',{...globalThis,AudioContext:ContextMock,speechSynthesis:synth});
+ vi.stubGlobal('window',{...globalThis,location:{hostname:'firboai.app'},AudioContext:ContextMock,speechSynthesis:synth});
  vi.stubGlobal('navigator',{mediaDevices:{getUserMedia}});vi.stubGlobal('Audio',AudioMock);vi.stubGlobal('AudioContext',ContextMock);
  vi.stubGlobal('SpeechSynthesisUtterance',UtteranceMock);vi.stubGlobal('MediaRecorder',RecorderMock);
  vi.stubGlobal('requestAnimationFrame',vi.fn(()=>1));vi.stubGlobal('cancelAnimationFrame',vi.fn());
