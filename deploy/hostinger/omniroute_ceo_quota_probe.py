@@ -55,7 +55,7 @@ def summarize(payload, now=None):
         if not isinstance(name, str) or not PROVIDER_ID.fullmatch(name):
             name = "other"
         status = row.get("tokenStatus")
-        if status not in TOKEN_STATUS:
+        if not isinstance(status, str) or status not in TOKEN_STATUS:
             status = "unknown"
         reset = _utc(row.get("resetAt"))
         cooldown = reset is not None and reset > now
