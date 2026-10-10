@@ -11,7 +11,7 @@ export const TOKEN = 'a'.repeat(64), ORG = '22222222-2222-4222-8222-222222222222
 export async function makeHandler() {
  const state = { rows: {
   connector_secrets: [{device_id:DEVICE,token_hash:createHash('sha256').update(TOKEN).digest('hex')}],
-  connector_devices: [{id:DEVICE,organization_id:ORG,name:'Synthetic laptop',platform:'test',paired:true,capabilities:{},revoked_at:null}],
+  connector_devices: [{id:DEVICE,organization_id:ORG,created_by:'owner',name:'Synthetic laptop',platform:'test',paired:true,capabilities:{},revoked_at:null}],
   organizations:[{id:ORG,plan:'enterprise',plan_status:'active',status:'active'}], connector_jobs: [], organization_members: [], audit_log: [],
  }, writes:[], reads:[], failures:[], user:null };
  function builder(table) {
