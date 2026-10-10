@@ -12,6 +12,16 @@ For strict local/no-provider-fee emergency CEO new turns, use the PR129 independ
 Local Piper handles audio separately and may fall back to device speech per PR128.
 FreeLLMAPI does not itself guarantee permanently free or commercially permitted usage; a model catalog is not a cost receipt. Do not expose API/provider keys in Vercel/public browser.
 
+## Read-only Docker inventory for existing installation
+Run only on the intended Hostinger VPS with Docker inspection permission:
+`python3 deploy/hostinger/freellmapi_inventory.py` (from the reviewed checked-out source).
+This script never restarts, installs or reconfigures the service. It requests ONLY selected Docker metadata, not container environment, secret files or logs. It checks:
+- container `firbo-freellmapi` is running and healthcheck healthy
+- exact pinned image identity, non-root `1000:1000`, all capabilities dropped and no-new-privileges
+- host port `127.0.0.1:3001` only (not world accessible), only `hostinger_default` network, expected restart policy
+
+A reported READY Docker container is still **not model readiness**; verify the read-only catalog separately, then a single manually authorized inference. If the image has been upgraded, stop and review the new digest rather than silently accepting it.
+
 ## Safe readiness protocol
 1. Existing read-only localhost catalog probe: deploy/hostinger/freellmapi_probe.py. It now counts ONLY distinct, specifically identified non-router models marked execution_status=ready. Auto/fusion, exhausted, needsKey and unknown models do not make the provider ready.
 2. It returns inference_verified=false, commercial_use_verified=false and provider_cost_verified=false even if models are ready. No prompt sent, no quota consumed, no key logged.
