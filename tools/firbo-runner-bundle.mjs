@@ -152,7 +152,7 @@ const manifest = await loadJson(manifestPath, 'bundle manifest');
 if (manifest.schema !== 'firbo-agent-runner-bundle/v1' || !Array.isArray(manifest.files)) fail('bundle manifest schema is invalid');
 const current = await currentFiles();
 compareFiles(manifest.files, current, 'source bundle');
-if (current.length !== 19) fail(`expected 19-file closure, found ${current.length}`);
+if (current.length !== 21) fail(`expected 21-file closure, found ${current.length}`);
 const livePath = valueAfter('--live-bundle');
 if (livePath) await verifyLive(livePath, current);
 const configPath = valueAfter('--release-config');
