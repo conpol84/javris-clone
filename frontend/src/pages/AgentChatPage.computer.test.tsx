@@ -1,7 +1,7 @@
 import { isValidElement, type ReactElement, type ReactNode } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 
-const fixture = vi.hoisted(() => ({ states: [] as unknown[], refs: [] as { current: any }[], index: 0, refIndex: 0, effects: [] as (() => void | (() => void))[], role: 'owner', org: 'org', user: 'owner', setters: [] as ReturnType<typeof vi.fn>[] }));
+const fixture = vi.hoisted(() => ({ plan: 'pro' as 'free' | 'pro' | 'business' | 'enterprise', planStatus: 'active' as string, states: [] as unknown[], refs: [] as { current: any }[], index: 0, refIndex: 0, effects: [] as (() => void | (() => void))[], role: 'owner', org: 'org', user: 'owner', setters: [] as ReturnType<typeof vi.fn>[] }));
 const dispatch = vi.hoisted(() => vi.fn());
 const prepare = vi.hoisted(() => vi.fn());
 const sendChat = vi.hoisted(() => vi.fn());
@@ -17,6 +17,13 @@ vi.mock('react', async original => ({ ...await original<typeof import('react')>(
 vi.mock('react-router', () => ({ useSearchParams: () => [new URLSearchParams('c=chat'), vi.fn()] }));
 vi.mock('../lib/company/AuthProvider', () => ({ useCompanyAuth: () => ({ current: { role: fixture.role, organization: { id: fixture.org } }, user: { id: fixture.user } }) }));
 vi.mock('../i18n/I18nProvider', () => ({ useI18n: () => ({ lang: 'en', t: (key: string) => key, fmt: { relative: () => 'now', date: () => 'today' } }) }));
+// Billing is a separate hook. Mock its resolved server entitlement so the
+// existing deterministic React hook-index harness tests PC consent/Stop, not
+// incidental nested useState calls of an external subscription hook.
+vi.mock('../lib/company/usePlan', () => ({
+  usePlanUsageState: () => ({ status: 'ready', loading: false,
+    plan: { plan: { id: fixture.plan }, status: fixture.planStatus }, retry: vi.fn() }),
+}));
 vi.mock('../lib/company/labels', () => ({ agentLabel: () => ({ name: 'CEO' }) }));
 vi.mock('../lib/company/voice', () => ({ unlockAudio: vi.fn(), speak: vi.fn(), listenSmart: listen }));
 vi.mock('../lib/company/runner', async original => ({ ...await original<typeof import('../lib/company/runner')>(), sendChat }));
@@ -39,7 +46,7 @@ function page(text = 'yes', running = false, progress: {jobId:string;deviceName:
   return AgentChatPage();
 }
 beforeEach(() => {
-  vi.clearAllMocks(); fixture.role = 'owner'; fixture.org = 'org'; fixture.user = 'owner';
+  vi.clearAllMocks(); fixture.role = 'owner'; fixture.org = 'org'; fixture.user = 'owner'; fixture.plan = 'pro'; fixture.planStatus = 'active';
   prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'No job was queued. Catalina is unsupported.'});
   journal.mockResolvedValue(true);
   fixture.refs = [{ current: vi.fn() }, { current: null }, { current: null }, { current: null }, { current: false }, { current: null }, { current: '' }];
