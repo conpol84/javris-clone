@@ -1,0 +1,38 @@
+{
+  "repository": "msitarzewski/agency-agents",
+  "commit": "f99f6aa910a442b0197b768ce0ea7751e35e2060",
+  "license": "MIT",
+  "reviewed_at": "2026-10-09",
+  "files": [
+    {
+      "path": "LICENSE",
+      "git_blob": "523078c01624b9b1b1c551e75054b9d3a9f953ab",
+      "sha256": "9a45258434d5cedf0af73c9ad4771373701225038d246c49219026c33677f66f"
+    },
+    {
+      "path": "research/research-synthesist.md",
+      "git_blob": "ff5741421e8cdbc953a930f9b54aff78f3715677",
+      "sha256": "3618b4a2a73523147731ae38ac4096cea0e83a7de930f55ea9ea6c69e3c77f30"
+    },
+    {
+      "path": "engineering/engineering-backend-architect.md",
+      "git_blob": "f3731dd50da10c71d2c40a5ff319d7984afe7efd",
+      "sha256": "45d94306c8f0f4c51efb76066008297fa4e87ce5b69f509cfede224084b74dfb"
+    },
+    {
+      "path": "engineering/engineering-devops-automator.md",
+      "git_blob": "e7c6daa1c5218cb68d6d01ee9a504ac4ac31930c",
+      "sha256": "dbb3d2518a4fff4df1930fd311ef6ffa96670d08b101567b7e241f941ced94c9"
+    },
+    {
+      "path": "testing/testing-evidence-collector.md",
+      "git_blob": "321ce36bd2586254b0d7194c5f62965204170532",
+      "sha256": "ff1868ae89f3be62f6f0da1fc8693582f18578c77751b8a65a53169ef15ececd"
+    },
+    {
+      "path": "marketing/marketing-content-creator.md",
+      "git_blob": "4beedb05f5e4f8754c63125649ac8a9763609330",
+      "sha256": "26ddce44f057068a3935c13d53becd3c57385fb47fcdcfdd891b80269070b3d5"
+    }
+  ]
+}

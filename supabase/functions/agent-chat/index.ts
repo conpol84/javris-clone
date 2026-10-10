@@ -9,7 +9,8 @@ import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_AP
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
-import { memoryBlocks } from '../_shared/company-pulse.ts';
+import { memoryBlocks, type MemoryRow } from '../_shared/company-pulse.ts';
+import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
 
@@ -210,34 +211,36 @@ Deno.serve(async (req) => {
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at, user_id').eq('organization_id', convo.organization_id)
+    .eq('user_id', user.id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null)
     .order('importance', { ascending: false }).limit(12);
-  // Never inject one member's private notes into another member's CEO.
-  // Shared facts require explicit metadata visibility=company. Historical
-  // learned facts remain quarantined by the existing database query.
-  const accessibleMemory=(memRows??[]).filter((m:any)=>
-    m.user_id===user.id||m.user_id===null||
-    (m.memory_type==='company'&&m.metadata?.visibility==='company'));
+  // Service role bypasses RLS. Do not trust NULL owners or a client-editable
+  // company visibility tag until owner-approved ACL exists. This deliberately
+  // preserves 30 legacy model-learned rows without injecting them into prompts.
+  const accessibleMemory=ownerVisibleMemory((memRows??[]) as Array<MemoryRow & { user_id:string|null }>,user.id);
   const memoryBlock = memoryBlocks(accessibleMemory).join('\n');
   let previousCeoSessions='';
   let pastSessionsUnavailable=false;
   if(isCeo){
     try{
+      // Scan up to 60 user-owned CEO sessions in TWO bounded queries. This
+      // covers older owner decisions without widening the 1,700-char prompt or
+      // acquiring another paid model. Full transcript remains on the server.
       // Service-role reads MUST carry these explicit independent tenant/user
       // filters. A company's owner/admin is not the owner of members' chats.
       const {data:oldSessions,error:oldError}=await admin.from('conversations')
        .select('id,organization_id,user_id,agent_id,title,updated_at')
        .eq('organization_id',convo.organization_id).eq('user_id',user.id)
        .eq('agent_id',agent.id).eq('status','active').neq('id',convo.id)
-       .order('updated_at',{ascending:false}).limit(18);
+       .order('updated_at',{ascending:false}).limit(60);
       if(oldError)throw oldError;
       const ids=(oldSessions??[]).map((s:any)=>s.id);
       if(ids.length){
         const {data:oldMessages,error:messageError}=await admin.from('messages')
          .select('conversation_id,role,content,created_at')
          .eq('organization_id',convo.organization_id).in('conversation_id',ids)
-         .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(220);
+         .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(440);
         if(messageError)throw messageError;
         previousCeoSessions=buildCeoSessionRecall({
           organizationId:convo.organization_id,userId:user.id,agentId:agent.id,

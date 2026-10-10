@@ -476,6 +476,7 @@ Deno.serve(async (req) => {
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', task.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id)
+    .eq('user_id', user.id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`).order('importance', { ascending: false }).limit(12);
   const memory = memoryBlocks(memRows ?? []);
   // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
@@ -708,7 +709,7 @@ Deno.serve(async (req) => {
   };
   if (usable('memory_search') || usable('knowledge_search')) loopTools.memory_search = async (q) => {
     const words = q.toLowerCase().split(/\s+/).filter(w => w.length > 3).slice(0, 4);
-    let query = admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id).or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
+    let query = admin.from('memories').select('content, memory_type, metadata, expires_at').eq('organization_id', task.organization_id).eq('user_id', user.id).or(`agent_id.is.null,agent_id.eq.${agent.id}`).or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`);
     const terms = words.map(w => w.replace(/[^\p{L}\p{N}-]/gu, '')).filter(Boolean);
     if (terms.length) query = query.or(terms.map(w => `content.ilike.%${w}%`).join(','));
     const { data } = await query.order('importance', { ascending: false }).limit(6);

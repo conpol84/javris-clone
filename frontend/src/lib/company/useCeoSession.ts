@@ -4,6 +4,7 @@ import type { HoloState } from '../../components/scenes/HologramScene';
 import type { TKey } from '../../i18n/locales/en';
 import { createConversation, listAgents, loadOrgSummary } from './data';
 import { listCeoSessions, readCeoSession, type CeoSessionPreview } from './ceo-sessions';
+import { chooseCeoSession, rememberCeoSession } from './ceo-session-continuity';
 import { journalCeoComputerJob } from './ceo-device-journal';
 import { RunError, runErrorText, sendChat } from './runner';
 import type { AgentRow } from './types';
@@ -59,10 +60,12 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       try{
         const previews=await listCeoSessions(orgId,userId,found.id);
         if(!valid(id))return;
-        if(previews.length){
-          const recovered=await readCeoSession(orgId,userId,found.id,previews[0].id);
+        const chosen=chooseCeoSession(previews,orgId,userId,found.id);
+        if(chosen){
+          const recovered=await readCeoSession(orgId,userId,found.id,chosen.id);
           if(!valid(id))return;
-          convo.current=previews[0].id;setActiveSessionId(previews[0].id);setLines(recovered);
+          convo.current=chosen.id;setActiveSessionId(chosen.id);setLines(recovered);
+          rememberCeoSession(orgId,userId,found.id,chosen.id);
         }
         setSessions(previews);setHistoryError(false);setCeo(found);
       }catch{
@@ -113,7 +116,9 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
   };
   const newSession=()=>{
     if(busy.current||historyLoading||historyError)return;
-    pendingComputer.current=null;clear();setComputerProgress(null);convo.current=null;setActiveSessionId(null);
+    pendingComputer.current=null;clear();setComputerProgress(null);
+    if(ceo&&userId)rememberCeoSession(orgId,userId,ceo.id,null);
+    convo.current=null;setActiveSessionId(null);
     setLines([]);setState('idle');setInterim('');setHistoryError(false);
   };
   const openSession=async(conversationId:string)=>{
@@ -124,6 +129,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       const recovered=await readCeoSession(orgId,userId,ceo.id,conversationId);
       if(!valid(id))return;
       convo.current=conversationId;setActiveSessionId(conversationId);setLines(recovered);setHistoryError(false);
+      rememberCeoSession(orgId,userId,ceo.id,conversationId);
     }catch{if(valid(id)){setHistoryError(true);toast.error(tRef.current('chat.loadError'));}}
     finally{if(valid(id))setHistoryLoading(false);}
   };
@@ -136,10 +142,12 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
     const id=epoch.current;
     void listCeoSessions(orgId,userId,ceo.id).then(async previews=>{
       if(!valid(id))return;
-      if(previews.length){
-        const recovered=await readCeoSession(orgId,userId,ceo.id,previews[0].id);
+      const chosen=chooseCeoSession(previews,orgId,userId,ceo.id);
+      if(chosen){
+        const recovered=await readCeoSession(orgId,userId,ceo.id,chosen.id);
         if(!valid(id))return;
-        convo.current=previews[0].id;setActiveSessionId(previews[0].id);setLines(recovered);
+        convo.current=chosen.id;setActiveSessionId(chosen.id);setLines(recovered);
+        rememberCeoSession(orgId,userId,ceo.id,chosen.id);
       }else{convo.current=null;setActiveSessionId(null);setLines([]);}
       setSessions(previews);
     }).catch(()=>{if(valid(id))setHistoryError(true);}).finally(()=>{if(valid(id))setHistoryLoading(false);});
@@ -170,7 +178,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
           if(!convo.current){
             const created=await createConversation(orgId,userId,ceo.id);
             if(!valid(id)||!active.current())return;
-            convo.current=created.id;setActiveSessionId(created.id);
+            convo.current=created.id;setActiveSessionId(created.id);rememberCeoSession(orgId,userId,ceo.id,created.id);
           }
           await journalCeoComputerJob(convo.current,remote.job_id,active.signal);
           if(!valid(id)||!active.current())return;
@@ -239,7 +247,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
       if(!convo.current){
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
-        if(!valid(id)||!active.current())return;convo.current=created.id;setActiveSessionId(created.id);
+        if(!valid(id)||!active.current())return;convo.current=created.id;setActiveSessionId(created.id);rememberCeoSession(orgId,userId,ceo.id,created.id);
       }
       const response=await voiceDeadline(signal=>sendChat(convo.current!,message,lang,true,signal),active.signal,95_000);
       if(!valid(id)||!active.current())return;

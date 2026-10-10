@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router';
+import { chooseCeoSession, rememberCeoSession } from '../lib/company/ceo-session-continuity';
 import { Mic, MessageSquare, MessageSquarePlus, Send, Square, Trash2, Volume2, VolumeX } from 'lucide-react';
 import { toast } from 'sonner';
 import { Wave } from '../components/command/Panel';
@@ -138,10 +139,32 @@ export function AgentChatPage() {
     end.current?.scrollIntoView({ block: 'end' });
   }, [messages, sending]);
 
+  // /chat?ceo=1 is a deliberate bridge from the CEO interfaces, not an
+  // instruction to create a second CEO or open another member's conversation.
+  useEffect(() => {
+    if(params.get('ceo')!=='1'||activeId||!listLoaded||!user?.id||!orgId)return;
+    const ceoAgent=agents.find(a=>a.enabled&&(a.type==='ceo'||a.slug.startsWith('ceo')));
+    if(!ceoAgent)return;
+    const sessions=convos.filter(c=>c.agent_id===ceoAgent.id);
+    const chosen=chooseCeoSession(sessions,orgId,user.id,ceoAgent.id);
+    if(!chosen)return;
+    const next=new URLSearchParams(params);
+    next.set('c',chosen.id);next.delete('ceo');
+    setParams(next,{replace:true});
+  },[params,activeId,listLoaded,agents,convos,orgId,user?.id,setParams]);
+
   const select = (id: string | null) => {
+    // Only authenticated own conversation rows can update the CEO preference.
+    // The other CEO interfaces revalidate the pointer against their own scoped list.
+    if(id&&user?.id){
+      const selected=convos.find(c=>c.id===id), agent=agents.find(a=>a.id===selected?.agent_id);
+      if(selected&&agent&&(agent.type==='ceo'||agent.slug.startsWith('ceo')))
+        rememberCeoSession(orgId,user.id,agent.id,id);
+    }
     const next = new URLSearchParams(params);
     if (id) next.set('c', id);
     else next.delete('c');
+    next.delete('ceo');
     setParams(next, { replace: true });
   };
 
@@ -151,7 +174,10 @@ export function AgentChatPage() {
       const c = await createConversation(orgId, user.id, agent.id);
       setConvos((prev) => [c, ...prev]);
       setPicking(false);
-      select(c.id);
+      if(user&& (agent.type==='ceo'||agent.slug.startsWith('ceo')))
+        rememberCeoSession(orgId,user.id,agent.id,c.id);
+      const next = new URLSearchParams(params);next.set('c',c.id);next.delete('ceo');
+      setParams(next,{replace:true});
     } catch (err) {
       console.error(err);
       toast.error(t('chat.startError'));
