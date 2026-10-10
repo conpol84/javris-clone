@@ -30,13 +30,13 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           repository: conpol84/OmniRoute
-          ref: ac3aa6de9c82c275e795f69cf4805d331919a331
+          ref: 26e14038151e8e74c825334a33b77702286892ab
           path: omniroute
           persist-credentials: false
       - name: Prove source provenance, no branch drift or credential persistence
         run: |
           set -euo pipefail
-          test "$(git -C omniroute rev-parse HEAD)" = ac3aa6de9c82c275e795f69cf4805d331919a331
+          test "$(git -C omniroute rev-parse HEAD)" = 26e14038151e8e74c825334a33b77702286892ab
           test "$(git -C omniroute remote get-url origin)" = https://github.com/conpol84/OmniRoute
           test -f omniroute/src/shared/constants/firboMcpReadOnlyKey.ts
           test -f omniroute/tests/unit/authz/client-api-policy.test.ts
