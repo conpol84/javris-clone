@@ -14,6 +14,7 @@ import { memoryBlocks, approvedCompanyMemoryBlock, type MemoryRow } from '../_sh
 import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
+import { compactForFree, ceoOperatingPolicy } from '../_shared/ceo-intelligence.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -52,28 +53,8 @@ function priceOf(provider: string, which: 'IN' | 'OUT'): number {
   return Number(v ?? (which === 'IN' ? 3 : 15));
 }
 
-/** Shrinks the conversation to fit the local model's context. Oldest turns and snapshot detail go first. */
-function compactForFree(i: { agent: any; org: any; profile: Record<string, string>; snapshot: string; voice: boolean; lang: string; past: { role: string; content: string }[]; text: string }) {
-  const clipTo = (v: unknown, n: number) => String(v ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-  const bytes = (m: unknown) => new TextEncoder().encode(JSON.stringify(m)).length;
-  const build = (snapChars: number, turns: number) => {
-    const system = [
-      clipTo(i.agent.system_prompt || `You are ${i.agent.name}, an AI employee.`, 260),
-      i.agent.owner_instructions ? `Owner style: ${clipTo(i.agent.owner_instructions, 500)}` : '',
-      roleEvidenceInstructions(i.agent.type, true),
-      `Company: ${clipTo(i.org?.name, 60)}.${i.profile.goal ? ` Goal: ${clipTo(i.profile.goal, 120)}.` : ''}`,
-      i.voice && snapChars > 0 ? clipTo(i.snapshot, snapChars) : '',
-      `Reply in ${LANG_NAME[i.lang] ?? 'English'} unless the teammate writes in another language. ${i.voice ? 'Spoken conversation: answer in one to three short natural sentences, no markdown or lists. Use only the company data above and never invent numbers.' : 'Be concise.'}`,
-    ].filter(Boolean).join('\n');
-    const recent = (turns > 0 ? i.past.slice(-turns) : []).map(m => ({ role: m.role, content: clipTo(m.content, 280) }));
-    return [{ role: 'system', content: system }, ...recent, { role: 'user', content: clipTo(i.text, 500) }];
-  };
-  for (const [snap, turns] of [[900, 4], [700, 3], [500, 2], [300, 1], [150, 0], [0, 0]] as const) {
-    const messages = build(snap, turns);
-    if (bytes(messages) <= 2700) return messages;
-  }
-  return build(0, 0);
-}
+/** Local model context uses the same authenticated user/company evidence as cloud chat.
+ * See ceo-intelligence.ts for strict byte-limit and evidence degradation policy. */
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -326,6 +307,7 @@ Deno.serve(async (req) => {
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     roleEvidenceInstructions(agent.type),
+    ...(isCeo ? [ceoOperatingPolicy()] : []),
     ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current request):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
@@ -357,7 +339,7 @@ Deno.serve(async (req) => {
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
-  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
+  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock }) : [];
   let reservedUsd = 0;
   try {
     if (!own && !localCeoSelected && !free && gateway) {
@@ -462,6 +444,7 @@ Deno.serve(async (req) => {
     try {
       const localMessages = compactForFree({
         agent, org, profile, snapshot, voice: body.voice === true, lang, past, text,
+        isCeo, memoryBlock, previousCeoSessions, knowledgeBlock,
       });
       const localResult = await completeViaFree(
         convo.organization_id, auth, body.request_id, localMessages, { signal: req.signal },
