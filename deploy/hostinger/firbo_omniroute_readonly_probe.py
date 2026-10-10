@@ -85,9 +85,9 @@ def audit(get=fetch_json) -> dict[str, object]:
                 and value.get("status") == "ok"
             )
         elif label == "agent_catalog":
-            skills = (
-                value.get("skills") if status == 200 and isinstance(value, dict) else None
-            )
+            skills = None
+            if status == 200 and isinstance(value, dict):
+                skills = value.get("skills")
             if isinstance(skills, list) and len(skills) <= 200:
                 safe_ids = []
                 for skill in skills:
