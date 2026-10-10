@@ -1,0 +1,57 @@
+name: FIRBO Native Artifact Candidate
+on:
+  pull_request:
+    branches:
+      - codex/firbo-native-image-provenance-20261010
+    paths:
+      - deploy/hostinger/firbo_stage_native_image.sh
+      - tests/firbo/test_firbo_native_stage_script.py
+      - .github/workflows/firbo-native-artifact-candidate.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  pinned-source-wheel-and-stage-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Shell syntax and static no-promotion guard
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n deploy/hostinger/firbo_stage_native_image.sh
+          python3 -m venv /tmp/firbo-native-stage-tests
+          /tmp/firbo-native-stage-tests/bin/pip install pytest==9.0.2 ruff==0.16.7
+          /tmp/firbo-native-stage-tests/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_firbo_native_stage_script.py
+          /tmp/firbo-native-stage-tests/bin/ruff check tests/firbo/test_firbo_native_stage_script.py
+          /tmp/firbo-native-stage-tests/bin/ruff format --check tests/firbo/test_firbo_native_stage_script.py
+      - name: Build actual installable Python wheel from exact checked-out source
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/firbo-native-wheel
+          python3 -m pip wheel --no-deps --no-cache-dir --wheel-dir /tmp/firbo-native-wheel .
+          python3 - <<'PY'
+          import hashlib
+          import zipfile
+          from pathlib import Path
+
+          files=list(Path('/tmp/firbo-native-wheel').glob('*.whl'))
+          assert len(files)==1, 'wheel_artifact_not_unique'
+          path='openjarvis/server/firbo_free_app.py'
+          with zipfile.ZipFile(files[0]) as wheel:
+              included=[n for n in wheel.namelist() if n==path]
+              assert len(included)==1, 'native_module_missing_from_wheel'
+              compiled=wheel.read(path)
+          reviewed=Path('src/openjarvis/server/firbo_free_app.py').read_bytes()
+          assert compiled==reviewed, 'packaged_source_differs_from_git'
+          blob=hashlib.sha1(b'blob '+str(len(compiled)).encode()+b'\0'+compiled).hexdigest()
+          assert blob=='edf940a67f8881e7bd828ed8a956252f2a8c67de', 'wheel_native_blob_not_reviewed'
+          assert b'/v1/firbo/free/local/chat/completions' in compiled, 'local_route_missing'
+          print('firbo_wheel_native_file_byte_exact=true')
+          print('reviewed_native_git_blob='+blob)
+          PY
