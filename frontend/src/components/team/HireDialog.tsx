@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { AgencySpecialistDetails } from './AgencySpecialistDetails';
-import { AGENT_TEMPLATES, TEMPLATE_CATEGORIES, type AgentTemplate } from '../../lib/company/templates';
+import { AGENT_TEMPLATES, TEMPLATE_CATEGORIES, isPremium, type AgentTemplate } from '../../lib/company/templates';
+import { usePlanUsageState } from '../../lib/company/usePlan';
 import { hireAgent } from '../../lib/company/data';
 import { useI18n } from '../../i18n/I18nProvider';
 import { notifyPlanLimit } from '../../lib/company/limits';
@@ -30,10 +31,17 @@ export function HireDialog({
   const [pick, setPick] = useState<AgentTemplate | null>(initial ?? null);
   const [instr, setInstr] = useState('');
   const [budget, setBudget] = useState('20');
+  const planState = usePlanUsageState(orgId);
+  const plan = planState.plan;
+  const premiumLocked = (tpl:AgentTemplate) => isPremium(tpl.slug)
+    && (!plan || plan.plan.id === 'free' || !['active','trialing'].includes(plan.status));
+  const atCapacity = !!plan && Number(plan.usage?.agents ?? 0) >= Number(plan.plan.limits?.agents ?? 0);
+  const allowedToHire = (tpl:AgentTemplate) => planState.status === 'ready' && !!plan && !atCapacity && !premiumLocked(tpl);
   const hired = (tpl: AgentTemplate) => existing.some((a) => a.slug === tpl.slug || a.slug.startsWith(`${tpl.slug}-`));
   const list = AGENT_TEMPLATES.filter((x) => cat === 'All' || x.category === cat);
 
   const hire = async (tpl: AgentTemplate) => {
+    if (!allowedToHire(tpl)) { toast.error(t(premiumLocked(tpl) ? 'bill.premium' : 'bill.enforced')); return; }
     setBusy(tpl.slug);
     try {
       await hireAgent(orgId, tpl, { instructions: instr, monthlyBudget: Number(budget) || null });
@@ -50,6 +58,9 @@ export function HireDialog({
 
   return (
     <Modal title={t('hire.title')} onClose={onClose} wide>
+      {planState.loading && <p role="status" className="fb-muted mb-3 text-xs">{t('common.loading')}</p>}
+      {planState.status === 'error' && <p role="alert" className="fb-muted mb-3 text-xs">{t('bill.loadError')} <button className="fb-link" onClick={planState.retry}>{t('common.retry')}</button></p>}
+      {planState.status === 'ready' && atCapacity && <p role="alert" className="fb-muted mb-3 text-xs">{t('bill.limit.agents')}: {plan?.usage.agents} / {plan?.plan.limits.agents}. <a className="fb-link" href="/billing">{t('bill.seePlans')}</a></p>}
       {pick ? (
         <div className="fb-col gap-3">
           <div className="text-base font-semibold">{t('hire.confirm', { name: t(`tpl.${pick.slug}.name` as TKey) })}</div>
@@ -65,7 +76,7 @@ export function HireDialog({
           <p className="fb-dim text-xs">{t('hire.budgetNote')}</p>
           <div className="flex gap-2">
             <button className="fb-btn fb-btn--ghost" onClick={() => setPick(null)}>{t('hire.back')}</button>
-            <button className="fb-btn fb-btn--primary" disabled={busy !== null} onClick={() => void hire(pick)}>
+            <button className="fb-btn fb-btn--primary" disabled={busy !== null || !allowedToHire(pick)} onClick={() => void hire(pick)}>
               {busy ? t('hire.busy') : t('hire.confirmBtn')}
             </button>
           </div>
@@ -102,6 +113,7 @@ export function HireDialog({
               </div>
             </div>
             <p className="fb-muted flex-1 text-xs leading-relaxed">{t(`tpl.${tpl.slug}.tagline` as TKey)}</p>
+            {premiumLocked(tpl) && <p className="text-xs fb-muted">{t('bill.premium')} <a href="/billing" className="fb-link">{t('bill.seePlans')}</a></p>}
             <div className="flex items-center justify-between gap-2">
               <span className="fb-dim text-[11px]">
                 {t('hire.meta', { tools: tpl.tools.length, ask: tpl.tools.filter((x) => x.policy === 'approval').length })}
@@ -109,7 +121,7 @@ export function HireDialog({
               <button
                 className="fb-btn fb-btn--primary"
                 style={{ height: 32, padding: '0 14px', fontSize: 13 }}
-                disabled={busy !== null}
+                disabled={busy !== null || !allowedToHire(tpl)}
                 onClick={() => (setPick(tpl), setInstr(''))}
               >
                 {busy === tpl.slug ? t('hire.busy') : hired(tpl) ? t('hire.another') : t('hire.btn')}

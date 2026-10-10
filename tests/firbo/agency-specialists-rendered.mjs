@@ -48,7 +48,7 @@ try {
         export const companyClient={
           from:(table)=>{const query={select:()=>query,eq:()=>query,order:async()=>({data:[],error:null}),update:payload=>{window.harness.updates.push({table,payload});return query},then:resolve=>resolve({data:[],error:null})};return query},
           rpc:async(name,args)=>{
-            if(name==='get_plan_usage')return {data:{plan:{id:'business',name:'Business',limits:{agents:50}},usage:{agents:0}},error:null};
+            if(name==='get_plan_usage')return {data:{plan:{id:'business',name:'Business',limits:{agents:50},features:['ai_agents','premium_agents']},status:'active',usage:{agents:0}},error:null};
             if(name==='hire_agent'){window.harness.calls.push({name,args});return window.harness.fail?{data:null,error:{message:'plan_limit:premium_agent'}}:{data:'new-agent',error:null}};
             throw new Error('Unexpected RPC '+name);
           }

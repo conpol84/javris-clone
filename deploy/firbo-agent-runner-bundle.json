@@ -11,6 +11,12 @@
       "bytes": 22204
     },
     {
+      "path": "_shared/agent-plan-access.ts",
+      "source_path": "supabase/functions/_shared/agent-plan-access.ts",
+      "sha256": "b6f36b10631a6d008b81885e978f8e161aa2a8f3f22ac4baa4e922a92e80cfc1",
+      "bytes": 2162
+    },
+    {
       "path": "_shared/agent-role-evidence.ts",
       "source_path": "supabase/functions/_shared/agent-role-evidence.ts",
       "sha256": "79c1ce64f939fc0ae68c64c9b85d17c2132c89d758a3e8cf2e45b7e778aa4e8d",
@@ -21,6 +27,12 @@
       "source_path": "supabase/functions/_shared/agent-tools.ts",
       "sha256": "705b97e4dda234d68a6a29bf1b3c055c7bb3c6d34ca2b9a7664be21e7b151875",
       "bytes": 18420
+    },
+    {
+      "path": "_shared/agent-work-recall.ts",
+      "source_path": "supabase/functions/_shared/agent-work-recall.ts",
+      "sha256": "6f4847d95adf5b1441cd2fd9a665ba15351139f574b946eb060ce09379ca62c2",
+      "bytes": 6374
     },
     {
       "path": "_shared/company-pulse.ts",
@@ -115,8 +127,8 @@
     {
       "path": "index.ts",
       "source_path": "supabase/functions/agent-runner/index.ts",
-      "sha256": "2cb60b74209f307e7b54e607ec3523a9694b207495523ccb984e49addbaa15ca",
-      "bytes": 94701
+      "sha256": "2a6be3cc03d79143199dc771b6e3be5bedaa80958e1d4ffad584fd46d215d0a2",
+      "bytes": 96484
     }
   ]
 }

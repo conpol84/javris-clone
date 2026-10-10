@@ -9,6 +9,8 @@ import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { createConversation, deleteConversation, listAgents, listConversations, listMessages, type ConversationRow } from '../lib/company/data';
 import { agentLabel } from '../lib/company/labels';
+import { isPremium } from '../lib/company/templates';
+import { usePlanUsageState } from '../lib/company/usePlan';
 import { RunError, runErrorText, sendChat, type ChatMessage } from '../lib/company/runner';
 import { parseHandoff } from '../lib/company/handoff';
 import { CeoActions } from '../components/company/CeoActions';
@@ -30,6 +32,9 @@ export function AgentChatPage() {
   const { current, user } = useCompanyAuth();
   const [params, setParams] = useSearchParams();
   const orgId = current?.organization.id ?? '';
+  const planState = usePlanUsageState(orgId || undefined);
+  const agentAvailable = (a:AgentRow) => planState.status === 'ready' && !!planState.plan &&
+    (!isPremium(a.slug) || (planState.plan.plan.id !== 'free' && ['active','trialing'].includes(planState.plan.status)));
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
   const canComputer = ['owner', 'admin'].includes(current?.role ?? '');
   const [agents, setAgents] = useState<AgentRow[]>([]);
@@ -88,8 +93,8 @@ export function AgentChatPage() {
   // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
   const [listLoaded, setListLoaded] = useState(false);
   useEffect(() => {
-    if (!askAgent || !listLoaded || !user || !orgId) return;
-    const agent = agents.find((a) => a.id === askAgent);
+    if (!askAgent || !listLoaded || !user || !orgId || planState.status !== 'ready') return;
+    const agent = agents.find((a) => a.id === askAgent && a.enabled && agentAvailable(a));
     const next = new URLSearchParams(params);
     next.delete('ask'); next.delete('q');
     if (!agent) { setParams(next, { replace: true }); return; }
@@ -99,7 +104,7 @@ export function AgentChatPage() {
       .then((c) => { if (!live) return; next.set('c', c.id); setParams(next, { replace: true }); setText(askQuestion); })
       .catch(() => live && toast.error(t('chat.startError')));
     return () => { live = false; };
-  }, [askAgent, listLoaded]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [askAgent, listLoaded, planState.status, planState.plan?.plan.id, planState.plan?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const reloadList = useCallback(async () => {
     if (!orgId || !user) return;
@@ -366,7 +371,8 @@ export function AgentChatPage() {
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) void send(e);
   };
 
-  const enabledAgents = useMemo(() => agents.filter((a) => a.enabled), [agents]);
+  const enabledAgents = useMemo(() => agents.filter((a) => a.enabled && agentAvailable(a)),
+    [agents, planState.status, planState.plan?.plan.id, planState.plan?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="fb-root flex h-full flex-col md:flex-row">
@@ -382,8 +388,12 @@ export function AgentChatPage() {
         {picking && (
           <div className="mx-3 mb-2 rounded-xl p-2" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid var(--fb-border)' }}>
             <div className="fb-eyebrow mb-1.5 px-1">{t('chat.pick')}</div>
-            {enabledAgents.length === 0 ? (
-              <p className="fb-dim px-1 text-sm">{t('chat.noAgents')}</p>
+            {planState.status === 'loading' ? (
+              <p role="status" className="fb-dim px-1 text-sm">{t('common.loading')}</p>
+            ) : planState.status !== 'ready' ? (
+              <p role="alert" className="fb-dim px-1 text-sm">{t('bill.loadError')} <button className="fb-link" onClick={planState.retry}>{t('common.retry')}</button></p>
+            ) : enabledAgents.length === 0 ? (
+              <p className="fb-dim px-1 text-sm">{t('chat.noAgents')} <a href="/billing" className="fb-link">{t('bill.seePlans')}</a></p>
             ) : (
               <ul className="max-h-56 overflow-y-auto">
                 {enabledAgents.map((a) => (

@@ -43,8 +43,8 @@ function client() {
       }
       if (table === 'tasks') return { data: state.recent, error: null };
       if (table === 'organization_members') return { data: { role: 'owner' }, error: null };
-      if (table === 'agents') return { data: [CEO, SALES, RESEARCH, SUPPORT], error: null };
-      if (table === 'organizations') return { data: { plan: 'pro', name: 'Trade Athletes', profile: { goal: 'Grow online sales' } }, error: null };
+      if (table === 'agents') return { data: state.agents ?? [CEO, SALES, RESEARCH, SUPPORT], error: null };
+      if (table === 'organizations') return { data: state.orgPlan ?? { plan: 'pro', plan_status: 'active', status: 'active', name: 'Test Company', profile: { goal: 'Grow online sales' } }, error: null };
       if (table === 'usage_events') return { data: [], count: 0, error: null };
       return { data: null, error: null };
     };
@@ -177,6 +177,30 @@ test('plan and synthesis reserve and settle the CEO call before publishing tasks
     assert.equal(state.writes.filter(w=>w.table==='usage_events'&&w.op==='rpc').length,1);
     assert.equal(state.rpcs.find(r=>r.fn==='firbo_reserve_inference').args.p_agent,CEO.id);
   }
+});
+
+test('mission rejects inactive organizations and unavailable premium agents before inference', async () => {
+  setup({orgPlan:{plan:'pro',plan_status:'active',status:'suspended'}});
+  const inactive=await call({action:'plan'});
+  assert.equal(inactive.status,409);
+  assert.equal(state.calls.length,0,'inactive organization never reaches paid model');
+
+  setup({orgPlan:{plan:'free',plan_status:'active',status:'active'}});
+  state.meeting.metadata={meeting:true,participants:[SALES.id,RESEARCH.id]};
+  const free=await call({action:'meet'});
+  assert.equal(free.status,200,'core Sales and Research remain available on free plan');
+  assert.equal(state.calls.length,3,'core specialists still contribute');
+
+  const premium={...RESEARCH, id:'55555555-5555-4555-8555-555555555555',slug:'deep-research'};
+  setup({orgPlan:{plan:'free',plan_status:'active',status:'active'},agents:[premium]});
+  const noEligible=await call({action:'plan'});
+  assert.equal(noEligible.status,409);
+  assert.equal(state.calls.length,0,'free plan never runs paid specialist');
+
+  setup({orgPlan:{plan:'business',plan_status:'past_due',status:'active'},agents:[premium]});
+  const expired=await call({action:'plan'});
+  assert.equal(expired.status,409);
+  assert.equal(state.calls.length,0,'past due cannot run previously hired premium specialist');
 });
 
 test('an earlier ambiguous mission cannot be repeated automatically', async () => {
