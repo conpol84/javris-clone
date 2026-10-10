@@ -1,5 +1,6 @@
 import { LocalComputePanel } from '../components/gateway/LocalComputePanel';
 import { ServiceAccessPanel } from '../components/gateway/ServiceAccessPanel';
+import { dashboardUrl } from '../lib/company/service-dashboards';
 import { RefreshCw } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router';
 import { usePlatformAdmin } from '../lib/company/admin';
@@ -11,8 +12,8 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import '../styles/firbo.css';
 
-/** Full OmniRoute dashboard (providers, keys, routes): set VITE_OMNIROUTE_URL to show the shortcut. */
-const GATEWAY_DASHBOARD = (import.meta.env.VITE_OMNIROUTE_URL as string | undefined) || '';
+/** Fixed, valid dashboard URL. Never use an unvalidated environment URL as an href. */
+const GATEWAY_DASHBOARD = dashboardUrl(import.meta.env.VITE_OMNIROUTE_URL) || 'https://gateway.firboai.app/';
 
 function Stat({ label, value, hint }: { label: string; value: string | number; hint?: string }) {
   return (
