@@ -1,13 +1,14 @@
 import { setVoiceProfile } from './voiceProfile';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FunctionsHttpError } from '@supabase/supabase-js';
-const mocks = vi.hoisted(() => ({ invoke: vi.fn() }));
-vi.mock('./client', () => ({ requireClient: () => ({ functions:{ invoke:mocks.invoke } }) }));
+const mocks = vi.hoisted(() => ({ invoke: vi.fn(), getSession: vi.fn() }));
+vi.mock('./client', () => ({ requireClient: () => ({ functions:{ invoke:mocks.invoke }, auth:{ getSession:mocks.getSession } }) }));
 import { listenOnce, listenSmart, recordAndTranscribe, speak, stopSpeaking, unlockAudio } from './voice';
 import { beginVoiceTurn, getVoiceSnapshot, getServerVoiceSnapshot, hologramState, subscribeVoice, voiceDeadline, voiceLevel } from './voiceActivity';
 import { voiceMessageLocales } from './voiceMessages';
 const flush = async () => { for(let n=0;n<12;n++)await Promise.resolve(); };
 const blob = () => new Blob(['synthetic audio'],{type:'audio/mpeg'});
+const localWav = () => { const b=new Uint8Array(48); for(const [at,t] of [[0,'RIFF'],[8,'WAVE']] as const) for(let i=0;i<t.length;i++) b[at+i]=t.charCodeAt(i); return b; };
 let playMode:'normal'|'blocked' = 'normal';
 class AudioMock {
  static instances:AudioMock[]=[]; paused=true; onplaying:(()=>void)|null=null;onwaiting:(()=>void)|null=null;onended:(()=>void)|null=null;onerror:(()=>void)|null=null;
@@ -40,7 +41,7 @@ const callbacks=()=>({interim:vi.fn(),final:vi.fn(),end:vi.fn(),error:vi.fn(),st
 beforeEach(()=>{
  // Retain the original Natural/fallback regression cases; Dark-specific tests follow.
  setVoiceProfile('natural-v1');
- vi.useFakeTimers();vi.clearAllMocks();mocks.invoke.mockReset();AudioMock.instances=[];RecorderMock.instances=[];RecorderMock.fail=false;playMode='normal';utterance=undefined;
+ vi.useFakeTimers();vi.clearAllMocks();mocks.invoke.mockReset();mocks.getSession.mockReset();mocks.getSession.mockResolvedValue({data:{session:{access_token:'synthetic-local-session'}}});AudioMock.instances=[];RecorderMock.instances=[];RecorderMock.fail=false;playMode='normal';utterance=undefined;
  track={stop:vi.fn(),onended:null};getUserMedia=vi.fn(async()=>({getTracks:()=>[track]}));
  vi.stubGlobal('window',{...globalThis,AudioContext:ContextMock,speechSynthesis:synth});
  vi.stubGlobal('navigator',{mediaDevices:{getUserMedia}});vi.stubGlobal('Audio',AudioMock);vi.stubGlobal('AudioContext',ContextMock);
@@ -144,6 +145,77 @@ describe('speech output',()=>{
   unlockAudio();mocks.invoke.mockResolvedValue({data:blob(),error:null});const p=speak('org','Hello','en');await flush();AudioMock.instances[0].start();stopSpeaking();await p;expect(voiceLevel.value).toBe(0);expect(cancelAnimationFrame).toHaveBeenCalled();
  });
 });
+describe('Talk to CEO local Piper recovery (no paid TTS replay)',()=>{
+  const limited=()=>new FunctionsHttpError(new Response('{"error":"rate_limited"}',{status:429}));
+  it('tries the authorized fixed local Piper service once after cloud 429 before device speech',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    const localFetch=vi.fn(async()=>new Response(localWav(),{status:200,headers:{'content-type':'audio/wav'}}));
+    vi.stubGlobal('fetch',localFetch);
+    const result=speak('owner-org','Γεια σου','el',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1); await flush();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(localFetch).toHaveBeenCalledTimes(1);
+    expect(String(localFetch.mock.calls[0]?.[0])).toContain('/v1/firbo/free/speech');
+    const opts=localFetch.mock.calls[0]?.[1] as RequestInit;
+    expect(opts.method).toBe('POST');
+    expect(opts.redirect).toBe('error');
+    expect((opts.headers as Record<string,string>).Authorization).toBe('Bearer synthetic-local-session');
+    expect(JSON.parse(String(opts.body))).toMatchObject({organization_id:'owner-org',lang:'el'});
+    expect(synth.speak).not.toHaveBeenCalled();
+    expect(AudioMock.instances).toHaveLength(1);
+    AudioMock.instances[0].start();AudioMock.instances[0].end();
+    expect(await result).toMatchObject({status:'completed',source:'server'});
+  });
+  it('unavailable local Piper uses browser voice without a second cloud TTS request',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    const localFetch=vi.fn(async()=>new Response('unavailable',{status:503}));
+    vi.stubGlobal('fetch',localFetch);
+    const result=speak('owner-org','Local is offline','en',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    expect(localFetch).toHaveBeenCalledTimes(1);
+    expect(synth.speak).toHaveBeenCalledTimes(1);
+    utterance!.onstart?.();utterance!.onend?.();
+    expect(await result).toMatchObject({status:'completed',source:'browser'});
+  });
+  it('hard auth denial never tries local Piper or browser voice',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:new FunctionsHttpError(new Response('{}',{status:403}))});
+    const localFetch=vi.fn();vi.stubGlobal('fetch',localFetch);
+    const result=await speak('owner-org','Protected','en',{allowLocalFallback:true});
+    expect(result.status).toBe('failed');
+    expect(localFetch).not.toHaveBeenCalled();
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
+  it('Stop cancels a pending local Piper request without late audio or fallback',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    let release:(res:Response)=>void=()=>{};
+    const localFetch=vi.fn(()=>new Promise<Response>(resolve=>{release=resolve;}));
+    vi.stubGlobal('fetch',localFetch);
+    const result=speak('owner-org','Stop','en',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(localFetch).toHaveBeenCalledTimes(1);
+    stopSpeaking();
+    expect((await result).status).toBe('cancelled');
+    release(new Response(localWav(),{headers:{'content-type':'audio/wav'}}));await flush();
+    expect(AudioMock.instances).toHaveLength(0);expect(synth.speak).not.toHaveBeenCalled();
+  });
+  it('a partially played local voice cannot be repeated by the browser',async()=>{
+    setVoiceProfile('firbo-dark-v1');
+    mocks.invoke.mockResolvedValue({data:null,error:limited()});
+    vi.stubGlobal('fetch',vi.fn(async()=>new Response(localWav(),{headers:{'content-type':'audio/wav'}})));
+    const result=speak('owner-org','Only once','en',{allowLocalFallback:true});
+    await vi.advanceTimersByTimeAsync(1);await flush();
+    expect(AudioMock.instances).toHaveLength(1);
+    AudioMock.instances[0].start();AudioMock.instances[0].error();
+    expect((await result).status).toBe('failed');
+    expect(synth.speak).not.toHaveBeenCalled();
+  });
+});
+
 describe('microphone lifecycle',()=>{
  it('records, stops hardware, transcribes once and returns the final text',async()=>{
   mocks.invoke.mockResolvedValue({data:{text:'Synthetic transcript'},error:null});const on=callbacks();const h=recordAndTranscribe('org','en',on);await flush();expect(getVoiceSnapshot().phase).toBe('listening');h.send();h.send();await flush();expect(track.stop).toHaveBeenCalled();expect(mocks.invoke).toHaveBeenCalledTimes(1);expect(on.final).toHaveBeenCalledExactlyOnceWith('Synthetic transcript');expect(on.end).not.toHaveBeenCalled();
