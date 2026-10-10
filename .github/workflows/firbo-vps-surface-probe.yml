@@ -1,0 +1,23 @@
+name: FIRBO Jarvis VPS public reachability
+
+on:
+  pull_request:
+    paths:
+      - 'tools/firbo-public-surface-probe.sh'
+      - '.github/workflows/firbo-vps-surface-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  external-route:
+    name: Jarvis VPS login vs API vs Vercel public endpoints
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Public-only unauthenticated GETs, no API tokens
+        run: bash tools/firbo-public-surface-probe.sh
