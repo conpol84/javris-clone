@@ -76,6 +76,10 @@ Deno.serve(async(req:Request)=>{
   try{
     if(!await role())return json(403,{error:'forbidden'});
     const devices=await inventory();
+    // A foreign or orphaned preferred device must NEVER become an unpinned
+    // request that VPS silently routes to the only remaining worker.
+    if(b.device_id && !devices.some((d:any)=>d.id===b.device_id))return json(409,{error:'target_unavailable'});
+    if(devices.length===0)return json(409,{error:'no_eligible_worker'});
     const input={requestId:b.request_id,organizationId:b.organization_id,kind:b.kind,params,devices,
       ...(b.target?{target:b.target}:{}),...(b.device_id?{deviceId:b.device_id}:{}),...(b.goal?{goal:b.goal}:{})};
     // A retry of an uncertain enqueue always refers to its first executor.
