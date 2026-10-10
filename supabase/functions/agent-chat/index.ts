@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { approvedFreeCeoFallback, legacyProviderFailureCode } from '../_shared/ceo-model-recovery.ts';
+import { approvedFreeCeoFallback, legacyProviderFailureCode, ownerCeoLocalPrimaryEnabled, completeViaCeoLocalOnly } from '../_shared/ceo-model-recovery.ts';
 import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
@@ -188,17 +188,29 @@ Deno.serve(async (req) => {
   const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', convo.organization_id).maybeSingle();
   // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
   const own = await ownKeyTarget(admin, convo.organization_id, agent.model);
+  // New CEO turns may select an explicitly enabled local-only native route.
+  // This is primary selection BEFORE inference, never replay after failed paid work.
+  const localCeoPrimary = !own && ownerCeoLocalPrimaryEnabled({
+    organizationId: convo.organization_id, isCeo,
+    isOwnerOrAdmin: member.role === 'owner' || member.role === 'admin',
+    isUserSession: reader === userClient,
+    hasOwnKey: !!own, agentModel: agent.model,
+    env: name => Deno.env.get(name),
+  });
   let free = false;
   let gateway: GatewayPlan | null = null;
   if (!own) {
-    try { free = Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on' && freeForOrganization(convo.organization_id, name => Deno.env.get(name)); gateway = free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name)); }
-    catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
+    try {
+      free = !localCeoPrimary && Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on'
+        && freeForOrganization(convo.organization_id, name => Deno.env.get(name));
+      gateway = localCeoPrimary || free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name));
+    } catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   // A gateway-selected request NEVER also enters the legacy direct-provider loop.
-  const targets: Target[] = own ? [own] : free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (!free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
+  const targets: Target[] = own ? [own] : localCeoPrimary || free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!localCeoPrimary && !free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
   const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
   if (planError) return json(503, { error: 'budget_unavailable' });
@@ -330,12 +342,12 @@ Deno.serve(async (req) => {
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
-  const freeMessages = free ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
+  const freeMessages = (localCeoPrimary || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
   let reservedUsd = 0;
   try {
-    if (!own && !free && gateway) {
+    if (!own && !localCeoPrimary && !free && gateway) {
       reservedUsd = maximumInferenceCost({ messages: routedMessages }, [{ priceIn: gateway.priceIn, priceOut: gateway.priceOut, maxOutputTokens: 1800 }]);
-    } else if (!own && !free) {
+    } else if (!own && !localCeoPrimary && !free) {
       reservedUsd = maximumInferenceCost({ messages: routedMessages }, targets.map(target => ({
         priceIn: priceOf(target.provider, 'IN'), priceOut: priceOf(target.provider, 'OUT'),
         maxOutputTokens: target.provider === 'openai' ? 8000 : 1800,
@@ -372,7 +384,17 @@ Deno.serve(async (req) => {
   let routed: GatewayCompletion | FreeCompletion | null = null;
   let routing: GatewayTrace | FreeTrace | undefined;
   let lastError = 'model_error';
-  if (free) {
+  if (localCeoPrimary) {
+    try {
+      // Direct owner-local mode, selected before any cloud inference for a NEW turn.
+      // Native endpoint guarantees cloud_allowed=false. No paid fallback on failure.
+      routed = await completeViaCeoLocalOnly(
+        convo.organization_id, auth, body.request_id, freeMessages, { signal: req.signal },
+      );
+      completion = routed.completion; routing = routed.trace;
+      used = { provider: 'firbo-free', model: routed.trace.reported_model };
+    } catch (error) { lastError = error instanceof GatewayError ? error.code : 'local_only_error'; }
+  } else if (free) {
     try {
       // The local model has a small context (the route accepts at most 2800 bytes), so it gets a compact prompt.
       routed = await completeViaFree(convo.organization_id, auth, body.request_id, freeMessages, { signal: req.signal });
