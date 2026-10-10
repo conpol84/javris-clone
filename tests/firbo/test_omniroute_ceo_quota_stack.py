@@ -113,7 +113,12 @@ def test_private_stack_exception_is_sanitized_without_leaking_secrets(
         lambda name, alias: source if name == "gateway-credentials.py" else quota,
     )
     report = bridge.inspect_stored_credential()
-    assert report["reason"] == "verified_compose_credentials_unavailable"
+    assert report["reason"] == "stage_unavailable"
+    assert report["stage"] == {
+        "runtime": "inspect_running_compose",
+        "read_private": "read_verified_private_env",
+        "values": "parse_private_key_presence",
+    }[stage]
     assert KEY not in json.dumps(report)
 
 
@@ -131,8 +136,122 @@ def test_corrupt_quota_contract_fails_closed(monkeypatch):
         lambda name, alias: source if name == "gateway-credentials.py" else quota,
     )
     report = bridge.inspect_stored_credential()
-    assert report["reason"] == "quota_contract_unverified"
+    assert report["stage"] == "validate_quota_contract"
+    assert report["reason"] == "stage_unavailable"
     assert KEY not in json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    "phase,method,code,expected_phase",
+    [
+        (
+            "container",
+            "runtime",
+            "wrong_compose_service",
+            "inspect_running_compose",
+        ),
+        (
+            "stack",
+            "runtime",
+            "mixed_compose_projects",
+            "inspect_running_compose",
+        ),
+        (
+            "path",
+            "runtime",
+            "unsafe_compose_directory_permissions",
+            "inspect_running_compose",
+        ),
+        (
+            "key_owner",
+            "read_private",
+            "configuration_owned_by_another_user",
+            "read_verified_private_env",
+        ),
+        (
+            "config",
+            "read_private",
+            "configuration_changed",
+            "read_verified_private_env",
+        ),
+        (
+            "parser",
+            "values",
+            "duplicate_credential_configuration",
+            "parse_private_key_presence",
+        ),
+        (
+            "secret",
+            "runtime",
+            "Bearer private-key",
+            "inspect_running_compose",
+        ),
+    ],
+)
+def test_only_audited_error_code_is_visible(
+    monkeypatch, phase, method, code, expected_phase
+):
+    del phase
+
+    class Blocked(Exception):
+        pass
+
+    source = models()
+    source.Blocked = Blocked
+    setattr(
+        source,
+        method,
+        lambda *args: (_ for _ in ()).throw(Blocked(code)),
+    )
+    quota = SimpleNamespace(probe=lambda **kwargs: pytest.fail("Unexpected network"))
+    monkeypatch.setattr(
+        bridge,
+        "_load_existing",
+        lambda name, alias: source if name == "gateway-credentials.py" else quota,
+    )
+    result = bridge.inspect_stored_credential()
+    assert result["stage"] == expected_phase
+    if code == "Bearer private-key":
+        assert result["reason"] == "stage_unavailable"
+    else:
+        assert result["reason"] == code
+    assert "Bearer" not in json.dumps(result)
+    assert KEY not in json.dumps(result)
+
+
+def test_source_import_failure_never_attempts_filesystem_or_network(monkeypatch):
+    def loader(name, alias):
+        raise bridge.DiagnosticUnavailable("private-key-sent-by-accident")
+
+    monkeypatch.setattr(bridge, "_load_existing", loader)
+    assert bridge.inspect_stored_credential() == {
+        "read_only": True,
+        "quota_telemetry_read": False,
+        "stage": "load_reviewed_source",
+        "reason": "stage_unavailable",
+    }
+
+
+def test_private_gateway_probe_error_keeps_key_secret(monkeypatch):
+    source = models()
+    quota = SimpleNamespace(
+        probe=lambda **kwargs: (_ for _ in ()).throw(
+            RuntimeError("Authorization: Bearer " + KEY)
+        )
+    )
+    monkeypatch.setattr(
+        bridge,
+        "_load_existing",
+        lambda name, alias: source if name == "gateway-credentials.py" else quota,
+    )
+    result = bridge.inspect_stored_credential()
+    assert result == {
+        "read_only": True,
+        "quota_telemetry_read": False,
+        "stage": "read_gateway_telemetry",
+        "reason": "stage_unavailable",
+    }
+    assert KEY not in json.dumps(result)
 
 
 def test_in_process_override_does_not_require_shell_export(monkeypatch):
