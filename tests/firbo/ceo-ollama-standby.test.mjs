@@ -38,7 +38,7 @@ test('allowed standby sends one new request only to the protected native Ollama 
       assert.deepEqual(JSON.parse(init.body),{organization_id:ORG,request_id:RID,messages});
       return Response.json({
         model:'ollama:qwen3:1.7b',
-        choices:[{message:{content:'Local answer'}}],
+        choices:[{message:{content:'Local answer'},finish_reason:'stop'}],
         usage:{prompt_tokens:12,completion_tokens:2},
         firbo:{contract:'firbo-free-text/v1',request_id:RID,policy:'no-paid-fallback',
           provider_fee_usd:0,cost_basis:'self_hosted_no_metered_fee',
