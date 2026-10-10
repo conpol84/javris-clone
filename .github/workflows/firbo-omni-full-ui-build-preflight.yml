@@ -68,9 +68,9 @@ jobs:
       OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
       OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
       OMNIROUTE_BUILD_MEMORY_MB: "5600"
-      OMNIROUTE_USE_TURBOPACK: "0"
+      OMNIROUTE_USE_TURBOPACK: "1"
       OMNIROUTE_SKIP_STANDALONE: "1"
-      OMNIROUTE_BUILD_WORKERS: "2"
+      OMNIROUTE_BUILD_WORKERS: "1"
       OMNIROUTE_MITM_STUB: "1"
       OMNIROUTE_BETTER_SQLITE3_STUB: "1"
       API_KEY_SECRET: "ci-build-synthetic-do-not-use-in-production"
@@ -95,7 +95,7 @@ jobs:
       - name: Locked packages with install scripts disabled
         working-directory: omniroute
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Compile full existing Next.js UI + API with webpack and zero standalone packaging
+      - name: Compile full existing Next.js UI + API with Turbopack, one build worker and no standalone packaging
         working-directory: omniroute
         run: |
           set -euo pipefail
