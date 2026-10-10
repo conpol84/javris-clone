@@ -10,6 +10,8 @@ import { runAgentLoop, finishCutOff, dropUnbackedImages, isUnusableReply, isLeft
 import { freeWebSearch, readPageDirect, readTopPages, tavilySearchWithUsage } from '../_shared/free-search.ts';
 import { learnedFacts, learningProvenance, memoryBlocks, approvedCompanyMemoryBlock, usableRunnerMemories, pulseBlock } from '../_shared/company-pulse.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
+import { buildAgentWorkRecall, agentContinuityInstructions, type AgentWorkRow } from '../_shared/agent-work-recall.ts';
+import { agentPlanDecision } from '../_shared/agent-plan-access.ts';
 import {
   calculatorTool,
   weatherTool,
@@ -218,11 +220,15 @@ Deno.serve(async (req) => {
   if (!RUNNABLE.includes(task.status)) return json(409, { error: 'not_runnable', status: task.status });
   if (!task.assigned_agent_id) return json(422, { error: 'no_agent' });
   const { data: agent } = await admin.from('agents')
-    .select('id, name, type, system_prompt, owner_instructions, model, temperature, enabled, autonomy, monthly_budget_usd, max_steps, agent_tools(tool_name, enabled, policy)')
+    .select('id, name, slug, type, system_prompt, owner_instructions, model, temperature, enabled, autonomy, monthly_budget_usd, max_steps, agent_tools(tool_name, enabled, policy)')
     .eq('id', task.assigned_agent_id).eq('organization_id', task.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
   const { data: orgPlan } = await admin.from('organizations').select('plan,plan_status,status').eq('id', task.organization_id).maybeSingle();
+  const access = agentPlanDecision(orgPlan, agent);
+  if (!access.allowed) return json(access.reason === 'plan_unavailable' ? 503 : 403,
+    { error: access.reason, retry_safe: true });
+
   // Learning from feedback (OpenJarvis's learning/routing): when the owner marked at least two of this agent's last five
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
   const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
@@ -488,6 +494,26 @@ Deno.serve(async (req) => {
     const context=approvedCompanyMemoryBlock(approvedNotes.data??[]);
     if(context)memory.push(context);
   }
+  // Retrieve earlier work ONLY by the current authenticated user and this
+  // employee. These are saved task reports, not approved enduring company facts.
+  // The service role bypasses RLS, so every ownership predicate is mandatory.
+  const { data: earlierWork, error: earlierWorkError } = await admin.from('tasks')
+    .select('id,organization_id,created_by,assigned_agent_id,title,status,result,completed_at,updated_at')
+    .eq('organization_id',task.organization_id).eq('created_by',user.id)
+    .eq('assigned_agent_id',agent.id).neq('id',task.id)
+    .in('status',['completed','failed','blocked'])
+    .order('updated_at',{ascending:false}).limit(60);
+  if (earlierWorkError) {
+    console.warn(JSON.stringify({ event:'firbo_agent_work_recall_unavailable',
+      organization_id:task.organization_id, agent_id:agent.id, task_id:task.id }));
+    memory.push('Earlier employee task history could not be checked. Never claim to remember past work without evidence.');
+  } else {
+    const previous = buildAgentWorkRecall({
+      organizationId:task.organization_id,userId:user.id,agentId:agent.id,
+      currentTaskId:task.id,goal:`${task.title??''} ${task.description??''}`.slice(0,600),
+    }, (earlierWork??[]) as AgentWorkRow[], free ? 550 : 1650);
+    if(previous) memory.push(previous);
+  }
   // Skills: ways of working the company installed (OpenJarvis's skills library), for the whole team or this agent.
   const skillsContext = companySkillContext(skillRows, `${task.title ?? ''} ${task.description ?? ''}`);
   if (skillsContext) memory.push(skillsContext);
@@ -539,6 +565,7 @@ Deno.serve(async (req) => {
   const system = [
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     roleEvidenceInstructions(agent.type),
+    agentContinuityInstructions(),
     ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current task):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...memory, ...(pulse ? [pulse] : []), ...(web.block ? [web.block] : []),
