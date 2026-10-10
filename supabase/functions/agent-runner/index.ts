@@ -231,7 +231,7 @@ Deno.serve(async (req) => {
 
   // Learning from feedback (OpenJarvis's learning/routing): when the owner marked at least two of this agent's last five
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
-  const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('agent_id', agent.id).order('created_at', { ascending: false }).limit(5);
+  const { data: feedbackRows } = await admin.from('report_feedback').select('rating, note').eq('organization_id',task.organization_id).eq('user_id',user.id).eq('agent_id',agent.id).order('created_at', { ascending: false }).limit(5);
   const feedback = (feedbackRows ?? []) as { rating: number; note: string | null }[];
   const onEconomy = orgPlan?.plan !== 'free' && [null, '', 'auto', 'omniroute:firbo-economy'].includes(agent.model ?? null);
   // A presentation or a message to send starts on the quality route: the economy combo is too slow for a long structured
