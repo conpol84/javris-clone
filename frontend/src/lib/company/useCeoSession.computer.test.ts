@@ -16,6 +16,8 @@ vi.mock('./ceo-device-journal',()=>({journalCeoComputerJob:journal}));
 vi.mock('./ceo-sessions',()=>({listCeoSessions:histories,readCeoSession:vi.fn()}));
 import {useCeoSession} from './useCeoSession';
 import {createConversation} from './data';
+import {RunError} from './runner';
+import {clearCeoLocalBackup} from './ceo-ollama-backup';
 
 function session(canComputer=true){
  fixture.index=0;fixture.refIndex=0;fixture.effects=[];
@@ -23,7 +25,7 @@ function session(canComputer=true){
  const hook=useCeoSession('org','owner','el',key=>key,'briefing',true,canComputer);
  fixture.effects[0]();fixture.refs[6].current=true;return hook;
 }
-beforeEach(()=>{vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'Δεν μπήκε εργασία στην ουρά.'});histories.mockResolvedValue([]);journal.mockResolvedValue(true)});
+beforeEach(()=>{clearCeoLocalBackup('org','owner','ceo');vi.clearAllMocks();fixture.refs=[];prepare.mockResolvedValue({ready:false,status:'upgrade_required',reply:'Δεν μπήκε εργασία στην ουρά.'});histories.mockResolvedValue([]);journal.mockResolvedValue(true)});
 afterEach(()=>vi.unstubAllGlobals());
 it('Command/Talk incomplete request reads capabilities and never asks an LLM to queue it',async()=>{
  const hook=session();await hook.ask('mporis na anixis to mac kai na valis tragoudia apo youtube ?');
@@ -39,6 +41,34 @@ it('sends a VPS artifact read to server chat without requiring a laptop',async()
  expect(prepare).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
  const update=fixture.setters[3].mock.calls.slice(-1)[0][0];expect(update([]).slice(-1)[0].text).toBe('Server response');
 });
+it('after cloud model_error only the NEXT fresh CEO turn opts into Ollama standby',async()=>{
+ vi.mocked(createConversation).mockResolvedValue({id:'ceo-standby-conversation'} as Awaited<ReturnType<typeof createConversation>>);
+ sendChat.mockRejectedValueOnce(new RunError('model_error','model_error'))
+   .mockResolvedValueOnce({message:{content:'Real local Qwen standby answer'}});
+ const hook=session();
+ await hook.ask('Original cloud question');
+ expect(sendChat).toHaveBeenCalledTimes(1);
+ expect(sendChat.mock.calls[0]).toHaveLength(5);
+ await hook.ask('New question after cloud outage');
+ expect(sendChat).toHaveBeenCalledTimes(2);
+ expect(sendChat.mock.calls[1].slice(0,4)).toEqual([
+   'ceo-standby-conversation','New question after cloud outage','el',true,
+ ]);
+ expect(sendChat.mock.calls[1][5]).toEqual({preferLocalBackup:true});
+ const update=fixture.setters[3].mock.calls.slice(-1)[0][0];
+ expect(update([]).at(-1).text).toBe('Real local Qwen standby answer');
+});
+it('failed Ollama standby does not cause automatic paid replay of that request',async()=>{
+ vi.mocked(createConversation).mockResolvedValue({id:'new-fresh-conversation'} as Awaited<ReturnType<typeof createConversation>>);
+ sendChat.mockRejectedValueOnce(new RunError('model_error','gateway_http_503'))
+   .mockRejectedValueOnce(new RunError('model_error','free_http_503'));
+ const hook=session();await hook.ask('Cloud question');await hook.ask('New standby question');
+ expect(sendChat).toHaveBeenCalledTimes(2);
+ expect(sendChat.mock.calls[1][5]).toEqual({preferLocalBackup:true});
+ expect(sendChat.mock.calls[0][1]).toBe('Cloud question');
+ expect(sendChat.mock.calls[1][1]).toBe('New standby question');
+});
+
 it('refuses incomplete owner-control requests for a non-admin writer',async()=>{
  const hook=session(false);await hook.ask('run AppleScript on Polis1984');expect(prepare).not.toHaveBeenCalled();expect(sendChat).not.toHaveBeenCalled();expect(dispatch).not.toHaveBeenCalled();
 });

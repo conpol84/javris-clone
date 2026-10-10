@@ -7,6 +7,7 @@ import { listCeoSessions, readCeoSession, type CeoSessionPreview } from './ceo-s
 import { chooseCeoSession, rememberCeoSession } from './ceo-session-continuity';
 import { journalCeoComputerJob } from './ceo-device-journal';
 import { RunError, runErrorText, sendChat } from './runner';
+import { clearCeoLocalBackup, observeCeoCloudFailure, preferCeoLocalBackup } from './ceo-ollama-backup';
 import type { AgentRow } from './types';
 import { listenSmart, speak, unlockAudio } from './voice';
 import { beginVoiceTurn, hologramState, voiceDeadline, type VoiceSnapshot, type VoiceTurn } from './voiceActivity';
@@ -191,6 +192,8 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
       await sayDirect(narrative);
     };
+    let chatAttempted=false;
+    let usedOllamaBackup=false;
     try{
       const unlockNotice=isUnlockContinuation(message);
       const recovered=unlockNotice&&canComputer
@@ -249,8 +252,18 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
         const created=await voiceDeadline(()=>createConversation(orgId,userId,ceo.id),active.signal,30_000);
         if(!valid(id)||!active.current())return;convo.current=created.id;setActiveSessionId(created.id);rememberCeoSession(orgId,userId,ceo.id,created.id);
       }
-      const response=await voiceDeadline(signal=>sendChat(convo.current!,message,lang,true,signal),active.signal,95_000);
+      // When a previous cloud-model turn failed, select Ollama for this NEW
+      // owner-authenticated request only. Never replay the failed old request.
+      usedOllamaBackup=preferCeoLocalBackup(orgId,userId,ceo.id);
+      chatAttempted=true;
+      const response=await voiceDeadline(
+        signal=>usedOllamaBackup
+          ? sendChat(convo.current!,message,lang,true,signal,{preferLocalBackup:true})
+          : sendChat(convo.current!,message,lang,true,signal),
+        active.signal,95_000,
+      );
       if(!valid(id)||!active.current())return;
+      if(!usedOllamaBackup)clearCeoLocalBackup(orgId,userId,ceo.id);
       const raw=response?.message?.content;
       if(typeof raw!=='string'||!raw.trim())throw new Error('invalid_chat_response');
       const {text:content,ask:handoff,task,meet,app}=parseHandoff(raw);
@@ -269,6 +282,13 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       }
     }catch(error){
       if(!valid(id))return;
+      // Arm Ollama standby on FUTURE user turns only, never replay an
+      // unknown/billed cloud result or reuse the previous request ID.
+      if(chatAttempted){
+        if(usedOllamaBackup)clearCeoLocalBackup(orgId,userId,ceo.id);
+        else if(error instanceof RunError)
+          observeCeoCloudFailure(orgId,userId,ceo.id,error.code,error.reason);
+      }
       busy.current=false;setComputerProgress(null);handsFreeRef.current=false;setHandsFreeValue(false);setState('idle');
       if(active.signal.aborted){note(voiceMessages(lang).stopped);return;}
       active.finish(true);note(voiceMessages(lang).server);

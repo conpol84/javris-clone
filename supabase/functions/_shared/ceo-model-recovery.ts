@@ -61,6 +61,24 @@ export function ownerCeoLocalPrimaryEnabled(input: {
   catch { return false; }
 }
 
+/** Owner-only Ollama STANDBY, not default model selection.
+ * The owner client may choose a local-only route for a NEW request after a
+ * cloud failure. It cannot replay the prior request, pick a model or use BYOK.
+ * The native API independently validates JWT, role, company and local-only.
+ */
+export function ownerCeoOllamaBackupEnabled(input: {
+  requested: boolean; organizationId: string; isCeo: boolean;
+  isOwnerOrAdmin: boolean; isUserSession: boolean; hasOwnKey: boolean;
+  agentModel: string | null | undefined; env: EnvReader;
+}): boolean {
+  if (input.requested !== true
+    || input.env('FIRBO_CEO_OLLAMA_BACKUP') !== 'on'
+    || !input.isCeo || !input.isOwnerOrAdmin || !input.isUserSession
+    || input.hasOwnKey || (input.agentModel && input.agentModel !== 'auto')) return false;
+  try { return freeForOrganization(input.organizationId, input.env); }
+  catch { return false; }
+}
+
 const FREE_ROUTE = 'https://api.firboai.app/v1/firbo/free/chat/completions';
 const LOCAL_ONLY_ROUTE = 'https://api.firboai.app/v1/firbo/free/local/chat/completions';
 

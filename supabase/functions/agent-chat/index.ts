@@ -5,7 +5,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
 import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
-import { approvedFreeCeoFallback, legacyProviderFailureCode, ownerCeoLocalPrimaryEnabled, completeViaCeoLocalOnly } from '../_shared/ceo-model-recovery.ts';
+import { approvedFreeCeoFallback, legacyProviderFailureCode, ownerCeoLocalPrimaryEnabled, ownerCeoOllamaBackupEnabled, completeViaCeoLocalOnly } from '../_shared/ceo-model-recovery.ts';
 import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
@@ -85,7 +85,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
   const { data: who } = await userClient.auth.getUser();
   let user: { id: string; email?: string | null } | null = who?.user ?? null;
-  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; system_user_id?: string; request_id?: string; action?: string; computer_job_id?: string } = {};
+  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; prefer_local_backup?: boolean; system_user_id?: string; request_id?: string; action?: string; computer_job_id?: string } = {};
   try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json(400, { error: 'bad_request' });
   // Server-to-server (the owner writing from Telegram): the scheduler secret plus the person it acts for.
@@ -107,6 +107,8 @@ Deno.serve(async (req) => {
     || typeof body.request_id !== 'string' || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(body.request_id)) {
     return json(400, { error: 'bad_request' });
   }
+  if (body.prefer_local_backup !== undefined && typeof body.prefer_local_backup !== 'boolean') return json(400, { error: 'bad_request' });
+  if (computerJournal && body.prefer_local_backup === true) return json(400, { error: 'bad_request' });
   if (text.length > MAX_MESSAGE) return json(413, { error: 'too_long' });
   if(computerJournal&&(!body.computer_job_id||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(body.computer_job_id)))return json(400,{error:'bad_request'});
   if(body.action!==undefined&&!computerJournal)return json(400,{error:'bad_request'});
@@ -197,20 +199,33 @@ Deno.serve(async (req) => {
     hasOwnKey: !!own, agentModel: agent.model,
     env: name => Deno.env.get(name),
   });
+  // Cloud remains the PRIMARY model. Only an explicitly enabled,
+  // tenant/owner-guarded new-turn request may enter the local Ollama standby.
+  // Never auto replay a previous 502/timeout with uncertain provider billing.
+  const localCeoStandby = !own && ownerCeoOllamaBackupEnabled({
+    requested: body.prefer_local_backup === true,
+    organizationId: convo.organization_id, isCeo,
+    isOwnerOrAdmin: member.role === 'owner' || member.role === 'admin',
+    isUserSession: reader === userClient, hasOwnKey: !!own,
+    agentModel: agent.model, env: name => Deno.env.get(name),
+  });
+  if (body.prefer_local_backup === true && !localCeoStandby)
+    return json(403, { error: 'forbidden', reason: 'local_backup_not_permitted' });
+  const localCeoSelected = localCeoPrimary || localCeoStandby;
   let free = false;
   let gateway: GatewayPlan | null = null;
   if (!own) {
     try {
-      free = !localCeoPrimary && Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on'
+      free = !localCeoSelected && Deno.env.get('FIRBO_ALLOW_LOCAL_CHAT') === 'on'
         && freeForOrganization(convo.organization_id, name => Deno.env.get(name));
-      gateway = localCeoPrimary || free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name));
+      gateway = localCeoSelected || free ? null : gatewayForOrgPlan(agent, orgPlan?.plan, name => Deno.env.get(name));
     } catch (error) { return json(503, { error: 'not_configured', reason: error instanceof GatewayError ? error.code : 'routing_error' }); }
   }
   const primary = agent.model && agent.model !== 'auto' ? agent.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map(x => x.trim())].filter(Boolean);
   // A gateway-selected request NEVER also enters the legacy direct-provider loop.
-  const targets: Target[] = own ? [own] : localCeoPrimary || free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
-  if (!localCeoPrimary && !free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
+  const targets: Target[] = own ? [own] : localCeoSelected || free || gateway ? [] : specs.map(resolveTarget).filter((t): t is Target => t !== null);
+  if (!localCeoSelected && !free && !gateway && targets.length === 0) return json(503, { error: 'not_configured' });
 
   const { data: planCap, error: planError } = await admin.rpc('plan_limit', { p_org: convo.organization_id, p_key: 'daily_runs' });
   if (planError) return json(503, { error: 'budget_unavailable' });
@@ -342,12 +357,12 @@ Deno.serve(async (req) => {
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
-  const freeMessages = (localCeoPrimary || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
+  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text }) : [];
   let reservedUsd = 0;
   try {
-    if (!own && !localCeoPrimary && !free && gateway) {
+    if (!own && !localCeoSelected && !free && gateway) {
       reservedUsd = maximumInferenceCost({ messages: routedMessages }, [{ priceIn: gateway.priceIn, priceOut: gateway.priceOut, maxOutputTokens: 1800 }]);
-    } else if (!own && !localCeoPrimary && !free) {
+    } else if (!own && !localCeoSelected && !free) {
       reservedUsd = maximumInferenceCost({ messages: routedMessages }, targets.map(target => ({
         priceIn: priceOf(target.provider, 'IN'), priceOut: priceOf(target.provider, 'OUT'),
         maxOutputTokens: target.provider === 'openai' ? 8000 : 1800,
@@ -384,7 +399,7 @@ Deno.serve(async (req) => {
   let routed: GatewayCompletion | FreeCompletion | null = null;
   let routing: GatewayTrace | FreeTrace | undefined;
   let lastError = 'model_error';
-  if (localCeoPrimary) {
+  if (localCeoSelected) {
     try {
       // Direct owner-local mode, selected before any cloud inference for a NEW turn.
       // Native endpoint guarantees cloud_allowed=false. No paid fallback on failure.
