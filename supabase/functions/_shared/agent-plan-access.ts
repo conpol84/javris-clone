@@ -32,11 +32,11 @@ export function agentPlanDecision(org:AgentPlan|null|undefined,agent:AgentForPla
  allowed:boolean;reason:AgentPlanReason|null;
 }{
  if(!org||!['free',...paid].includes(String(org.plan??'')))return{allowed:false,reason:'plan_unavailable'};
- if(org.status!=null&&org.status!=='active')return{allowed:false,reason:'organization_inactive'};
+ if(org.status!=='active')return{allowed:false,reason:'organization_inactive'};
  if(agent.enabled===false)return{allowed:false,reason:'agent_disabled'};
  if(premiumAgentSlug(agent.slug)&&(
    !paid.has(String(org.plan)) ||
-   (org.plan_status!=null&&!['active','trialing'].includes(org.plan_status))
+   !['active','trialing'].includes(String(org.plan_status??''))
  ))return{allowed:false,reason:'premium_agent'};
  return{allowed:true,reason:null};
 }
