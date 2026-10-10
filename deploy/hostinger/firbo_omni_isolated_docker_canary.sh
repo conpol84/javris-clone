@@ -94,7 +94,7 @@ done
 [ "$healthy" -eq 1 ] || fail "canary_healthcheck_timeout"
 
 # Probe inside the network-isolated container only. Never ask for real tokens,
-# never print response bodies/provider catalogs or send any MCP tools/call.
+# never print response bodies/provider catalogs or execute any MCP tool.
 docker exec "$CANARY_NAME" node --input-type=module -e '
   const base = "http://127.0.0.1:20128";
   const path = ["/healthz", "/api/mcp/status", "/v1/models"];
