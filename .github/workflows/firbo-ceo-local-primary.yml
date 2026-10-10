@@ -1,0 +1,43 @@
+name: FIRBO CEO Native Ollama-Only New Turn
+on:
+  pull_request:
+    branches:
+      - codex/firbo-ceo-local-piper-voice-recovery-20261010
+    paths:
+      - src/openjarvis/server/firbo_free_app.py
+      - supabase/functions/_shared/ceo-model-recovery.ts
+      - supabase/functions/agent-chat/index.ts
+      - tests/firbo/ceo-local-primary.test.mjs
+      - tests/firbo/test_free_app.py
+      - .github/workflows/firbo-ceo-local-primary.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  isolated-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Native ASGI auth, SQLite, no cloud and no replay
+        run: |
+          python3 -m venv /tmp/firbo-local-primary
+          /tmp/firbo-local-primary/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/firbo-local-primary/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_control_plane.py tests/firbo/test_free_inference.py tests/firbo/test_free_app.py
+      - name: Edge owner policy and local-only routing contract
+        run: node --experimental-strip-types --test tests/firbo/ceo-local-primary.test.mjs tests/firbo/ceo-local-recovery.test.mjs tests/firbo/free-routing.test.mjs
+      - name: Install expected npm engine
+        run: npm install --global npm@11.19.0
+      - name: Install locked frontend
+        working-directory: frontend
+        run: npm ci
+      - name: Edge strict types
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: Full frontend tests and build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
