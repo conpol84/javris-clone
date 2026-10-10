@@ -21,7 +21,7 @@ export function omniMcpEndpoint(raw: unknown): 'shared' | 'wrong_path' | 'other'
   try { parsed = new URL(raw); } catch { return 'other'; }
   // A trailing DNS root dot resolves to the same host. Never let it bypass
   // our platform-admin check by being classified as a different MCP server.
-  if (parsed.hostname.toLowerCase().replace(/\\.$/, '') !== 'gateway.firboai.app') return 'other';
+  if (parsed.hostname.toLowerCase().replace(/\.$/, '') !== 'gateway.firboai.app') return 'other';
   return parsed.href === FIRBO_OMNI_MCP_URL ? 'shared' : 'wrong_path';
 }
 
