@@ -1,0 +1,99 @@
+name: FIRBO OmniRoute Pinned Isolated Docker Candidate Canary
+on:
+  push:
+    branches:
+      - codex/firbo-omni-isolated-docker-canary-20261010
+    paths:
+      - deploy/hostinger/firbo_omni_isolated_docker_canary.sh
+      - .github/workflows/firbo-omni-isolated-docker-canary.yml
+      - docs/FIRBO-OMNI-ISOLATED-CANARY-CHECKPOINT.md
+  pull_request:
+    branches:
+      - codex/firbo-omni-full-ui-build-release-preflight-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  nonproduction-canary-safety:
+    name: Validate Docker canary restrictions without running containers
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Bash syntax of pinned and sandboxed canary
+        run: |
+          set -euo pipefail
+          bash -n deploy/hostinger/firbo_omni_isolated_docker_canary.sh
+      - name: Enforce no production resources, credentials, writes or unsafe tool calls
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          s=Path("deploy/hostinger/firbo_omni_isolated_docker_canary.sh").read_text()
+          required=[
+            'set -euo pipefail',
+            'PINNED_SHA="26e14038151e8e74c825334a33b77702286892ab"',
+            '"https://github.com/conpol84/OmniRoute"',
+            'docker context show',
+            'docker ps -q',
+            '30 * 1024 * 1024',
+            '35 * 1024 * 1024',
+            'DOCKER_BUILDKIT=1 docker build',
+            '--target runner-base',
+            '--build-arg OMNIROUTE_USE_TURBOPACK=1',
+            '--build-arg OMNIROUTE_BUILD_MEMORY_MB=12288',
+            '--network none',
+            '--tmpfs /app/data:',
+            '--memory 4g',
+            '--pids-limit 256',
+            '--env REQUIRE_API_KEY=true',
+            '--env OMNIROUTE_DISABLE_CLOUD_SYNC=true',
+            '"http://127.0.0.1:20128"',
+            '"/api/mcp/status"',
+            '"/v1/models"',
+            '"/healthz"',
+            'docker image rm "$IMAGE_TAG"',
+            'production_changed: false',
+            'mcp_tools_executed: 0',
+          ]
+          missing=[x for x in required if x not in s]
+          assert not missing, f"required safety checks missing: {missing}"
+          forbidden=['docker push ', 'docker login ', 'docker compose down',
+                     'docker system prune', 'docker volume rm',
+                     '--privileged', '--network host', '-v /', 'source .env',
+                     'docker exec "$CANARY_NAME" sh', 'tools/call']
+          assert all(x not in s for x in forbidden), "Unsafe canary operation found"
+          print("isolated_image_canary_static_contract=true")
+          print("production_writes=false")
+          PY
+
+  real-isolated-image-build:
+    name: Full standalone image and no-network synthetic canary (owner-approved 30GiB+)
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/codex/firbo-omni-isolated-docker-canary-20261010' && vars.FIRBO_OMNI_HIGH_RAM_BUILDER_APPROVED == 'true' }}
+    runs-on: [self-hosted, firbo-omni-build]
+    timeout-minutes: 120
+    concurrency:
+      group: firbo-omni-isolated-build
+      cancel-in-progress: false
+    steps:
+      - name: Checkout FIRBO read-only review script
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Fetch exact approved OmniRoute public source, no credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: conpol84/OmniRoute
+          ref: 26e14038151e8e74c825334a33b77702286892ab
+          path: omniroute
+          persist-credentials: false
+      - name: Build full standalone container, smoke private auth and remove disposable image
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash deploy/hostinger/firbo_omni_isolated_docker_canary.sh \
+            "$GITHUB_WORKSPACE/omniroute" \
+            26e14038151e8e74c825334a33b77702286892ab
