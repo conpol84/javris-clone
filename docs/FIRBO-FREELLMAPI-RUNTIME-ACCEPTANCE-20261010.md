@@ -6,6 +6,11 @@
 - Owner fork conpol84/freellmapi main is pinned at a6b2158c7c36ce19f888d0411846a1a0f2aa3f06 (as at this checkpoint).
 - Pinned FreeLLMAPI API docs explicitly say GET /v1/models can include disconnected, exhausted and synthetic auto/fusion entries. GET /v1/models?execution_status=ready is a catalog *capacity hint*, not a completed inference or zero-cost contract; unknown provider key health may still report ready.
 
+## Commercial-use and production restriction
+The reviewed exact owner fork conpol84/freellmapi@a6b2158c has an MIT software LICENSE (code can be used commercially subject to its notice), BUT its README explicitly warns: "This project is for personal experimentation and learning, not production." Upstream free-tier provider rules, quotas, retention and commercial permissions are separate from the MIT license. A 200 or ready catalog entry is not a subscription, production SLA, commercial license, or verified no-cost entitlement.
+
+Therefore **DO NOT enable FreeLLMAPI in public/customer AI products or default production firbo-quality/firbo-economy combos**. Restrict the proposed integration to a named internal owner/developer QA canary, with public synthetic prompts only, until a provider-by-provider ToS/privacy/cost review establishes acceptable commercial usage. Keep existing paid/approved production providers and the separately guarded local owner Qwen route unchanged.
+
 ## Architecture (one selection plane)
 FIRBO CEO/employee AI -> Supabase agent-chat -> authenticated OmniRoute inference combo -> dedicated FreeLLMAPI provider -> actual selected upstream.
 For strict local/no-provider-fee emergency CEO new turns, use the PR129 independent owner-scoped native Ollama-only route instead; do NOT call OmniRoute via FreeLLMAPI, do NOT route FreeLLMAPI back into OmniRoute, and never silently replay ambiguous cloud 502/timeout outcomes.
