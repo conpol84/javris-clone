@@ -1,0 +1,54 @@
+name: FIRBO CEO intelligence and private memory continuity
+on:
+  push:
+    branches:
+      - codex/firbo-smart-ceo-context-20261011
+  pull_request:
+    branches:
+      - codex/firbo-user-scoped-ceo-device-memory-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smart-ceo-context:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: CEO reasoning and memory isolation tests with native TS strip
+        run: node --experimental-strip-types --test tests/firbo-ceo-intelligence.test.mjs
+      - name: Guard real agent-chat and mission-runner wiring
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const chat=fs.readFileSync('supabase/functions/agent-chat/index.ts','utf8');
+          const mission=fs.readFileSync('supabase/functions/mission-runner/index.ts','utf8');
+          const guard=[
+            chat.includes("import { compactForFree, ceoOperatingPolicy }"),
+            chat.includes("...(isCeo ? [ceoOperatingPolicy()] : [])"),
+            chat.includes("const accessibleMemory=ownerVisibleMemory("),
+            chat.includes("const trustedBlock=sharedMemory.error?'':approvedCompanyMemoryBlock("),
+            chat.includes(".eq('organization_id',convo.organization_id).eq('user_id',user.id)"),
+            (chat.match(/isCeo, memoryBlock, previousCeoSessions, knowledgeBlock/g)||[]).length >= 2,
+            chat.includes("await reserveInference(") && chat.includes("await settleInference("),
+            (mission.match(/ceoMissionThinkingPolicy\(\)/g)||[]).length===3,
+            chat.includes("job.receipt") && chat.includes("report_sha256"),
+          ];
+          if(guard.some(ok=>!ok)) throw Error('FIRBO CEO brain integration or existing security invariants missing: '+JSON.stringify(guard));
+          console.log('CEO local/cloud context integration and known security invariants verified');
+          JS
+      - name: Align npm version with frontend engines
+        run: npm install --global npm@11.19.0
+      - name: Restore frontend lockfile dependencies
+        run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Full frontend regression suite
+        run: npm test --prefix frontend
+      - name: Frontend TypeScript + Vite build
+        run: npm run build:tauri --prefix frontend
