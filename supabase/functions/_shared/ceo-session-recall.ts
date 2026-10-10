@@ -55,3 +55,10 @@ export function buildCeoSessionRecall(input:{
  }
  return lines.length>1?lines.join('\n'):'';
 }
+
+/** Same bounded, same-user/session/agent recall for each specialized AI employee.
+ * Reuses the original CEO ranker rather than creating another memory store.
+ */
+export function buildAgentSessionRecall(input:Parameters<typeof buildCeoSessionRecall>[0],maxChars=1300):string {
+  return buildCeoSessionRecall(input,maxChars).replace(/^PAST CEO SESSIONS/, 'PAST AGENT SESSIONS');
+}
