@@ -9,7 +9,8 @@ import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_AP
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
 import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserveInference, settleInference } from '../_shared/inference-accounting.ts';
-import { memoryBlocks } from '../_shared/company-pulse.ts';
+import { memoryBlocks, type MemoryRow } from '../_shared/company-pulse.ts';
+import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
 
@@ -210,15 +211,14 @@ Deno.serve(async (req) => {
   const { data: org } = await admin.from('organizations').select('name, profile').eq('id', convo.organization_id).maybeSingle();
   const profile = (org?.profile ?? {}) as Record<string, string>;
   const { data: memRows } = await admin.from('memories').select('content, memory_type, metadata, expires_at, user_id').eq('organization_id', convo.organization_id)
+    .eq('user_id', user.id)
     .or(`agent_id.is.null,agent_id.eq.${agent.id}`).or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .or('metadata->>source.is.null,metadata->>source.neq.learned').is('metadata->>deleted_at', null)
     .order('importance', { ascending: false }).limit(12);
-  // Never inject one member's private notes into another member's CEO.
-  // Shared facts require explicit metadata visibility=company. Historical
-  // learned facts remain quarantined by the existing database query.
-  const accessibleMemory=(memRows??[]).filter((m:any)=>
-    m.user_id===user.id||m.user_id===null||
-    (m.memory_type==='company'&&m.metadata?.visibility==='company'));
+  // Service role bypasses RLS. Do not trust NULL owners or a client-editable
+  // company visibility tag until owner-approved ACL exists. This deliberately
+  // preserves 30 legacy model-learned rows without injecting them into prompts.
+  const accessibleMemory=ownerVisibleMemory((memRows??[]) as Array<MemoryRow & { user_id:string|null }>,user.id);
   const memoryBlock = memoryBlocks(accessibleMemory).join('\n');
   let previousCeoSessions='';
   let pastSessionsUnavailable=false;
