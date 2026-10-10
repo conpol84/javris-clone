@@ -82,7 +82,19 @@ try{
    assert.equal(check[0].organization_id,'synthetic-company-a');
    assert.equal(check[0].source_memory_id,'proposal-one');
    assert.equal(check[0].confirm_reviewed,true);
-   await page.waitForFunction(()=>document.querySelectorAll('[data-company-memory-review] button[aria-pressed]').length===0,undefined,{timeout:10000});
+   try{
+    await page.waitForFunction(()=>document.querySelectorAll('[data-company-memory-review] button[aria-pressed]').length===0,undefined,{timeout:7000});
+   }catch(error){
+    const state=await page.evaluate(()=>({
+     calls:window.harness.calls.slice(-10),
+     publications:window.harness.publications,
+     panels:document.querySelector('[data-company-memory-review]')?.innerText.slice(0,1300),
+     pressedButtons:[...document.querySelectorAll('[data-company-memory-review] button[aria-pressed]')].map(x=>x.textContent),
+    }));
+    console.error('OWNER_REVIEW_REAL_DOM_DIAGNOSTIC',JSON.stringify(state));
+    await page.screenshot({path:evidence+'/review-refresh-FAILED-'+lang+'-'+width+'.png',fullPage:true}).catch(()=>{});
+    throw error;
+   }
    page.once('dialog',dialog=>void dialog.accept());
    await root.getByRole('button',{name:labels.revoke}).click();
    await page.waitForFunction(()=>window.harness.publications.length===0);
