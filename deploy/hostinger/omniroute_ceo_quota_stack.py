@@ -74,7 +74,8 @@ _SAFE_BLOCKED_CODES = frozenset({
 def _failure(stage: str, error: Exception | None = None, source=None):
     """Provide a stage + optional audited code, never a raw secret exception."""
     reason = "stage_unavailable"
-    if source is not None and isinstance(error, source.Blocked):
+    blocked = getattr(source, "Blocked", None)
+    if isinstance(blocked, type) and isinstance(error, blocked):
         message = str(error)
         if message in _SAFE_BLOCKED_CODES:
             reason = message
