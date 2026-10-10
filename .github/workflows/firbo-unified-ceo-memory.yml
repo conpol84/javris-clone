@@ -37,6 +37,8 @@ jobs:
         run: |
           sha256sum supabase/functions/agent-runner/index.ts
           wc -c supabase/functions/agent-runner/index.ts
+      - name: Verify full 19-file runner closure, exact hashes and Node module linking
+        run: node --test tests/firbo/agent-runner-bundle.test.mjs
       - name: Prove ownerless and cross-user memory cannot be injected
         run: node --test tests/firbo/ceo-memory-security.test.mjs tests/firbo/ceo-session-recall.test.mjs
       - name: Install pinned frontend dependencies
