@@ -123,7 +123,7 @@ jobs:
       OMNIROUTE_SKIP_SYSTEM_TRUST: "1"
       OMNIROUTE_DISABLE_CLOUD_SYNC: "true"
       OMNIROUTE_BUILD_MEMORY_MB: "8192"
-      OMNIROUTE_USE_TURBOPACK: "0"
+      OMNIROUTE_USE_TURBOPACK: "1"
       OMNIROUTE_SKIP_STANDALONE: "1"
       OMNIROUTE_BUILD_WORKERS: "1"
       # Dockerfile passes this to Next's build worker pool; keep CI equivalent.
@@ -152,7 +152,7 @@ jobs:
       - name: Locked packages with install scripts disabled
         working-directory: omniroute
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Compile full existing Next.js UI + API with 8GB heap, Webpack and one worker
+      - name: Compile full existing Next.js UI + API with 8GB heap, Turbopack and one worker
         working-directory: omniroute
         run: |
           set -euo pipefail
