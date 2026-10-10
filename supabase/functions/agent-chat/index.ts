@@ -4,7 +4,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan, type GatewayCompletion, type GatewayTrace } from '../_shared/gateway-routing.ts';
 
-import { freeForOrganization, completeViaFree, approvedFreeCeoFallback, legacyProviderFailureCode, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+import { freeForOrganization, completeViaFree, type FreeCompletion, type FreeTrace } from '../_shared/free-routing.ts';
+import { approvedFreeCeoFallback, legacyProviderFailureCode } from '../_shared/ceo-model-recovery.ts';
 import { taskBriefing, focusBriefing, type BriefTask, ceoActions, WORK_SOURCE_APPS } from '../_shared/task-briefing.ts';
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { knowledgeSearch } from '../_shared/agent-tools.ts';
