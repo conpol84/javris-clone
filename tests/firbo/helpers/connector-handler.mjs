@@ -30,7 +30,7 @@ export async function makeHandler() {
    if(index>=0){state.failures.splice(index,1);return {data:null,error:{message:'synthetic database error'},count:null};}
    let rows=(state.rows[table]||[]).filter(row=>filters.every(f=>f(row))).slice(0,limit);
    if(update){for(const row of rows)Object.assign(row,structuredClone(update));state.writes.push({table,matched:rows.length,keys:Object.keys(update)});}
-   else if(insert){rows=(Array.isArray(insert)?insert:[insert]).map(row=>({id:randomUUID(),...structuredClone(row)}));(state.rows[table]??=[]).push(...rows);}
+   else if(insert){rows=(Array.isArray(insert)?insert:[insert]).map(row=>({id:randomUUID(),...(table==='connector_jobs'?{status:'queued'}:{}),...structuredClone(row)}));(state.rows[table]??=[]).push(...rows);}
    else state.reads.push({table,select});
    return {data:structuredClone(single?(rows[0]??null):rows),error:null,count:rows.length};
   }
