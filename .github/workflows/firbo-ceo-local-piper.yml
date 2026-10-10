@@ -27,7 +27,7 @@ jobs:
         run: npm ci
       - name: CEO voice, TTS and playback regression
         working-directory: frontend
-        run: npx --no-install vitest run src/lib/company/voice.test.ts src/lib/company/voiceActivity.test.ts
+        run: npx --no-install vitest run src/lib/company/voice.test.ts
       - name: Full frontend tests and strict production compile
         working-directory: frontend
         run: |
