@@ -163,10 +163,14 @@ jobs:
           set -euo pipefail
           test -s .build/next/BUILD_ID
           test -d .build/next/server/app
-          find .build/next/server/app -type f -name 'page.js' | grep -q 'api-manager' || {
+          # Avoid SIGPIPE from 'find | grep -q' under pipefail on 600+ compiled routes.
+          # Require a real compiled API Manager page without hiding source failures.
+          page="$(find .build/next/server/app -type f -path '*/dashboard/api-manager/page.js' -print -quit)"
+          if [ -z "$page" ]; then
             echo "FIRBO_API_MANAGER_PAGE_NOT_COMPILED"
             exit 1
-          }
+          fi
+          test -s "$page"
           echo "omni_next_ui_build_compiled=true"
           echo "production_deployment=false"
           echo "standalone_image_packaging=false"
