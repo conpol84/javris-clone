@@ -22,9 +22,7 @@ def healthy():
         "state": {"Running": True, "Health": {"Status": "healthy"}},
         "image": inv.REVIEWED_IMAGE,
         "user": "1000:1000",
-        "ports": {
-            "3001/tcp": [{"HostIp": "127.0.0.1", "HostPort": "3001"}]
-        },
+        "ports": {"3001/tcp": [{"HostIp": "127.0.0.1", "HostPort": "3001"}]},
         "networks": {"hostinger_default": {}},
         "privileged": False,
         "capdrop": ["ALL"],
@@ -42,9 +40,7 @@ def simulate(values):
         assert kwargs["timeout"] == 6
         assert kwargs["capture_output"] is True
         assert kwargs["text"] is True
-        assert args[:5] == [
-            "docker", "inspect", "--type", "container", "--format"
-        ]
+        assert args[:5] == ["docker", "inspect", "--type", "container", "--format"]
         assert args[-1] == "firbo-freellmapi"
         for key, selection in inv.INSPECT_FIELDS.items():
             if args[5] == "{{json ." + selection + "}}":
