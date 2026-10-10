@@ -74,23 +74,24 @@ def probe():
         models = _items(_read(opener, key, MODELS), "models")
         combos = _items(_read(opener, key, COMBOS), "combos")
         model_count = sum(
-            1 for model in models
+            1
+            for model in models
             if isinstance(model, dict)
             and isinstance(model.get("id"), str)
             and bool(model["id"].strip())
         )
         registered_ids = {
-            row["id"] for row in models
+            row["id"]
+            for row in models
             if isinstance(row, dict) and isinstance(row.get("id"), str)
         }
         # A canary NAME alone is not proof that it actually selects FreeLLMAPI.
-        expected_refs = {
-            "freellmapi/" + name for name in registered_ids
-        } | {
+        expected_refs = {"freellmapi/" + name for name in registered_ids} | {
             name for name in registered_ids if name.startswith("freellmapi/")
         }
         canary = sum(
-            1 for combo in combos
+            1
+            for combo in combos
             if isinstance(combo, dict)
             and isinstance(combo.get("name"), str)
             and combo["name"].startswith("firbo-freellmapi-canary")
