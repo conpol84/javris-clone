@@ -175,9 +175,12 @@ def verify_status(opener, token):
     status, body, _ = request_once(opener, token, "GET", STATUS_URL)
     if status != 200 or not isinstance(body, dict):
         raise AcceptanceError("status_contract_invalid")
-    if not all(
-        body.get(name) is True for name in ("enabled", "online", "scopesEnforced")
-    ) or body.get("transport") != "streamable-http":
+    if (
+        not all(
+            body.get(name) is True for name in ("enabled", "online", "scopesEnforced")
+        )
+        or body.get("transport") != "streamable-http"
+    ):
         raise AcceptanceError("mcp_not_ready_no_execution")
 
 
@@ -193,9 +196,8 @@ def discover(opener, token, sid):
             raise AcceptanceError("mcp_tools_contract_invalid")
         for tool in tools:
             name = tool.get("name") if isinstance(tool, dict) else None
-            if (
-                not isinstance(name, str)
-                or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", name)
+            if not isinstance(name, str) or not re.fullmatch(
+                r"[A-Za-z0-9_.:/-]{1,100}", name
             ):
                 raise AcceptanceError("mcp_tool_name_invalid")
             if name in names:
@@ -253,8 +255,12 @@ def acceptance(opener, token, read_health=False):
         if READ_TOOL not in names:
             raise AcceptanceError("health_tool_not_advertised")
         response, _ = rpc(
-            opener, token, "tools/call",
-            {"name": READ_TOOL, "arguments": {}}, rid=42, sid=sid
+            opener,
+            token,
+            "tools/call",
+            {"name": READ_TOOL, "arguments": {}},
+            rid=42,
+            sid=sid,
         )
         report["mcp_tool_called"] = True
         if response.get("isError") is True:
