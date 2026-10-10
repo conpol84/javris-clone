@@ -25,8 +25,8 @@
     {
       "path": "_shared/company-pulse.ts",
       "source_path": "supabase/functions/_shared/company-pulse.ts",
-      "sha256": "e44ff954626b3de4ceaaf59f8c03fe1bf4107edd41303e7f23bd595ffaabc74f",
-      "bytes": 5743
+      "sha256": "b6e85b99a941a15fdbf051f2469ea418ceb4b2d0cf4203f8d86ad3414701514d",
+      "bytes": 6846
     },
     {
       "path": "_shared/company-skills.ts",
@@ -115,8 +115,8 @@
     {
       "path": "index.ts",
       "source_path": "supabase/functions/agent-runner/index.ts",
-      "sha256": "f1a523939da2b90fb043045102201e5cc84f6ecb87e9191a8ceb346ce8f60f18",
-      "bytes": 93617
+      "sha256": "2cb60b74209f307e7b54e607ec3523a9694b207495523ccb984e49addbaa15ca",
+      "bytes": 94701
     }
   ]
 }
