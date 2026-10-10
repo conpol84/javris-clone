@@ -14,7 +14,7 @@ export interface VoiceCallbacks {
   interim: (text: string) => void; final: (text: string) => void; end: () => void;
   error?: (code: VoiceError | 'server') => void; status?: (message: string) => void;
 }
-export type SpeechResult = { status:'completed'|'cancelled'|'failed'; source:'server'|'browser'|'none'; truncated:boolean };
+export type SpeechResult = { status:'completed'|'cancelled'|'failed'; source:'server'|'local'|'browser'|'none'; truncated:boolean };
 interface Options { turn?: VoiceTurn; allowBrowserFallback?: boolean; allowLocalFallback?: boolean; voiceProfile?: VoiceProfile }
 interface RecognitionLike {
   lang:string; interimResults:boolean; continuous:boolean;
@@ -65,7 +65,7 @@ function outputMeter(el: HTMLAudioElement, turn: VoiceTurn): () => void {
   } catch { cleanup(); /* No random substitute for a real measurement. */ }
   return cleanup;
 }
-async function playAudio(blob: Blob, turn: VoiceTurn): Promise<void> {
+async function playAudio(blob: Blob, turn: VoiceTurn, source: 'server' | 'local' = 'server'): Promise<void> {
   const url = URL.createObjectURL(blob);
   const el = new Audio(url);
   let meterStop = noop;
@@ -87,7 +87,7 @@ async function playAudio(blob: Blob, turn: VoiceTurn): Promise<void> {
       turn.signal.addEventListener('abort', abort, { once:true });
       el.onplaying = () => {
         if (done || !turn.current()) return;
-        started = true; clearTimeout(startTimer); turn.phase('speaking', 'server');
+        started = true; clearTimeout(startTimer); turn.phase('speaking', source);
       };
       el.onwaiting = () => { if (!done && turn.current()) turn.phase('preparing', 'server'); };
       el.onended = () => finish(started ? undefined : new Error('audio_never_started'));
@@ -190,7 +190,7 @@ async function playLocalPiper(
     || new TextDecoder().decode(bytes.slice(8, 12)) !== 'WAVE') {
     throw new Error('invalid_local_audio');
   }
-  await playAudio(new Blob([bytes], { type: 'audio/wav' }), turn);
+  await playAudio(new Blob([bytes], { type: 'audio/wav' }), turn, 'local');
 }
 
 /** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */
@@ -210,7 +210,7 @@ export async function speak(orgId: string, text: string, lang: string, options: 
       if (local) {
         try {
           await playLocalPiper(orgId,clean,lang,turn,35_000,false);
-          source='server';
+          source='local';
           if (!turn.current()) return { status:'cancelled', source, truncated };
           turn.finish(); return { status:'completed', source, truncated };
         } catch(error) {
@@ -252,7 +252,7 @@ export async function speak(orgId: string, text: string, lang: string, options: 
         try {
           turn.phase('preparing', 'server');
           await playLocalPiper(orgId, clean, lang, turn, 15_000, true);
-          source = 'server'; localRecovered = true;
+          source = 'local'; localRecovered = true;
         } catch (localError) {
           if (!turn.current()) return { status:'cancelled', source, truncated };
           if ((localError as {playbackStarted?:boolean})?.playbackStarted) throw localError;
