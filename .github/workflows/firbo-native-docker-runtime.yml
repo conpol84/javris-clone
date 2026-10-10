@@ -1,0 +1,97 @@
+name: FIRBO Native Docker Runtime Acceptance
+on:
+  pull_request:
+    branches:
+      - codex/firbo-native-image-stage-only-20261010
+    paths:
+      - deploy/docker/Dockerfile
+      - deploy/hostinger/docker-compose.yml
+      - deploy/hostinger/firbo_stage_native_image.sh
+      - .github/workflows/firbo-native-docker-runtime.yml
+  workflow_dispatch:
+permissions: {contents: read}
+concurrency:
+  group: firbo-native-docker-runtime-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  ephemeral-docker-image:
+    # Never execute privileged Docker builds from unaffiliated fork source.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Exact source and ephemeral builder verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git hash-object src/openjarvis/server/firbo_free_app.py)"
+          test "$actual" = edf940a67f8881e7bd828ed8a956252f2a8c67de
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          printf 'candidate_source_commit=%s\n' "$(git rev-parse HEAD)"
+          printf 'native_module_git_blob=%s\n' "$actual"
+          printf 'ephemeral_runner_only=true\n'
+          docker version --format '{{.Server.Version}}'
+          df -Pk .
+      - name: Build exact production Dockerfile as an unpromoted candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha="$(git rev-parse HEAD)"
+          docker build --progress plain --pull=false \
+            --build-arg FIRBO_NATIVE_ROUTE_ATTEST=1 \
+            --label "org.firbo.source_commit=$source_sha" \
+            --tag firbo-native-ci:candidate \
+            --file deploy/docker/Dockerfile .
+          docker image inspect firbo-native-ci:candidate \
+            --format 'candidate_image={{.Id}}'
+      - name: Verify installed Python, native route, anonymous denial, old health API, no network
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm -i --network none --read-only \
+            --security-opt no-new-privileges --cap-drop ALL \
+            --pids-limit 128 --memory 1024m \
+            --entrypoint python firbo-native-ci:candidate -B - <<'PY'
+          import hashlib
+          import importlib
+          import json
+          from pathlib import Path
+          from fastapi.testclient import TestClient
+
+          expected = 'edf940a67f8881e7bd828ed8a956252f2a8c67de'
+          target = '/v1/firbo/free/local/chat/completions'
+          appmod = importlib.import_module('openjarvis.server.firbo_free_app')
+          source = Path(appmod.__file__).read_bytes()
+          blob = hashlib.sha1(
+              b'blob ' + str(len(source)).encode() + b'\0' + source
+          ).hexdigest()
+          assert blob == expected, 'candidate_installed_python_drift'
+          assert any(
+              getattr(r, 'path', None) == target and 'POST' in (
+                  getattr(r, 'methods', None) or set()
+              ) for r in appmod.app.routes
+          ), 'candidate_native_post_missing'
+          with TestClient(appmod.app) as client:
+              assert client.get('/health').status_code == 200
+              assert client.get(target).status_code == 405
+              assert client.post(
+                  target,
+                  json={
+                    'organization_id': '00000000-0000-4000-8000-000000000001',
+                    'request_id': '00000000-0000-4000-8000-000000000002',
+                    'messages': [{'role': 'user', 'content': 'synthetic'}],
+                  },
+              ).status_code == 401, 'anonymous_post_not_denied'
+          print(json.dumps({
+              'installed_source_match': True,
+              'native_route_registered': True,
+              'unauthorized_post_denied': True,
+              'legacy_health_passed': True,
+              'container_network': 'none',
+              'candidate_only': True,
+          }))
+          PY

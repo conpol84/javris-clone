@@ -12,6 +12,10 @@ WORKDIR /frontend
 COPY frontend/package.json frontend/package-lock.json* ./
 RUN npm ci --ignore-scripts 2>/dev/null || npm install
 COPY frontend/ .
+# The FIRBO frontend imports shared TypeScript contracts using paths relative
+# to the monorepo root. Preserve that path when /frontend is the stage workdir.
+# These are source modules only; not server secrets or environment files.
+COPY supabase/functions/_shared/ /supabase/functions/_shared/
 RUN VITE_SUPABASE_ANON_KEY="${OPENJARVIS_LEADERBOARD_PUBLIC_ANON}" npm run build
 
 # Stage 2: Build Python package
