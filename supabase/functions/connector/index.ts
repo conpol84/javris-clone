@@ -408,9 +408,12 @@ Deno.serve(async (req) => {
     const requestId=body.request_id;
     if(requestId!==undefined&&(typeof requestId!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId)))return json(400,{error:'bad_request'});
     if(body.owner_full_control_required!==undefined&&body.owner_full_control_required!==true)return json(400,{error:'bad_request'});
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, created_by, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
+    // Owner-issued direct jobs can never target another member's computer.
+    // Agent/approval permissions have their own separately audited policy.
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
     if(advancedComputerKind(kind)){
       const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
@@ -464,8 +467,9 @@ Deno.serve(async (req) => {
       // Automatic owner work carries a stricter mode requirement than a
       // manually approved step. Re-read it at the final queue boundary.
       const{data:fresh,error:fe}=await admin.from('connector_devices')
-        .select('id,organization_id,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+        .select('id,organization_id,created_by,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
       if(fe)return json(503,{error:'control_unavailable'});
+      if(fresh?.created_by!==user.id)return json(403,{error:'forbidden'});
       const seen=Date.parse(fresh?.last_seen_at??''),age=Date.now()-seen;
       if(!fresh||fresh.paired!==true||fresh.revoked_at||fresh.agent_policy?.enabled!==true||fresh.agent_policy?.control!=='full'
         ||fresh.capabilities?.full_control!==true||!fresh.capabilities?.job_kinds?.includes(kind)||!withinHours(cleanPolicy(fresh.agent_policy))
