@@ -415,8 +415,11 @@ Deno.serve(async (req) => {
   // The default is OFF. Never automatically replay a timed-out, 5xx, gateway,
   // own-key or multi-provider request: any of those could already be billed.
   if (!completion && !used && approvedFreeCeoFallback({
-    organizationId: convo.organization_id, isCeo, hasOwnKey: !!own,
+    organizationId: convo.organization_id, isCeo,
+    isOwnerOrAdmin: member.role === 'owner' || member.role === 'admin',
+    isUserSession: reader === userClient, hasOwnKey: !!own,
     alreadyFree: free, directTargetCount: targets.length,
+    directProvider: targets[0]?.provider ?? '', directBase: targets[0]?.base ?? '',
     errorCode: lastError, env: name => Deno.env.get(name),
   })) {
     try {
