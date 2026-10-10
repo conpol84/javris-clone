@@ -55,14 +55,18 @@ class FakeOmni:
                 "scopesEnforced": True,
             }
         )
-        self.advertised = advertised if advertised is not None else [
-            "omniroute_get_health",
-            "omniroute_check_quota",
-            "omniroute_cost_report",
-            "omniroute_list_models_catalog",
-            "omniroute_list_combos",
-            "omniroute_route_request",
-        ]
+        self.advertised = (
+            advertised
+            if advertised is not None
+            else [
+                "omniroute_get_health",
+                "omniroute_check_quota",
+                "omniroute_cost_report",
+                "omniroute_list_models_catalog",
+                "omniroute_list_combos",
+                "omniroute_route_request",
+            ]
+        )
         self.reply_error = reply_error
 
     def open(self, req, timeout):
@@ -355,11 +359,13 @@ class PagedFakeOmni(FakeOmni):
         result = {"tools": [{"name": n} for n in self.advertised[start:end]]}
         if next_cursor is not None:
             result["nextCursor"] = next_cursor
-        return FakeReply({
-            "jsonrpc": "2.0",
-            "id": parsed["id"],
-            "result": result,
-        })
+        return FakeReply(
+            {
+                "jsonrpc": "2.0",
+                "id": parsed["id"],
+                "result": result,
+            }
+        )
 
 
 def test_paged_catalog_over_100_is_finite_and_never_calls_other_tools():
