@@ -27,7 +27,7 @@ Compose now allows `FIRBO_API_ASGI_APP` override, keeping the former app as defa
 5. Once the exact image source, build gate and rollback are proven, rebuild a **candidate** backend image from a pinned reviewed commit; verify it in isolation before touching the running Compose service. The currently running ASGI command is ALREADY correct; do not alter it to troubleshoot the 404. Confirm candidate package's Git blob hash and all old control/gateway routes.
 6. Only then perform a scoped backend-only deployment with rollback image preserved; verify local POST returns 405 on unauthenticated GET but denies unauthenticated POST, and owner-signed POST returns a bounded real local Qwen response. No cloud call and blocked cross-tenant request.
 7. Only after native acceptance, deploy the matching Edge closure and scoped standby flag. Verify voice, Stop and actual device receipts on owner mobile. No automatic replay of uncertain provider requests.
-6. Deploy full corresponding Edge closure, keep flags OFF until authenticated live acceptance; separately enable owner-scoped `FIRBO_CEO_OLLAMA_BACKUP=on` only after all gates. `FIRBO_CEO_LOCAL_ONLY_PRIMARY` stays OFF.
-7. Real new-user-turn, voice/Stop, identity/history, accounting and fallback tests. Never replay ambiguous past requests.
+8. Verify a new CEO user turn normally calls OmniRoute. After a genuine cloud model error, only a **fresh** owner-initiated turn may use local Ollama, with no double billing, same CEO history and bounded readiness. Do not replay old ambiguous requests.
+9. Keep `FIRBO_CEO_LOCAL_ONLY_PRIMARY` OFF. Enable `FIRBO_CEO_OLLAMA_BACKUP=on` only for approved owner/company after live evidence, and rehearse rollback, disabled state, voice/Stop, model recovery and monitoring.
 
 **Status:** source-only candidate. No VPS deployment, Supabase writes, secrets, keys, live inference or production failover activation.
