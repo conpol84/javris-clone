@@ -33,6 +33,19 @@ A reported READY Docker container is still **not model readiness**; verify the r
 3. Optional one-call acceptance is in deploy/hostinger/freellmapi_acceptance.py. It is read-only by default. Real inference requires BOTH --smoke and host-held FREELLMAPI_SMOKE_APPROVED=YES, plus one exact FREELLMAPI_SMOKE_MODEL known ready from the catalog. It sends a public 24-token-cap prompt to FIXED loopback, never company/customer data. It reports X-Routed-Via and rejects observable multi-attempt fallback. The report deliberately still sets provider_cost_verified=false and commercial_use_verified=false; an actual provider terms/ledger check is required.
 4. Review existing Docker state/installed digest, gateway network, startup/health and locked-down port 127.0.0.1:3001. Never run install-freellmapi.py on an already installed host; it is intentionally create-only and will refuse or risk conflict if bypassed. Do not dump environment, keys or provider responses.
 
+## CEO upstream credits / rate-limit incident diagnostics
+
+The owner's FIRBO Supabase event ledger proved five distinct agent-chat HTTP502 model_error failures since 2026-10-09 22:29Z (latest 2026-10-10 04:03Z), plus one desktop_model_rate_limited case and previous settled OmniRoute desktop completions. The affected Enterprise organization has 50,000 plan daily runs, only five new UTC-day inference reservations at observation, no assigned CEO monthly budget, and no company BYOK/model_routes. This is NOT a FIRBO Enterprise plan exhaustion. The exact upstream paid-provider balance is not readable in Supabase.
+
+Read-only VPS operator utility deploy/hostinger/omniroute_ceo_quota_probe.py uses a fixed GET https://gateway.firboai.app/api/usage/quota and existing server-held OMNIROUTE_MANAGEMENT_KEY, ignores proxy/redirects and prints sanitized provider-code counts only. It NEVER calls /v1/chat/completions or uses paid provider credits. Reported future resetAt denotes **gateway-observed cooldown**, not the provider's official billing reset or remaining dollar balance. QuotaTotal=100 or percentRemaining=100 is often synthetic queue pressure; even learned provider limits are not a billing statement. The report hardcodes credits_balance_verified=false.
+
+The next owner-authorized live steps are:
+1. Check the pinned local read-only OmniRoute quota probe and native FreeLLMAPI inventory/probe, without disclosing keys.
+2. Verify the actual gpt-5.5/desktop upstream connection/cooldown in OmniRoute account admin, and consult provider's official usage/billing panel for remaining credits. A desktop subscription rate limit and an API pay-as-you-go balance are different concepts.
+3. Pause burst traffic to the affected provider; do NOT replay reconcile_required jobs. Only after owner-authenticated native Ollama/Piper acceptance may the already-approved PR129 local-only NEW turn mode be enabled.
+4. Preserve original usage and reservations for financial reconciliation; request/provider-level billing proof is required before releasing unknown reservations.
+5. Existing client-visible model_error is generic because live agent-chat v51 suppresses direct-provider HTTP details. PR127 adds sanitized diagnostics, still not deployed. Do not confuse a GitHub green CI or a Vercel READY preview with production recovery.
+
 ## Read-only OmniRoute connection check
 The additional tool deploy/hostinger/freellmapi_gateway_probe.py reads only three fixed HTTPS management endpoints:
 - /api/providers?limit=200, verifies one active freellmapi connection
