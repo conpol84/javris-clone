@@ -49,6 +49,6 @@ jobs:
           assert 'POST /a2a' not in data
           assert '/api/mcp/sse' not in data
           assert '/api/keys' not in data
-          assert 'Bearer ' not in data
+          assert 'Authorization' not in data
           print('private_fixed_read_only_gateway_contract=true')
           PY
