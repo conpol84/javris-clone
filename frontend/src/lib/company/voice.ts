@@ -14,8 +14,8 @@ export interface VoiceCallbacks {
   interim: (text: string) => void; final: (text: string) => void; end: () => void;
   error?: (code: VoiceError | 'server') => void; status?: (message: string) => void;
 }
-export type SpeechResult = { status:'completed'|'cancelled'|'failed'; source:'server'|'browser'|'none'; truncated:boolean };
-interface Options { turn?: VoiceTurn; allowBrowserFallback?: boolean; voiceProfile?: VoiceProfile }
+export type SpeechResult = { status:'completed'|'cancelled'|'failed'; source:'server'|'local'|'browser'|'none'; truncated:boolean };
+interface Options { turn?: VoiceTurn; allowBrowserFallback?: boolean; allowLocalFallback?: boolean; voiceProfile?: VoiceProfile }
 interface RecognitionLike {
   lang:string; interimResults:boolean; continuous:boolean;
   onstart:(() => void)|null; onresult:((e:{results:ArrayLike<ArrayLike<{transcript:string}>&{isFinal:boolean}>})=>void)|null;
@@ -65,7 +65,7 @@ function outputMeter(el: HTMLAudioElement, turn: VoiceTurn): () => void {
   } catch { cleanup(); /* No random substitute for a real measurement. */ }
   return cleanup;
 }
-async function playAudio(blob: Blob, turn: VoiceTurn): Promise<void> {
+async function playAudio(blob: Blob, turn: VoiceTurn, source: 'server' | 'local' = 'server'): Promise<void> {
   const url = URL.createObjectURL(blob);
   const el = new Audio(url);
   let meterStop = noop;
@@ -87,7 +87,7 @@ async function playAudio(blob: Blob, turn: VoiceTurn): Promise<void> {
       turn.signal.addEventListener('abort', abort, { once:true });
       el.onplaying = () => {
         if (done || !turn.current()) return;
-        started = true; clearTimeout(startTimer); turn.phase('speaking', 'server');
+        started = true; clearTimeout(startTimer); turn.phase('speaking', source);
       };
       el.onwaiting = () => { if (!done && turn.current()) turn.phase('preparing', 'server'); };
       el.onended = () => finish(started ? undefined : new Error('audio_never_started'));
@@ -129,6 +129,74 @@ async function browserSpeech(text: string, lang: string, turn: VoiceTurn): Promi
     try { synth.speak(u); } catch { finish(new Error('speech_playback_failed')); }
   });
 }
+/** Limit the WAV body before allocating audio in the browser. A timeout/Stop
+ * cancels the reader; the bytes are never accepted after a stale voice turn. */
+async function readLocalWave(res: Response, turn: VoiceTurn): Promise<Uint8Array> {
+  const max = 6_000_000;
+  const declared = Number(res.headers.get('content-length') ?? 0);
+  if (Number.isFinite(declared) && declared > max) throw new Error('local_voice_too_large');
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('invalid_local_audio');
+  return voiceDeadline(async signal => {
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    let completed = false;
+    const abort = () => { void reader.cancel().catch(noop); };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      for (;;) {
+        if (signal.aborted || !turn.current()) throw new DOMException('Cancelled', 'AbortError');
+        const part = await reader.read();
+        if (part.done) { completed = true; break; }
+        total += part.value.byteLength;
+        if (total > max) throw new Error('local_voice_too_large');
+        chunks.push(part.value);
+      }
+      const bytes = new Uint8Array(total);
+      let at = 0;
+      for (const part of chunks) { bytes.set(part, at); at += part.byteLength; }
+      return bytes;
+    } finally {
+      signal.removeEventListener('abort', abort);
+      if (!completed) void reader.cancel().catch(noop);
+      try { reader.releaseLock(); } catch { /* A pending read is already cancelled. */ }
+    }
+  }, turn.signal, 3000);
+}
+
+/** Native Piper is a separate first-party, membership-guarded service, not Ollama
+ * text inference. No cloud voice call is made by this helper. */
+async function playLocalPiper(
+  orgId: string, clean: string, lang: string, turn: VoiceTurn,
+  timeoutMs: number, requireWavType: boolean,
+): Promise<void> {
+  const session = (await voiceDeadline(() => requireClient().auth.getSession(), turn.signal, 5000)).data.session;
+  if (!session) throw new Error('sign_in_required');
+  if (!turn.current()) throw new DOMException('Cancelled', 'AbortError');
+  const res = await voiceDeadline(signal => fetch(getBase() + '/v1/firbo/free/speech', {
+    method: 'POST', redirect: 'error', signal,
+    headers: { Authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ organization_id: orgId, text: clean, lang }),
+  }), turn.signal, timeoutMs);
+  if (!turn.current()) throw new DOMException('Cancelled', 'AbortError');
+  if (!res.ok) throw Object.assign(new Error('local_voice_unavailable'), { localStatus: res.status });
+  if (requireWavType && !['audio/wav', 'audio/x-wav'].includes((res.headers.get('content-type') ?? '').split(';')[0])) {
+    throw new Error('invalid_local_audio_type');
+  }
+  const bytes = await readLocalWave(res, turn);
+  if (!turn.current()) throw new DOMException('Cancelled', 'AbortError');
+  if (bytes.length < 44 || bytes.length > 6_000_000
+    || new TextDecoder().decode(bytes.slice(0, 4)) !== 'RIFF'
+    || new TextDecoder().decode(bytes.slice(8, 12)) !== 'WAVE') {
+    throw new Error('invalid_local_audio');
+  }
+  // TS7 distinguishes shared backing buffers from the concrete BlobPart type.
+  // Copy only the already bounded WAV bytes into an owned ArrayBuffer.
+  const payload = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(payload).set(bytes);
+  await playAudio(new Blob([payload], { type: 'audio/wav' }), turn, 'local');
+}
+
 /** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */
 export async function speak(orgId: string, text: string, lang: string, options: Options = {}): Promise<SpeechResult> {
   const turn = options.turn ?? beginVoiceTurn();
@@ -145,17 +213,14 @@ export async function speak(orgId: string, text: string, lang: string, options: 
     try {
       if (local) {
         try {
-          const session=(await requireClient().auth.getSession()).data.session;
-          if(!session) throw new Error('sign_in_required');
-          const res=await voiceDeadline(signal=>fetch(getBase()+'/v1/firbo/free/speech',{method:'POST',redirect:'error',signal,headers:{Authorization:`Bearer ${session.access_token}`,'content-type':'application/json'},body:JSON.stringify({organization_id:orgId,text:clean,lang})}),turn.signal,35_000);
-          if(!res.ok) throw Object.assign(new Error('local_voice_unavailable'),{localStatus:res.status});
-          const bytes=new Uint8Array(await res.arrayBuffer());
-          if(bytes.length<44||bytes.length>6_000_000||new TextDecoder().decode(bytes.slice(0,4))!=='RIFF'||new TextDecoder().decode(bytes.slice(8,12))!=='WAVE') throw new Error('invalid_local_audio');
-          source='server'; await playAudio(new Blob([bytes],{type:'audio/wav'}),turn);
+          await playLocalPiper(orgId,clean,lang,turn,35_000,false);
+          source='local';
           if (!turn.current()) return { status:'cancelled', source, truncated };
           turn.finish(); return { status:'completed', source, truncated };
         } catch(error) {
           if(!turn.current()) return {status:'cancelled',source,truncated};
+          // Never repeat a partially played sentence in another voice engine.
+          if ((error as {playbackStarted?:boolean})?.playbackStarted) throw error;
           // Zero-API-cost device speech is the only fallback for Local profile.
           // Arabic uses this deliberately until a commercial-safe server model is approved.
           source='browser';turn.phase('preparing','browser');await browserSpeech(clean,lang,turn);
@@ -182,7 +247,25 @@ export async function speak(orgId: string, text: string, lang: string, options: 
       if ((dark && !localOnlyRecovery) || options.allowBrowserFallback === false ||
           [401,402,403].includes(status) ||
           (error as {playbackStarted?:boolean})?.playbackStarted) throw error;
-      source = 'browser'; turn.phase('preparing', 'browser'); await browserSpeech(clean, lang, turn);
+      // A cloud 429/5xx is not an authorization denial. On an explicit CEO
+      // opt-in, try the already-authenticated local-only Piper route first.
+      // If Piper is unavailable/denied, use the device browser voice instead.
+      // A partially played answer must NEVER be repeated through fallback.
+      let localRecovered = false;
+      if (options.allowLocalFallback === true && localOnlyRecovery) {
+        try {
+          turn.phase('preparing', 'server');
+          await playLocalPiper(orgId, clean, lang, turn, 15_000, true);
+          source = 'local'; localRecovered = true;
+        } catch (localError) {
+          if (!turn.current()) return { status:'cancelled', source, truncated };
+          if ((localError as {playbackStarted?:boolean})?.playbackStarted) throw localError;
+        }
+      }
+      if (!localRecovered) {
+        source = 'browser'; turn.phase('preparing', 'browser');
+        await browserSpeech(clean, lang, turn);
+      }
     }
     if (!turn.current()) return { status:'cancelled', source, truncated };
     turn.finish(); return { status:'completed', source, truncated };

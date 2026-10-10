@@ -2,7 +2,7 @@
  * Cancellation is synchronous locally; it does not certify server-job cancellation.
  */
 export type VoicePhase = 'idle' | 'opening' | 'listening' | 'transcribing' | 'thinking' | 'preparing' | 'speaking' | 'error';
-export type VoiceSource = 'none' | 'microphone' | 'server' | 'browser';
+export type VoiceSource = 'none' | 'microphone' | 'server' | 'local' | 'browser';
 export interface VoiceSnapshot { phase: VoicePhase; source: VoiceSource; measured: boolean }
 export interface VoiceTurn {
   readonly signal: AbortSignal;

@@ -1,0 +1,35 @@
+name: FIRBO CEO Local Piper Voice Recovery
+on:
+  pull_request:
+    branches:
+      - codex/firbo-ceo-safe-local-recovery-20261010
+    paths:
+      - frontend/src/lib/company/voice.ts
+      - frontend/src/lib/company/voice.test.ts
+      - frontend/src/lib/company/useCeoSession.ts
+      - .github/workflows/firbo-ceo-local-piper.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Install pinned npm engine
+        run: npm install --global npm@11.19.0
+      - name: Install reviewed frontend lockfile
+        working-directory: frontend
+        run: npm ci
+      - name: CEO voice, TTS and playback regression
+        working-directory: frontend
+        run: npx --no-install vitest run src/lib/company/voice.test.ts
+      - name: Full frontend tests and strict production compile
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
