@@ -1,3 +1,4 @@
+import { personalComputerPreferenceKey } from './ceo-identity-scope';
 import { canOpenBrowser, cancelJob, giveJob, isOnline, listJobs, policyOf, ComputerError, type DeviceRow, type JobRow } from './computers';
 import { dispatchJson as actionJson, dispatchWorkerRequest, workerDispatchReceipt, WorkerDispatchError, type WorkerDispatchRequest } from './worker-dispatch';
 
@@ -6,6 +7,20 @@ const key=(org:string)=>`firbo.voice-laptop.v1:${org}`;
 const storage=():StorageLike|null=>{try{return typeof window==='undefined'?null:window.localStorage}catch{return null}};
 export function getVoiceLaptop(org:string,s:StorageLike|null=storage()){if(!org||!s)return null;try{return s.getItem(key(org))}catch{return null}}
 export function setVoiceLaptop(org:string,device:string|null,s:StorageLike|null=storage()){if(!org||!s)return;try{device?s.setItem(key(org),device):s.removeItem(key(org))}catch{}}
+/** Per-user preference for the owner's own selected computer. Legacy org-only
+ * preference is deliberately NOT read here: it might belong to another user.
+ * Server connector ownership, policy, and consent checks still apply.
+ */
+export function getUserVoiceLaptop(org:string,user:string,s:StorageLike|null=storage()):string|null {
+ const scopedKey=personalComputerPreferenceKey(org,user);
+ if(!scopedKey||!s)return null;
+ try{return s.getItem(scopedKey)}catch{return null}
+}
+export function setUserVoiceLaptop(org:string,user:string,device:string|null,s:StorageLike|null=storage()):boolean {
+ const scopedKey=personalComputerPreferenceKey(org,user);
+ if(!scopedKey||!s)return false;
+ try{device?s.setItem(scopedKey,device):s.removeItem(scopedKey);return true}catch{return false}
+}
 export const browserReadyDevices=(rows:DeviceRow[],now=Date.now())=>rows.filter(d=>canOpenBrowser(d)&&isOnline(d,now));
 export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return selected?(ready.find(d=>d.id===selected)??null):(ready.length===1?ready[0]:null)}
 function safeUrl(raw:string){let value=raw.trim().replace(/[),.;!?]+$/,'');if(!value)return null;if(!/^https:\/\//i.test(value))value='https://'+value;try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||!u.hostname||u.hostname==='localhost'||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)||u.hostname.includes(':'))return null;return u.href}catch{return null}}

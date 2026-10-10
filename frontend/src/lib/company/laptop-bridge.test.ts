@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, setVoiceLaptop } from './laptop-bridge';
+import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, setVoiceLaptop, getUserVoiceLaptop, setUserVoiceLaptop } from './laptop-bridge';
 import type { DeviceRow, JobRow } from './computers';
 
 const now=Date.parse('2026-10-04T10:00:00Z');
@@ -7,6 +7,28 @@ const device=(id:string,name='Laptop',full=false):DeviceRow=>({id,name,platform:
 const memory=()=>{const map=new Map<string,string>();return{getItem:(k:string)=>map.get(k)??null,setItem:(k:string,v:string)=>map.set(k,v),removeItem:(k:string)=>map.delete(k)}};
 const vpsRead='Διάβασε από τον VPS το αρχείο:\n/home/jarvis/.openjarvis/firbo-acceptance-7e50xgua/report.md\n\nΔείξε το πραγματικό περιεχόμενό του και την απόδειξη εκτέλεσης της ανάγνωσης. Μην δημιουργήσεις ή αλλάξεις αρχεία. Αν δεν έχεις πρόσβαση, ανέφερε ακριβώς τι εμποδίζει την ανάγνωση.';
 
+describe('user-isolated computer preferences',()=>{
+ it('does not let a second user inherit the first user\'s laptop within one company',()=>{
+  const store=memory();
+  expect(setUserVoiceLaptop('org','alice','alice-pc',store)).toBe(true);
+  expect(getUserVoiceLaptop('org','alice',store)).toBe('alice-pc');
+  expect(getUserVoiceLaptop('org','bob',store)).toBeNull();
+  setVoiceLaptop('org','legacy-company-choice',store);
+  expect(getUserVoiceLaptop('org','bob',store)).toBeNull();
+  expect(setUserVoiceLaptop('org','bob','bob-pc',store)).toBe(true);
+  expect(getUserVoiceLaptop('org','alice',store)).toBe('alice-pc');
+  expect(getUserVoiceLaptop('org','bob',store)).toBe('bob-pc');
+ });
+ it('rejects missing identity and scopes a preference across companies',()=>{
+  const store=memory();
+  expect(setUserVoiceLaptop('org','','unsafe',store)).toBe(false);
+  expect(getUserVoiceLaptop('org','',store)).toBeNull();
+  setUserVoiceLaptop('org1','alice','device1',store);
+  expect(getUserVoiceLaptop('org2','alice',store)).toBeNull();
+  expect(setUserVoiceLaptop('org1','alice',null,store)).toBe(true);
+  expect(getUserVoiceLaptop('org1','alice',store)).toBeNull();
+ });
+});
 describe('website to laptop browser bridge',()=>{
  it.each([
   vpsRead,
