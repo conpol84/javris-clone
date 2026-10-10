@@ -59,7 +59,7 @@ jobs:
           PY
 
   offline-backend-next-build:
-    name: Compile all existing OmniRoute API routes without dashboard stubs in output
+    name: Compile existing OmniRoute API routes with dashboard intentionally omitted
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
