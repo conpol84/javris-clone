@@ -165,7 +165,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       setComputerProgress(null);
       setLines(lines=>[...lines,{who:'ceo',text:content}]);
       if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
-      const spoken=await speak(orgId,content,lang,{turn:active});
+      const spoken=await speak(orgId,content,lang,{turn:active,allowLocalFallback:true});
       if(!valid(id))return;
       busy.current=false;
       if(spoken.status==='completed'){setState('idle');resume(id,300);}
@@ -259,7 +259,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       // the completed chat turn. This never turns unverified device claims into memory.
       void listCeoSessions(orgId,userId,ceo.id).then(items=>{if(valid(id))setSessions(items);}).catch(()=>{});
       if(mutedRef.current){active.finish();busy.current=false;resume(id,600);return;}
-      const result=await speak(orgId,content,lang,{turn:active});
+      const result=await speak(orgId,content,lang,{turn:active,allowLocalFallback:true});
       if(!valid(id))return;
       busy.current=false;
       if(result.status==='completed'){setState('idle');resume(id,300);}
