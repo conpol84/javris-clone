@@ -190,7 +190,11 @@ async function playLocalPiper(
     || new TextDecoder().decode(bytes.slice(8, 12)) !== 'WAVE') {
     throw new Error('invalid_local_audio');
   }
-  await playAudio(new Blob([bytes], { type: 'audio/wav' }), turn, 'local');
+  // TS7 distinguishes shared backing buffers from the concrete BlobPart type.
+  // Copy only the already bounded WAV bytes into an owned ArrayBuffer.
+  const payload = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(payload).set(bytes);
+  await playAudio(new Blob([payload], { type: 'audio/wav' }), turn, 'local');
 }
 
 /** Result is explicit. A cancelled/failed playback never masquerades as a spoken reply. */
