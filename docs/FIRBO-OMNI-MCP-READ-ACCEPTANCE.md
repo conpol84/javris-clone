@@ -13,7 +13,7 @@ The operator may run `deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py` i
 - Default (NO tool calls): one bounded HTTPS GET to the *fixed* `/api/mcp/status`, then one standard MCP session handshake and `tools/list` via the fixed `/api/mcp/stream`. It returns **only tool counts and the intersection with the five locally approved read-only tool names**; never raw advertised schemas or sensitive responses.
 - Explicit `--read-health` opt-in: same handshake/list, then exactly ONE fixed `tools/call` to `omniroute_get_health` with empty arguments. Returns only boolean success with no provider, cache, memory, quota or secret details. The gateway should record the tool in its **existing OmniRoute MCP audit**, distinct from FIRBO's still-not-enabled Integration receipt.
 - The script prompts securely in the owner's terminal for the **existing dedicated MCP-only key** and blocks if the terminal may echo characters. It never accepts the key via argument, writes it to disk, prints it, uses proxies, follows redirects, uses other hosts or executes other tools.
-- A failed, ambiguous, denied or timed-out request **is never replayed automatically**. Limit to no more than five pages and 100 discovered tool IDs; no downloads, webhook callbacks or changes to OmniRoute settings.
+- A failed, ambiguous, denied or timed-out request **is never replayed automatically**. Limit to no more than eight pages and **256 distinct discovered tool IDs**. The OmniRoute server source registers multiple additional collections (memory, skills, plugins, compression) beyond the dashboard's illustrative 37-tool count. The discovered non-allowlisted names are never printed or callable by this probe. Anything beyond 256 still fails closed; no downloads, webhook callbacks or changes to OmniRoute settings.
 - Inference remains OmniRoute-primary, while all FIRBO MCP pilot and owner Qwen backup flags remain OFF.
 
 ### Source canary command (one tool-list read, owner terminal)
@@ -42,6 +42,12 @@ git -C "$REPO" show "$SHA:deploy/hostinger/firbo_omniroute_mcp_read_acceptance.p
 ~~~
 
 Run `python3 - --read-health` in place of `python3 -` **only after reviewing the clean tools/list result**; it makes an actual read-only tool request, recorded in OmniRoute's existing audit. Do not print/paste the key or any provider result.
+
+## Owner live fail-closed evidence (10 October 2026)
+
+Owner ran the *first version* of the read-only probe with the dedicated MCP key. It successfully progressed beyond the authenticated status and MCP initialization to `tools/list`, where it correctly stopped at `too_many_advertised_tools`, `read_only=true`, `no_retry=true`. No MCP tool was executed. The 100-item ceiling was a **local diagnostic inventory limit**, not a provider authentication or Ollama failure.
+
+This revision changes only that bounded inventory limit to 256 and increases the maximum pagination pages from 5 to 8. It does **not** permit tool execution beyond the existing optional one named health probe, relax source/tenant RBAC, or change the shared FIRBO MCP pilot (still OFF). Synthetic acceptance must exercise catalogs with 150/211 tools, exact 256 and 257 boundaries, pagination, and no accidental tool call before another operator-run test.
 
 ## After owner acceptance
 
