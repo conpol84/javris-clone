@@ -9,6 +9,7 @@
 //  - every tool call needs explicit confirmation and a durable pre-execution audit receipt
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { mcpEgressFetch } from '../_shared/mcp-egress.ts';
+import { discoverMcpTools } from '../_shared/mcp-tool-discovery.ts';
 import {
   filterOmniReadOnlyTools,
   isOmniReadOnlyMcpTool,
@@ -131,31 +132,14 @@ async function open(url: string, token: string): Promise<Session> {
   return s;
 }
 
-async function listTools(s: Session): Promise<{ name: string; description: string; inputSchema: unknown }[]> {
-  const out: { name: string; description: string; inputSchema: unknown }[] = [];
-  let cursor: string | undefined;
-  const cursors = new Set<string>();
-  const names = new Set<string>();
-  for (let i = 0; i < 5; i++) {
-    const r = await rpc(s, 'tools/list', cursor ? { cursor } : {}, 10 + i);
-    if (!Array.isArray(r?.tools)) throw new Error('bad_response');
-    for (const t of r.tools) {
-      const name = typeof t?.name === 'string' ? t.name.trim() : '';
-      if (!/^[A-Za-z0-9_.:/-]{1,100}$/.test(name) || names.has(name)) continue;
-      let inputSchema: unknown = {};
-      if (t.inputSchema && typeof t.inputSchema === 'object' && !Array.isArray(t.inputSchema)) {
-        try { if (JSON.stringify(t.inputSchema).length <= 20_000) inputSchema = t.inputSchema; } catch { /* closed schema */ }
-      }
-      names.add(name);
-      out.push({ name, description: String(t.description ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 300), inputSchema });
-      if (out.length >= 100) return out;
-    }
-    cursor = typeof r?.nextCursor === 'string' && /^[^\u0000-\u001f\u007f]{1,500}$/.test(r.nextCursor) ? r.nextCursor : undefined;
-    if (!cursor) break;
-    if (cursors.has(cursor)) throw new Error('bad_response');
-    cursors.add(cursor);
-  }
-  return out;
+async function listTools(
+  s: Session,
+  sharedOmni = false,
+): Promise<{ name: string; description: string; inputSchema: unknown }[]> {
+  return discoverMcpTools(
+    (params, requestId) => rpc(s, 'tools/list', params, requestId),
+    sharedOmni,
+  );
 }
 
 const str = (v: unknown, max = 500) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
@@ -205,7 +189,7 @@ Deno.serve(async (req) => {
     if (counted.count >= cap) return json(429, { error: 'plan_limit' });
     let tools: Awaited<ReturnType<typeof listTools>>;
     try {
-      const advertised = await listTools(await open(u.toString(), token));
+      const advertised = await listTools(await open(u.toString(), token), omni === 'shared');
       tools = omni === 'shared' ? filterOmniReadOnlyTools(advertised) : advertised;
     } catch {
       return json(502, { error: 'test_failed' });
@@ -261,13 +245,13 @@ Deno.serve(async (req) => {
   try {
     const s = await open(serverUrl, token);
     if (body.action === 'tools') {
-      const advertised = await listTools(s);
+      const advertised = await listTools(s, omni === 'shared');
       const tools = omni === 'shared' ? filterOmniReadOnlyTools(advertised) : advertised;
       await admin.from('integrations').update({ status: 'active', last_error: null, last_used_at: new Date().toISOString(), config: { ...(integ.config as object), tools: tools.length } }).eq('id', id);
       return json(200, { tools });
     }
     if (body.action === 'call') {
-      const advertised = await listTools(s);
+      const advertised = await listTools(s, omni === 'shared');
       if (!advertised.some(t => t.name === tool)) return json(409, { error: 'tool_not_available' });
       // Re-check the role and platform boundary after remote I/O.
       if (!(await isManager(integ.organization_id))) return json(403, { error: 'forbidden' });
