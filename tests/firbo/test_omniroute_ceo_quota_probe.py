@@ -22,8 +22,9 @@ NOW = dt.datetime(2026, 10, 10, 4, 0, tzinfo=dt.timezone.utc)
 KEY = "synthetic-management-secret"
 
 
-def entry(provider="openai", quota_total=None, remaining=100, reset=None,
-          status="valid"):
+def entry(
+    provider="openai", quota_total=None, remaining=100, reset=None, status="valid"
+):
     return {
         "provider": provider,
         "quotaTotal": quota_total,
@@ -145,7 +146,10 @@ def test_no_upstream_body_or_secret_reaches_user_on_http_error(code, expected):
         patch.object(probe.urllib.request, "build_opener") as factory,
     ):
         factory.return_value.open.side_effect = urllib.error.HTTPError(
-            probe.URL, code, "Bearer leaked-provider-secret", None,
+            probe.URL,
+            code,
+            "Bearer leaked-provider-secret",
+            None,
             io.BytesIO(b"private cost data"),
         )
         result = probe.probe()
