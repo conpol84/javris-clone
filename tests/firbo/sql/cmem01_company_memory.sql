@@ -121,9 +121,14 @@ $test$;
 RESET ROLE;
 SET ROLE anon;
 DO $test$
+DECLARE denied boolean:=false;
 BEGIN
- IF (SELECT count(*) FROM public.company_memory_publications) <> 0 THEN
-  RAISE EXCEPTION 'anonymous data leak'; END IF;
+ BEGIN
+  IF (SELECT count(*) FROM public.company_memory_publications) <> 0 THEN
+   RAISE EXCEPTION 'anonymous data leak'; END IF;
+ EXCEPTION WHEN insufficient_privilege THEN denied:=true;
+ END;
+ IF NOT denied THEN RAISE EXCEPTION 'anon should have no table grants'; END IF;
 END
 $test$;
 RESET ROLE;
