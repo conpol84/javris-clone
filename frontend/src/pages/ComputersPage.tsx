@@ -6,7 +6,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
 import { addDevice, cancelJob, canOpenBrowser, ComputerError, giveJob, isOnline, listDevices, listJobs, newPairCode, policyOf, removeDevice, takeControl, type DeviceRow, type JobRow } from '../lib/company/computers';
-import { getVoiceLaptop, setVoiceLaptop } from '../lib/company/laptop-bridge';
+import { getUserVoiceLaptop, setUserVoiceLaptop } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 import {DeviceFabric} from '../components/devices/DeviceFabric';
 import { useComputerQuery } from '../lib/company/useComputerQuery';
@@ -51,10 +51,10 @@ export function ComputersPage() {
   const { current, user } = useCompanyAuth();
   // A workspace or permission change destroys every device/job/pairing draft immediately.
   return <ComputerManager key={`${user?.id ?? ''}:${current?.organization.id ?? ''}:${current?.role ?? ''}`}
-    orgId={current?.organization.id ?? ''} canManage={['owner', 'admin'].includes(current?.role ?? '')} />;
+    orgId={current?.organization.id ?? ''} userId={user?.id ?? ''} canManage={['owner', 'admin'].includes(current?.role ?? '')} />;
 }
 
-function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boolean }) {
+function ComputerManager({ orgId, userId, canManage }: { orgId: string; userId: string; canManage: boolean }) {
   const { t, fmt, lang } = useI18n();
   const l = computerManagerLabels[lang];
   const wc = useWorkspaceCopy();
@@ -76,15 +76,15 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
   const [content, setContent] = useState('');
   const [command, setCommand] = useState('');
   const [busy, setBusy] = useState(false);
-  const [voiceLaptop, setVoiceLaptopState] = useState(() => getVoiceLaptop(orgId));
+  const [voiceLaptop, setVoiceLaptopState] = useState(() => getUserVoiceLaptop(orgId,userId));
   const web = lang === 'el' ? {title:'Website ↔ Laptop',body:'Διάλεξε ποιο online laptop θα λαμβάνει browser εντολές που λες ή γράφεις στο Firbo website.',select:'Χρήση ως Voice laptop',selected:'Επιλεγμένο Voice laptop',permission:'Χρειάζεται νέος Connector με άδεια browser',none:'Δεν υπάρχει online laptop έτοιμο για browser.',upgrade:'Για ήδη συνδεδεμένο laptop: κατέβασε τον νέο Connector, σταμάτησε τον παλιό, τρέξε “node firbo-connector.mjs allow-browser” και μετά ξανά run.',browser:'Άνοιγμα browser',url:'https://example.com',pair:'Σύνδεση μόνο για browser',pairNote:'Δεν δίνει πρόσβαση σε αρχεία ή shell· επιτρέπει μόνο άνοιγμα δημόσιων HTTPS σελίδων.'} : {title:'Website ↔ Laptop',body:'Choose which online laptop receives browser commands spoken or typed into Firbo on this website.',select:'Use as Voice laptop',selected:'Voice laptop selected',permission:'Needs the new Connector with browser permission',none:'No browser-ready laptop is online.',upgrade:'Existing laptop: download the current Connector, stop the old one, run “node firbo-connector.mjs allow-browser”, then run it again.',browser:'Open browser',url:'https://example.com',pair:'Browser-only pairing',pairNote:'This grants no file or shell access; it only opens public HTTPS pages.'};
 
-  const deviceLoader = useCallback(() => listDevices(orgId), [orgId]);
-  const deviceQuery = useComputerQuery(orgId, !!orgId && canManage, deviceLoader, 8000);
+  const deviceLoader = useCallback(() => listDevices(orgId,userId), [orgId,userId]);
+  const deviceQuery = useComputerQuery(`${orgId}:${userId}`, !!orgId && !!userId && canManage, deviceLoader, 8000);
   const devices = deviceQuery.rows;
   const load = deviceQuery.refresh;
-  const jobLoader = useCallback(() => listJobs(orgId, sel ?? ''), [orgId, sel]);
-  const jobQuery = useComputerQuery(`${orgId}:${sel ?? ''}`, !!orgId && !!sel && canManage, jobLoader, 2500);
+  const jobLoader = useCallback(() => listJobs(orgId, sel ?? '',userId), [orgId, sel,userId]);
+  const jobQuery = useComputerQuery(`${orgId}:${userId}:${sel ?? ''}`, !!orgId && !!userId && !!sel && canManage, jobLoader, 2500);
   const jobs = jobQuery.rows;
   const loadJobs = jobQuery.refresh;
   const selectDevice = (id: string) => {
@@ -141,7 +141,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
       await removeDevice(d.id);
       if (!live.current) return;
       if (sel === d.id) setSel(null);
-      if (voiceLaptop === d.id) { setVoiceLaptop(orgId, null); setVoiceLaptopState(null); }
+      if (voiceLaptop === d.id) { setUserVoiceLaptop(orgId,userId,null); setVoiceLaptopState(null); }
       if (pair?.device_id === d.id) setPair(null);
       await load();
     } catch (err) {
@@ -173,7 +173,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
     try {
       await takeControl(chosen.id);
       if (!live.current) return;
-      if (voiceLaptop === chosen.id) { setVoiceLaptop(orgId, null); setVoiceLaptopState(null); }
+      if (voiceLaptop === chosen.id) { setUserVoiceLaptop(orgId,userId,null); setVoiceLaptopState(null); }
       toast.success(accessLabels.takeControlDone);
       await Promise.all([load(), loadJobs()]);
     } catch (err) {
@@ -194,7 +194,7 @@ function ComputerManager({ orgId, canManage }: { orgId: string; canManage: boole
     catch {if(live.current)toast.error(browserTaskLabels(lang).error);}
     finally {mutation.current=false;if(live.current)setBusy(false);}
   };
-  const chooseVoice = (d: DeviceRow) => { if (!canOpenBrowser(d) || !isOnline(d, now)) return; setVoiceLaptop(orgId, d.id); setVoiceLaptopState(d.id); };
+  const chooseVoice = (d: DeviceRow) => { if (!canOpenBrowser(d) || !isOnline(d, now)) return; setUserVoiceLaptop(orgId,userId,d.id); setVoiceLaptopState(d.id); };
 
   return (
     <div className="fb-root h-full overflow-y-auto">

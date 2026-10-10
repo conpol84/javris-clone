@@ -21,6 +21,7 @@ export function policyOf(d: DeviceRow): ComputerPolicy {
 
 export interface DeviceRow {
   id: string;
+  created_by?: string | null;
   name: string;
   platform: string | null;
   paired: boolean;
@@ -81,25 +82,30 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-export async function listDevices(orgId: string): Promise<DeviceRow[]> {
-  const { data, error } = await requireClient()
-    .from('connector_devices')
-    .select('id, name, platform, paired, last_seen_at, capabilities, agent_policy, revoked_at, created_at')
-    .eq('organization_id', orgId)
-    .is('revoked_at', null)
-    .order('created_at', { ascending: false });
+export async function listDevices(orgId: string, userId?: string): Promise<DeviceRow[]> {
+  // The Computers UI supplies the authenticated user; never infer ownership
+  // from company membership or from localStorage preferences.
+  let query = requireClient().from('connector_devices')
+    .select('id, name, platform, created_by, paired, last_seen_at, capabilities, agent_policy, revoked_at, created_at')
+    .eq('organization_id', orgId).is('revoked_at', null);
+  if (userId !== undefined) {
+    if (!userId.trim()) return [];
+    query = query.eq('created_by', userId);
+  }
+  const { data, error } = await query.order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
   return (data ?? []) as DeviceRow[];
 }
 
-export async function listJobs(orgId: string, deviceId: string): Promise<JobRow[]> {
-  const { data, error } = await requireClient()
-    .from('connector_jobs')
+export async function listJobs(orgId: string, deviceId: string, userId?: string): Promise<JobRow[]> {
+  let query = requireClient().from('connector_jobs')
     .select('id, device_id, kind, params, status, result, error, created_at, finished_at, cancel_requested_at, task_id, approval_id, report_sha256, receipt, origin, agent_id')
-    .eq('organization_id', orgId)
-    .eq('device_id', deviceId)
-    .order('created_at', { ascending: false })
-    .limit(15);
+    .eq('organization_id', orgId).eq('device_id', deviceId);
+  if (userId !== undefined) {
+    if (!userId.trim()) return [];
+    query = query.eq('created_by', userId);
+  }
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(15);
   if (error) throw new Error(error.message);
   return (data ?? []) as JobRow[];
 }

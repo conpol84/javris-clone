@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, setVoiceLaptop, getUserVoiceLaptop, setUserVoiceLaptop } from './laptop-bridge';
+import { chooseVoiceLaptop, computerProgressLabel, dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, isComputerControlRequest, parseDirectComputerCommand, parseLaptopBrowserCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, setVoiceLaptop, getUserVoiceLaptop, setUserVoiceLaptop, pinPersonalComputer } from './laptop-bridge';
 import type { DeviceRow, JobRow } from './computers';
 
 const now=Date.parse('2026-10-04T10:00:00Z');
@@ -27,6 +27,31 @@ describe('user-isolated computer preferences',()=>{
   expect(getUserVoiceLaptop('org2','alice',store)).toBeNull();
   expect(setUserVoiceLaptop('org1','alice',null,store)).toBe(true);
   expect(getUserVoiceLaptop('org1','alice',store)).toBeNull();
+ });
+});
+describe('owner-pinned direct CEO routing',()=>{
+ it('pins only the current user device even when both are in the same company',()=>{
+  const store=memory();
+  setUserVoiceLaptop('same-company','alice','alice-laptop',store);
+  setUserVoiceLaptop('same-company','bob','bob-laptop',store);
+  const proposal={kind:'desktop_task',description:'Open a browser',params:{goal:'Open a browser'}};
+  expect(pinPersonalComputer('same-company','alice',proposal,store)).toMatchObject({deviceId:'alice-laptop'});
+  expect(pinPersonalComputer('same-company','bob',proposal,store)).toMatchObject({deviceId:'bob-laptop'});
+  expect(pinPersonalComputer('other-company','alice',proposal,store)).not.toHaveProperty('deviceId');
+  expect(pinPersonalComputer('same-company','',proposal,store)).not.toHaveProperty('deviceId');
+ });
+ it('an explicit device or named target always beats a stored preference',()=>{
+  const store=memory();setUserVoiceLaptop('org','alice','alice-default',store);
+  const explicit={deviceId:'device-on-verified-continuation',kind:'desktop_task'};
+  expect(pinPersonalComputer('org','alice',explicit,store)).toBe(explicit);
+  const named={target:'My shell',kind:'desktop_task'};
+  expect(pinPersonalComputer('org','alice',named,store)).toBe(named);
+ });
+ it('never inherits a legacy company-wide preference without user identity',()=>{
+  const store=memory();setVoiceLaptop('org','old-shared-laptop',store);
+  const proposal={kind:'browser_open',params:{url:'https://example.com/'}};
+  expect(pinPersonalComputer('org','alice',proposal,store)).toEqual(proposal);
+  expect(pinPersonalComputer('org','bob',proposal,store)).toEqual(proposal);
  });
 });
 describe('website to laptop browser bridge',()=>{

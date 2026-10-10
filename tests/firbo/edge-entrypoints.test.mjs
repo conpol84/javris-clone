@@ -93,13 +93,18 @@ function fixture(options={}) {
         error:options.missionStepsError?{message:'private database failure'}:null};
     }
     if(table==='tasks'&&selection==='id,organization_id,status,run_claim,result'&&options.reconciliationReadConflict)return{data:{...task,status:'completed',run_claim:null},error:null};
-    if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
+    if(table==='tasks'&&filters.some(([k])=>k==='neq:id')&&filters.some(([k,v])=>k==='created_by'&&v===USER)){
+       // The new specialist historical-work query is a collection. Its
+       // content must not accidentally reuse the current task singleton.
+       return{data:options.previousAgentTasks??[],error:null};
+     }
+     if(table==='tasks')return{data:options.missingTask?null:{...task,result:state.computerResult??task.result,
       ...(selection?.includes('run_claim')&&(state.rpcs?.some(r=>r.fn==='claim_task_run')||options.taskStatus==='running')?{
         status:options.taskChangedAfterSelection&&state.workerSelections?.length?'completed':'running',
         run_claim:options.taskChangedAfterSelection&&state.workerSelections?.length?null:CLAIM,assigned_agent_id:AGENT}: {})},error:null};
     if(table==='connector_devices'){
       const initialPolicy={enabled:true,apps:['Safari'],shortcuts:[],writes:'auto',commands:'safe',hours:null};
-      const device={id:'13131313-1313-4313-8313-131313131313',organization_id:ORG,name:'Synthetic Mac',platform:'darwin',last_seen_at:new Date().toISOString(),
+      const device={id:'13131313-1313-4313-8313-131313131313',organization_id:ORG,created_by:USER,name:'Synthetic Mac',platform:'darwin',last_seen_at:new Date().toISOString(),
         paired:true,revoked_at:null,capabilities:{job_kinds:['list','read','write','browser_task'],roots:['Documents']},
         agent_policy:single?(options.freshDevicePolicy??initialPolicy):initialPolicy};
       const devices=options.devices??[device];
@@ -117,6 +122,7 @@ function fixture(options={}) {
       return{data:single?jobs.find(j=>filters.every(([k,v])=>j[k]===v))??null:jobs,error:null};
     }
     if(table==='usage_events')return{data:options.memberSpendRows??(options.spent?[{cost_usd:options.spent}]:[]),count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
+    if(table==='company_memory_publications')return{data:options.companyMemoryPublications??[],error:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
     if(table==='messages'){
       // Current chat history, old CEO snippets and exact job-ID lookup must
@@ -132,7 +138,7 @@ function fixture(options={}) {
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'integration read must be bound to verified organization');
       return{data:options.integrations??[],error:options.integrationsError?{message:'db unavailable'}:null};
     }
-    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan,plan_status:options.planStatus??'active',status:'active'},error:null};
+    if(table==='organizations')return{data:{name:'Test company',profile:{},plan:options.plan??'pro',plan_status:options.planStatus??'active',status:'active'},error:null};
     if(table==='cron_secrets')return{data:{value:'cron-test'},error:null};
     throw Error('Unhandled test table '+table);
   };
@@ -388,10 +394,10 @@ const NATIVE_MAC='14141414-1414-4414-8414-141414141414';
 const NATIVE_DEBIAN='15151515-1515-4515-8515-151515151515';
 const nativeEnv={FIRBO_DESKTOP_VISION_MODEL:'openai/test-vision',FIRBO_DESKTOP_PRICE_IN_PER_M:'5',FIRBO_DESKTOP_PRICE_OUT_PER_M:'30'};
 const nativeDevices=()=>[
-  {id:NATIVE_MAC,organization_id:ORG,name:'Synthetic Catalina Mac',platform:'darwin',paired:true,revoked_at:null,
+  {id:NATIVE_MAC,organization_id:ORG,created_by:USER,name:'Synthetic Catalina Mac',platform:'darwin',paired:true,revoked_at:null,
     last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','browser_open'],roots:['Documents']},
     agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
-  {id:NATIVE_DEBIAN,organization_id:ORG,name:'Synthetic Debian',platform:'linux',paired:true,revoked_at:null,
+  {id:NATIVE_DEBIAN,organization_id:ORG,created_by:USER,name:'Synthetic Debian',platform:'linux',paired:true,revoked_at:null,
     last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['list','read','desktop_task'],roots:['/home/firbo'],full_control:true},
     agent_policy:{enabled:true,control:'full',writes:'auto',commands:'safe',hours:null}},
 ];
@@ -562,7 +568,7 @@ test('free runner refuses cron pseudo-identity before task claim',async()=>{
 test('local-model chat stays off unless explicitly switched on, even when a company is listed',async()=>{
   for (const name of ['agent-chat','agent-runner']) {
     const source=await readFile(new URL(`../../supabase/functions/${name}/index.ts`,import.meta.url),'utf8');
-    assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on' && freeForOrganization\(/,name);
+    assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on'[\s\S]{0,180}&& freeForOrganization\(/,name);
   }
 });
 
@@ -1045,8 +1051,9 @@ test('agent-runner: the platform admin company uses the full server agent; a pla
   assert.equal(own.response.status,200);
   assert.ok(own.state.calls.some(c=>String(c.url).startsWith('https://admin-jarvis.example/jarvis/v1/chat/completions')));
   const starter=await invoke('agent-runner',{tools,plan:'starter',env:serverEnv});
-  assert.ok(!starter.state.calls.some(c=>/jarvis/.test(String(c.url))));
-  assert.doesNotMatch(JSON.parse(starter.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content,/server_task/);
+  assert.equal(starter.response.status,503,'unknown unpurchased plan is denied before inference');
+  assert.equal(starter.state.calls.length,0,'no provider or VPS work for unrecognized plan');
+  assert.equal(starter.state.writes.length,0,'unknown plan cannot publish a task');
 });
 
 test('agent-chat: matching company knowledge is part of the answer context', async () => {

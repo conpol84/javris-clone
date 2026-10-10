@@ -955,11 +955,11 @@ Deno.serve(async (req) => {
     } catch { return false; }
   };
   if (!free && usable('computer_use')) {
-    type Machine = { id: string; organization_id: string; name: string; platform?: string; paired: boolean;
+    type Machine = { id: string; organization_id: string; created_by: string; name: string; platform?: string; paired: boolean;
       revoked_at: string | null; last_seen_at: string | null; capabilities: any; agent_policy: any; policy: ComputerPolicy };
     const { data: devRows, error: devicesError } = await admin.from('connector_devices')
-      .select('id, organization_id, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
-      .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null);
+      .select('id, organization_id, created_by, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
+      .eq('organization_id', task.organization_id).eq('created_by',user.id).eq('paired', true).is('revoked_at', null);
     const machines: Machine[] = (devRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy) })).filter((d: Machine) => d.policy.enabled);
     if (!devicesError && machines.length) {
       const online = (d: Machine) => !!d.last_seen_at && Number.isFinite(Date.parse(d.last_seen_at))
@@ -981,8 +981,8 @@ Deno.serve(async (req) => {
         const [{ data: currentRows, error: currentDevicesError }, { data: currentAgent }, { data: currentTool },
           { data: currentTask }, { data: currentMember }, { data: currentOrg, error: currentOrgError },
           { data: activeJobs, error: activeJobsError }] = await Promise.all([
-          admin.from('connector_devices').select('id, organization_id, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
-            .eq('organization_id', task.organization_id).eq('paired', true).is('revoked_at', null),
+          admin.from('connector_devices').select('id, organization_id, created_by, name, platform, paired, revoked_at, last_seen_at, capabilities, agent_policy')
+            .eq('organization_id', task.organization_id).eq('created_by',user.id).eq('paired', true).is('revoked_at', null),
           admin.from('agents').select('id, enabled, autonomy').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
           admin.from('agent_tools').select('enabled, policy').eq('agent_id', agent.id).eq('organization_id', task.organization_id).eq('tool_name', 'computer_use').maybeSingle(),
           admin.from('tasks').select('id, status, run_claim, assigned_agent_id, result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
@@ -1004,7 +1004,7 @@ Deno.serve(async (req) => {
           || !Deno.env.get('FIRBO_DESKTOP_PRICE_OUT_PER_M'))) return 'Native desktop work is not configured or this caller is not authorised. No job was queued.';
         const candidates = (currentRows ?? []).map((d: any) => ({ ...d, policy: cleanPolicy(d.agent_policy),
           load: Array.isArray(activeJobs) ? activeJobs.filter((j: any) => j.device_id === d.id).length : 0 }))
-          .filter((d: Machine) => d.organization_id === task.organization_id && d.policy.enabled && online(d));
+          .filter((d: Machine) => d.organization_id === task.organization_id && d.created_by === user.id && d.policy.enabled && online(d));
         const dispatchInput: WorkerRequest = { requestId: crypto.randomUUID(), organizationId: task.organization_id,
           kind: asked.kind, params: asked.params, devices: candidates,
           ...(asked.target ? { target: asked.target } : {}), ...(asked.deviceId ? { deviceId: asked.deviceId } : {}),
@@ -1024,8 +1024,8 @@ Deno.serve(async (req) => {
         // Recheck the exact chosen worker and claim after the VPS decision.
         const [{ data: fresh }, { data: freshAgent }, { data: freshTool }, { data: freshTask },
           { data: freshMember }, { data: freshOrg, error: freshOrgError }] = await Promise.all([
-          admin.from('connector_devices').select('id, organization_id, name, platform, last_seen_at, capabilities, agent_policy, paired, revoked_at')
-            .eq('id', selection.worker.id).eq('organization_id', task.organization_id).maybeSingle(),
+          admin.from('connector_devices').select('id, organization_id, created_by, name, platform, last_seen_at, capabilities, agent_policy, paired, revoked_at')
+            .eq('id', selection.worker.id).eq('organization_id', task.organization_id).eq('created_by',user.id).maybeSingle(),
           admin.from('agents').select('id, enabled, autonomy').eq('id', agent.id).eq('organization_id', task.organization_id).maybeSingle(),
           admin.from('agent_tools').select('enabled, policy').eq('agent_id', agent.id).eq('organization_id', task.organization_id).eq('tool_name', 'computer_use').maybeSingle(),
           admin.from('tasks').select('id, status, run_claim, assigned_agent_id, result').eq('id', task.id).eq('organization_id', task.organization_id).maybeSingle(),
@@ -1036,7 +1036,7 @@ Deno.serve(async (req) => {
           || freshTask.assigned_agent_id !== agent.id || freshTask.result?.reconcile_required === true
           || !freshMember || !WRITERS.includes(freshMember.role)) return 'This task is no longer authorised to use a company computer. Stop without another step.';
         if (!freshAgent?.enabled || !freshTool?.enabled || !['allow', 'approval', 'approve'].includes(freshTool.policy)) return 'The owner turned this employee computer power off. Do not try again.';
-        if (!fresh || fresh.organization_id !== task.organization_id || !fresh.paired || fresh.revoked_at
+        if (!fresh || fresh.organization_id !== task.organization_id || fresh.created_by !== user.id || !fresh.paired || fresh.revoked_at
           || !candidates.some((d: Machine) => d.id === fresh.id)) return 'The chosen worker is no longer connected to this company. Do not substitute another worker.';
         const machine: Machine = { ...fresh, policy: cleanPolicy(fresh.agent_policy) };
         if (!online(machine) || !kindsOf(machine).includes(execution.kind)) return `"${machine.name}" cannot do that job right now. Do not substitute another worker.`;

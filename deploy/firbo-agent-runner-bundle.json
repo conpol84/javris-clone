@@ -127,8 +127,8 @@
     {
       "path": "index.ts",
       "source_path": "supabase/functions/agent-runner/index.ts",
-      "sha256": "2a6be3cc03d79143199dc771b6e3be5bedaa80958e1d4ffad584fd46d215d0a2",
-      "bytes": 96484
+      "sha256": "5e21f49ebf8ad7db61bc17018f02c05111ebcc66ebd3e162eb48a03151f098ed",
+      "bytes": 96675
     }
   ]
 }

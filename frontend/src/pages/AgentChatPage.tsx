@@ -22,7 +22,7 @@ import { voiceMessages } from '../lib/company/voiceMessages';
 import { isUnlockContinuation, resolveUnlockContinuation } from '../lib/company/computer-continuation';
 import { journalCeoComputerJob } from '../lib/company/ceo-device-journal';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
-import { computerProgressLabel, dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from '../lib/company/laptop-bridge';
+import { computerProgressLabel, dispatchDirectComputerCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, prepareDirectComputerCommand, pinPersonalComputer, type DirectComputerProgress, type DirectComputerProposal } from '../lib/company/laptop-bridge';
 import '../styles/firbo.css';
 
 /** Continuous chat with any AI employee, with saved history. */
@@ -232,7 +232,11 @@ export function AgentChatPage() {
           finally{if(computerRun.current===controller){computerRun.current=null;setComputerRunning(false);}}
           if(voiceScopeRef.current!==scopeAtSend||controller.signal.aborted)return;
         }
-        const proposal=recovered?.recognized&&recovered.proposal?recovered.proposal:parseDirectComputerCommand(msg);
+        const parsedProposal=recovered?.recognized&&recovered.proposal?recovered.proposal:parseDirectComputerCommand(msg);
+        // A user-selected laptop is applied only to otherwise unpinned goals;
+        // explicit named targets and verified unlock continuations take priority.
+        // The server enforces creator ownership independently of this preference.
+        const proposal=parsedProposal&&user?.id?pinPersonalComputer(orgId,user.id,parsedProposal):parsedProposal;
         // A lock-state update never approves a previously pending unrelated job.
         const decision=unlockNotice?null:parseOwnerDecision(msg);
         const pending = pendingComputer.current;

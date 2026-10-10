@@ -21,6 +21,18 @@ export function setUserVoiceLaptop(org:string,user:string,device:string|null,s:S
  if(!scopedKey||!s)return false;
  try{device?s.setItem(scopedKey,device):s.removeItem(scopedKey);return true}catch{return false}
 }
+/** Pins the current user's explicitly selected worker only when the goal did
+ * not already identify another specific device. No cross-user/company fallback,
+ * and the backend independently verifies the device's creator on every request.
+ */
+export function pinPersonalComputer<T extends object>(
+ org:string,user:string,proposal:T,s:StorageLike|null=storage(),
+):T & {deviceId?:string;target?:string} {
+ const action=proposal as T & {deviceId?:string;target?:string};
+ if(!org||!user||action.deviceId||action.target)return action;
+ const selected=getUserVoiceLaptop(org,user,s);
+ return selected?{...action,deviceId:selected}:action;
+}
 export const browserReadyDevices=(rows:DeviceRow[],now=Date.now())=>rows.filter(d=>canOpenBrowser(d)&&isOnline(d,now));
 export function chooseVoiceLaptop(rows:DeviceRow[],selected:string|null,now=Date.now()){const ready=browserReadyDevices(rows,now);return selected?(ready.find(d=>d.id===selected)??null):(ready.length===1?ready[0]:null)}
 function safeUrl(raw:string){let value=raw.trim().replace(/[),.;!?]+$/,'');if(!value)return null;if(!/^https:\/\//i.test(value))value='https://'+value;try{const u=new URL(value);if(u.protocol!=='https:'||u.username||u.password||!u.hostname||u.hostname==='localhost'||/^\d{1,3}(?:\.\d{1,3}){3}$/.test(u.hostname)||u.hostname.includes(':'))return null;return u.href}catch{return null}}

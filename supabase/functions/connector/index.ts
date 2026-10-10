@@ -298,8 +298,9 @@ Deno.serve(async (req) => {
       if (!execution) return json(422,{error:'action_not_executable'});
       deviceId=str(body.device_id,60);
       if (!/^[0-9a-f-]{36}$/i.test(deviceId)) return json(400,{error:'device_required'});
-      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,paired,revoked_at,capabilities,agent_policy,last_seen_at').eq('id',deviceId).maybeSingle();
+      const { data: dev }=await admin.from('connector_devices').select('id,organization_id,created_by,paired,revoked_at,capabilities,agent_policy,last_seen_at').eq('id',deviceId).maybeSingle();
       if (!dev || dev.organization_id!==approval.organization_id || !dev.paired || dev.revoked_at) return json(404,{error:'device_not_ready'});
+      if(dev.created_by!==user.id)return json(403,{error:'forbidden'});
       // Browser control runs only on a computer whose owner turned it on there.
       if (execution.kind==='browser_task' && !(Array.isArray(dev.capabilities?.job_kinds) && dev.capabilities.job_kinds.includes('browser_task'))) return json(409,{error:'device_not_ready'});
       if(execution.kind==='desktop_task'){
@@ -343,8 +344,9 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'new_code') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, created_by, paired, revoked_at').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || dev.paired) return json(404, { error: 'not_found' });
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const code = randomCode(8);
     await admin.from('connector_secrets').update({ pair_code_hash: await sha256(code), pair_expires_at: new Date(Date.now() + PAIR_TTL_MS).toISOString() }).eq('device_id', dev.id);
@@ -352,8 +354,9 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'revoke_device') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, name').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, created_by, name').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev) return json(404, { error: 'not_found' });
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     await admin.from('connector_devices').update({ revoked_at: new Date().toISOString() }).eq('id', dev.id);
     await admin.from('connector_secrets').update({ token_hash: null, pair_code_hash: null }).eq('device_id', dev.id);
@@ -364,9 +367,10 @@ Deno.serve(async (req) => {
 
   if (action === 'take_control') {
     const { data: dev } = await admin.from('connector_devices')
-      .select('id, organization_id, name, agent_policy, revoked_at')
+      .select('id, organization_id, created_by, name, agent_policy, revoked_at')
       .eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at) return json(404, { error: 'not_found' });
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
 
     // Fail closed: disable future AI work before touching active jobs.
@@ -408,9 +412,12 @@ Deno.serve(async (req) => {
     const requestId=body.request_id;
     if(requestId!==undefined&&(typeof requestId!=='string'||! /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(requestId)))return json(400,{error:'bad_request'});
     if(body.owner_full_control_required!==undefined&&body.owner_full_control_required!==true)return json(400,{error:'bad_request'});
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, created_by, paired, revoked_at, name, platform, capabilities, last_seen_at, agent_policy').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at || !dev.paired) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
+    // Owner-issued direct jobs can never target another member's computer.
+    // Agent/approval permissions have their own separately audited policy.
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     const kind = String(body.kind ?? '');
     if(advancedComputerKind(kind)){
       const {data:org,error}=await admin.from('organizations').select('plan,plan_status,status').eq('id',dev.organization_id).maybeSingle();
@@ -464,8 +471,9 @@ Deno.serve(async (req) => {
       // Automatic owner work carries a stricter mode requirement than a
       // manually approved step. Re-read it at the final queue boundary.
       const{data:fresh,error:fe}=await admin.from('connector_devices')
-        .select('id,organization_id,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
+        .select('id,organization_id,created_by,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('id',dev.id).eq('organization_id',dev.organization_id).maybeSingle();
       if(fe)return json(503,{error:'control_unavailable'});
+      if(fresh?.created_by!==user.id)return json(403,{error:'forbidden'});
       const seen=Date.parse(fresh?.last_seen_at??''),age=Date.now()-seen;
       if(!fresh||fresh.paired!==true||fresh.revoked_at||fresh.agent_policy?.enabled!==true||fresh.agent_policy?.control!=='full'
         ||fresh.capabilities?.full_control!==true||!fresh.capabilities?.job_kinds?.includes(kind)||!withinHours(cleanPolicy(fresh.agent_policy))
@@ -482,8 +490,9 @@ Deno.serve(async (req) => {
 
   // What AI employees may do on this computer (owners and admins). Stored cleaned; the agent runner reads it again before every job.
   if (action === 'set_policy') {
-    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, revoked_at, name').eq('id', str(body.device_id, 60)).maybeSingle();
+    const { data: dev } = await admin.from('connector_devices').select('id, organization_id, created_by, revoked_at, name').eq('id', str(body.device_id, 60)).maybeSingle();
     if (!dev || dev.revoked_at) return json(404, { error: 'not_found' });
+    if (dev.created_by !== user.id) return json(403, { error: 'forbidden' });
     if (!OWNERS.includes((await roleIn(dev.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
     const policy = cleanPolicy(body.policy);
     const { error } = await admin.from('connector_devices').update({ agent_policy: policy }).eq('id', dev.id);
@@ -496,6 +505,10 @@ Deno.serve(async (req) => {
     const { data: job } = await admin.from('connector_jobs').select('id, organization_id, device_id, status, cancel_requested_at').eq('id', str(body.job_id, 60)).maybeSingle();
     if (!job) return json(404, { error: 'not_found' });
     if (!OWNERS.includes((await roleIn(job.organization_id)) ?? '')) return json(403, { error: 'forbidden' });
+    const {data:ownerDevice,error:ownerError}=await admin.from('connector_devices')
+      .select('id,created_by').eq('id',job.device_id).eq('organization_id',job.organization_id).maybeSingle();
+    if(ownerError)return json(503,{error:'save_failed'});
+    if(!ownerDevice||ownerDevice.created_by!==user.id)return json(403,{error:'forbidden'});
 
     if (job.status === 'queued') {
       // A queued job may be claimed between the read and the update. No matched row
