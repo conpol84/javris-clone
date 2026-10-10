@@ -1,0 +1,58 @@
+name: FIRBO Native ASGI Entrypoint Gate
+on:
+  pull_request:
+    branches:
+      - codex/firbo-admin-free-llm-login-shortcuts-20261010
+    paths:
+      - deploy/hostinger/docker-compose.yml
+      - deploy/hostinger/.env.example
+      - deploy/hostinger/FIRBO_NATIVE_ASGI_RELEASE_GATE.md
+      - tests/firbo/verify_native_compose.py
+      - .github/workflows/firbo-native-asgi-entrypoint.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  compose-and-native-auth:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Default-off and synthetic opt-in Compose command and environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f deploy/hostinger/.env /tmp/firbo-compose-default.json /tmp/firbo-compose-opt-in.json' EXIT
+          cat > deploy/hostinger/.env <<'EOF'
+          API_DOMAIN=api.example.invalid
+          GATEWAY_DOMAIN=gateway.example.invalid
+          FRONTEND_ORIGINS=https://frontend.example.invalid
+          OPENJARVIS_API_KEY=synthetic-not-real
+          SUPABASE_URL=https://identity.example.invalid
+          SUPABASE_PUBLISHABLE_KEY=synthetic-public
+          OMNIROUTE_API_KEY=synthetic-inference-only
+          OMNIROUTE_MANAGEMENT_KEY=synthetic-management-only
+          EOF
+          docker compose -f deploy/hostinger/docker-compose.yml config --format json > /tmp/firbo-compose-default.json
+          python3 tests/firbo/verify_native_compose.py default /tmp/firbo-compose-default.json
+          FIRBO_API_ASGI_APP=openjarvis.server.firbo_free_app:app \
+          FIRBO_FREE_ENABLED=true \
+          FIRBO_FREE_ORGANIZATIONS=00000000-0000-4000-8000-000000000001 \
+          FIRBO_FREE_LOCAL_MODELS=qwen3:1.7b \
+          FIRBO_FREE_LEDGER=/home/openjarvis/local-ceo/ledger.sqlite3 \
+          FIRBO_FREE_MODEL_DIGEST=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            docker compose -f deploy/hostinger/docker-compose.yml config --format json > /tmp/firbo-compose-opt-in.json
+          python3 tests/firbo/verify_native_compose.py opt-in /tmp/firbo-compose-opt-in.json
+      - name: Native route, JWT, owner/tenant denial, ledger, no-cloud and no-replay tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/firbo-native-gate
+          /tmp/firbo-native-gate/bin/pip install -r tests/firbo/requirements.txt
+          /tmp/firbo-native-gate/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo \
+            tests/firbo/test_control_plane.py \
+            tests/firbo/test_free_inference.py \
+            tests/firbo/test_free_app.py
