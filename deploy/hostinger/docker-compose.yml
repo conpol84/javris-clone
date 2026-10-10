@@ -71,7 +71,9 @@ services:
     restart: unless-stopped
     # Gateway-only API: starts without an inference engine (see openjarvis/server/firbo_app.py).
     entrypoint: ["python", "-m", "uvicorn"]
-    # Default preserves the existing live control API; native free/local endpoints require\n    # explicit owner-approved FIRBO_API_ASGI_APP opt-in after backend/JWT gates.\n    command: ["${FIRBO_API_ASGI_APP:-openjarvis.server.firbo_app:app}", "--host", "0.0.0.0", "--port", "8000"]
+    # Default preserves the existing live control API; native free/local endpoints require
+    # explicit owner-approved FIRBO_API_ASGI_APP opt-in after backend/JWT gates.
+    command: ["${FIRBO_API_ASGI_APP:-openjarvis.server.firbo_app:app}", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       # Browsers never see this key: Firbo users authenticate with their own Supabase session instead.
       OPENJARVIS_API_KEY: ${OPENJARVIS_API_KEY}
@@ -82,6 +84,13 @@ services:
       OMNIROUTE_MANAGEMENT_KEY: ${OMNIROUTE_MANAGEMENT_KEY:-}
       SUPABASE_URL: ${SUPABASE_URL}
       SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY}
+      # All native inference settings default to OFF/empty. Explicit opt-in only.
+      # The ledger must point into an existing private (0700) persistent directory.
+      FIRBO_FREE_ENABLED: ${FIRBO_FREE_ENABLED:-false}
+      FIRBO_FREE_ORGANIZATIONS: ${FIRBO_FREE_ORGANIZATIONS:-}
+      FIRBO_FREE_LOCAL_MODELS: ${FIRBO_FREE_LOCAL_MODELS:-}
+      FIRBO_FREE_LEDGER: ${FIRBO_FREE_LEDGER:-}
+      FIRBO_FREE_MODEL_DIGEST: ${FIRBO_FREE_MODEL_DIGEST:-}
     volumes:
       - ./data/firbo:/home/openjarvis
     depends_on:
