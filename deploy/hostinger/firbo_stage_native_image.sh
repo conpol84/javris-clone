@@ -11,7 +11,8 @@ mode="$1"; commit="$2"; expected_image="$3"
 [[ "$expected_image" =~ ^sha256:[0-9a-f]{64}$ ]] || die "running_image_must_be_sha256"
 for tool in docker git tar awk; do command -v "$tool" >/dev/null || die "missing_dependency"; done
 
-root="$(git -C "$(dirname "$0")/../.." rev-parse --show-toplevel 2>/dev/null)" ||
+root_hint="${FIRBO_SOURCE_REPO:-$(dirname "$0")/../..}"
+root="$(git -C "$root_hint" rev-parse --show-toplevel 2>/dev/null)" ||
   die "not_in_git_checkout"
 resolved="$(git -C "$root" rev-parse --verify "$commit^{commit}" 2>/dev/null)" ||
   die "commit_not_fetched"
