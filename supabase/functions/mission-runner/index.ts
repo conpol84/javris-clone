@@ -11,6 +11,7 @@ import { gatewayForOrgPlan, completeViaGateway, GatewayError, type GatewayPlan }
 import { ownKeyTarget } from '../_shared/own-keys.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { ceoMissionThinkingPolicy } from '../_shared/ceo-intelligence.ts';
+import { agentPlanDecision } from '../_shared/agent-plan-access.ts';
 import { maximumInferenceCost, reserveInference, settleInference, markInferenceAmbiguous } from '../_shared/inference-accounting.ts';
 
 const cors = {
@@ -198,18 +199,22 @@ Deno.serve(async (req) => {
   if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
 
   const admin = createClient(url, service);
+  const { data: orgPlan } = await admin.from('organizations').select('plan,plan_status,status').eq('id', mission.organization_id).maybeSingle();
+  if(!orgPlan)return json(503,{error:'plan_unavailable'});
   const { data: agentRows } = await admin
     .from('agents')
     .select('id, slug, name, type, description, system_prompt, owner_instructions, model, temperature, monthly_budget_usd')
     .eq('organization_id', mission.organization_id)
     .eq('enabled', true);
-  const agents = (agentRows ?? []) as any[];
+  // Downgrades revoke premium execution even for previously hired agents;
+  // do not offer unavailable specialists to the CEO's planner or meetings.
+  const agents = ((agentRows ?? []) as any[]).filter(agent=>agentPlanDecision(orgPlan,agent).allowed);
   if (agents.length === 0) return json(409, { error: 'no_agent' });
   const ceo = agents.find((a) => a.type === 'ceo' || String(a.slug).startsWith('ceo')) ?? agents[0];
 
   const primary = ceo.model && ceo.model !== 'auto' ? ceo.model : Deno.env.get('LLM_DEFAULT') ?? (Deno.env.get('LLM_BASE_URL') ? `custom:${Deno.env.get('LLM_MODEL') ?? 'auto'}` : '');
   const specs = [primary, ...(Deno.env.get('LLM_FALLBACK') ?? '').split(',').map((x) => x.trim())].filter(Boolean);
-  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', mission.organization_id).maybeSingle();
+  // The verified organization entitlement above is also used for routing.
   // The company's own key (Pro and up) goes straight to its provider and nothing else is tried.
   const own = await ownKeyTarget(admin, mission.organization_id, ceo.model);
   let gateway: GatewayPlan | null = null;
