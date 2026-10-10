@@ -109,7 +109,10 @@ def request_once(opener, token, method, url, payload=None, sid=None):
             if session and not re.fullmatch(r"[\x21-\x7e]{1,200}", session):
                 raise AcceptanceError("bad_mcp_session")
             # MCP notification ACK has no JSON-RPC body.
-            if (payload is not None and payload.get("method") == "notifications/initialized"):
+            if (
+                payload is not None
+                and payload.get("method") == "notifications/initialized"
+            ):
                 return response.status, None, session
             if response.status != 200:
                 raise AcceptanceError("mcp_response_not_200")
@@ -190,7 +193,10 @@ def discover(opener, token, sid):
             raise AcceptanceError("mcp_tools_contract_invalid")
         for tool in tools:
             name = tool.get("name") if isinstance(tool, dict) else None
-            if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", name)):
+            if (
+                not isinstance(name, str)
+                or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", name)
+            ):
                 raise AcceptanceError("mcp_tool_name_invalid")
             if name in names:
                 raise AcceptanceError("duplicate_advertised_tool")
@@ -200,7 +206,11 @@ def discover(opener, token, sid):
         cursor = result.get("nextCursor")
         if not cursor:
             return names
-        if (not isinstance(cursor, str) or not 1 <= len(cursor) <= 500 or cursor in cursors):
+        if (
+            not isinstance(cursor, str)
+            or not 1 <= len(cursor) <= 500
+            or cursor in cursors
+        ):
             raise AcceptanceError("invalid_pagination_cursor")
         cursors.add(cursor)
     raise AcceptanceError("incomplete_tool_pagination")
