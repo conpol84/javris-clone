@@ -23,6 +23,45 @@ test('an administrator in the same company cannot queue a direct job on another 
  assert.equal((await r.invoke(body)).status,200,'actual device creator can still queue work');
  assert.equal(r.state.rows.connector_jobs.length,1);
 });
+test('a peer org-admin cannot change, unpair, revoke or stop another user\'s computer',async()=>{
+ const r=await owner();
+ assert.equal((await r.invoke(body)).status,200);
+ r.state.user={id:'peer-admin'};
+ r.state.rows.organization_members.push({organization_id:ORG,user_id:'peer-admin',role:'admin'});
+ const dev=r.state.rows.connector_devices[0];
+ for(const payload of [
+  {action:'revoke_device',device_id:DEVICE},
+  {action:'take_control',device_id:DEVICE},
+  {action:'set_policy',device_id:DEVICE,policy:{enabled:false}},
+  {action:'cancel_job',job_id:ID},
+ ]){
+  const res=await r.invoke(payload);
+  assert.equal(res.status,403,payload.action);
+  assert.equal(r.state.rows.connector_jobs[0].status,'queued','a peer does not stop owner jobs');
+  assert.equal(dev.revoked_at,null,'a peer does not revoke device');
+ }
+ dev.paired=false;
+ assert.equal((await r.invoke({action:'new_code',device_id:DEVICE})).status,403);
+ dev.paired=true;
+ // The real creator retains the Stop path: queued work becomes cancelled.
+ r.state.user={id:'owner'};
+ const stop=await r.invoke({action:'cancel_job',job_id:ID});
+ assert.equal(stop.status,200);
+ assert.equal(r.state.rows.connector_jobs[0].status,'cancelled');
+});
+
+test('same-company admin cannot approve agent execution onto somebody else\'s device',async()=>{
+ const r=await owner();
+ r.state.user={id:'peer-admin'};
+ r.state.rows.organization_members.push({organization_id:ORG,user_id:'peer-admin',role:'admin'});
+ r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',
+   payload:{goal:'Inspect the requested public page',device_id:DEVICE}}];
+ const res=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,
+   payload:{goal:'Inspect the requested public page',device_id:DEVICE}});
+ assert.equal(res.status,403);
+ assert.equal(r.state.decisions,undefined,'never calls transactional RPC for a foreign computer');
+});
+
 test('another tenant cannot reuse or replace an existing request',async()=>{const r=await owner();await r.invoke(body);r.state.rows.organization_members=[];assert.equal((await r.invoke(body)).status,403);assert.equal(r.state.rows.connector_jobs.length,1);});
 test('native Inbox approval cannot change VPS selected device or stored goal',async()=>{const r=await owner();r.state.rows.approvals=[{id:ID,organization_id:ORG,task_id:null,action:'computer_desktop_task',status:'pending',payload:{goal:'Find the requested page',device_id:DEVICE}}];
  const response=await r.invoke({action:'decide_execution',approval_id:ID,decision:'approved',device_id:DEVICE,payload:{goal:'Different task',device_id:DEVICE}});assert.equal(response.status,409);assert.equal(r.state.decisions,undefined);
