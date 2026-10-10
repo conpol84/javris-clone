@@ -18,6 +18,8 @@ import {beginConnection,connectionManifest,finishConnection,connectBridge,readCo
 import {deviceMessages} from '../lib/company/device-messages';
 import {connectionSetupReason,integrationDiagnostic,integrationMessages} from '../lib/company/integration-readiness';
 import { TwoWayChannel } from '../components/company/TwoWayChannel';
+import { FIRBO_OMNI_MCP_URL } from '../../../supabase/functions/_shared/omni-mcp-policy';
+import { omniMcpCopy } from '../lib/company/omni-mcp-copy';
 
 const BRAND = Object.fromEntries(LIVE_APPS.map((a) => [a.kind, a.name])) as Record<IntegrationKind, string>;
 
@@ -28,6 +30,7 @@ function IntegrationWorkspace() {
   const { t, fmt, lang } = useI18n();
   const l=deviceMessages(lang);
   const diagnostics=integrationMessages(lang);
+  const omniCopy=omniMcpCopy(lang);
   const { current } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
   const canManage = MANAGER_ROLES.includes(current?.role ?? 'viewer');
@@ -132,6 +135,14 @@ function IntegrationWorkspace() {
     setValues({});
     setSetup(null);
     setFormError(null);
+  };
+
+  // This is a preset into the existing FIRBO mcp IntegrationKind + Edge
+  // connector, never a second accounts/agents/memory/usage system.
+  const openOmniRoute = () => {
+    open('mcp');
+    setName('OmniRoute · FIRBO Gateway');
+    setValues({ server_url: FIRBO_OMNI_MCP_URL });
   };
 
   const signIn = async (e: FormEvent) => {
@@ -348,6 +359,22 @@ function IntegrationWorkspace() {
             </Panel>
 
             <Panel title={t('int.available')}>
+              <div className="mb-5 rounded-lg border p-3" style={{ borderColor: 'var(--fb-border)' }}>
+                <button
+                  type="button"
+                  className="fb-btn fb-btn--ghost"
+                  onClick={openOmniRoute}
+                  disabled={busy !== null || rows.some(r =>
+                    r.kind === 'mcp' && (r.config as Record<string, unknown> | null)?.host === 'gateway.firboai.app'
+                  )}
+                  data-testid="firbo-existing-omni-mcp"
+                >
+                  <Plug size={14} /> {rows.some(r =>
+                    r.kind === 'mcp' && (r.config as Record<string, unknown> | null)?.host === 'gateway.firboai.app'
+                  ) ? omniCopy.existing : omniCopy.title}
+                </button>
+                <p className="fb-dim mt-2 text-xs">{omniCopy.description}</p>
+              </div>
               {CATEGORIES.map((cat) => (
                 <div key={cat} className="mb-4">
                   <div className="fb-eyebrow mb-2">{t(`int.cat.${cat}` as TKey)}</div>
