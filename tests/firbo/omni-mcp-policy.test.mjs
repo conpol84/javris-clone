@@ -17,6 +17,7 @@ test('only canonical OmniRoute Streamable HTTP endpoint enters protected shared 
     gateway, gateway + '/api/mcp/sse', gateway + '/dashboard',
     gateway + '/api/mcp/stream?token=abc', gateway + '/api/mcp/stream#ignored',
     'http://gateway.firboai.app/api/mcp/stream',
+    'https://gateway.firboai.app./api/mcp/stream',
     'https://user:pass@gateway.firboai.app/api/mcp/stream',
     'https://gateway.firboai.app:8443/api/mcp/stream',
   ]) assert.equal(omniMcpEndpoint(raw), 'wrong_path', raw);
