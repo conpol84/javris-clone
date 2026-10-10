@@ -114,11 +114,14 @@ def test_private_stack_exception_is_sanitized_without_leaking_secrets(
     )
     report = bridge.inspect_stored_credential()
     assert report["reason"] == "stage_unavailable"
-    assert report["stage"] == {
-        "runtime": "inspect_running_compose",
-        "read_private": "read_verified_private_env",
-        "values": "parse_private_key_presence",
-    }[stage]
+    assert (
+        report["stage"]
+        == {
+            "runtime": "inspect_running_compose",
+            "read_private": "read_verified_private_env",
+            "values": "parse_private_key_presence",
+        }[stage]
+    )
     assert KEY not in json.dumps(report)
 
 
