@@ -54,9 +54,7 @@ def probe():
     key = os.environ.get("FREELLMAPI_API_KEY", "")
     if not key or len(key) > 4096 or any(c.isspace() for c in key):
         return {"ready": False, "reason": "inference_key_required"}
-    opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), NoRedirect()
-    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     request = urllib.request.Request(
         CATALOG_URL,
         headers={"Authorization": "Bearer " + key, "Accept": "application/json"},
