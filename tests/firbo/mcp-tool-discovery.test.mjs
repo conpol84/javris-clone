@@ -145,3 +145,26 @@ test('existing FIRBO MCP Edge invokes shared discovery at ALL three entrypoints'
   assert.match(edge, /omniMcpPilotEnabled/);
   assert.match(edge, /filterOmniReadOnlyTools\(advertised\)/);
 });
+
+
+test('generic third-party MCP malformed cursor retains historical end-of-list semantics', async () => {
+  const pages = [123, 'bad\ncursor', []];
+  for (const nextCursor of pages) {
+    let calls = 0;
+    const result = await discoverMcpTools(async () => {
+      calls++;
+      return { tools: [{ name: 'normal_external_tool' }], nextCursor };
+    }, false);
+    assert.deepEqual(result.map(x => x.name), ['normal_external_tool']);
+    assert.equal(calls, 1);
+  }
+});
+
+test('shared OmniRoute rejects invalid cursor rather than quietly losing later allowlisted tools', async () => {
+  for (const nextCursor of [123, 'bad\ncursor', []]) {
+    await assert.rejects(discoverMcpTools(
+      async () => ({ tools: [{ name: 'omniroute_get_health' }], nextCursor }), true),
+      /bad_response/,
+    );
+  }
+});
