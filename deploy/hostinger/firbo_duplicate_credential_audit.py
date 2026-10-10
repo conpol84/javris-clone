@@ -13,19 +13,22 @@ from omniroute_ceo_quota_stack import _failure, _load_existing
 def duplicate_summary(data: bytes, recognized: tuple[str, ...]) -> dict:
     if len(data) > 1_000_000:
         return {
-            "read_only": True, "stage": "duplicate_key_audit",
+            "read_only": True,
+            "stage": "duplicate_key_audit",
             "reason": "configuration_too_large",
         }
     try:
         lines = data.decode("utf-8").splitlines()
     except UnicodeError:
         return {
-            "read_only": True, "stage": "duplicate_key_audit",
+            "read_only": True,
+            "stage": "duplicate_key_audit",
             "reason": "configuration_not_utf8",
         }
     if len(lines) > 20_000:
         return {
-            "read_only": True, "stage": "duplicate_key_audit",
+            "read_only": True,
+            "stage": "duplicate_key_audit",
             "reason": "configuration_too_large",
         }
     allowed = frozenset(recognized)
