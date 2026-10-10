@@ -46,9 +46,7 @@ def summarize(status: int | str, data: object | None) -> dict[str, object]:
     report["mcp_enabled"] = enabled
     report["mcp_online"] = online
     report["mcp_transport"] = (
-        transport
-        if transport in {"streamable-http", "sse", "stdio"}
-        else "unknown"
+        transport if transport in {"streamable-http", "sse", "stdio"} else "unknown"
     )
     report["mcp_per_tool_scopes_enforced"] = scopes_enforced
     report["readiness"] = (
@@ -72,9 +70,7 @@ def fetch_status(token: str) -> tuple[int | str, object | None]:
             "User-Agent": "firbo-readonly-mcp-readiness/1",
         },
     )
-    opener = urllib.request.build_opener(
-        urllib.request.ProxyHandler({}), NoRedirect()
-    )
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
     try:
         with opener.open(req, timeout=7) as resp:
             if resp.status != 200:
