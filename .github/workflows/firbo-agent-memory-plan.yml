@@ -1,0 +1,63 @@
+name: FIRBO agent memory and plan entitlement exact-source gate
+on:
+  push:
+    branches:
+      - codex/firbo-agent-memory-plan-entitlement-20261011
+  pull_request:
+    branches:
+      - codex/firbo-smart-ceo-context-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  specialist-memory-and-plans:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+      - name: Personal agent recall, cross-user denial, plan downgrade and native memory regressions
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo-agent-memory-plan.test.mjs \
+            tests/firbo/ceo-session-recall.test.mjs \
+            tests/firbo/ceo-memory-security.test.mjs \
+            tests/firbo-ceo-intelligence.test.mjs
+      - name: Enforce existing memory quarantine, billing and job approval contracts
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const runner=fs.readFileSync('supabase/functions/agent-runner/index.ts','utf8');
+          const chat=fs.readFileSync('supabase/functions/agent-chat/index.ts','utf8');
+          const mission=fs.readFileSync('supabase/functions/mission-runner/index.ts','utf8');
+          const gates=[
+            runner.includes("agentPlanDecision(orgPlan, agent)"),
+            runner.includes(".eq('created_by',user.id)"),
+            runner.includes(".eq('assigned_agent_id',agent.id).neq('id',task.id)"),
+            runner.includes("buildAgentWorkRecall("),
+            runner.includes("await learningProvenance("),
+            runner.includes("await finalizePendingComputerExecution("),
+            chat.includes("buildCeoSessionRecall(scope)"),
+            chat.includes("buildAgentSessionRecall(scope)"),
+            chat.includes("ownerVisibleMemory("),
+            chat.includes("approvedCompanyMemoryBlock("),
+            chat.includes("agentPlanDecision(orgPlan, agent)"),
+            mission.includes("agentPlanDecision(orgPlan,agent).allowed"),
+          ];
+          if(gates.some(v=>!v))throw Error('Actual FIRBO integration or security gates missing: '+JSON.stringify(gates));
+          console.log('Core agent memory, billing, owner review and computer Stop/no-replay unchanged');
+          JS
+      - name: Align npm version to required frontend engine
+        run: npm install --global npm@11.19.0
+      - name: Install locked frontend dependencies
+        run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Full frontend suite, including previous stages
+        run: npm test --prefix frontend
+      - name: TypeScript, Vite and Tauri production build
+        run: npm run build:tauri --prefix frontend
