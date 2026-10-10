@@ -1,0 +1,48 @@
+name: FIRBO Existing MCP Omni 110-Tool Discovery Guard
+on:
+  push:
+    branches:
+      - codex/firbo-omni-110-catalog-bridge-20261010
+    paths:
+      - supabase/functions/_shared/mcp-tool-discovery.ts
+      - supabase/functions/mcp/index.ts
+      - tests/firbo/mcp-tool-discovery.test.mjs
+      - .github/workflows/firbo-omni-110-catalog-bridge.yml
+  pull_request:
+    branches:
+      - codex/firbo-omni-mcp-restricted-read-acceptance-20261010
+    paths:
+      - supabase/functions/_shared/mcp-tool-discovery.ts
+      - supabase/functions/mcp/index.ts
+      - tests/firbo/mcp-tool-discovery.test.mjs
+      - .github/workflows/firbo-omni-110-catalog-bridge.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  bounded-existing-firbo-mcp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: Prove Omni 110/211/256 with zero remote tool execution
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo/mcp-tool-discovery.test.mjs \
+            tests/firbo/omni-mcp-policy.test.mjs
+      - name: Use reviewed npm major
+        run: npm install --global npm@11.19.0
+      - name: Locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Verify existing FIRBO MCP Edge with STRICT TypeScript
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: Full existing UI/CEO/voice/computer regression and production build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
