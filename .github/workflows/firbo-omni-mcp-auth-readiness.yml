@@ -1,0 +1,65 @@
+name: FIRBO Omni MCP Auth Readiness & Default-OFF Pilot
+on:
+  pull_request:
+    branches:
+      - codex/firbo-one-system-omni-mcp-bridge-20261010
+    paths:
+      - supabase/functions/_shared/omni-mcp-policy.ts
+      - supabase/functions/mcp/index.ts
+      - frontend/src/lib/company/omni-mcp-copy.ts
+      - frontend/src/lib/company/omni-mcp-copy.test.ts
+      - frontend/src/lib/company/integrations.ts
+      - frontend/src/pages/IntegrationsPage.tsx
+      - deploy/hostinger/firbo_omniroute_authenticated_readiness.py
+      - docs/FIRBO-OMNI-SINGLE-SYSTEM-INTEGRATION-20261010.md
+      - tests/firbo/omni-mcp-policy.test.mjs
+      - tests/firbo/test_firbo_omni_authenticated_readiness.py
+      - .github/workflows/firbo-omni-mcp-auth-readiness.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  mock-authenticated-mcp-status:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Strict no-key/source auth and fail-closed readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/firbo-auth-mcp
+          /tmp/firbo-auth-mcp/bin/pip install pytest==9.0.2 ruff==0.16.7
+          /tmp/firbo-auth-mcp/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo \
+            tests/firbo/test_firbo_omni_authenticated_readiness.py
+          /tmp/firbo-auth-mcp/bin/ruff check \
+            deploy/hostinger/firbo_omniroute_authenticated_readiness.py \
+            tests/firbo/test_firbo_omni_authenticated_readiness.py
+          /tmp/firbo-auth-mcp/bin/ruff format --check \
+            deploy/hostinger/firbo_omniroute_authenticated_readiness.py \
+            tests/firbo/test_firbo_omni_authenticated_readiness.py
+
+  existing-firbo-mcp-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - name: No unreviewed scope elevation even from over-scoped key
+        run: node --experimental-strip-types --test tests/firbo/omni-mcp-policy.test.mjs
+      - name: Use tested npm major
+        run: npm install --global npm@11.19.0
+      - name: Locked dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Existing MCP Edge TypeScript integration
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: Full frontend and language regression plus actual build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
