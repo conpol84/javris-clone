@@ -1,0 +1,66 @@
+name: FIRBO OmniRoute Scoped Read-only MCP Acceptance
+on:
+  push:
+    branches:
+      - codex/firbo-omni-mcp-restricted-read-acceptance-20261010
+    paths:
+      - deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py
+      - tests/firbo/test_firbo_omni_mcp_read_acceptance.py
+      - docs/FIRBO-OMNI-MCP-READ-ACCEPTANCE.md
+      - .github/workflows/firbo-omni-mcp-read-acceptance.yml
+  pull_request:
+    branches:
+      - codex/firbo-omni-auth-readonly-pilot-gate-20261010
+    paths:
+      - deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py
+      - tests/firbo/test_firbo_omni_mcp_read_acceptance.py
+      - docs/FIRBO-OMNI-MCP-READ-ACCEPTANCE.md
+      - .github/workflows/firbo-omni-mcp-read-acceptance.yml
+  workflow_dispatch:
+
+permissions: {contents: read}
+jobs:
+  mcp-read-only-acceptance-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Synthetic session, scopes, tool denylist and secret hygiene
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/firbo-mcp-read
+          /tmp/firbo-mcp-read/bin/pip install pytest==9.0.2 ruff==0.16.7
+          /tmp/firbo-mcp-read/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo \
+            tests/firbo/test_firbo_omni_mcp_read_acceptance.py \
+            tests/firbo/test_firbo_omni_authenticated_readiness.py
+          /tmp/firbo-mcp-read/bin/ruff check \
+            deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py \
+            tests/firbo/test_firbo_omni_mcp_read_acceptance.py
+          /tmp/firbo-mcp-read/bin/ruff format --check \
+            deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py \
+            tests/firbo/test_firbo_omni_mcp_read_acceptance.py
+      - name: Fixed HTTPS transport, no alternative tools or credential logging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          src = Path('deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py').read_text()
+          assert 'HOST = "https://gateway.firboai.app"' in src
+          assert 'STREAM_URL = HOST + "/api/mcp/stream"' in src
+          assert 'private_opener()' in src
+          assert 'urllib.request.ProxyHandler({})' in src
+          assert 'class NoRedirect' in src
+          assert 'warnings.simplefilter("error", getpass.GetPassWarning)' in src
+          assert 'mcp_method_not_allowlisted' in src
+          assert 'mcp_tool_not_read_only' in src
+          assert 'if read_health:' in src
+          assert 'READ_TOOL = "omniroute_get_health"' in src
+          assert 'no_retry' in src
+          assert 'api/keys' not in src
+          assert 'OMNIROUTE_MANAGEMENT_KEY' not in src
+          assert 'OMNIROUTE_API_KEY' not in src
+          print('firbo_operator_readonly_mcp_probe_fixed_contract=true')
+          PY
