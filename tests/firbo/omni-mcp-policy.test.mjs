@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
   FIRBO_OMNI_MCP_URL, OMNI_READONLY_MCP_TOOLS, omniMcpEndpoint,
-  isOmniReadOnlyMcpTool, filterOmniReadOnlyTools,
+  isOmniReadOnlyMcpTool, filterOmniReadOnlyTools, omniMcpPilotEnabled,
 } from '../../supabase/functions/_shared/omni-mcp-policy.ts';
 
 const gateway = 'https://gateway.firboai.app';
@@ -63,4 +63,16 @@ test('reuses existing company MCP Edge, RBAC, audit and confirmation; denies sha
   assert.match(frontend, /open\('mcp'\)/);
   assert.match(frontend, /FIRBO_OMNI_MCP_URL/);
   assert.doesNotMatch(frontend, /OMNIROUTE_MANAGEMENT_KEY|OMNIROUTE_API_KEY/);
+});
+
+test('shared Omni MCP pilot stays OFF until owner confirms live scopes and transport', () => {
+  assert.equal(omniMcpPilotEnabled(() => undefined), false);
+  assert.equal(omniMcpPilotEnabled(() => 'false'), false);
+  assert.equal(omniMcpPilotEnabled(() => 'TRUE'), false);
+  assert.equal(omniMcpPilotEnabled(() => 'true '), false);
+  assert.equal(omniMcpPilotEnabled(name => name === 'FIRBO_OMNI_MCP_PILOT_ENABLED' ? 'true' : undefined), true);
+  assert.match(edge, /if \(omni === 'shared' && !omniMcpPilotEnabled/);
+  assert.ok(edge.indexOf('omniMcpPilotEnabled') < edge.indexOf("const counted = await admin.from('integrations')"));
+  assert.ok(edge.indexOf('omniMcpPilotEnabled', edge.indexOf("const serverUrl = String(")) <
+            edge.indexOf("admin.from('integration_secrets')"));
 });
