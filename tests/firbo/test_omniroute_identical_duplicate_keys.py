@@ -29,7 +29,9 @@ def raw_config(management=None, inference=None):
         "OMNIROUTE_MANAGEMENT_KEY=" + MGMT + "\n"
         "OPENJARVIS_API_KEY=confidential-other-service\n"
         "OMNIROUTE_API_KEY=" + (API if inference is None else inference) + "\n"
-        "OMNIROUTE_MANAGEMENT_KEY=" + (MGMT if management is None else management) + "\n"
+        "OMNIROUTE_MANAGEMENT_KEY="
+        + (MGMT if management is None else management)
+        + "\n"
     ).encode()
 
 
@@ -76,9 +78,12 @@ def test_unique_keys_unchanged():
 
 def facade(raw):
     return SimpleNamespace(
-        values=source.values, validate_keys=source.validate_keys,
-        Blocked=source.Blocked, PRESENCE_NAMES=source.PRESENCE_NAMES,
-        KEY_NAMES=source.KEY_NAMES, MAX_FILE=source.MAX_FILE,
+        values=source.values,
+        validate_keys=source.validate_keys,
+        Blocked=source.Blocked,
+        PRESENCE_NAMES=source.PRESENCE_NAMES,
+        KEY_NAMES=source.KEY_NAMES,
+        MAX_FILE=source.MAX_FILE,
         runtime=lambda: {"env_path": Path("/private/.env")},
         read_private=lambda path: raw,
     )
@@ -86,16 +91,22 @@ def facade(raw):
 
 def test_verified_wrapper_uses_only_management_key_in_memory(monkeypatch):
     calls = []
-    quota = SimpleNamespace(probe=lambda management_key: (
-        calls.append(management_key) or {
-            "read_only": True, "quota_telemetry_read": True,
-            "credits_balance_verified": False,
-        }
-    ))
+    quota = SimpleNamespace(
+        probe=lambda management_key: (
+            calls.append(management_key)
+            or {
+                "read_only": True,
+                "quota_telemetry_read": True,
+                "credits_balance_verified": False,
+            }
+        )
+    )
     monkeypatch.setattr(
-        bridge, "_load_existing",
-        lambda name, alias: facade(raw_config())
-        if name == "gateway-credentials.py" else quota,
+        bridge,
+        "_load_existing",
+        lambda name, alias: (
+            facade(raw_config()) if name == "gateway-credentials.py" else quota
+        ),
     )
     result = bridge.inspect_stored_credential()
     assert calls == [MGMT]
@@ -108,13 +119,18 @@ def test_verified_wrapper_uses_only_management_key_in_memory(monkeypatch):
 def test_verified_wrapper_denies_conflict_before_network(monkeypatch):
     quota = SimpleNamespace(probe=lambda **kwargs: pytest.fail("unexpected quota call"))
     monkeypatch.setattr(
-        bridge, "_load_existing",
-        lambda name, alias: facade(raw_config(management="ee" * 20))
-        if name == "gateway-credentials.py" else quota,
+        bridge,
+        "_load_existing",
+        lambda name, alias: (
+            facade(raw_config(management="ee" * 20))
+            if name == "gateway-credentials.py"
+            else quota
+        ),
     )
     result = bridge.inspect_stored_credential()
     assert result == {
-        "read_only": True, "quota_telemetry_read": False,
+        "read_only": True,
+        "quota_telemetry_read": False,
         "stage": "parse_private_key_presence",
         "reason": "duplicate_credential_values_conflict",
     }
