@@ -8,16 +8,20 @@ const json=(status:number,body:unknown)=>new Response(JSON.stringify(body),{stat
 const UUID=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 const text=(v:any,max:number)=>typeof v==='string'&&v.length<=max&&!v.includes('\0')?v:null;
 
-function selectedDeviceReady(device:any,organizationId:string,kind:string):boolean{
-  if(!device||device.organization_id!==organizationId||device.paired!==true||device.revoked_at||!device.last_seen_at)return false;
+/** A company membership grants no rights over another member's own laptop. */
+export function ownerDevice(device:any,organizationId:string,userId:string):boolean {
+  return !!device && typeof userId==='string' && userId.length>0 && device.organization_id===organizationId && device.created_by===userId;
+}
+function selectedDeviceReady(device:any,organizationId:string,kind:string,userId:string):boolean{
+  if(!ownerDevice(device,organizationId,userId)||device.paired!==true||device.revoked_at||!device.last_seen_at)return false;
   const seen=Date.parse(device.last_seen_at),age=Date.now()-seen;
   return Number.isFinite(seen)&&age>=-5000&&age<=60000&&device.agent_policy?.enabled===true
     &&withinHours(cleanPolicy(device.agent_policy))&&device.capabilities?.job_kinds?.includes(kind)===true;
 }
 /** This mode belongs to the selected owner's current rules and real Connector
  * capability. Neither a request field nor a VPS response can grant it. */
-function ownerFullControl(device:any,organizationId:string,kind:string):boolean{
-  return selectedDeviceReady(device,organizationId,kind)&&device.agent_policy?.control==='full'&&device.capabilities?.full_control===true;
+function ownerFullControl(device:any,organizationId:string,kind:string,userId:string):boolean{
+  return selectedDeviceReady(device,organizationId,kind,userId)&&device.agent_policy?.control==='full'&&device.capabilities?.full_control===true;
 }
 
 export function normalizeDispatchParams(kind:string,p:any):Record<string,unknown>{
@@ -64,7 +68,7 @@ Deno.serve(async(req:Request)=>{
   };
   const inventory=async()=>{
     const[{data:devices,error:de},{data:jobs,error:je}]=await Promise.all([
-      admin.from('connector_devices').select('id,name,platform,organization_id,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('organization_id',b.organization_id).eq('paired',true).is('revoked_at',null).limit(20),
+      admin.from('connector_devices').select('id,name,platform,organization_id,created_by,paired,revoked_at,last_seen_at,capabilities,agent_policy').eq('organization_id',b.organization_id).eq('created_by',user.id).eq('paired',true).is('revoked_at',null).limit(20),
       admin.from('connector_jobs').select('device_id').eq('organization_id',b.organization_id).in('status',['queued','running']).limit(200),
     ]);if(de||je)throw new Error('dispatch_unavailable');
     return(devices??[]).map((d:any)=>({...d,load:(jobs??[]).filter((j:any)=>j.device_id===d.id).length}));
@@ -81,7 +85,7 @@ Deno.serve(async(req:Request)=>{
       const{data:freshWho,error:fe}=await userClient.auth.getUser();
       if(fe||freshWho?.user?.id!==user.id||!await role())return json(403,{error:'forbidden'});
       const refreshed=await inventory();const dev=refreshed.find((d:any)=>d.id===prior.device_id);
-      if(prior.created_by!==user.id||prior.origin==='agent'||!dev||canonicalDispatch(prior.dispatch_request)!==canonicalDispatch(dispatchRequestRecord(input))) return json(409,{error:'request_conflict'});
+      if(prior.created_by!==user.id||prior.origin==='agent'||!ownerDevice(dev,b.organization_id,user.id)||canonicalDispatch(prior.dispatch_request)!==canonicalDispatch(dispatchRequestRecord(input))) return json(409,{error:'request_conflict'});
       const recorded={contract:DISPATCH_CONTRACT,request_id:b.request_id,organization_id:b.organization_id,worker:{kind:'computer',id:dev.id,name:dev.name,platform:dev.platform},job:{kind:prior.kind,params:prior.params},reason:'existing_execution'};
       // Readback never authorizes another effect. Preserve the recorded goal
       // after permission/capability/plan downgrade, while still binding its
@@ -91,7 +95,7 @@ Deno.serve(async(req:Request)=>{
         &&canonicalDispatch(prior.params)===canonicalDispatch({goal:input.goal?.trim()||`Open ${String(input.params.app??'').trim()}`});
       if(!exact&&!native)return json(409,{error:'request_conflict'});
       try{validateWorkerDecision(recorded,{...input,devices:refreshed,kind:prior.kind,params:prior.params});}catch{return json(409,{error:'request_conflict'});}
-      const owner_full_control=await entitlement(prior.kind)&&ownerFullControl(dev,b.organization_id,prior.kind);
+      const owner_full_control=await entitlement(prior.kind)&&ownerFullControl(dev,b.organization_id,prior.kind,user.id);
       return json(200,{...recorded,owner_full_control,...(b.action==='dispatch'?{job_id:prior.id,duplicate:true}:{})});
     }
     if(!await entitlement(b.kind))return json(403,{error:'business_plan_required'});
@@ -103,10 +107,10 @@ Deno.serve(async(req:Request)=>{
     if(fe||freshWho?.user?.id!==user.id||!await role())return json(403,{error:'forbidden'});
     if(!await entitlement(choice.job.kind))return json(403,{error:'business_plan_required'});
     const freshDevices=await inventory();const fresh=freshDevices.find((d:any)=>d.id===choice.worker.id);
-    if(!selectedDeviceReady(fresh,b.organization_id,choice.job.kind)
+    if(!selectedDeviceReady(fresh,b.organization_id,choice.job.kind,user.id)
       ||choice.job.kind==='desktop_task'&&(fresh.agent_policy?.control!=='full'||fresh.capabilities?.full_control!==true))return json(409,{error:'target_unavailable'});
     validateWorkerDecision(choice,{...input,devices:freshDevices});
-    const owner_full_control=ownerFullControl(fresh,b.organization_id,choice.job.kind);
+    const owner_full_control=ownerFullControl(fresh,b.organization_id,choice.job.kind,user.id);
     if(b.action==='preview')return json(200,{...choice,owner_full_control});
     if(b.owner_full_control_required===true&&!owner_full_control)return json(409,{error:'target_unavailable'});
     // Forward the original user's token, never a service-role queue bypass.
