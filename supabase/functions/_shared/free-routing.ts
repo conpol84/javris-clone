@@ -74,9 +74,9 @@ export function legacyProviderFailureCode(error: unknown): string {
  * companies and non-CEO agents are unchanged. Disabled by default. */
 export function approvedFreeCeoFallback(input: {
   organizationId: string; isCeo: boolean; hasOwnKey: boolean;
-  alreadyFree: boolean; errorCode: string; env: EnvReader;
+  alreadyFree: boolean; directTargetCount: number; errorCode: string; env: EnvReader;
 }): boolean {
-  if (!input.isCeo || input.hasOwnKey || input.alreadyFree
+  if (!input.isCeo || input.hasOwnKey || input.alreadyFree || input.directTargetCount !== 1
     || input.errorCode !== 'model_provider_rate_limited'
     || input.env('FIRBO_ALLOW_LOCAL_FALLBACK') !== 'on') return false;
   try { return freeForOrganization(input.organizationId, input.env); }
