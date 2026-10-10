@@ -16,7 +16,7 @@ const USER='55555555-5555-4555-8555-555555555555';
 const FOREIGN='66666666-6666-4666-8666-666666666666';
 const nativeGoal='Open YouTube and observe the requested playback clock advancing';
 const env=name=>({OPENJARVIS_URL:'https://vps.example/v1/',OPENJARVIS_API_KEY:'synthetic-selector-key'})[name];
-const device=(id=DEBIAN,changes={})=>({id,organization_id:ORG,name:id===MAC?'Mac':'Debian',platform:id===MAC?'darwin x64':'linux x64',paired:true,revoked_at:null,
+const device=(id=DEBIAN,changes={})=>({id,organization_id:ORG,created_by:USER,name:id===MAC?'Mac':'Debian',platform:id===MAC?'darwin x64':'linux x64',paired:true,revoked_at:null,
   last_seen_at:new Date().toISOString(),capabilities:{job_kinds:['desktop_task','browser_open'],full_control:true},agent_policy:{enabled:true,control:'full',hours:null},load:0,...changes});
 const input=(changes={})=>({requestId:REQUEST,organizationId:ORG,kind:'desktop_task',params:{goal:nativeGoal},goal:nativeGoal,devices:[device()],...changes});
 const choice=(request,dev=request.devices[0],job={kind:request.kind,params:request.params})=>({contract:dispatch.DISPATCH_CONTRACT,
@@ -159,6 +159,37 @@ test('actual Edge selects from trusted same-company inventory and previews witho
   assert.equal(h.state.calls[0].body.devices[0].load,0);assert.equal(h.state.rows.connector_jobs.length,1);
 });
 
+test('an org administrator cannot preview, retarget or queue a different owner\'s computer',async()=>{
+ const h=await edgeAdapter();
+ // The MAC remains in the same company but belongs to a second user.
+ h.state.rows.connector_devices[1].created_by=FOREIGN;
+ const preview=await h.invoke(body({action:'preview',confirm:undefined}));
+ assert.equal(preview.status,200);
+ assert.equal(h.state.calls.length,1);
+ assert.deepEqual(h.state.calls[0].body.devices.map(d=>d.id),[DEBIAN]);
+ assert.equal(h.state.rows.connector_jobs.length,0);
+ // An explicit foreign device ID must never select a different computer.
+ const foreign=await h.invoke(body({device_id:MAC}));
+ assert.notEqual(foreign.status,200);
+ assert.equal(h.state.rows.connector_jobs.length,0);
+ assert.equal(h.state.calls.length,1,'foreign pin denied before a second VPS call');
+});
+test('owner transfer after VPS selection denies dispatch instead of reassigning worker',async()=>{
+ const h=await edgeAdapter();
+ h.state.vpsHook=(_request,state)=>{state.rows.connector_devices[0].created_by=FOREIGN;};
+ const response=await h.invoke();
+ assert.equal(response.status,409);
+ assert.equal(h.state.calls.length,1);
+ assert.equal(h.state.rows.connector_jobs.length,0);
+});
+test('missing creator does not make a company laptop available for direct CEO control',async()=>{
+ const h=await edgeAdapter();
+ delete h.state.rows.connector_devices[0].created_by;
+ const res=await h.invoke(body({device_id:DEBIAN}));
+ assert.equal(res.status,409);
+ assert.equal(h.state.calls.length,0);
+ assert.equal(h.state.rows.connector_jobs.length,0);
+});
 test('actual Edge normalizes only the approved app and enqueues the VPS-selected adapted goal using the original user',async()=>{
   const h=await edgeAdapter();h.state.adapt=true;
   const res=await h.invoke(body({kind:'open_app',params:{app:' Google Chrome ',command:'ignored'},goal:'Open Google Chrome',device_id:DEBIAN}));
