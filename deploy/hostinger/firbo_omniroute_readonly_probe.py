@@ -81,7 +81,8 @@ def audit(get=fetch_json) -> dict[str, object]:
 
         if label == "gateway_health":
             report["gateway_responding"] = (
-                status == 200 and isinstance(value, dict)
+                status == 200
+                and isinstance(value, dict)
                 and value.get("status") == "ok"
             )
         elif label == "agent_catalog":
@@ -113,10 +114,9 @@ def audit(get=fetch_json) -> dict[str, object]:
         elif label == "agent_card":
             if status == 200 and isinstance(value, dict):
                 skills = value.get("skills")
-                report["a2a_card_advertised"] = (
-                    isinstance(value.get("url"), str)
-                    and isinstance(skills, list)
-                )
+                report["a2a_card_advertised"] = isinstance(
+                    value.get("url"), str
+                ) and isinstance(skills, list)
                 if isinstance(skills, list):
                     report["a2a_card_skill_count"] = min(len(skills), 1000)
         elif label == "a2a_status":
