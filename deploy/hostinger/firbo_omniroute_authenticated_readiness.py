@@ -15,6 +15,7 @@ import getpass
 import json
 import urllib.error
 import urllib.request
+import warnings
 
 URL = "https://gateway.firboai.app/api/mcp/status"
 MAX_BYTES = 64 * 1024
@@ -97,8 +98,11 @@ def main() -> int:
     )
     try:
         # getpass opens /dev/tty even if code is piped from git show.
-        token = getpass.getpass("Dedicated MCP-only key (hidden): ")
-    except (OSError, EOFError, KeyboardInterrupt):
+        # A missing/unsupported TTY must NEVER fall back to echoed stdin.
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", getpass.GetPassWarning)
+            token = getpass.getpass("Dedicated MCP-only key (hidden): ")
+    except (OSError, EOFError, KeyboardInterrupt, getpass.GetPassWarning):
         print("interactive_owner_terminal_required")
         return 4
     status, data = fetch_status(token)
