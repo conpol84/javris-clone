@@ -80,8 +80,6 @@ def payload():
 
 
 AUTH = {"authorization": "Bearer synthetic-user"}
-
-
 LOCAL_ONLY = "/v1/firbo/free/local/chat/completions"
 
 
@@ -136,9 +134,7 @@ def test_local_only_uses_ollama_when_cloud_is_enabled(app_env, monkeypatch):
     response = client.post(LOCAL_ONLY, json=payload(), headers=AUTH)
     assert response.status_code == 200
     assert response.json()["model"] == "ollama:qwen3:1.7b"
-    local_calls = [
-        req for req in state["requests"] if req.url.host == "firbo-ollama"
-    ]
+    local_calls = [req for req in state["requests"] if req.url.host == "firbo-ollama"]
     assert len(local_calls) == 1
     assert all(req.url.host != "openrouter.ai" for req in state["requests"])
 
