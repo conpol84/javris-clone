@@ -45,7 +45,7 @@ class FakeReply:
 class FakeOmni:
     def __init__(self, *, status=None, advertised=None, reply_error=False):
         self.calls = []
-        self.status = status or {
+        self.status = status if status is not None else {
             "enabled": True,
             "online": True,
             "transport": "streamable-http",
