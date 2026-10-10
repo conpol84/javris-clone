@@ -58,7 +58,10 @@ def test_reads_key_in_process_without_export_or_echo_or_inference(monkeypatch):
         result = bridge.inspect_stored_credential()
         assert "OMNIROUTE_MANAGEMENT_KEY" not in os.environ
     assert received == [KEY]
-    assert result == successful_quota()
+    assert result == {
+        **successful_quota(),
+        "identical_duplicate_keys_checked_in_memory": False,
+    }
     assert KEY not in json.dumps(result)
 
 
