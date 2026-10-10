@@ -9,6 +9,7 @@ describe('single FIRBO + OmniRoute MCP integration in every FIRBO locale', () =>
       expect(copy.description.length).toBeGreaterThan(60);
       expect(copy.description).toContain('mcp:connect');
       expect(copy.existing.length).toBeGreaterThan(8);
+      expect(copy.notReady.length).toBeGreaterThan(20);
     });
   }
   it('falls back only for unknown locales without losing the warnings', () => {

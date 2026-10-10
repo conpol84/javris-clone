@@ -123,6 +123,7 @@ function IntegrationWorkspace() {
 
   const errText = (err: unknown) => {
     const code = err instanceof IntegrationError || err instanceof ConnectedAppError ? err.code : 'unknown';
+    if (code === 'omni_pilot_disabled') return omniCopy.notReady;
     const diagnostic=integrationDiagnostic(code);
     if(diagnostic)return diagnostics[diagnostic];
     const key=code==='too_many'?'limit':['read_only','invalid_fields','test_failed','send_failed','forbidden','plan_limit'].includes(code)?code:'unknown';
