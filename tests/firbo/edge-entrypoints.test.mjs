@@ -568,7 +568,7 @@ test('free runner refuses cron pseudo-identity before task claim',async()=>{
 test('local-model chat stays off unless explicitly switched on, even when a company is listed',async()=>{
   for (const name of ['agent-chat','agent-runner']) {
     const source=await readFile(new URL(`../../supabase/functions/${name}/index.ts`,import.meta.url),'utf8');
-    assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on' && freeForOrganization\(/,name);
+    assert.match(source,/Deno\.env\.get\('FIRBO_ALLOW_LOCAL_CHAT'\) === 'on'[\s\S]{0,180}&& freeForOrganization\(/,name);
   }
 });
 
@@ -1051,8 +1051,9 @@ test('agent-runner: the platform admin company uses the full server agent; a pla
   assert.equal(own.response.status,200);
   assert.ok(own.state.calls.some(c=>String(c.url).startsWith('https://admin-jarvis.example/jarvis/v1/chat/completions')));
   const starter=await invoke('agent-runner',{tools,plan:'starter',env:serverEnv});
-  assert.ok(!starter.state.calls.some(c=>/jarvis/.test(String(c.url))));
-  assert.doesNotMatch(JSON.parse(starter.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content,/server_task/);
+  assert.equal(starter.response.status,503,'unknown unpurchased plan is denied before inference');
+  assert.equal(starter.state.calls.length,0,'no provider or VPS work for unrecognized plan');
+  assert.equal(starter.state.writes.length,0,'unknown plan cannot publish a task');
 });
 
 test('agent-chat: matching company knowledge is part of the answer context', async () => {
