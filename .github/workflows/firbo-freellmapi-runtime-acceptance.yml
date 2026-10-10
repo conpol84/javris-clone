@@ -13,7 +13,6 @@ on:
       - tests/firbo/test_freellmapi_acceptance.py
       - tests/firbo/test_freellmapi_inventory.py
       - tests/firbo/test_freellmapi_gateway_probe.py
-      - tests/firbo/test_freellmapi_gateway_probe.py
       - .github/workflows/firbo-freellmapi-runtime-acceptance.yml
   workflow_dispatch:
 permissions:
