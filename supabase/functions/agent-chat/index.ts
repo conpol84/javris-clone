@@ -224,20 +224,23 @@ Deno.serve(async (req) => {
   let pastSessionsUnavailable=false;
   if(isCeo){
     try{
+      // Scan up to 60 user-owned CEO sessions in TWO bounded queries. This
+      // covers older owner decisions without widening the 1,700-char prompt or
+      // acquiring another paid model. Full transcript remains on the server.
       // Service-role reads MUST carry these explicit independent tenant/user
       // filters. A company's owner/admin is not the owner of members' chats.
       const {data:oldSessions,error:oldError}=await admin.from('conversations')
        .select('id,organization_id,user_id,agent_id,title,updated_at')
        .eq('organization_id',convo.organization_id).eq('user_id',user.id)
        .eq('agent_id',agent.id).eq('status','active').neq('id',convo.id)
-       .order('updated_at',{ascending:false}).limit(18);
+       .order('updated_at',{ascending:false}).limit(60);
       if(oldError)throw oldError;
       const ids=(oldSessions??[]).map((s:any)=>s.id);
       if(ids.length){
         const {data:oldMessages,error:messageError}=await admin.from('messages')
          .select('conversation_id,role,content,created_at')
          .eq('organization_id',convo.organization_id).in('conversation_id',ids)
-         .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(220);
+         .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(440);
         if(messageError)throw messageError;
         previousCeoSessions=buildCeoSessionRecall({
           organizationId:convo.organization_id,userId:user.id,agentId:agent.id,
