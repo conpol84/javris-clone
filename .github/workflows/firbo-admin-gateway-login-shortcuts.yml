@@ -1,0 +1,38 @@
+name: FIRBO Admin Gateway Login Shortcuts
+on:
+  pull_request:
+    branches:
+      - codex/firbo-identical-keys-safe-quota-readback-20261010
+    paths:
+      - frontend/src/components/gateway/ServiceAccessPanel.tsx
+      - frontend/src/components/gateway/ServiceAccessPanel.login.test.tsx
+      - frontend/src/pages/GatewayLegacyPanel.tsx
+      - .github/workflows/firbo-admin-gateway-login-shortcuts.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Pin required npm
+        run: npm install --global npm@11.19.0
+      - name: Install reviewed frontend lockfile
+        working-directory: frontend
+        run: npm ci
+      - name: Admin login and private tunnel security tests
+        working-directory: frontend
+        run: |
+          npx --no-install vitest run src/components/gateway/ServiceAccessPanel.login.test.tsx src/components/gateway/ServiceAccessPanel.test.tsx src/lib/company/service-dashboards.test.ts
+      - name: Full frontend test suite and strict TypeScript build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
