@@ -1,0 +1,59 @@
+name: FIRBO CEO Cloud Primary Ollama Standby
+on:
+  pull_request:
+    branches:
+      - codex/firbo-omniroute-stored-key-readonly-20261010
+    paths:
+      - supabase/functions/agent-chat/index.ts
+      - supabase/functions/_shared/ceo-model-recovery.ts
+      - frontend/src/lib/company/ceo-ollama-backup.ts
+      - frontend/src/lib/company/ceo-ollama-backup.test.ts
+      - frontend/src/lib/company/runner.ts
+      - frontend/src/lib/company/runner.backup.test.ts
+      - frontend/src/lib/company/useCeoSession.ts
+      - frontend/src/lib/company/useCeoSession.computer.test.ts
+      - deploy/hostinger/firbo_duplicate_credential_audit.py
+      - tests/firbo/test_firbo_duplicate_credential_audit.py
+      - tests/firbo/ceo-ollama-standby.test.mjs
+      - .github/workflows/firbo-ceo-ollama-standby.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  exact-head-guardrails:
+    runs-on: ubuntu-latest
+    timeout-minutes: 32
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Dedicated Edge owner/tenant/no-replay contracts
+        run: |
+          node --experimental-strip-types --test tests/firbo/ceo-ollama-standby.test.mjs tests/firbo/ceo-local-primary.test.mjs tests/firbo/ceo-local-recovery.test.mjs tests/firbo/free-routing.test.mjs
+      - name: Isolated Python dependency pins
+        run: |
+          python3 -m venv /tmp/firbo-duplicate-audit
+          /tmp/firbo-duplicate-audit/bin/pip install pytest==9.1.1 ruff==0.16.7
+      - name: Private credential key-name-only report
+        run: |
+          /tmp/firbo-duplicate-audit/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo tests/firbo/test_firbo_duplicate_credential_audit.py tests/firbo/test_omniroute_ceo_quota_stack.py
+      - name: Strict Python lint and formatting
+        run: |
+          /tmp/firbo-duplicate-audit/bin/ruff check deploy/hostinger/firbo_duplicate_credential_audit.py tests/firbo/test_firbo_duplicate_credential_audit.py
+          /tmp/firbo-duplicate-audit/bin/ruff format --check deploy/hostinger/firbo_duplicate_credential_audit.py tests/firbo/test_firbo_duplicate_credential_audit.py
+      - name: Required npm engine
+        run: npm install --global npm@11.19.0
+      - name: Locked frontend setup
+        working-directory: frontend
+        run: npm ci
+      - name: Strict Edge TypeScript
+        working-directory: frontend
+        run: npx --no-install tsc -p ../tests/firbo/tsconfig.edge.json
+      - name: Full frontend tests and production build
+        working-directory: frontend
+        run: |
+          npm test
+          npm run build:tauri
