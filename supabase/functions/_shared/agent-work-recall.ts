@@ -57,6 +57,11 @@ export function buildAgentWorkRecall(scope:AgentWorkScope,rows:readonly AgentWor
  if(!valid(scope.organizationId)||!valid(scope.userId)||!valid(scope.agentId)
    ||!valid(scope.currentTaskId)||!valid(scope.goal))return'';
  const q=new Set(terms(scope.goal));
+ // A short explicit "continue" request has no topical overlap with a saved
+ // task title. Fall back to the most recent eligible work, never to a foreign
+ // user/agent or an unverified/incomplete previous execution.
+ const request=fold(scope.goal);
+ const continuing=/(?:^|\s)(?:continue|resume|earlier|previous|sinexis\p{L}*|synexis\p{L}*|συνεχι\p{L}*|συνεχ\p{L}*|ξαναπιασ\p{L}*)(?=\s|$)/u.test(request);
  const eligible=rows.filter(row=>row&&row.id!==scope.currentTaskId
     &&row.organization_id===scope.organizationId&&row.created_by===scope.userId
     &&row.assigned_agent_id===scope.agentId&&pastAgentTaskUsable(row));
@@ -65,7 +70,7 @@ export function buildAgentWorkRecall(scope:AgentWorkScope,rows:readonly AgentWor
    const score=[...q].filter(word=>match.has(word)).length;
    const date=String(row.completed_at??row.updated_at??'');
    return{row,score,date};
- }).filter(entry=>entry.score>0)
+ }).filter(entry=>entry.score>0||continuing)
    .sort((a,b)=>b.score-a.score||b.date.localeCompare(a.date))
    .slice(0,4);
  if(!ranked.length)return'';
