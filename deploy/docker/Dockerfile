@@ -78,6 +78,16 @@ RUN groupadd --system --gid 10001 openjarvis && \
 ENV HOME=/home/openjarvis
 USER openjarvis
 
+# FIRBO Hostinger opt-in image build gate. Other OpenJarvis builds remain
+# unaffected. Fail the build before deployment if the installed wheel/source
+# does NOT expose the reviewed local-only POST endpoint.
+ARG FIRBO_NATIVE_ROUTE_ATTEST=0
+RUN if [ "$FIRBO_NATIVE_ROUTE_ATTEST" = "1" ]; then \
+      python3 -B -c 'from openjarvis.server.firbo_free_app import app; p="/v1/firbo/free/local/chat/completions"; assert any(getattr(r,"path","")==p and "POST" in (getattr(r,"methods",None) or set()) for r in app.routes), "firbo_native_route_missing"; print("firbo_native_route_verified")'; \
+    elif [ "$FIRBO_NATIVE_ROUTE_ATTEST" != "0" ]; then \
+      echo "invalid_native_attestation_mode" >&2; exit 1; \
+    fi
+
 EXPOSE 8000
 
 # Keep `jarvis` as the image entrypoint so Docker and Compose command overrides

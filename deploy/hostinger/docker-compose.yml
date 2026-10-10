@@ -67,6 +67,9 @@ services:
     build:
       context: ../..
       dockerfile: deploy/docker/Dockerfile
+      args:
+        # Build-time only. Does not activate the native endpoint or fallback.
+        FIRBO_NATIVE_ROUTE_ATTEST: "1"
     container_name: firbo-api
     restart: unless-stopped
     # Gateway-only API: starts without an inference engine (see openjarvis/server/firbo_app.py).

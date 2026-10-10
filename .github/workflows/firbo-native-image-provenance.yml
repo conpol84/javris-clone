@@ -1,0 +1,73 @@
+name: FIRBO Native Image Provenance
+on:
+  pull_request:
+    branches:
+      - codex/firbo-mobile-dual-device-continuation-20261010
+    paths:
+      - deploy/hostinger/firbo_native_image_provenance.py
+      - deploy/hostinger/FIRBO_NATIVE_ASGI_RELEASE_GATE.md
+      - deploy/hostinger/docker-compose.yml
+      - deploy/docker/Dockerfile
+      - tests/firbo/test_firbo_native_image_provenance.py
+      - tests/firbo/verify_native_compose.py
+      - .github/workflows/firbo-native-image-provenance.yml
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  native-source-and-image-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Pinned native provenance tests and source route/auth tests
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/firbo-image-verify
+          /tmp/firbo-image-verify/bin/pip install -r tests/firbo/requirements.txt ruff==0.16.7
+          /tmp/firbo-image-verify/bin/python -m pytest -q -c /dev/null --confcutdir=tests/firbo \
+            tests/firbo/test_firbo_native_image_provenance.py \
+            tests/firbo/test_control_plane.py \
+            tests/firbo/test_free_inference.py \
+            tests/firbo/test_free_app.py
+          /tmp/firbo-image-verify/bin/ruff check \
+            deploy/hostinger/firbo_native_image_provenance.py \
+            tests/firbo/test_firbo_native_image_provenance.py
+          /tmp/firbo-image-verify/bin/ruff format --check \
+            deploy/hostinger/firbo_native_image_provenance.py \
+            tests/firbo/test_firbo_native_image_provenance.py
+      - name: Both Compose paths require packaged endpoint attestation
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          trap 'rm -f deploy/hostinger/.env /tmp/firbo-provenance-default.json /tmp/firbo-provenance-optin.json' EXIT
+          cat > deploy/hostinger/.env <<'EOF'
+          API_DOMAIN=api.example.invalid
+          GATEWAY_DOMAIN=gateway.example.invalid
+          FRONTEND_ORIGINS=https://frontend.example.invalid
+          OPENJARVIS_API_KEY=synthetic-not-real
+          SUPABASE_URL=https://identity.example.invalid
+          SUPABASE_PUBLISHABLE_KEY=synthetic-public
+          OMNIROUTE_API_KEY=synthetic-infer
+          OMNIROUTE_MANAGEMENT_KEY=synthetic-manage
+          EOF
+          docker compose -f deploy/hostinger/docker-compose.yml config --format json > /tmp/firbo-provenance-default.json
+          python3 tests/firbo/verify_native_compose.py default /tmp/firbo-provenance-default.json
+          FIRBO_API_ASGI_APP=openjarvis.server.firbo_free_app:app \
+          FIRBO_FREE_ENABLED=true \
+          FIRBO_FREE_ORGANIZATIONS=00000000-0000-4000-8000-000000000001 \
+          FIRBO_FREE_LOCAL_MODELS=qwen3:1.7b \
+          FIRBO_FREE_LEDGER=/home/openjarvis/local-ceo/ledger.sqlite3 \
+          FIRBO_FREE_MODEL_DIGEST=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            docker compose -f deploy/hostinger/docker-compose.yml config --format json > /tmp/firbo-provenance-optin.json
+          python3 tests/firbo/verify_native_compose.py opt-in /tmp/firbo-provenance-optin.json
+          python3 - <<'PY'
+          from pathlib import Path
+          dockerfile = Path("deploy/docker/Dockerfile").read_text()
+          assert "ARG FIRBO_NATIVE_ROUTE_ATTEST=0" in dockerfile
+          assert 'python3 -B -c' in dockerfile
+          assert 'firbo_native_route_missing' in dockerfile
+          assert '/v1/firbo/free/local/chat/completions' in dockerfile
+          print("dockerfile_native_route_attestation_present")
+          PY
