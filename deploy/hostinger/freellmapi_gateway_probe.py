@@ -79,11 +79,26 @@ def probe():
             and isinstance(model.get("id"), str)
             and bool(model["id"].strip())
         )
+        registered_ids = {
+            row["id"] for row in models
+            if isinstance(row, dict) and isinstance(row.get("id"), str)
+        }
+        # A canary NAME alone is not proof that it actually selects FreeLLMAPI.
+        expected_refs = {
+            "freellmapi/" + name for name in registered_ids
+        } | {
+            name for name in registered_ids if name.startswith("freellmapi/")
+        }
         canary = sum(
             1 for combo in combos
             if isinstance(combo, dict)
             and isinstance(combo.get("name"), str)
             and combo["name"].startswith("firbo-freellmapi-canary")
+            and isinstance(combo.get("models"), list)
+            and any(
+                isinstance(item, str) and item in expected_refs
+                for item in combo["models"]
+            )
         )
         return {
             "ready": bool(model_count and canary),
