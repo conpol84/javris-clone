@@ -13,7 +13,8 @@ import { markInferenceAmbiguous, maximumInferenceCost, releaseInference, reserve
 import { memoryBlocks, approvedCompanyMemoryBlock, type MemoryRow } from '../_shared/company-pulse.ts';
 import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
-import { buildCeoSessionRecall } from '../_shared/ceo-session-recall.ts';
+import { buildCeoSessionRecall, buildAgentSessionRecall } from '../_shared/ceo-session-recall.ts';
+import { agentPlanDecision } from '../_shared/agent-plan-access.ts';
 import { compactForFree, ceoOperatingPolicy } from '../_shared/ceo-intelligence.ts';
 
 const cors = {
@@ -107,7 +108,7 @@ Deno.serve(async (req) => {
   if (allowed.length > 0 && !allowed.includes(email) && !allowed.includes(`@${email.split('@')[1] ?? ''}`)) return json(403, { error: 'forbidden' });
   if (!convo.agent_id) return json(422, { error: 'no_agent' });
   const admin = createClient(url, service);
-  const { data: agent } = await admin.from('agents').select('id, name, type, system_prompt, owner_instructions, model, temperature, enabled, monthly_budget_usd')
+  const { data: agent } = await admin.from('agents').select('id, name, slug, type, system_prompt, owner_instructions, model, temperature, enabled, monthly_budget_usd')
     .eq('id', convo.agent_id).eq('organization_id', convo.organization_id).maybeSingle();
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
@@ -168,7 +169,10 @@ Deno.serve(async (req) => {
     return json(200,{journaled:true,duplicate:false,message_id:job.id,receipt_verified:receiptValid,goal_observed:achieved});
   }
 
-  const { data: orgPlan } = await admin.from('organizations').select('plan').eq('id', convo.organization_id).maybeSingle();
+  const { data: orgPlan } = await admin.from('organizations').select('plan,plan_status,status').eq('id', convo.organization_id).maybeSingle();
+  const entitlement = agentPlanDecision(orgPlan, agent);
+  if (!entitlement.allowed) return json(entitlement.reason === 'plan_unavailable' ? 503 : 403,
+    { error: entitlement.reason });
   // The company's own key (Pro and up) goes straight to its provider and nothing else is tried, so it is never billed twice.
   const own = await ownKeyTarget(admin, convo.organization_id, agent.model);
   // New CEO turns may select an explicitly enabled local-only native route.
@@ -237,8 +241,11 @@ Deno.serve(async (req) => {
   const trustedBlock=sharedMemory.error?'':approvedCompanyMemoryBlock(sharedMemory.data??[]);
   const memoryBlock=[...memoryBlocks(accessibleMemory),trustedBlock].filter(Boolean).join('\n');
   let previousCeoSessions='';
+  let previousAgentSessions='';
   let pastSessionsUnavailable=false;
-  if(isCeo){
+  // The same secure cross-session recall is available to EVERY employee,
+  // scoped by authenticated user + organization + exact agent identity.
+  {
     try{
       // Scan up to 60 user-owned CEO sessions in TWO bounded queries. This
       // covers older owner decisions without widening the 1,700-char prompt or
@@ -258,11 +265,10 @@ Deno.serve(async (req) => {
          .eq('organization_id',convo.organization_id).in('conversation_id',ids)
          .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(440);
         if(messageError)throw messageError;
-        previousCeoSessions=buildCeoSessionRecall({
-          organizationId:convo.organization_id,userId:user.id,agentId:agent.id,
-          currentConversationId:convo.id,query:text,
-          sessions:oldSessions??[],messages:oldMessages??[],
-        });
+        const scope={organizationId:convo.organization_id,userId:user.id,agentId:agent.id,
+          currentConversationId:convo.id,query:text,sessions:oldSessions??[],messages:oldMessages??[]};
+        if(isCeo) previousCeoSessions=buildCeoSessionRecall(scope);
+        else previousAgentSessions=buildAgentSessionRecall(scope);
       }
     }catch{pastSessionsUnavailable=true;}
   }
@@ -276,17 +282,17 @@ Deno.serve(async (req) => {
   // The CEO sees the whole company's work; any other agent sees only its own tasks.
   let tasksQuery = admin.from('tasks').select('title, status, priority, result, completed_at, updated_at, assigned_agent_id')
     .eq('organization_id', convo.organization_id).eq('kind', 'task');
-  if (!isCeo) tasksQuery = tasksQuery.eq('assigned_agent_id', agent.id);
+  if (!isCeo) tasksQuery = tasksQuery.eq('assigned_agent_id', agent.id).eq('created_by',user.id);
   else if(!canSeeLeadership) tasksQuery = tasksQuery.eq('created_by',user.id);
   const [{ data: tkRows }, { data: apRows }, { data: agRows }, { data: spendMonth }, { data: integrationRows, error: integrationsError }] = await Promise.all([
     tasksQuery.order('updated_at', { ascending: false }).limit(30),
     canSeeLeadership?admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8):Promise.resolve({data:[],error:null}),
-    admin.from('agents').select('id, name, enabled').eq('organization_id', convo.organization_id).limit(40),
+    admin.from('agents').select('id, name, slug, type, enabled').eq('organization_id', convo.organization_id).limit(40),
     canSeeLeadership?admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString()):Promise.resolve({data:[],error:null}),
     admin.from('integrations').select('kind, status').eq('organization_id', convo.organization_id).limit(100),
   ]);
   const list = (v: unknown): any[] => (Array.isArray(v) ? v : []);
-  const [tk, ap, ag] = [list(tkRows), list(apRows), list(agRows)];
+  const [tk, ap, ag] = [list(tkRows), list(apRows), list(agRows).filter((a:any)=>agentPlanDecision(orgPlan,a).allowed)];
   const names = new Map<string, string>(ag.map((x: any) => [x.id, x.name]));
   const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
   const monthCost = list(spendMonth).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
@@ -312,7 +318,8 @@ Deno.serve(async (req) => {
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
     ...(isCeo&&previousCeoSessions ? [previousCeoSessions] : []),
-    ...(isCeo&&pastSessionsUnavailable ? ['Past CEO session history could not be checked. Do not claim to remember prior sessions or invent previous commitments.'] : []),
+    ...(!isCeo&&previousAgentSessions ? [previousAgentSessions] : []),
+    ...(pastSessionsUnavailable ? ['Past agent session history could not be checked. Do not claim to remember prior sessions or invent previous commitments.'] : []),
     ...(knowledgeBlock ? [knowledgeBlock] : []),
     'You are chatting with a teammate. Be direct, concrete and concise; use markdown when it helps. If you are unsure, say so instead of inventing facts.',
     isCeo
@@ -339,7 +346,7 @@ Deno.serve(async (req) => {
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
-  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock }) : [];
+  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions }) : [];
   let reservedUsd = 0;
   try {
     if (!own && !localCeoSelected && !free && gateway) {
@@ -444,7 +451,7 @@ Deno.serve(async (req) => {
     try {
       const localMessages = compactForFree({
         agent, org, profile, snapshot, voice: body.voice === true, lang, past, text,
-        isCeo, memoryBlock, previousCeoSessions, knowledgeBlock,
+        isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions,
       });
       const localResult = await completeViaFree(
         convo.organization_id, auth, body.request_id, localMessages, { signal: req.signal },
