@@ -28,6 +28,16 @@ A reported READY Docker container is still **not model readiness**; verify the r
 3. Optional one-call acceptance is in deploy/hostinger/freellmapi_acceptance.py. It is read-only by default. Real inference requires BOTH --smoke and host-held FREELLMAPI_SMOKE_APPROVED=YES, plus one exact FREELLMAPI_SMOKE_MODEL known ready from the catalog. It sends a public 24-token-cap prompt to FIXED loopback, never company/customer data. It reports X-Routed-Via and rejects observable multi-attempt fallback. The report deliberately still sets provider_cost_verified=false and commercial_use_verified=false; an actual provider terms/ledger check is required.
 4. Review existing Docker state/installed digest, gateway network, startup/health and locked-down port 127.0.0.1:3001. Never run install-freellmapi.py on an already installed host; it is intentionally create-only and will refuse or risk conflict if bypassed. Do not dump environment, keys or provider responses.
 
+## Read-only OmniRoute connection check
+The additional tool deploy/hostinger/freellmapi_gateway_probe.py reads only three fixed HTTPS management endpoints:
+- /api/providers?limit=200, verifies one active freellmapi connection
+- /api/provider-models?provider=freellmapi, counts registered model IDs
+- /api/combos?limit=200, requires a dedicated firbo-freellmapi-canary* combo that ACTUALLY references a registered freellmapi/model ID (a matching name alone is never enough)
+
+It requires the existing host-only OMNIROUTE_MANAGEMENT_KEY; never transmit the key in a chat message, screenshot, browser or CI variable. It prevents redirects and HTTP proxies, bounds all response data, and reports only sanitized counts and verification flags. It never creates a provider, model, credential, combo or inference.
+
+A successful management read-back does NOT establish serving-model readiness, a live FreeLLMAPI inference, a zero-cost contract, or customer authorization. Continue through the next manual acceptance gates, preserving existing firbo-economy/firbo-quality combos.
+
 ## Integration order
 - First confirm actual FreeLLMAPI container health, private listener and READY candidate with read-only script.
 - Review provider commercial terms, free budget, key ownership and model latency/quality. Prefer one pinned exact provider+model, NOT auto or fusion.
