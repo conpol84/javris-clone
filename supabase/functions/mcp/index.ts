@@ -9,6 +9,11 @@
 //  - every tool call needs explicit confirmation and a durable pre-execution audit receipt
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { mcpEgressFetch } from '../_shared/mcp-egress.ts';
+import {
+  filterOmniReadOnlyTools,
+  isOmniReadOnlyMcpTool,
+  omniMcpEndpoint,
+} from '../_shared/omni-mcp-policy.ts';
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -173,14 +178,22 @@ Deno.serve(async (req) => {
     const { data } = await admin.from('organization_members').select('role').eq('organization_id', orgId).eq('user_id', user.id).maybeSingle();
     return !!data && MANAGERS.includes(data.role);
   };
+  // The shared FIRBO gateway exposes global provider/usage state. A tenant's
+  // company-manager role is not permission to access platform-wide OmniRoute.
+  const isPlatformAdmin = async () => {
+    const { data, error } = await userClient.rpc('is_platform_admin');
+    return !error && data === true;
+  };
 
   if (body.action === 'connect') {
     const orgId = String(body.organization_id ?? '');
     const name = str(body.name, 80);
     const u = publicHttps(body.server_url);
     const token = str(body.token, 600);
-    if (!orgId || !name || !u) return json(422, { error: 'invalid_fields' });
+    const omni = omniMcpEndpoint(body.server_url);
+    if (!orgId || !name || !u || omni === 'wrong_path') return json(422, { error: 'invalid_fields' });
     if (!(await isManager(orgId))) return json(403, { error: 'forbidden' });
+    if (omni === 'shared' && !(await isPlatformAdmin())) return json(403, { error: 'forbidden' });
     const counted = await admin.from('integrations').select('id', { count: 'exact', head: true }).eq('organization_id', orgId);
     const limited = await admin.rpc('plan_limit', { p_org: orgId, p_key: 'integrations' });
     const cap = Number(limited.data);
@@ -190,10 +203,12 @@ Deno.serve(async (req) => {
     if (counted.count >= cap) return json(429, { error: 'plan_limit' });
     let tools: Awaited<ReturnType<typeof listTools>>;
     try {
-      tools = await listTools(await open(u.toString(), token));
+      const advertised = await listTools(await open(u.toString(), token));
+      tools = omni === 'shared' ? filterOmniReadOnlyTools(advertised) : advertised;
     } catch {
       return json(502, { error: 'test_failed' });
     }
+    if (omni === 'shared' && tools.length === 0) return json(403, { error: 'forbidden' });
     const saved = await admin.rpc('firbo_save_legacy_integration', { p_org: orgId, p_user: user.id, p_kind: 'mcp', p_name: name,
       p_config: { host: u.hostname, server_url: u.toString(), tools: tools.length }, p_secret: JSON.stringify({ token }) });
     const code = String(saved.error?.message ?? '');
@@ -218,7 +233,9 @@ Deno.serve(async (req) => {
     return json(503, { error: 'credentials_unavailable' });
   }
   const serverUrl = String((integ.config as Record<string, unknown>)?.server_url ?? '');
-  if (!publicHttps(serverUrl)) return json(400, { error: 'bad_request' });
+  const omni = omniMcpEndpoint(serverUrl);
+  if (!publicHttps(serverUrl) || omni === 'wrong_path') return json(400, { error: 'bad_request' });
+  if (omni === 'shared' && !(await isPlatformAdmin())) return json(403, { error: 'forbidden' });
 
   if (body.action !== 'tools' && body.action !== 'call') return json(400, { error: 'bad_request' });
   let tool = '';
@@ -229,6 +246,9 @@ Deno.serve(async (req) => {
     args = body.arguments && typeof body.arguments === 'object' && !Array.isArray(body.arguments) ? body.arguments : {};
     try { argsJson = JSON.stringify(args); } catch { return json(400, { error: 'bad_request' }); }
     if (!tool || argsJson.length > 20_000) return json(400, { error: 'bad_request' });
+    // Enforce locally BEFORE remote discovery. Remote self-advertising, even
+    // with an over-scoped key, cannot authorize a shared gateway mutation.
+    if (omni === 'shared' && !isOmniReadOnlyMcpTool(tool)) return json(403, { error: 'forbidden' });
     // Do not even establish a remote MCP session until the human has confirmed this call.
     if (body.confirm !== true) return json(400, { error: 'confirm_required' });
   }
@@ -236,15 +256,17 @@ Deno.serve(async (req) => {
   try {
     const s = await open(serverUrl, token);
     if (body.action === 'tools') {
-      const tools = await listTools(s);
+      const advertised = await listTools(s);
+      const tools = omni === 'shared' ? filterOmniReadOnlyTools(advertised) : advertised;
       await admin.from('integrations').update({ status: 'active', last_error: null, last_used_at: new Date().toISOString(), config: { ...(integ.config as object), tools: tools.length } }).eq('id', id);
       return json(200, { tools });
     }
     if (body.action === 'call') {
       const advertised = await listTools(s);
       if (!advertised.some(t => t.name === tool)) return json(409, { error: 'tool_not_available' });
-      // Re-check the human role after the remote discovery round trip and before the action.
+      // Re-check the role and platform boundary after remote I/O.
       if (!(await isManager(integ.organization_id))) return json(403, { error: 'forbidden' });
+      if (omni === 'shared' && (!(await isPlatformAdmin()) || !isOmniReadOnlyMcpTool(tool))) return json(403, { error: 'forbidden' });
       const argsSha256 = await sha256(argsJson);
       const requested = await admin.from('audit_log').insert({ organization_id: integ.organization_id, actor_id: user.id,
         action: 'mcp.tool_requested', entity: 'integration', entity_id: integ.id,
