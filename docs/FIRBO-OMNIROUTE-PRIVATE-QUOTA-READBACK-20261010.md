@@ -10,6 +10,24 @@ This **does not prove expired credits, wrong credentials, or VPS failure**. The 
 
 The repository already contains hardened gateway-credentials.py which discovers the running firbo-api and firbo-omniroute Compose labels, checks they share the same stack/directory, and verifies owner/read-only file properties. Do not create a replacement key, manually paste .env contents into chat, leak tokens via grep or echo, use set -x, or restart the VPS.
 
+## Second owner readback — unresolved protected Compose stage
+
+The owner then ran PR #131's pinned three-script wrapper and received:
+
+    {"quota_telemetry_read":false,"read_only":true,"reason":"verified_compose_credentials_unavailable"}
+
+This indicates the wrapper's broad exception guard intercepted an error, **not** that a provider key has expired or credits are exhausted. The error previously combined source-load, container label, Compose ownership, private .env and parse failures into the same generic message.
+
+The updated source differentiates a safe **stage**, without ever printing file paths or secrets:
+- `load_reviewed_source` — sibling script loading failed
+- `inspect_running_compose` — Docker container/Compose label/working-directory validation rejected or could not be read
+- `read_verified_private_env` — protected .env failed file/ownership/symlink/permission checks
+- `parse_private_key_presence` — expected key entries could not be safely parsed
+- `read_gateway_telemetry` — protected quota probe unexpectedly failed
+- `validate_quota_contract` — remote result failed strict shape validation
+
+Only exact allowlisted error codes from the existing hardened gateway-credentials.py Blocked exception may appear, such as `mixed_compose_projects`, `wrong_compose_service`, `configuration_owned_by_another_user`, or `local_command_failed`. Unknown exceptions remain `stage_unavailable`. Never modify ownership, bypass symlink checks, scan other directories or restart containers to silence the guard.
+
 ## Source-only solution
 
 - omniroute_ceo_quota_probe.py accepts an optional in-process management key; the existing environment fallback remains unchanged. Only fixed GET https://gateway.firboai.app/api/usage/quota.
