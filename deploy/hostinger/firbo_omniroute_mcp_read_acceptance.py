@@ -7,7 +7,8 @@ No API keys in arguments, files, logs or printed responses. No retry/replay.
 
 Usage, executed from an owner TTY:
  git show COMMIT:deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py | python3 -
- git show COMMIT:deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py | python3 - --read-health
+ git show COMMIT:deploy/hostinger/firbo_omniroute_mcp_read_acceptance.py | \
+   python3 - --read-health
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ def private_opener():
 def read_bounded(response):
     try:
         raw = response.read(MAX_BODY_BYTES + 1)
-    except Exception as exc:
+    except Exception:
         raise AcceptanceError("response_unreadable") from None
     if len(raw) > MAX_BODY_BYTES:
         raise AcceptanceError("response_too_large")
@@ -108,7 +109,7 @@ def request_once(opener, token, method, url, payload=None, sid=None):
             if session and not re.fullmatch(r"[\x21-\x7e]{1,200}", session):
                 raise AcceptanceError("bad_mcp_session")
             # MCP notification ACK has no JSON-RPC body.
-            if payload is not None and payload.get("method") == "notifications/initialized":
+            if (payload is not None and payload.get("method") == "notifications/initialized"):
                 return response.status, None, session
             if response.status != 200:
                 raise AcceptanceError("mcp_response_not_200")
@@ -189,7 +190,7 @@ def discover(opener, token, sid):
             raise AcceptanceError("mcp_tools_contract_invalid")
         for tool in tools:
             name = tool.get("name") if isinstance(tool, dict) else None
-            if not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", name):
+            if (not isinstance(name, str) or not re.fullmatch(r"[A-Za-z0-9_.:/-]{1,100}", name)):
                 raise AcceptanceError("mcp_tool_name_invalid")
             if name in names:
                 raise AcceptanceError("duplicate_advertised_tool")
@@ -199,7 +200,7 @@ def discover(opener, token, sid):
         cursor = result.get("nextCursor")
         if not cursor:
             return names
-        if not isinstance(cursor, str) or not 1 <= len(cursor) <= 500 or cursor in cursors:
+        if (not isinstance(cursor, str) or not 1 <= len(cursor) <= 500 or cursor in cursors):
             raise AcceptanceError("invalid_pagination_cursor")
         cursors.add(cursor)
     raise AcceptanceError("incomplete_tool_pagination")
@@ -256,7 +257,9 @@ def acceptance(opener, token, read_health=False):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="FIRBO private read-only MCP acceptance")
+    parser = argparse.ArgumentParser(
+        description="FIRBO private read-only MCP acceptance"
+    )
     parser.add_argument(
         "--read-health",
         action="store_true",
