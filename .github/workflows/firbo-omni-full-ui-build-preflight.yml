@@ -71,6 +71,8 @@ jobs:
       OMNIROUTE_USE_TURBOPACK: "1"
       OMNIROUTE_SKIP_STANDALONE: "1"
       OMNIROUTE_BUILD_WORKERS: "1"
+      # Dockerfile passes this to Next's build worker pool; keep CI equivalent.
+      CIRCLE_NODE_TOTAL: "1"
       OMNIROUTE_MITM_STUB: "1"
       OMNIROUTE_BETTER_SQLITE3_STUB: "1"
       API_KEY_SECRET: "ci-build-synthetic-do-not-use-in-production"
