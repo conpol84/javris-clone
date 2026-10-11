@@ -45,18 +45,18 @@ revoke all on function private.guard_jarvis_identity() from public,anon,authenti
 create trigger jarvis_identity_immutable before update on public.jarvis_autopilot_settings
   for each row execute function private.guard_jarvis_identity();
 
--- Authenticated users may create normal manual tasks; they may NEVER forge a
--- server-origin pending item to reach the unattended workflow-runner.
+-- Authenticated clients may create and edit only ordinary manual tasks.
+-- Server-origin Jarvis tasks are FULLY server-owned, not just metadata:
+-- prohibit forged completion, changed assignee, cancelled/rewritten origin,
+-- or premature reruns through unrestricted direct PostgREST UPDATE.
 create function private.guard_jarvis_task_origin()
 returns trigger language plpgsql set search_path='' as $$
 begin
   if current_user='authenticated' and (
     (tg_op='INSERT' and new.metadata->>'source'='jarvis_autopilot_server_v1')
     or (tg_op='UPDATE' and (
-      (new.metadata->>'source'='jarvis_autopilot_server_v1' and
-       old.metadata->>'source' is distinct from 'jarvis_autopilot_server_v1')
-      or (old.metadata->>'source'='jarvis_autopilot_server_v1' and
-          new.metadata is distinct from old.metadata)
+      new.metadata->>'source'='jarvis_autopilot_server_v1'
+      or old.metadata->>'source'='jarvis_autopilot_server_v1'
     ))
   ) then raise exception 'jarvis_server_task_immutable' using errcode='42501';
   end if;
