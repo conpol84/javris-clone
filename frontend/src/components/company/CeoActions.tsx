@@ -35,7 +35,7 @@ export function CeoActions({ ask, task, meet, app, messageId, conversationId, qu
     )}
     {task && !JARVIS_SERVER_MODE && queuedTaskId && (
       <div role="status" className="fb-dim mt-2 text-xs">
-        {user?.id ? 'JARVIS task saved on the server. Check execution and result in Tasks.' : 'Task saved.'}
+        {user?.id ? 'FIRBO AI saved this task on the server. Check its status in Tasks.' : 'Task saved.'}
         {' '}<Link to="/tasks" className="underline">{'Tasks'}</Link>
       </div>
     )}
