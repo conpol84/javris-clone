@@ -27,6 +27,15 @@ export function JarvisServerTaskReceipt({orgId,userId,conversationId,messageId}:
  useEffect(()=>{
   let live=true;
   let current=0;
+  let timer:ReturnType<typeof setTimeout>|null=null;
+  const schedule=()=>{
+    if(timer!==null)clearTimeout(timer);
+    timer=setTimeout(()=>{
+      if(!live)return;
+      if(typeof document!=='undefined'&&document.visibilityState==='hidden'){schedule();return;}
+      void load();
+    },10000);
+  };
   const load=async()=>{
    const run=++current;
    try{
@@ -38,12 +47,15 @@ export function JarvisServerTaskReceipt({orgId,userId,conversationId,messageId}:
     if(!data){setState({key,phase:'missing',detail:null});return;}
     const checked=trustedJarvisTaskView(data,orgId,userId,conversationId,messageId);
     setState({key,phase:checked?'found':'unavailable',detail:checked});
+    // Poll only an active, accounted job. Finished, blocked or ambiguous
+    // historical messages never each start a perpetual DB polling loop.
+    if(checked && !checked.needsReview
+      &&['pending','running','awaiting_approval'].includes(checked.status))schedule();
    }catch{if(live&&run===current)setState({key,phase:'unavailable',detail:null});}
   };
   setState({key,phase:'checking',detail:null});
   void load();
-  const interval=setInterval(()=>{if(typeof document==='undefined'||document.visibilityState!=='hidden')void load();},7000);
-  return()=>{live=false;current++;clearInterval(interval);};
+  return()=>{live=false;current++;if(timer!==null)clearTimeout(timer);};
  },[key,orgId,userId,conversationId,messageId]);
  const effective=state.key===key?state:{key,phase:'checking' as const,detail:null};
  const label=effective.phase==='found'&&effective.detail
