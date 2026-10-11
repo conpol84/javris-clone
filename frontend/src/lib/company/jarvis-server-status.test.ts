@@ -10,7 +10,7 @@ const task={id:message,organization_id:org,created_by:alice,status:'pending',
 const view=(row:unknown,owner=alice)=>trustedJarvisTaskView(row,org,owner,conversation,message);
 describe('FIRBO server task status never invents another user\'s result',()=>{
  it('shows only the exact owner, origin, message and conversation',()=>{
-  expect(view(task)).toEqual({status:'pending',reportAvailable:false});
+  expect(view(task)).toEqual({status:'pending',reportAvailable:false,needsReview:false});
   expect(view(task,bob)).toBeNull();
   expect(view({...task,organization_id:bob})).toBeNull();
   expect(view({...task,metadata:{...task.metadata,conversation_id:bob}})).toBeNull();
@@ -18,10 +18,12 @@ describe('FIRBO server task status never invents another user\'s result',()=>{
   expect(view({...task,id:bob})).toBeNull();
  });
  it('pending, ambiguous and unverified tasks cannot be presented as finished',()=>{
-  expect(view({...task,status:'running'})).toEqual({status:'running',reportAvailable:false});
-  expect(view({...task,status:'blocked',result:{reconcile_required:true}})).toEqual({status:'blocked',reportAvailable:false});
-  expect(view({...task,status:'completed',result:{}})).toEqual({status:'completed',reportAvailable:false});
-  expect(view({...task,status:'completed',result:{report:'Done',reconcile_required:true}})).toEqual({status:'completed',reportAvailable:false});
-  expect(view({...task,status:'completed',result:{report:'Verified report available'}})).toEqual({status:'completed',reportAvailable:true});
+  expect(view({...task,status:'running'})).toEqual({status:'running',reportAvailable:false,needsReview:false});
+  expect(view({...task,status:'blocked',result:{reconcile_required:true}})).toEqual({status:'blocked',reportAvailable:false,needsReview:true});
+  expect(view({...task,status:'completed',result:{}})).toEqual({status:'completed',reportAvailable:false,needsReview:false});
+  expect(view({...task,status:'completed',result:{report:'Done',reconcile_required:true}})).toEqual({status:'completed',reportAvailable:false,needsReview:true});
+  expect(view({...task,status:'running',result:{reconcile_required:true}})).toEqual({status:'running',reportAvailable:false,needsReview:true});
+  expect(view({...task,status:'completed',result:{report:'Draft',computer_execution:{verified_success:false}}})).toEqual({status:'completed',reportAvailable:false,needsReview:true});
+  expect(view({...task,status:'completed',result:{report:'Verified report available'}})).toEqual({status:'completed',reportAvailable:true,needsReview:false});
  });
 });
