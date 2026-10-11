@@ -267,7 +267,8 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       chatAttempted=true;
       const response=await voiceDeadline(
         signal=>usedOllamaBackup
-          ? sendChat(convo.current!,message,lang,true,signal,{preferLocalBackup:true})
+          ? sendChat(convo.current!,message,lang,true,signal,{preferLocalBackup:true,...(jarvisAutopilot?{jarvisAutopilot:true}:{})})
+          : jarvisAutopilot ? sendChat(convo.current!,message,lang,true,signal,{jarvisAutopilot:true})
           : sendChat(convo.current!,message,lang,true,signal),
         active.signal,95_000,
       );
