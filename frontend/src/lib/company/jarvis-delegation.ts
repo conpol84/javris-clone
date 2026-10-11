@@ -26,7 +26,7 @@ function matched(row:Row,i:JarvisDelegationInput):boolean {
  return row.id===i.messageId&&row.organization_id===i.organizationId
    &&row.created_by===i.userId&&row.assigned_agent_id===i.agentId
    &&row.title===i.title.trim()&&row.description===(i.details.trim()||null)
-   &&row.metadata?.source==='jarvis_ceo_handoff_v1'
+   &&(row.metadata?.source==='jarvis_ceo_handoff_v1'||row.metadata?.source==='jarvis_autopilot_server_v1')
    &&row.metadata?.conversation_id===i.conversationId
    &&row.metadata?.message_id===i.messageId;
 }

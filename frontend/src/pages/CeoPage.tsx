@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { CeoActions } from '../components/company/CeoActions';
 import { JarvisModeControl } from '../components/company/JarvisModeControl';
 import { useJarvisMode } from '../lib/company/useJarvisMode';
+import { JARVIS_SERVER_MODE } from '../lib/company/jarvis-server-mode';
 import { usePlanUsageState } from '../lib/company/usePlan';
 import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
@@ -96,7 +97,7 @@ export function CeoPage() {
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
       {ceo && canWrite && user?.id && <JarvisModeControl enabled={jarvis.enabled}
-        onToggle={jarvis.setEnabled} lang={lang} disabled={planState.status!=='ready'}/>}
+        onToggle={jarvis.setEnabled} lang={lang} disabled={planState.status!=='ready'||jarvis.loading||jarvis.saving||jarvis.error} unavailable={jarvis.error} onRetry={jarvis.retry}/>}
       <VoiceProfileControl />
 
       {!ceo ? (
@@ -207,9 +208,9 @@ export function CeoPage() {
                 <li key={i} className="fb-row min-w-0 break-words [overflow-wrap:anywhere] p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                   <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : name}</div>
                   {l.text}
-                  <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app}
+                  <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app} queuedTaskId={l.queuedTaskId}
                     messageId={l.messageId} conversationId={activeSessionId??undefined}
-                    fresh={l.fresh===true} autopilotEnabled={jarvis.enabled}
+                    fresh={l.fresh===true&&!JARVIS_SERVER_MODE} autopilotEnabled={jarvis.enabled}
                     planReady={planState.status==='ready'} />
                 </li>
               ))}

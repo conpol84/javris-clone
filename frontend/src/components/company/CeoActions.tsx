@@ -15,19 +15,31 @@ import { WRITER_ROLES, type AgentRow, type TaskResult } from '../../lib/company/
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
 import { claimJarvisDelegation } from '../../lib/company/jarvis-delegation';
 import { canAutostartJarvisDelegation } from '../../lib/company/jarvis-autopilot';
+import { JARVIS_SERVER_MODE } from '../../lib/company/jarvis-server-mode';
+import { JarvisServerTaskReceipt } from './JarvisServerTaskReceipt';
 import { AskButton } from './AskButton';
 import { ReportView } from './ReportView';
 import { ComputerExecutionView } from './ComputerExecutionView';
 
 /** What the CEO offers under its reply: employee hand-over, task, meeting or work-source setup. */
-export function CeoActions({ ask, task, meet, app, messageId, conversationId, fresh = false, autopilotEnabled = false, planReady = false }: {
+export function CeoActions({ ask, task, meet, app, messageId, conversationId, queuedTaskId, fresh = false, autopilotEnabled = false, planReady = false }: {
  ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null; app?: WorkSourceOffer | null;
- messageId?: string;conversationId?: string;fresh?: boolean;autopilotEnabled?: boolean;planReady?: boolean;
+ messageId?: string;conversationId?: string;queuedTaskId?:string;fresh?: boolean;autopilotEnabled?: boolean;planReady?: boolean;
 }) {
   const { current, user } = useCompanyAuth();
   return <>
     {ask && <AskButton ask={ask} />}
-    {task && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${task.agentId}:${task.title}:${task.details}`}
+    {task && JARVIS_SERVER_MODE && current?.organization.id && user?.id && conversationId && messageId && (
+      <JarvisServerTaskReceipt orgId={current.organization.id} userId={user.id}
+        conversationId={conversationId} messageId={messageId}/>
+    )}
+    {task && !JARVIS_SERVER_MODE && queuedTaskId && (
+      <div role="status" className="fb-dim mt-2 text-xs">
+        {user?.id ? 'JARVIS task saved on the server. Check execution and result in Tasks.' : 'Task saved.'}
+        {' '}<Link to="/tasks" className="underline">{'Tasks'}</Link>
+      </div>
+    )}
+    {task && !JARVIS_SERVER_MODE && !queuedTaskId && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${task.agentId}:${task.title}:${task.details}`}
       offer={task} messageId={messageId} conversationId={conversationId} fresh={fresh}
       autopilotEnabled={autopilotEnabled} planReady={planReady} />}
     {meet && <MeetButton offer={meet} />}

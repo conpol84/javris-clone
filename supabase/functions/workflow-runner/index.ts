@@ -185,8 +185,56 @@ Deno.serve(async (req) => {
         await kick(task.id, run.started_by ?? wf.created_by, wf.organization_id, run.id, run.step);
       }
     }
+    // Same existing scheduler, same agent-runner: JARVIS is NOT a new worker.
+    // Default OFF until FIRBO migration history, secrets and backup are verified.
+    let jarvisClaimed=0;
+    if (Deno.env.get('FIRBO_JARVIS_SERVER_AUTOPILOT') === 'on') {
+      const {data:autoDue,error:autoError}=await admin.rpc('claim_due_jarvis_autopilot_tasks',{p_limit:3});
+      if(autoError) {
+        console.error(JSON.stringify({event:'firbo_jarvis_dispatch_claim_unavailable'}));
+      } else {
+        const admitted=(autoDue??[]) as {task_id:string;organization_id:string;created_by:string|null}[];
+        jarvisClaimed=admitted.length;
+        for(const task of admitted) {
+          background.push((async()=>{
+            if(!task.created_by)return;
+            let result:Response;
+            try {
+              const {data:profile}=await admin.from('profiles').select('locale').eq('id',task.created_by).maybeSingle();
+              const lang=LANGS.includes(String(profile?.locale))?String(profile?.locale):'en';
+              result=await fetch(`${url}/functions/v1/agent-runner`,{
+                method:'POST',headers:{
+                  'content-type':'application/json',authorization:`Bearer ${service}`,
+                  'x-cron-secret':cronSecret,
+                },
+                body:JSON.stringify({task_id:task.task_id,lang,system_user_id:task.created_by}),
+                signal:AbortSignal.timeout(145_000),
+              });
+            } catch {
+              // A lost response may still have started model/tool work.
+              // NEVER silently requeue it, even after VPS restart.
+              result=new Response('',{status:503});
+            }
+            if(!result.ok){
+              const {error:blockedError}=await admin.from('tasks').update({
+                status:'blocked',result:{
+                  error:'jarvis_delivery_requires_review',reconcile_required:true,verified_success:false,
+                  runner_http_status:result.status,
+                },
+              }).eq('id',task.task_id).eq('organization_id',task.organization_id)
+                .eq('status','pending').is('run_claim',null);
+              console.warn(JSON.stringify({event:'firbo_jarvis_delivery_requires_review',
+                organization_id:task.organization_id,task_id:task.task_id,
+                receipt_saved:!blockedError}));
+            }
+          })().catch(()=>console.error(JSON.stringify({
+            event:'firbo_jarvis_delivery_failed',task_id:task.task_id,
+          }))));
+        }
+      }
+    }
     await finish();
-    return json(200, { started: (due ?? []).length, moved });
+    return json(200, { started: (due ?? []).length, moved, jarvis_claimed:jarvisClaimed });
   }
 
   // ------------------------------------------------------------------ signed-in actions

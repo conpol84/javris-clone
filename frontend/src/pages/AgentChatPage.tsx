@@ -16,6 +16,7 @@ import { parseHandoff } from '../lib/company/handoff';
 import { CeoActions } from '../components/company/CeoActions';
 import { JarvisModeControl } from '../components/company/JarvisModeControl';
 import { useJarvisMode } from '../lib/company/useJarvisMode';
+import { JARVIS_SERVER_MODE } from '../lib/company/jarvis-server-mode';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
@@ -330,7 +331,8 @@ export function AgentChatPage() {
         : sendChat(active.id,msg,lang,effectiveSpeakOn));
       if (voiceScopeRef.current !== scopeAtSend) return;
       setFreshJarvisMessageId(out.message.id);
-      setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
+      const assistant=out.jarvis_autopilot?.task_id ? {...out.message,jarvis_task_id:out.jarvis_autopilot.task_id}:out.message;
+      setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, assistant]);
       void reloadList();
       speakReply(parseHandoff(out.message.content).text);
     } catch (err) {
@@ -480,7 +482,7 @@ export function AgentChatPage() {
             {activeIsCeo && canWrite && user?.id && (
               <div className="px-4 pt-2">
                 <JarvisModeControl enabled={jarvis.enabled} onToggle={jarvis.setEnabled}
-                  lang={lang} disabled={sending||planState.status!=='ready'}/>
+                  lang={lang} disabled={sending||planState.status!=='ready'||jarvis.loading||jarvis.saving||jarvis.error} unavailable={jarvis.error} onRetry={jarvis.retry}/>
               </div>
             )}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -501,8 +503,8 @@ export function AgentChatPage() {
                       </button>
                     )}
                     {m.role === 'assistant' && (task || meet || app) &&
-                      <CeoActions task={task} meet={meet} app={app} messageId={m.id}
-                        conversationId={active.id} fresh={m.id===freshJarvisMessageId}
+                      <CeoActions task={task} meet={meet} app={app} messageId={m.id} queuedTaskId={(m as ChatMessage&{jarvis_task_id?:string}).jarvis_task_id}
+                        conversationId={active.id} fresh={m.id===freshJarvisMessageId&&!JARVIS_SERVER_MODE}
                         autopilotEnabled={jarvis.enabled} planReady={planState.status==='ready'}/>}
                   </div>
                 </div>

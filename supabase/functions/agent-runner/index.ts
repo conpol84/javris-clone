@@ -199,7 +199,7 @@ Deno.serve(async (req) => {
   const reader = systemRun ? admin : userClient;
   if (!body.task_id || typeof body.task_id !== 'string') return json(400, { error: 'bad_request' });
   const lang = body.lang && body.lang in LANG_NAME ? body.lang : 'en';
-  const { data: task } = await reader.from('tasks').select('id, organization_id, title, description, status, priority, assigned_agent_id, result, shift_id, run_claim')
+  const { data: task } = await reader.from('tasks').select('id, organization_id, created_by, title, description, status, priority, assigned_agent_id, result, metadata, shift_id, run_claim')
     .eq('id', body.task_id).maybeSingle();
   if (!task) return json(404, { error: 'not_found' });
   const { data: member } = await reader.from('organization_members').select('role').eq('organization_id', task.organization_id).eq('user_id', user.id).maybeSingle();
@@ -228,6 +228,20 @@ Deno.serve(async (req) => {
   const access = agentPlanDecision(orgPlan, agent);
   if (!access.allowed) return json(access.reason === 'plan_unavailable' ? 503 : 403,
     { error: access.reason, retry_safe: true });
+  // JARVIS unattended work is a *strictly narrower* execution lane. Old
+  // shift/workflow tasks retain their preexisting behavior. A forged client
+  // metadata flag grants nothing; database RLS blocks its creation.
+  if(task.metadata?.source==='jarvis_autopilot_server_v1') {
+    if (Deno.env.get('FIRBO_JARVIS_SERVER_AUTOPILOT') !== 'on'
+      || task.created_by !== user.id || agent.autonomy !== 'auto'
+      || task.metadata.dispatch_state !== 'claimed')
+      return json(403,{error:'jarvis_not_authorized',retry_safe:false});
+    const {data:personalGrant,error:grantError}=await admin.from('jarvis_autopilot_settings')
+      .select('enabled').eq('organization_id',task.organization_id)
+      .eq('user_id',user.id).maybeSingle();
+    if(grantError||personalGrant?.enabled!==true)
+      return json(403,{error:'jarvis_not_authorized',retry_safe:false});
+  }
 
   // Learning from feedback (OpenJarvis's learning/routing): when the owner marked at least two of this agent's last five
   // reports 👎, an agent on the default/economy route moves up to the quality route until its reports are liked again.
