@@ -119,12 +119,12 @@ export function Sidebar() {
         { path: '/hub', icon: Layers, label: t('nav.hub') },
         { path: '/integrations', icon: Plug, label: t('nav.integrations') },
         { path: '/billing', icon: CreditCard, label: t('nav.billing') },
-        { path: '/gateway', icon: Waypoints, label: t('nav.gateway') },
+
       ]
     : [];
   // Company workspace: only pages that work in the hosted product. The legacy local-assistant pages stay for the desktop build.
   const navItems: NavItem[] = COMPANY_ENABLED
-    ? [...workspace, ...(isPlatformAdmin ? [{ path: '/admin', icon: Shield, label: t('nav.admin') }] : []), { path: '/settings', icon: Settings, label: t('nav.settings') }]
+    ? [...workspace, ...(isPlatformAdmin ? [{ path: '/admin', icon: Shield, label: t('nav.admin') }, { path: '/gateway', icon: Waypoints, label: t('nav.gateway') }] : []), { path: '/settings', icon: Settings, label: t('nav.settings') }]
     : [
     ...workspace,
     { path: CHAT_PATH, icon: MessageSquare, label: t('nav.chat') },
