@@ -334,7 +334,7 @@ test('JARVIS preference affects CEO reasoning only and never grants execution ri
  assert.doesNotMatch(specialistPrompt,/JARVIS AUTOPILOT IS ON/);
 });
 test('JARVIS server ON requires the stored personal grant, not just a browser flag',async()=>{
- const marker='Answer\\n\\n[[task:'+JARVIS_EMPLOYEE+']] Compare sectors\\nCite public sources.';
+ const marker='Answer\n\n[[task:'+JARVIS_EMPLOYEE+']] Compare sectors\nCite public sources.';
  const base={agentType:'ceo',env:{FIRBO_JARVIS_SERVER_AUTOPILOT:'on'},savedAssistantId:JARVIS_MESSAGE,jarvisEmployee:true};
  const off=await invoke('agent-chat',{...base,serverJarvisGrant:false,chatReplies:[marker]},{jarvis_autopilot:true});
  assert.equal(off.response.status,200);
