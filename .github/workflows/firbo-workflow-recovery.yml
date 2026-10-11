@@ -1,0 +1,87 @@
+name: FIRBO durable workflow recovery acceptance
+on:
+  push:
+    branches:
+      - codex/firbo-workflow-recovery-20261011
+  pull_request:
+    branches:
+      - codex/firbo-connected-app-hardening-20261011
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: firbo-recovery-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Actual Edge entrypoint, recovery, accounting and existing runner regressions
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo/workflow-recovery.test.mjs \
+            tests/firbo/workflow-lifecycle.test.mjs \
+            tests/firbo/jarvis-server-handoff.test.mjs \
+            tests/firbo/edge-entrypoints.test.mjs \
+            tests/firbo/agent-runner-bundle.test.mjs \
+            tests/firbo/server-execution.test.mjs \
+            tests/firbo/ceo-connected-apps.test.mjs
+  postgres-protocol:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: '127.0.0.1'
+      PGUSER: postgres
+      PGPASSWORD: synthetic_ci_only
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Preserve original Autopilot RLS and one-shot queue acceptance
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f tests/firbo/sql/jarvis-autopilot-fixture.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011004820_jarvis_server_autopilot.sql
+          psql -v ON_ERROR_STOP=1 -f tests/firbo/sql/jarvis-autopilot-acceptance.sql
+      - name: Real concurrent PostgreSQL workflow transition protocol
+        run: |
+          set -euo pipefail
+          createdb firbo_workflow_recovery_ci
+          PGDATABASE=firbo_workflow_recovery_ci FIRBO_SYNTHETIC_PG=1 python3 tests/firbo/workflow-transition-postgres.py
+  full-frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - run: npm test --prefix frontend
+      - run: npm run build:tauri --prefix frontend
