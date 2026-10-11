@@ -16,7 +16,7 @@ const copy = value => structuredClone(value);
 const saved={fetch:globalThis.fetch,Deno:globalThis.Deno,warn:console.warn,error:console.error};
 let state,handler;
 globalThis.__recoveryClient=()=>state.client;
-globalThis.Deno={serve:fn=>{handler=fn;},env:{get:key=>({SUPABASE_URL:'https://db.example.test',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service',SUPABASE_ANON_KEY:'synthetic-public',FIRBO_JARVIS_SERVER_AUTOPILOTOT:state?.enabled?'on':'off',FIRBO_JARVIS_SERVER_AUTOPILOT:state?.enabled?'on':'off'})[key]}};
+globalThis.Deno={serve:fn=>{handler=fn;},env:{get:key=>({SUPABASE_URL:'https://db.example.test',SUPABASE_SERVICE_ROLE_KEY:'synthetic-service',SUPABASE_ANON_KEY:'synthetic-public',FIRBO_JARVIS_SERVER_AUTOPILOT:state?.enabled?'on':'off'})[key]}};
 console.warn=(...args)=>state?.logs.push(args.join(' '));
 console.error=(...args)=>state?.logs.push(args.join(' '));
 const temp=await mkdtemp(join(tmpdir(),'firbo-recovery-'));
