@@ -325,7 +325,9 @@ export function AgentChatPage() {
           return;
         }
       }
-      const out = await sendChat(active.id, msg, lang, effectiveSpeakOn);
+      const out = await (activeIsCeo && jarvis.enabled
+        ? sendChat(active.id,msg,lang,effectiveSpeakOn,undefined,{jarvisAutopilot:true})
+        : sendChat(active.id,msg,lang,effectiveSpeakOn));
       if (voiceScopeRef.current !== scopeAtSend) return;
       setFreshJarvisMessageId(out.message.id);
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
