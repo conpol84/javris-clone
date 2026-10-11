@@ -15,6 +15,7 @@ import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall, buildAgentSessionRecall } from '../_shared/ceo-session-recall.ts';
 import { agentPlanDecision } from '../_shared/agent-plan-access.ts';
+import { savedJarvisHandoff, jarvisServerMayAdmit } from '../_shared/jarvis-server-handoff.ts';
 import { compactForFree, ceoOperatingPolicy } from '../_shared/ceo-intelligence.ts';
 
 const cors = {
@@ -114,6 +115,18 @@ Deno.serve(async (req) => {
   if (!agent) return json(404, { error: 'no_agent' });
   if (!agent.enabled) return json(409, { error: 'agent_disabled' });
   const isCeo = agent.type === 'ceo';
+  // The browser preference is UX; this optional server runtime uses an
+  // independent authenticated per-user standing grant stored in Supabase.
+  const jarvisServerGate = Deno.env.get('FIRBO_JARVIS_SERVER_AUTOPILOT') === 'on';
+  let jarvisServerGrant = false;
+  if (isCeo && jarvisServerGate) {
+    const { data: storedGrant, error: storedError } = await admin.from('jarvis_autopilot_settings')
+      .select('enabled').eq('organization_id',convo.organization_id)
+      .eq('user_id',user.id).maybeSingle();
+    jarvisServerGrant = !storedError && storedGrant?.enabled === true;
+  }
+  const jarvisPromptAllowed = isCeo && body.jarvis_autopilot === true
+    && (!jarvisServerGate || jarvisServerGrant);
   const canSeeLeadership = ['owner','admin','manager'].includes(member.role);
   if(computerJournal){
     if(!isCeo||!['owner','admin'].includes(member.role))return json(403,{error:'forbidden'});
@@ -315,7 +328,7 @@ Deno.serve(async (req) => {
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     roleEvidenceInstructions(agent.type),
     ...(isCeo ? [ceoOperatingPolicy()] : []),
-    ...(isCeo && body.jarvis_autopilot===true ? ['JARVIS AUTOPILOT IS ON for this user interface. Your fresh TASK handoffs may start via an Auto-configured employee without an additional button click. Do the most useful authorized work; answer directly when you can. Never claim that the work began or finished without a real durable task/receipt. This UI preference grants ZERO permissions: all tool scope, cost, company and Stop rules still apply.'] : []),
+    ...(jarvisPromptAllowed ? ['JARVIS AUTOPILOT IS ON for this user interface. Your fresh TASK handoffs may start via an Auto-configured employee without an additional button click. Do the most useful authorized work; answer directly when you can. Never claim that the work began or finished without a real durable task/receipt. This UI preference grants ZERO permissions: all tool scope, cost, company and Stop rules still apply.'] : []),
     ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current request):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
@@ -349,7 +362,7 @@ Deno.serve(async (req) => {
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
   const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions,
-        jarvisAutopilot:isCeo&&body.jarvis_autopilot===true, jarvisAutopilot:isCeo&&body.jarvis_autopilot===true }) : [];
+        jarvisAutopilot:jarvisPromptAllowed, jarvisAutopilot:jarvisPromptAllowed }) : [];
   let reservedUsd = 0;
   try {
     if (!own && !localCeoSelected && !free && gateway) {
@@ -519,6 +532,37 @@ Deno.serve(async (req) => {
       accounting: { request_id: accounting.requestId, status: accountingStatus } });
   }
   await admin.from('conversations').update({ updated_at: new Date().toISOString(), ...(convo.title ? {} : { title: text.slice(0, 60) }) }).eq('id', convo.id);
+
+  // Server-owned JARVIS admission is opt-in AND OFF by default. The LLM
+  // output is saved first; only its validated persisted TASK marker can
+  // claim one existing-table task. This does not run or replay side effects.
+  let jarvisAdmission: { task_id: string; created: boolean; status: string } | null = null;
+  if (jarvisServerMayAdmit({
+      serverGate:jarvisServerGate,isCeo,ownerAuthenticated:reader===userClient,
+      standingGrant:jarvisServerGrant,isChannel:viaChannel,
+    }) && body.jarvis_autopilot === true && accountingStatus==='settled') {
+    const proposal=savedJarvisHandoff(botRow.content);
+    if(proposal) {
+      const {data:employee}=await admin.from('agents')
+        .select('id,slug,enabled,autonomy').eq('id',proposal.agentId)
+        .eq('organization_id',convo.organization_id).maybeSingle();
+      if(employee?.autonomy==='auto' && agentPlanDecision(orgPlan,employee).allowed) {
+        const {data:claimed,error:claimError}=await admin.rpc('admit_jarvis_autopilot_task',{
+          p_org:convo.organization_id,p_owner:user.id,p_conversation:convo.id,
+          p_message:botRow.id,p_agent:employee.id,
+          p_title:proposal.title,p_details:proposal.details,
+        });
+        if(!claimError && claimed?.task_id===botRow.id && typeof claimed?.created==='boolean') {
+          jarvisAdmission={task_id:claimed.task_id,created:claimed.created,status:String(claimed.status??'pending')};
+        } else {
+          console.warn(JSON.stringify({event:'firbo_jarvis_admission_needs_review',
+            organization_id:convo.organization_id,user_id:user.id,message_id:botRow.id,
+            reason:claimError?'admission_failed':'admission_unverified'}));
+        }
+      }
+    }
+  }
   return json(200, { user_message: userRow, message: botRow, routing,
+    ...(jarvisAdmission ? {jarvis_autopilot:{mode:'server',...jarvisAdmission}} : {}),
     accounting: { request_id: accounting.requestId, status: accountingStatus } });
 });
