@@ -15,6 +15,7 @@ import { ownerVisibleMemory } from '../_shared/memory-visibility.ts';
 import { roleEvidenceInstructions } from '../_shared/agent-role-evidence.ts';
 import { buildCeoSessionRecall, buildAgentSessionRecall } from '../_shared/ceo-session-recall.ts';
 import { agentPlanDecision } from '../_shared/agent-plan-access.ts';
+import { connectedAppContext } from '../_shared/ceo-connected-apps.ts';
 import { savedJarvisHandoff, jarvisServerMayAdmit } from '../_shared/jarvis-server-handoff.ts';
 import { compactForFree, ceoOperatingPolicy } from '../_shared/ceo-intelligence.ts';
 
@@ -298,19 +299,26 @@ Deno.serve(async (req) => {
     .eq('organization_id', convo.organization_id).eq('kind', 'task');
   if (!isCeo) tasksQuery = tasksQuery.eq('assigned_agent_id', agent.id).eq('created_by',user.id);
   else if(!canSeeLeadership) tasksQuery = tasksQuery.eq('created_by',user.id);
+  // A consumer CEO sees its own connections. The existing manager role may
+  // see the company app catalog, never another member's private provider data.
+  let integrationQuery = admin.from('integrations').select('kind,status,created_by')
+    .eq('organization_id',convo.organization_id);
+  if(!canSeeLeadership)integrationQuery=integrationQuery.eq('created_by',user.id);
   const [{ data: tkRows }, { data: apRows }, { data: agRows }, { data: spendMonth }, { data: integrationRows, error: integrationsError }] = await Promise.all([
     tasksQuery.order('updated_at', { ascending: false }).limit(30),
     canSeeLeadership?admin.from('approvals').select('action, risk, agent_id').eq('organization_id', convo.organization_id).eq('status', 'pending').limit(8):Promise.resolve({data:[],error:null}),
     admin.from('agents').select('id, name, slug, type, enabled').eq('organization_id', convo.organization_id).limit(40),
     canSeeLeadership?admin.from('usage_events').select('cost_usd').eq('organization_id', convo.organization_id).gte('created_at', monthStart.toISOString()):Promise.resolve({data:[],error:null}),
-    admin.from('integrations').select('kind, status').eq('organization_id', convo.organization_id).limit(100),
+    integrationQuery.limit(100),
   ]);
   const list = (v: unknown): any[] => (Array.isArray(v) ? v : []);
   const [tk, ap, ag] = [list(tkRows), list(apRows), list(agRows).filter((a:any)=>agentPlanDecision(orgPlan,a).allowed)];
   const names = new Map<string, string>(ag.map((x: any) => [x.id, x.name]));
   const clip = (v: unknown, n: number) => (typeof v === 'string' ? v : JSON.stringify(v) ?? '').replace(/\s+/g, ' ').slice(0, n);
   const monthCost = list(spendMonth).reduce((sum: number, r: any) => sum + Number(r.cost_usd ?? 0), 0);
-  const installedSources = new Set(list(integrationRows).map((x: any) => String(x.kind)));
+  const connectorInventory=connectedAppContext(integrationRows,user.id,canSeeLeadership,
+    !!integrationsError,WORK_SOURCE_APPS);
+  const installedSources=new Set(connectorInventory.configuredKinds);
   // Fail closed: if integrations cannot be read, do not suggest any source. This avoids telling the
   // founder to connect something whose existing connection we could not verify.
   const availableSources = integrationsError ? [] : WORK_SOURCE_APPS.filter(app => !installedSources.has(app.kind));
@@ -321,7 +329,8 @@ Deno.serve(async (req) => {
     canSeeLeadership ? `Spend this month: ${monthCost.toFixed(2)}.` : 'Company spend: not available for this role.',
     `Pending approvals (${ap.length}): ${ap.map((x: any) => `${clip(x.action, 60)} [${names.get(x.agent_id) ?? 'agent'}, risk ${x.risk ?? 'n/a'}]`).join('; ') || 'none'}.`,
     `Open tasks: ${open.map((x: any) => `"${clip(x.title, 60)}" ${x.status}${x.assigned_agent_id ? ` by ${names.get(x.assigned_agent_id) ?? 'agent'}` : ' (unassigned)'}`).join(' | ') || 'none'}.`,
-    `Connected work sources: ${integrationsError ? 'unavailable' : WORK_SOURCE_APPS.filter(app => installedSources.has(app.kind)).map(app => app.name).join(', ') || 'none'}.`,
+    `Connected work sources: ${connectorInventory.workSources}.`,
+    connectorInventory.context,
     taskBriefing(tk as BriefTask[], names, text, { focusChars: body.voice === true ? 2000 : 3500 }),
   ].join('\n');
   const system = [
