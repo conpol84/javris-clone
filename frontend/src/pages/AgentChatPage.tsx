@@ -16,6 +16,7 @@ import { parseHandoff } from '../lib/company/handoff';
 import { CeoActions } from '../components/company/CeoActions';
 import { JarvisModeControl } from '../components/company/JarvisModeControl';
 import { useJarvisMode } from '../lib/company/useJarvisMode';
+import { JARVIS_SERVER_MODE } from '../lib/company/jarvis-server-mode';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
@@ -480,7 +481,7 @@ export function AgentChatPage() {
             {activeIsCeo && canWrite && user?.id && (
               <div className="px-4 pt-2">
                 <JarvisModeControl enabled={jarvis.enabled} onToggle={jarvis.setEnabled}
-                  lang={lang} disabled={sending||planState.status!=='ready'}/>
+                  lang={lang} disabled={sending||planState.status!=='ready'||jarvis.loading||jarvis.saving}/>
               </div>
             )}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
@@ -502,7 +503,7 @@ export function AgentChatPage() {
                     )}
                     {m.role === 'assistant' && (task || meet || app) &&
                       <CeoActions task={task} meet={meet} app={app} messageId={m.id}
-                        conversationId={active.id} fresh={m.id===freshJarvisMessageId}
+                        conversationId={active.id} fresh={m.id===freshJarvisMessageId&&!JARVIS_SERVER_MODE}
                         autopilotEnabled={jarvis.enabled} planReady={planState.status==='ready'}/>}
                   </div>
                 </div>
