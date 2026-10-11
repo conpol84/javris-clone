@@ -482,7 +482,7 @@ export function AgentChatPage() {
             {activeIsCeo && canWrite && user?.id && (
               <div className="px-4 pt-2">
                 <JarvisModeControl enabled={jarvis.enabled} onToggle={jarvis.setEnabled}
-                  lang={lang} disabled={sending||planState.status!=='ready'||jarvis.loading||jarvis.saving}/>
+                  lang={lang} disabled={sending||planState.status!=='ready'||jarvis.loading||jarvis.saving||jarvis.error} unavailable={jarvis.error} onRetry={jarvis.retry}/>
               </div>
             )}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
