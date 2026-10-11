@@ -48,6 +48,29 @@ do $$ declare r jsonb; n integer; begin
  select count(*) into n from public.tasks;
  if r->>'created'<>'false' or n<>1 then raise exception 'duplicate was replayed'; end if;
 end $$;
+-- The saved server-only task cannot be forged as completed or redirected
+-- by the human owner through a direct authenticated PostgREST update.
+set role authenticated;
+select set_config('request.jwt.claim.sub','11111111-1111-4111-8111-111111111111',false);
+do $$ begin
+  begin
+    update public.tasks set status='completed'
+      where id='77777777-7777-4777-8777-777777777777';
+    raise exception 'client forged terminal task state';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.tasks set assigned_agent_id='44444444-4444-4444-8444-444444444444'
+      where id='77777777-7777-4777-8777-777777777777';
+    raise exception 'client reassigned server-owned task';
+  exception when insufficient_privilege then null; end;
+  begin
+    update public.tasks set metadata='{}'::jsonb
+      where id='77777777-7777-4777-8777-777777777777';
+    raise exception 'client stripped server queue provenance';
+  exception when insufficient_privilege then null; end;
+end $$;
+reset role;
+set role service_role;
 do $$ declare n integer; begin
  select count(*) into n from public.claim_due_jarvis_autopilot_tasks(1);
  if n<>1 then raise exception 'first scheduler claim missing';end if;
