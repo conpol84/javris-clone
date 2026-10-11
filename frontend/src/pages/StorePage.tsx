@@ -14,6 +14,7 @@ import { loadPlanUsage, type PlanUsage } from '../lib/company/billing';
 import { AGENT_TEMPLATES, isPremium, TEMPLATE_CATEGORIES, type AgentTemplate } from '../lib/company/templates';
 import { MANAGER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/jarvis-visual-system.css';
 
 /** Browse every AI employee you can hire, with search and categories. */
 export function StorePage() {
