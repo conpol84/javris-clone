@@ -331,7 +331,8 @@ export function AgentChatPage() {
         : sendChat(active.id,msg,lang,effectiveSpeakOn));
       if (voiceScopeRef.current !== scopeAtSend) return;
       setFreshJarvisMessageId(out.message.id);
-      setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
+      const assistant=out.jarvis_autopilot?.task_id ? {...out.message,jarvis_task_id:out.jarvis_autopilot.task_id}:out.message;
+      setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, assistant]);
       void reloadList();
       speakReply(parseHandoff(out.message.content).text);
     } catch (err) {
@@ -502,7 +503,7 @@ export function AgentChatPage() {
                       </button>
                     )}
                     {m.role === 'assistant' && (task || meet || app) &&
-                      <CeoActions task={task} meet={meet} app={app} messageId={m.id}
+                      <CeoActions task={task} meet={meet} app={app} messageId={m.id} queuedTaskId={(m as ChatMessage&{jarvis_task_id?:string}).jarvis_task_id}
                         conversationId={active.id} fresh={m.id===freshJarvisMessageId&&!JARVIS_SERVER_MODE}
                         autopilotEnabled={jarvis.enabled} planReady={planState.status==='ready'}/>}
                   </div>
