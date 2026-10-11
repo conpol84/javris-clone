@@ -226,8 +226,8 @@ export function MissionsPage() {
     : p === 'meeting' ? copy('mtInSession') : t(`mis.phase.${p}` as TKey);
 
   return (
-    <div className="fb-root flex h-full flex-col lg:flex-row">
-      <aside className="flex max-h-[34%] w-full shrink-0 flex-col border-b lg:max-h-none lg:w-[340px] lg:border-b-0 lg:border-e" style={{ borderColor: 'var(--fb-border)' }}>
+    <div data-jarvis-missions="true" className="fb-root flex h-full min-h-0 min-w-0 flex-col overflow-y-auto lg:flex-row lg:overflow-hidden">
+      <aside className="flex w-full min-w-0 shrink-0 flex-col border-b lg:h-full lg:w-[340px] lg:border-b-0 lg:border-e" style={{ borderColor: 'var(--fb-border)' }}>
         <div className="p-3 pt-14 lg:pt-3">
           <h1 className="flex items-center gap-2 text-base font-semibold"><Rocket size={16} style={{ color: 'var(--fb-accent)' }} /> {t('mis.title')}</h1>
           <p className="fb-dim mt-0.5 text-xs">{t('mis.sub')}</p>
@@ -268,7 +268,7 @@ export function MissionsPage() {
             </button>
           </form>
         )}
-        <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto px-2 pb-3">
+        <ul data-mission-history="true" className="max-h-44 min-h-0 space-y-1 overflow-y-auto px-2 pb-3 lg:max-h-none lg:flex-1">
           {visibleMissions.map((m) => (
             <li key={m.id}>
               <button
@@ -288,7 +288,7 @@ export function MissionsPage() {
         </ul>
       </aside>
 
-      <section className="min-h-0 flex-1 overflow-y-auto">
+      <section data-mission-detail="true" className="min-w-0 shrink-0 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
         {!mission ? (
           <div className="grid h-full min-h-[320px] place-items-center p-6 text-center">
             <div>
@@ -298,14 +298,14 @@ export function MissionsPage() {
           </div>
         ) : (
           <div className="flex min-h-full flex-col">
-            <div className="relative h-[340px] shrink-0 md:h-[400px]">
+            <div data-mission-stage="true" className="relative h-[245px] min-w-0 shrink-0 sm:h-[320px] md:h-[400px]">
               <Suspense fallback={<div className="fb-muted grid h-full place-items-center text-sm">{t('office.loading')}</div>}>
                 <MissionScene nodes={nodes} steps={sceneSteps} missionStatus={status} labels={{ core: t('mis.core'), noWebgl: t('office.noWebgl') }} />
               </Suspense>
-              <div className="pointer-events-none absolute inset-x-4 top-3 flex items-start justify-between gap-3">
+              <div className="pointer-events-none absolute inset-x-3 top-2 flex flex-wrap items-start justify-between gap-2 sm:inset-x-4 sm:top-3">
                 <div className="min-w-0">
                   <div className="fb-eyebrow">{isMeeting(mission) ? copy('mtMeeting') : t('mis.title')}</div>
-                  <div className="truncate text-lg font-semibold">{mission.title}</div>
+                  <div className="max-w-[min(100%,330px)] break-words text-sm font-semibold leading-snug sm:text-lg">{mission.title}</div>
                 </div>
                 <span className="fb-chip shrink-0">
                   <StatusDot tone={TONE[status as keyof typeof TONE] ?? 'idle'} live={status === 'running'} />
@@ -315,7 +315,7 @@ export function MissionsPage() {
               {running && <div className="fb-dim pointer-events-none absolute inset-x-0 bottom-2 text-center text-xs">{t('mis.keepOpen')}</div>}
             </div>
 
-            <div className="space-y-4 p-4">
+            <div className="min-w-0 space-y-4 p-3 pb-8 sm:p-4">
               {!running && canWrite && (phase === 'waiting' || ['pending', 'running', 'awaiting_approval'].includes(mission.status)) && (
                 <button className="fb-btn fb-btn--primary" disabled={!!waitingStep} onClick={() => void start(mission)}>
                   <Rocket size={14} /> {t('mis.continue')}
@@ -351,7 +351,7 @@ export function MissionsPage() {
                           <span className="fb-dim w-5 shrink-0 text-xs tabular-nums">{idx + 1}</span>
                           <StatusDot tone={TONE[s.status] ?? 'idle'} live={s.status === 'running'} />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium">{s.title}</span>
+                            <span data-mission-step-title className="block min-w-0 break-words text-sm font-medium">{s.title}</span>
                             <span className="fb-dim block truncate text-xs">{t('mis.by', { agent: nameOf(s.assigned_agent_id) })} · {t(`status.${s.status}` as TKey)}</span>
                           </span>
                         </button>
