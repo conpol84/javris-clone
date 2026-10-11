@@ -106,7 +106,7 @@ describe('CEO action execution and combined offers', () => {
   it('does not start the old company task if the action closes during task creation', async () => {
     let finish!: (id: string) => void;
     api.createTask.mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
-    const tree = taskTree(); const cleanup = fixture.effects[fixture.effects.length - 1]() as () => void;
+    const tree = taskTree(); const cleanups = fixture.effects.map(effect=>effect()).filter((value):value is () => void=>typeof value==='function'); const cleanup=cleanups.at(-1)!;
     click(tree); cleanup(); finish('old-company-task');
     await Promise.resolve(); await Promise.resolve();
     expect(api.runTask).not.toHaveBeenCalled(); expect(api.read).not.toHaveBeenCalled();
