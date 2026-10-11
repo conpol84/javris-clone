@@ -29,19 +29,19 @@ describe('core presentation controls', () => {
     expect(coreVoiceLabel('idle', coreLabels.en, voiceMessages('en'))).toBe('Voice idle');
     expect(coreVoiceLabel('error', coreLabels.en, voiceMessages('en'))).toBe('Voice error');
   });
-  it('renders keyboard-native buttons, pressed state and an explicit visual-only scope', () => {
+  it('renders accessible controls without visual-only disclaimer', () => {
     const html = renderToStaticMarkup(<CoreControls paused lightweight={false} reduced={false} phase="listening" onPause={vi.fn()} onLightweight={vi.fn()} />);
     expect(html).toContain('Resume animation');
     expect(html).toContain('aria-pressed="true"');
-    expect(html).toContain('aria-describedby=');
-    expect(html).toContain('Microphone and tasks are unchanged.');
+    expect(html).not.toContain('aria-describedby=');
+    expect(html).not.toContain('Visual controls only.');
     expect(html).toContain('role="status"');
     expect(html).toContain('Microphone on. Speak now.');
   });
   it('does not offer an override of device reduced motion', () => {
     const html = renderToStaticMarkup(<CoreControls paused={false} lightweight reduced phase="idle" onPause={vi.fn()} onLightweight={vi.fn()} />);
     expect(html).toContain('disabled=""');
-    expect(html).toContain('Reduced motion is enabled on your device.');
+    expect(html).toContain('title="Reduced motion is enabled on your device."');
   });
   it('changing presentation never cancels the active voice turn', () => {
     const turn = beginVoiceTurn();
