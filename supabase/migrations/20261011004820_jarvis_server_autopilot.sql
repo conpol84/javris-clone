@@ -66,6 +66,18 @@ revoke all on function private.guard_jarvis_task_origin() from public,anon,authe
 create trigger tasks_jarvis_origin before insert or update on public.tasks
   for each row execute function private.guard_jarvis_task_origin();
 
+-- Clients cannot forge assistant messages to activate standing Autopilot.
+-- The existing permissive append policy remains for genuine user messages.
+create policy "clients may append only own user turns" on public.messages
+  as restrictive for insert to authenticated
+  with check (
+    role='user' and exists (
+      select 1 from public.conversations c
+      where c.id=conversation_id and c.organization_id=organization_id
+        and c.user_id=(select auth.uid()) and c.status='active'
+    )
+  );
+
 -- A model reply is NOT a permission grant. The RPC trusts only the saved CEO
 -- assistant message, exact tenant/user/agent and a previously opted-in member.
 -- p_message is also the idempotent task PK (different table).
@@ -109,6 +121,111 @@ begin
     raise exception 'jarvis_agent_not_auto' using errcode='42501';
   end if;
 
+  if company.plan='free' and regexp_replace(employee.slug,'-[2-9][0-9]*
+  -- with a real enabled CEO, never another company's employee or a user reply.
+  select m.content into assistant_text from public.messages m
+    join public.conversations c on c.id=m.conversation_id
+      and c.organization_id=m.organization_id
+    join public.agents leader on leader.id=c.agent_id and leader.organization_id=c.organization_id
+    where c.id=p_conversation and c.organization_id=p_org and c.user_id=p_owner
+      and c.status='active' and leader.type='ceo' and leader.enabled=true
+      and m.id=p_message and m.role='assistant' and m.organization_id=p_org;
+  if not found then raise exception 'jarvis_source_not_verified' using errcode='42501'; end if;
+  snippet := '[[task:'||p_agent::text||']] '||p_title||
+    case when p_details='' then '' else E'\n'||p_details end;
+  if position(snippet in assistant_text)=0 then
+    raise exception 'jarvis_source_not_verified' using errcode='42501';
+  end if;
+
+  -- A lost HTTP ACK must not count against today's quota or cause a replay.
+  select * into work from public.tasks where id=p_message for update;
+  if found then
+    if work.organization_id<>p_org or work.created_by is distinct from p_owner
+      or work.assigned_agent_id is distinct from p_agent or work.title<>p_title
+      or coalesce(work.description,'')<>p_details
+      or work.metadata->>'source'<>'jarvis_autopilot_server_v1'
+      or work.metadata->>'conversation_id'<>p_conversation::text
+      or work.metadata->>'message_id'<>p_message::text
+    then raise exception 'jarvis_task_conflict' using errcode='23505'; end if;
+    return jsonb_build_object('task_id',work.id,'created',false,'status',work.status);
+  end if;
+
+  -- Even a breached Edge caller cannot exceed the owner's standing daily cap.
+  select count(*) into today_count from public.tasks
+    where organization_id=p_org and created_by=p_owner and created_at>=now()-interval '24 hours'
+      and metadata->>'source'='jarvis_autopilot_server_v1';
+  if today_count>=setting.max_daily_tasks then
+    raise exception 'jarvis_daily_cap' using errcode='22023';
+  end if;
+
+  insert into public.tasks(id,organization_id,created_by,assigned_agent_id,title,description,
+    priority,status,metadata)
+  values(p_message,p_org,p_owner,p_agent,p_title,nullif(p_details,''),'normal','pending',
+    jsonb_build_object('source','jarvis_autopilot_server_v1','conversation_id',p_conversation,
+      'message_id',p_message,'dispatch_state','new'))
+  on conflict (id) do nothing
+  returning true into inserted;
+
+  select * into work from public.tasks where id=p_message for update;
+  if not found or work.organization_id<>p_org or work.created_by is distinct from p_owner
+    or work.assigned_agent_id is distinct from p_agent or work.title<>p_title
+    or coalesce(work.description,'')<>p_details or work.metadata->>'source'<>'jarvis_autopilot_server_v1'
+    or work.metadata->>'conversation_id'<>p_conversation::text
+    or work.metadata->>'message_id'<>p_message::text
+  then raise exception 'jarvis_task_conflict' using errcode='23505'; end if;
+  return jsonb_build_object('task_id',work.id,'created',coalesce(inserted,false),'status',work.status);
+end $$;
+revoke all on function public.admit_jarvis_autopilot_task(uuid,uuid,uuid,uuid,uuid,text,text) from public,anon,authenticated;
+grant execute on function public.admit_jarvis_autopilot_task(uuid,uuid,uuid,uuid,uuid,text,text) to service_role;
+
+-- Each task is claimed for server dispatch at most once. If HTTP delivery is
+-- ambiguous the claim REMAINS; never auto-replay a potentially billed action.
+-- Workflow-runner uses its existing cron identity and existing agent-runner.
+create function public.claim_due_jarvis_autopilot_tasks(p_limit integer default 3)
+returns table(task_id uuid,organization_id uuid,created_by uuid)
+language plpgsql security invoker set search_path='' as $$
+begin
+  if p_limit is null or p_limit<1 or p_limit>5 then
+    raise exception 'bad_jarvis_batch' using errcode='22023';
+  end if;
+  return query
+    with eligible as (
+      select t.id from public.tasks t
+        join public.jarvis_autopilot_settings s
+          on s.organization_id=t.organization_id and s.user_id=t.created_by and s.enabled=true
+        join public.organizations o on o.id=t.organization_id and o.status='active'
+        join public.agents a on a.id=t.assigned_agent_id and a.organization_id=t.organization_id
+          and a.enabled=true and a.autonomy='auto'
+        join public.organization_members m on m.organization_id=t.organization_id and m.user_id=t.created_by
+          and m.role in ('owner','admin','manager','member')
+      where t.status='pending' and t.run_claim is null
+        and t.metadata->>'source'='jarvis_autopilot_server_v1'
+        and t.metadata->>'dispatch_state'='new'
+        and o.plan in ('free','pro','business','enterprise')
+        and (o.plan='free' or o.plan_status in ('active','trialing'))
+      order by t.created_at,t.id for update of t skip locked limit p_limit
+    )
+    update public.tasks t
+      set metadata=t.metadata||jsonb_build_object('dispatch_state','claimed',
+        'dispatch_claimed_at',now(),'dispatch_claim_id',gen_random_uuid())
+      from eligible e where t.id=e.id
+      returning t.id,t.organization_id,t.created_by;
+end $$;
+revoke all on function public.claim_due_jarvis_autopilot_tasks(integer) from public,anon,authenticated;
+grant execute on function public.claim_due_jarvis_autopilot_tasks(integer) to service_role;
+
+commit;
+,'') = any(array[
+    'devops-engineer','security-auditor','code-reviewer','qa-engineer','product-manager',
+    'ads-manager','influencer-outreach','pr-comms','brand-strategist','procurement',
+    'inventory-planner','legal-reviewer','compliance-helper','tax-assistant',
+    'financial-planner','invoice-collector','market-researcher','trend-scout',
+    'ux-researcher','competitor-analyst','deep-research','site-watchdog',
+    'knowledge-librarian','ai-cost-optimizer','ai-gateway-operator',
+    'autonomous-coder','seo-specialist','email-marketer','hr-onboarding',
+    'recruiter','community-manager'
+  ]) then raise exception 'jarvis_premium_not_allowed' using errcode='42501'; end if;
+
   -- Exact identity: the conversation belongs to this user and was conducted
   -- with a real enabled CEO, never another company's employee or a user reply.
   select m.content into assistant_text from public.messages m
@@ -123,6 +240,19 @@ begin
     case when p_details='' then '' else E'\n'||p_details end;
   if position(snippet in assistant_text)=0 then
     raise exception 'jarvis_source_not_verified' using errcode='42501';
+  end if;
+
+  -- A lost HTTP ACK must not count against today's quota or cause a replay.
+  select * into work from public.tasks where id=p_message for update;
+  if found then
+    if work.organization_id<>p_org or work.created_by is distinct from p_owner
+      or work.assigned_agent_id is distinct from p_agent or work.title<>p_title
+      or coalesce(work.description,'')<>p_details
+      or work.metadata->>'source'<>'jarvis_autopilot_server_v1'
+      or work.metadata->>'conversation_id'<>p_conversation::text
+      or work.metadata->>'message_id'<>p_message::text
+    then raise exception 'jarvis_task_conflict' using errcode='23505'; end if;
+    return jsonb_build_object('task_id',work.id,'created',false,'status',work.status);
   end if;
 
   -- Even a breached Edge caller cannot exceed the owner's standing daily cap.
