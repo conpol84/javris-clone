@@ -22,7 +22,9 @@ command = ["psql", "-X", "-v", "ON_ERROR_STOP=1", "-At", "-c"]
 
 
 def sql(statement: str) -> str:
-    result = subprocess.run(command + [statement], text=True, capture_output=True, timeout=20)
+    result = subprocess.run(
+        command + [statement], text=True, capture_output=True, timeout=20
+    )
     if result.returncode:
         raise AssertionError(result.stderr)
     return result.stdout.strip()
@@ -71,7 +73,10 @@ for worker in workers:
     _, error = worker.communicate(timeout=20)
     assert worker.returncode == 0, error
 assert sql("select count(*) from next_tasks") == "1"
-assert sql("select step::text||':'||(task_id is null)::text from workflow_runs") == "1:true"
+assert (
+    sql("select step::text||':'||(task_id is null)::text from workflow_runs")
+    == "1:true"
+)
 print("PASS: two concurrent PostgreSQL claimers create exactly one next task")
 
 # Same expected old step/task cannot replay after a lost acknowledgement.
@@ -101,6 +106,8 @@ update dispatch_receipts set status='blocked',result='{"reconcile_required":true
 """
 sql(dispatch_sql)
 assert sql("select status from dispatch_receipts where id=1") == "running"
-assert sql("select result->>'accounting' from dispatch_receipts where id=2") == "preserve"
+assert (
+    sql("select result->>'accounting' from dispatch_receipts where id=2") == "preserve"
+)
 print("PASS: conditional reconciliation preserves running work and stored accounting")
 print("5/5 real PostgreSQL protocol checks passed; no production/provider calls")
