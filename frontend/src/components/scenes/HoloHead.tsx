@@ -114,8 +114,8 @@ export function HoloHead({ state, motion, pointCount = 16000 }: { state: HoloSta
       (u.uColor.value as THREE.Color).copy(col);
     }
     if (group.current) {
-      group.current.rotation.y = Math.sin(t * 0.35) * (state === 'thinking' ? 0.5 : 0.22);
-      group.current.rotation.x = Math.sin(t * 0.5) * 0.03 + (state === 'listening' ? 0.04 : 0);
+      group.current.rotation.y = Math.sin(t * 0.28) * (state === 'thinking' ? 0.18 : 0.08);
+      group.current.rotation.x = Math.sin(t * 0.35) * 0.012 + (state === 'listening' ? 0.025 : 0);
     }
   });
 
