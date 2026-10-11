@@ -38,6 +38,15 @@ CREATE POLICY connector_devices_owner_select ON public.connector_devices
 
 CREATE POLICY connector_jobs_owner_select ON public.connector_jobs
   FOR SELECT TO authenticated
-  USING (created_by = (SELECT auth.uid()) AND private.is_member(organization_id));
+  USING (
+    created_by = (SELECT auth.uid())
+    AND private.is_member(organization_id)
+    AND EXISTS (
+      SELECT 1 FROM public.connector_devices AS d
+       WHERE d.id = connector_jobs.device_id
+         AND d.organization_id = connector_jobs.organization_id
+         AND d.created_by = (SELECT auth.uid())
+    )
+  );
 
 COMMIT;
