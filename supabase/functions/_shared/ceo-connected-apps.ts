@@ -18,7 +18,7 @@ export interface ConnectionContext {
 }
 const KIND=/^[a-z][a-z0-9_]{1,47}$/;
 const safeKind=(raw:unknown)=>typeof raw==='string'&&KIND.test(raw)?raw:null;
-const text=(value:unknown)=>String(value??'').replace(/[^a-z0-9 _.-]/gi,' ').trim().slice(0,48);
+const text=(value:unknown)=>String(value??'').replace(/[^a-z0-9 _.·-]/gi,' ').trim().slice(0,48);
 export function connectedAppContext(
   raw:unknown,
   ownerId:string,
