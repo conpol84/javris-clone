@@ -1,0 +1,118 @@
+name: FIRBO Jarvis durable VPS/Supabase source gate
+on:
+  push:
+    branches:
+      - codex/firbo-jarvis-durable-vps-20261011
+  pull_request:
+    branches:
+      - codex/firbo-jarvis-responsive-ux-20261011
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  sql-policy-and-queue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: synthetic_ci_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      PGHOST: localhost
+      PGUSER: postgres
+      PGPASSWORD: synthetic_ci_only
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - name: Synthetic schema, real JARVIS migration and RLS tests
+        run: |
+          set -euo pipefail
+          psql -v ON_ERROR_STOP=1 -f tests/firbo/sql/jarvis-autopilot-fixture.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261011004820_jarvis_server_autopilot.sql
+          psql -v ON_ERROR_STOP=1 -f tests/firbo/sql/jarvis-autopilot-acceptance.sql
+      - name: Enforce exact migration transaction and grants before PR review
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const sql=fs.readFileSync('supabase/migrations/20261011004820_jarvis_server_autopilot.sql','utf8');
+          const checks=[
+            (sql.match(/^begin;$/gm)||[]).length===1,
+            (sql.match(/^commit;$/gm)||[]).length===1,
+            (sql.match(/^create function /gm)||[]).length===4,
+            sql.includes('for update of t skip locked'),
+            sql.includes("revoke all on function public.admit_jarvis_autopilot_task("),
+            sql.includes("grant execute on function public.claim_due_jarvis_autopilot_tasks(integer) to service_role"),
+            sql.includes('as restrictive for insert to authenticated'),
+            sql.includes("jarvis_premium_not_allowed"),
+            sql.includes("jsonb_build_object('source','jarvis_autopilot_server_v1'"),
+          ];
+          if(checks.some(x=>!x))throw Error('Jarvis grant, no-client-forgery or one-shot SQL gate violated: '+JSON.stringify(checks));
+          console.log('One coherent migration, server-only RPC, RLS, Premium and one-shot queue: PASS');
+          JS
+
+  backend-regressions:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '24'}
+      - name: Existing Edge plus strict persisted CEO marker and revenue gates
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo/jarvis-server-handoff.test.mjs \
+            tests/firbo/edge-entrypoints.test.mjs \
+            tests/firbo/agent-runner-bundle.test.mjs \
+            tests/firbo/server-execution.test.mjs
+      - name: Server inference and cron exact-source checks
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const runner=fs.readFileSync('supabase/functions/agent-runner/index.ts','utf8');
+          const chat=fs.readFileSync('supabase/functions/agent-chat/index.ts','utf8');
+          const cron=fs.readFileSync('supabase/functions/workflow-runner/index.ts','utf8');
+          const checks=[
+            chat.includes("Deno.env.get('FIRBO_JARVIS_SERVER_AUTOPILOT') === 'on'"),
+            chat.includes("accountingStatus==='settled'"),
+            chat.includes("savedJarvisHandoff(botRow.content)"),
+            chat.includes("admit_jarvis_autopilot_task"),
+            cron.includes("claim_due_jarvis_autopilot_tasks"),
+            cron.includes("jarvis_delivery_requires_review"),
+            cron.includes("EdgeRuntime?.waitUntil?.(all)"),
+            runner.includes("task.created_by !== user.id"),
+            runner.includes("task.metadata.dispatch_state !== 'claimed'"),
+            runner.includes("personalGrant?.enabled!==true"),
+            runner.includes("claim_task_run"),
+            runner.includes("publish_task_run"),
+          ];
+          if(checks.some(x=>!x))throw Error('Durable task and existing runner accounting safety violated: '+JSON.stringify(checks));
+          console.log('ONE existing workflow tick + ONE existing claim/ledger/executor; JARVIS disabled by default');
+          JS
+
+  frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Prior JARVIS identity and personal consent regression
+        run: npm test --prefix frontend -- src/lib/company/jarvis-autopilot.test.ts src/lib/company/jarvis-delegation.test.ts
+      - name: Whole frontend regression
+        run: npm test --prefix frontend
+      - name: TypeScript + Vite/Tauri production build
+        run: npm run build:tauri --prefix frontend
