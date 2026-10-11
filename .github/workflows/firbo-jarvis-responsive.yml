@@ -1,0 +1,95 @@
+name: FIRBO Jarvis design mobile and admin acceptance
+on:
+  push:
+    branches:
+      - codex/firbo-jarvis-responsive-ux-20261011
+  pull_request:
+    branches:
+      - codex/firbo-jarvis-autopilot-20261011
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-and-types:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: JARVIS, Missions and platform-only Gateway unit tests
+        run: npm test --prefix frontend -- src/pages/GatewayPage.test.tsx src/pages/MissionsPage.pending.test.tsx src/components/scenes/corePresentation.test.tsx
+      - name: All frontend regression tests
+        run: npm test --prefix frontend
+      - name: TypeScript and production Vite/Tauri build
+        run: npm run build:tauri --prefix frontend
+      - name: Real source-level mobile/admin guards
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const read=p=>fs.readFileSync(p,'utf8');
+          const missions=read('frontend/src/pages/MissionsPage.tsx');
+          const store=read('frontend/src/pages/StorePage.tsx');
+          const settings=read('frontend/src/pages/FirboSettingsPage.tsx');
+          const gate=read('frontend/src/pages/GatewayPage.tsx');
+          const sidebar=read('frontend/src/components/Sidebar/Sidebar.tsx');
+          const admin=read('frontend/src/lib/company/admin.ts');
+          const scene=read('frontend/src/components/scenes/CeoStage.tsx');
+          const controls=read('frontend/src/components/scenes/CoreControls.tsx');
+          const labels=read('frontend/src/components/scenes/corePresentation.ts');
+          const checks=[
+            missions.includes('data-jarvis-missions'),missions.includes('data-mission-history'),
+            missions.includes('overflow-y-auto lg:flex-row'),
+            store.includes('data-jarvis-store'),store.includes('data-agent-store-grid'),
+            store.includes('data-agent-categories'),
+            settings.includes('{isPlatformAdmin && <Panel'),
+            gate.includes('if(!authorized)return <Navigate to="/" replace />'),
+            gate.includes('session.data.platform_admin!==true'),
+            !sidebar.includes("{ path: '/gateway', icon: Waypoints, label: t('nav.gateway') },\n      ]"),
+            admin.includes('result.userId!==userId'),
+            !admin.includes('let cached: Promise<boolean>'),
+            scene.includes('pointCount={compact ? 3900 : 12500}'),
+            scene.includes('frameloop={visible ? "always" : "never"}'),
+            !controls.includes('labels.scope'),!labels.includes('Visual controls only.'),
+            read('frontend/src/components/Layout.tsx').includes("import '../styles/jarvis-visual-system.css';"),
+          ];
+          if(checks.some(x=>!x))throw Error('Jarvis mobile design or platform-admin source invariant missing: '+JSON.stringify(checks));
+          console.log('JARVIS mobile, adaptive CEO and platform-only admin source gates PASS');
+          JS
+  rendered-mobile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with: {persist-credentials: false}
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: '22'}
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - run: npm ci --prefix tools/firbo-browser-runtime --ignore-scripts --no-audit --no-fund
+      - run: npx --prefix tools/firbo-browser-runtime playwright install --with-deps chromium
+      - name: Render actual catalog and Missions pages at narrow mobile widths
+        run: |
+          set -euo pipefail
+          npm --prefix frontend run dev -- --host 127.0.0.1 --port 5227 > /tmp/firbo-jarvis-vite.log 2>&1 &
+          vite_pid=$!
+          trap 'kill "$vite_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 40); do
+            if curl --fail --silent http://127.0.0.1:5227/ >/dev/null; then break; fi
+            sleep 1
+          done
+          node tests/firbo/agency-specialists-rendered.mjs
+          node tests/firbo/jarvis-missions-rendered.mjs
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: firbo-jarvis-responsive-evidence
+          path: |
+            /tmp/firbo-agency-evidence/
+            /tmp/firbo-jarvis-responsive-evidence/
+            /tmp/firbo-jarvis-vite.log
+          retention-days: 7
+          if-no-files-found: warn

@@ -17,7 +17,7 @@ await mkdir(evidence, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 try {
   for (const [name, content] of [
-    ['agency-test.html', '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head><body><div id="root"></div><script type="module" src="/agency-harness.jsx"></script></body></html>'],
+    ['agency-test.html', '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body,#root{margin:0;height:100%;width:100%;min-height:0;overflow:hidden}</style></head><body><div id="root"></div><script type="module" src="/agency-harness.jsx"></script></body></html>'],
     ['agency-harness.jsx', `
       import React from 'react';
       import {createRoot} from 'react-dom/client';
@@ -62,6 +62,24 @@ try {
     await page.locator('li details').first().waitFor({ state: 'attached' });
     assert.equal(await page.locator('li details').count(), 5);
     assert.equal(await page.locator('html').getAttribute('lang'), lang);
+    // Real fixed-height app-shell geometry, not a document that can expand
+    // invisibly beyond the bottom navigation on a phone.
+    const store=page.locator('[data-jarvis-store="true"]');
+    const layout=await store.evaluate(el=>{
+      const cards=[...el.querySelectorAll('[data-agent-store-grid] > li')];
+      const bounds=cards.map(node=>node.getBoundingClientRect());
+      return{
+        client:el.clientWidth,scroll:el.scrollWidth,screen:innerWidth,
+        vertical:el.scrollHeight>el.clientHeight+20,
+        clipped:bounds.filter(rect=>rect.left< -1||rect.right>innerWidth+1).length,
+      };
+    });
+    assert.ok(layout.client>0 && layout.scroll<=layout.client+2,JSON.stringify(layout));
+    assert.equal(layout.clipped,0,JSON.stringify(layout));
+    assert.ok(layout.vertical,'agent catalog must scroll inside the fixed-height app shell');
+    await page.locator('[data-agent-store-grid] > li').last().scrollIntoViewIfNeeded();
+    assert.equal(await page.locator('[data-agent-store-grid] > li').last().isVisible(),true);
+
     const labels = await page.evaluate(() => window.harness.labels);
     const search = page.locator('input').first();
     await search.fill(labels.research);

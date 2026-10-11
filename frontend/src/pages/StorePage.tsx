@@ -14,6 +14,7 @@ import { loadPlanUsage, type PlanUsage } from '../lib/company/billing';
 import { AGENT_TEMPLATES, isPremium, TEMPLATE_CATEGORIES, type AgentTemplate } from '../lib/company/templates';
 import { MANAGER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/jarvis-visual-system.css';
 
 /** Browse every AI employee you can hire, with search and categories. */
 export function StorePage() {
@@ -58,7 +59,7 @@ export function StorePage() {
   }, [cat, q, tier, t]);
 
   return (
-    <div className="fb-root fb-col gap-4 p-4 lg:p-6" style={{ minHeight: '100%' }}>
+    <div data-jarvis-store="true" className="fb-root fb-col h-full min-h-0 min-w-0 gap-4 overflow-y-auto px-3 pb-8 pt-14 sm:px-4 sm:pt-4 lg:p-6">
       <PageHeader eyebrow={t('store.eyebrow')} title={t('store.title')} sub={t('store.intro', { n: AGENT_TEMPLATES.length })} right={<Segmented value={tier} onChange={setTier} label={t('store.tier')} options={(['all', 'starter', 'pro'] as const).map((k) => ({ id: k, label: t(`store.tier.${k}` as TKey) }))} />} />
       {plan && (
         <section className="fb-glass flex flex-wrap items-center gap-4 p-4" aria-label={t('store.plan')}>
@@ -77,15 +78,16 @@ export function StorePage() {
           )}
         </section>
       )}
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="fb-input flex min-w-[220px] flex-1 items-center gap-2">
+      <div className="flex min-w-0 flex-col items-stretch gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <label className="fb-input flex w-full min-w-0 items-center gap-2 sm:w-auto sm:min-w-[220px] sm:flex-1">
           <Search size={15} aria-hidden />
           <input className="w-full bg-transparent outline-none" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t('store.search')} aria-label={t('store.search')} />
         </label>
+        <div data-agent-categories="true" role="group" aria-label={t('cat.all')} className="flex w-full min-w-0 gap-2 overflow-x-auto pb-1 sm:flex-wrap sm:overflow-visible">
         {['All', ...TEMPLATE_CATEGORIES].map((c) => (
           <button
             key={c}
-            className="fb-chip cursor-pointer"
+            className="fb-chip min-h-11 shrink-0 cursor-pointer whitespace-nowrap"
             aria-pressed={cat === c}
             onClick={() => setCat(c)}
             style={cat === c ? { color: 'var(--fb-accent)', borderColor: 'var(--fb-border-strong)', background: 'rgba(0, 212, 255,0.1)' } : undefined}
@@ -93,23 +95,24 @@ export function StorePage() {
             {c === 'All' ? t('cat.all') : categoryLabel(c, i18n)}
           </button>
         ))}
+        </div>
       </div>
       {list.length === 0 && <div className="fb-glass p-6 text-sm">{t('store.none')}</div>}
-      <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+      <ul data-agent-store-grid="true" className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
         {list.map((tpl) => {
           const n = hired(tpl);
           const ask = tpl.tools.filter((x) => x.policy === 'approval').length;
           const pro = isPremium(tpl.slug);
           const locked = pro && isFree;
           return (
-            <li key={tpl.slug} className="fb-glass fb-glass--hover fb-col gap-3 p-5" style={{ ['--tpl' as string]: tpl.color }}>
-              <div className="flex items-start gap-3">
+            <li key={tpl.slug} className="fb-glass fb-glass--hover fb-col min-w-0 gap-3 p-4 sm:p-5" style={{ ['--tpl' as string]: tpl.color }}>
+              <div className="flex min-w-0 flex-wrap items-start gap-3">
                 <Avatar name={t(`tpl.${tpl.slug}.name` as TKey)} color={tpl.color} size={46} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate font-semibold">{t(`tpl.${tpl.slug}.name` as TKey)}</div>
+                  <div className="break-words font-semibold">{t(`tpl.${tpl.slug}.name` as TKey)}</div>
                   <div className="fb-dim text-xs">{categoryLabel(tpl.category, i18n)}</div>
                 </div>
-                <div className="flex flex-col items-end gap-1">
+                <div className="flex max-w-full flex-wrap items-center gap-1 sm:flex-col sm:items-end">
                   <Pill tone={pro ? 'warn' : 'ok'}>{pro ? <><Crown size={11} /> {t('store.tier.pro')}</> : t('store.tier.starter')}</Pill>
                   {n > 0 && <Pill tone="accent">{t('store.hired', { n })}</Pill>}
                 </div>
@@ -122,14 +125,14 @@ export function StorePage() {
                 ))}
                 {tpl.tools.length > 3 && <span className="fb-chip">+{tpl.tools.length - 3}</span>}
               </div>
-              <div className="flex items-center justify-between gap-2 border-t pt-3" style={{ borderColor: 'var(--fb-border)' }}>
+              <div data-store-card-actions="true" className="flex min-w-0 flex-col items-stretch gap-3 border-t pt-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: 'var(--fb-border)' }}>
                 <span className="fb-dim text-xs">{t('hire.meta', { tools: tpl.tools.length, ask })}</span>
                 {locked || full ? (
-                  <Link to="/billing" className="fb-btn fb-btn--ghost" title={locked ? t('store.lockedHint') : t('store.fullHint')}>
+                  <Link to="/billing" className="fb-btn fb-btn--ghost min-h-11 justify-center sm:min-h-0" title={locked ? t('store.lockedHint') : t('store.fullHint')}>
                     <Lock size={13} /> {t(locked ? 'store.unlock' : 'store.full')}
                   </Link>
                 ) : (
-                  <button className="fb-btn fb-btn--primary" disabled={!canHire} onClick={() => setPick(tpl)}>
+                  <button className="fb-btn fb-btn--primary min-h-11 justify-center sm:min-h-0" disabled={!canHire} onClick={() => setPick(tpl)}>
                     {n > 0 ? t('hire.another') : t('hire.btn')}
                   </button>
                 )}

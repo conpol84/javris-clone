@@ -1,0 +1,181 @@
+/*
+ * FIRBO JARVIS design pass — original, product-owned HUD styling.
+ * Visual only. Existing routes, task execution, voice permissions and pricing
+ * are unchanged. Prioritize legible text over decorative effects.
+ */
+.fb-root {
+  --fb-glass: rgba(7, 20, 36, .84);
+  --fb-glass-strong: rgba(7, 25, 45, .95);
+  --fb-border: rgba(86, 209, 242, .25);
+  --fb-border-strong: rgba(113, 226, 249, .63);
+  --fb-accent: #67e7fd;
+  --fb-accent-2: #bf9bff;
+  --fb-text: #edfaff;
+  --fb-muted: #a9c2d8;
+  --fb-dim: #8ba8c3;
+  background:
+    radial-gradient(ellipse 850px 580px at 50% -30%, rgba(0,179,220,.15), transparent 72%),
+    radial-gradient(ellipse 500px 550px at 100% 65%, rgba(34,105,190,.11), transparent 78%),
+    linear-gradient(145deg,#030910,#061222 60%,#030912);
+}
+.fb-root .fb-glass {
+  border-color: var(--fb-border);
+  box-shadow: inset 0 1px 0 rgba(154,232,251,.07), 0 14px 38px -24px rgba(2,185,224,.25);
+}
+.fb-root .fb-glass:focus-within {
+  border-color: var(--fb-border-strong);
+}
+.fb-root .fb-btn--primary {
+  background: linear-gradient(125deg,#07566d,#087d9b);
+  color: #ecfdff;
+  border: 1px solid rgba(125,238,253,.62);
+  text-shadow: 0 1px 1px rgba(2,12,20,.4);
+}
+.fb-root .fb-btn--primary:focus-visible,
+.fb-root .fb-btn--ghost:focus-visible,
+.fb-root .fb-chip:focus-visible {
+  outline: 2px solid #b8f6ff;
+  outline-offset: 2px;
+}
+.fb-root .fb-input {
+  border-color: rgba(86,209,242,.3);
+  background: rgba(3,12,24,.65);
+}
+.fb-root .fb-input:focus-within,
+.fb-root .fb-input:focus {
+  border-color: rgba(146,239,251,.82);
+}
+.fb-root .fb-eyebrow {
+  color: #82ddf6;
+  letter-spacing: .14em;
+}
+.fb-root :is([data-mission-step-title], .fb-muted, .fb-dim) {
+  text-wrap: pretty;
+}
+.fb-root[data-jarvis-missions],
+.fb-root[data-jarvis-store] {
+  scrollbar-color: rgba(88,205,240,.45) transparent;
+  overscroll-behavior-y: contain;
+}
+/* Every Jarvis mission step shows its real persisted state, never a fake
+ * animation/success badge. The grid is pure presentation.
+ */
+.fb-root[data-jarvis-missions] [data-mission-stage] {
+  border-block-end: 1px solid var(--fb-border);
+  background:
+    radial-gradient(circle at 50% 58%,rgba(13,121,159,.22),transparent 68%),
+    linear-gradient(180deg,#041226,#02070f);
+}
+.fb-root[data-jarvis-missions] [data-mission-history] li button {
+  min-block-size: 48px;
+}
+.fb-root[data-jarvis-missions] [data-mission-step-title] {
+  overflow-wrap: anywhere;
+}
+.fb-root[data-jarvis-store] [data-agent-store-grid] > li {
+  inline-size: 100%;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  isolation: isolate;
+}
+.fb-root[data-jarvis-store] [data-store-card-actions] .fb-btn {
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.fb-root[data-jarvis-store] [data-agent-categories] {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(86,209,242,.5) transparent;
+}
+.fb-root[data-jarvis-store] [data-agent-categories] > button {
+  touch-action: manipulation;
+}
+[data-jarvis-scene='ceo'] {
+  background: radial-gradient(ellipse at 50% 56%,rgba(42,167,210,.15),transparent 60%);
+  touch-action: pan-y;
+}
+@media (max-width: 767px) {
+  /* The entire mission/store view scrolls within the actual fixed app shell.
+     No 34%-height sidebar and no clipped bottom row beneath thumb navigation. */
+  main[data-firbo-route='/missions'] .fb-root[data-jarvis-missions],
+  main[data-firbo-route='/store'] .fb-root[data-jarvis-store] {
+    block-size: 100%;
+    min-block-size: 0;
+    max-inline-size: 100%;
+    overflow-x: clip;
+    overflow-y: auto;
+    padding-block-end: calc(24px + env(safe-area-inset-bottom,0px));
+  }
+  .fb-root[data-jarvis-missions] aside {
+    max-block-size: none;
+    min-block-size: min-content;
+    overflow: visible;
+  }
+  .fb-root[data-jarvis-missions] [data-mission-history] {
+    max-block-size: 180px;
+    scrollbar-width: thin;
+    overscroll-behavior: contain;
+  }
+  .fb-root[data-jarvis-missions] [data-mission-detail] {
+    flex: none;
+    min-block-size: auto;
+    overflow: visible;
+  }
+  .fb-root[data-jarvis-missions] [data-mission-stage] canvas {
+    touch-action: pan-y !important;
+    pointer-events: none;
+  }
+  .fb-root[data-jarvis-missions] [data-mission-stage] > .pointer-events-none {
+    max-inline-size: calc(100% - 24px);
+  }
+  .fb-root[data-jarvis-store] .fb-pagehead,
+  .fb-root[data-jarvis-store] .fb-pagehead__right {
+    display: grid;
+    inline-size: 100%;
+    min-inline-size: 0;
+    grid-template-columns: minmax(0,1fr);
+    gap: 12px;
+  }
+  .fb-root[data-jarvis-store] .fb-pagehead__right .fb-seg {
+    display: grid;
+    inline-size: 100%;
+    grid-template-columns: repeat(3,minmax(0,1fr));
+  }
+  .fb-root[data-jarvis-store] .fb-seg button {
+    min-inline-size: 0;
+    min-block-size: 44px;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+  .fb-root[data-jarvis-store] [data-agent-store-grid] {
+    grid-template-columns: minmax(0,1fr);
+  }
+  .fb-root[data-jarvis-store] [data-store-card-actions] {
+    align-items: stretch;
+  }
+  .fb-root[data-jarvis-store] [data-store-card-actions] .fb-btn {
+    inline-size: 100%;
+    min-block-size: 44px;
+  }
+  [data-firbo-voice='ceo'] .fb-voice-stage {
+    min-block-size: 315px;
+  }
+  /* A dozen animated glass layers are slower than a single rendered GPU
+     scene on phones; keep borders and contrast without per-card blur. */
+  .fb-root .fb-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .fb-root .fb-glass--hover:hover {
+    transform: none;
+  }
+  .fb-root .fb-root::before { opacity: .35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fb-root .fb-glass--hover,
+  .fb-root .fb-btn,
+  .fb-root .fb-chip {
+    animation: none !important;
+    transition: none !important;
+  }
+}
