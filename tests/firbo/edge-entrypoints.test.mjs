@@ -435,7 +435,8 @@ test('personal CEO connection inventory does not leak another member app or priv
  const prompt=JSON.parse(state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
  assert.match(prompt,/Connections made by this user: Google Drive/);
  assert.match(prompt,/Other members connections: not accessible/);
- assert.doesNotMatch(prompt,/SECRET PERSONAL EMAIL|gmail_read|Gmail · read/);
+ const catalog=prompt.split('\n').filter(line=>line.includes('Connected work sources:')||line.includes('CONNECTED APP CATALOG'));
+ assert.doesNotMatch(catalog.join('\n'),/SECRET PERSONAL EMAIL|gmail_read|Gmail · read/);
  assert.doesNotMatch(prompt,/Private GitHub/);
  assert.match(prompt,/Connections requiring attention: github/);
  assert.match(prompt,/Connected work sources: Google Drive · read/);

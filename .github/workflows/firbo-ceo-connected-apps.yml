@@ -1,0 +1,62 @@
+name: FIRBO personal CEO connected-app scope and privacy
+on:
+  push:
+    branches:
+      - codex/firbo-ceo-connected-app-context-20261011
+  pull_request:
+    branches:
+      - codex/firbo-jarvis-durable-vps-20261011
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  ceo-provider-scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Real Edge handler and private provider metadata tests
+        run: |
+          node --experimental-strip-types --test \
+            tests/firbo/ceo-connected-apps.test.mjs \
+            tests/firbo/edge-entrypoints.test.mjs
+      - name: Authenticated-scoped connected apps and no fake live data
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const source=fs.readFileSync('supabase/functions/agent-chat/index.ts','utf8');
+          const model=fs.readFileSync('supabase/functions/_shared/ceo-connected-apps.ts','utf8');
+          const checks=[
+            source.includes("integrationQuery=integrationQuery.eq('created_by',user.id)"),
+            source.includes("connectedAppContext(integrationRows,user.id,canSeeLeadership"),
+            source.includes("connectorInventory.workSources"),
+            source.includes('connectorInventory.context'),
+            model.includes("candidate.created_by===ownerId"),
+            model.includes('NOT external provider contents'),
+            !model.includes('integration_secrets'),
+            !model.includes('access_token'),
+          ];
+          if(checks.some(x=>!x))throw Error('Private provider catalog/verified-read separation source gate violated: '+JSON.stringify(checks));
+          console.log('Personal CEO sees only owner-scoped and authorized company app catalog metadata; no token exposure');
+          JS
+
+  full-frontend:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - run: npm install --global npm@11.19.0
+      - run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - run: npm test --prefix frontend
+      - run: npm run build:tauri --prefix frontend
