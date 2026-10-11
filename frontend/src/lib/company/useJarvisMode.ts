@@ -22,8 +22,8 @@ export function useJarvisMode(orgId:string,userId:string|undefined):{
    setState({key,enabled:!JARVIS_SERVER_MODE&&readJarvisAutopilot(orgId,userId??''),
      loading:JARVIS_SERVER_MODE&&!!key,saving:false});
    if(JARVIS_SERVER_MODE && key&&userId){
-     void requireClient().from('jarvis_autopilot_settings')
-       .select('enabled').eq('organization_id',orgId).eq('user_id',userId).maybeSingle()
+     void Promise.resolve(requireClient().from('jarvis_autopilot_settings')
+       .select('enabled').eq('organization_id',orgId).eq('user_id',userId).maybeSingle())
        .then(({data,error})=>{
          if(active())setState({key,enabled:!error&&data?.enabled===true,loading:false,saving:false});
        }).catch(()=>{if(active())setState({key,enabled:false,loading:false,saving:false});});
@@ -51,10 +51,10 @@ export function useJarvisMode(orgId:string,userId:string|undefined):{
    // Failed or stale RPCs keep the mode OFF rather than silently falling back.
    setState(prev=>({...prev,saving:true}));
    const epoch=alive.current;
-   void requireClient().from('jarvis_autopilot_settings')
+   void Promise.resolve(requireClient().from('jarvis_autopilot_settings')
      .upsert({organization_id:orgId,user_id:userId,enabled:on},
        {onConflict:'organization_id,user_id'})
-     .select('enabled').single()
+     .select('enabled').single())
      .then(({data,error})=>{
        if(epoch!==alive.current)return;
        setState({key,enabled:!error&&data?.enabled===true,loading:false,saving:false});
