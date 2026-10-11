@@ -44,11 +44,11 @@ export async function listCeoSessions(orgId:string,userId:string,ceoId:string):P
   updated_at:row.updated_at}));
 }
 
-export function ceoLinesFromMessages(messages:{role:string;content:string}[]):CeoLine[]{
+export function ceoLinesFromMessages(messages:{id?:string;role:string;content:string}[]):CeoLine[]{
  return messages.filter(m=>m.role==='user'||m.role==='assistant').map(m=>{
-  if(m.role==='user')return{who:'me' as const,text:m.content};
+  if(m.role==='user')return{who:'me' as const,text:m.content,...(m.id?{messageId:m.id}:{})};
   const parsed=parseHandoff(m.content);
-  return{who:'ceo' as const,text:parsed.text,ask:parsed.ask,task:parsed.task,meet:parsed.meet,app:parsed.app};
+  return{who:'ceo' as const,text:parsed.text,...(m.id?{messageId:m.id}:{}),ask:parsed.ask,task:parsed.task,meet:parsed.meet,app:parsed.app};
  });
 }
 
@@ -63,7 +63,7 @@ export async function readCeoSession(orgId:string,userId:string,ceoId:string,con
  fail(error);
  if(!own)throw new Error('ceo_session_not_found');
  const {data,error:readError}=await db.from('messages')
-  .select('role,content').eq('organization_id',orgId).eq('conversation_id',conversationId)
+  .select('id,role,content').eq('organization_id',orgId).eq('conversation_id',conversationId)
   .in('role',['user','assistant']).order('created_at',{ascending:false}).limit(220);
  fail(readError);
  // Fetch the most recent bounded 220 messages, then restore chronological

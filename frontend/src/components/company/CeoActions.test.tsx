@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({ org: 'company-a', index: 0, refIndex: 0, states: [] as unknown[], refs: [] as { current: unknown }[],
   effects: [] as (() => void | (() => void))[], setters: [] as ReturnType<typeof vi.fn>[] }));
-const api = vi.hoisted(() => ({ createTask: vi.fn(), runTask: vi.fn(), listAgents: vi.fn(), read: vi.fn(), eq: vi.fn(), select: vi.fn(), from: vi.fn() }));
+const api = vi.hoisted(() => ({ createTask: vi.fn(), runTask: vi.fn(), listAgents: vi.fn(), read: vi.fn(), eq: vi.fn(), select: vi.fn(), from: vi.fn(), claim: vi.fn() }));
 vi.mock('react', async original => ({ ...await original<typeof import('react')>(),
   useState: (initial: unknown) => { const i = fixture.index++; const setter = vi.fn(); fixture.setters[i] = setter;
     return [i in fixture.states ? fixture.states[i] : initial, setter]; },
@@ -17,6 +17,7 @@ vi.mock('../../lib/company/workspaceCopy', () => ({ useWorkspaceCopy: () => (key
 vi.mock('../../lib/company/data', () => ({ createTask: api.createTask, listAgents: api.listAgents }));
 vi.mock('../../lib/company/runner', async original => ({ ...await original<typeof import('../../lib/company/runner')>(), runTask: api.runTask, runErrorText: () => 'Run failed' }));
 vi.mock('../../lib/company/client', () => ({ requireClient: () => ({ from: api.from }) }));
+vi.mock('../../lib/company/jarvis-delegation',()=>({claimJarvisDelegation:api.claim}));
 vi.mock('../../lib/company/labels', () => ({ agentLabel: () => ({ name: 'Research Agent' }) }));
 vi.mock('./AskButton', () => ({ AskButton: () => null }));
 vi.mock('./ReportView', () => ({ ReportView: () => null }));
@@ -37,9 +38,9 @@ const execution = {
   jobs: [{ job_id: '11111111-1111-4111-8111-111111111111', request_id: '11111111-1111-4111-8111-111111111111',
     device_id: '22222222-2222-4222-8222-222222222222', device_name: 'Chosen Debian', kind: 'desktop_task', status: 'queued' }],
 };
-function taskTree() {
+function taskTree(extra:Record<string,unknown>={},selectedOffer=offer) {
   fixture.index = 0; fixture.refIndex = 0; fixture.effects = [];
-  const child = elements(CeoActions({ task: offer })).find(e => e.props.offer === offer)!;
+  const child = elements(CeoActions({ task: selectedOffer, ...extra })).find(e => e.props.offer === selectedOffer)!;
   return (child.type as (props: unknown) => ReactNode)(child.props);
 }
 const click = (tree: ReactNode) => elements(tree).find(e => e.type === 'button')!.props.onClick!();
@@ -48,9 +49,41 @@ describe('CEO action execution and combined offers', () => {
     vi.clearAllMocks(); fixture.org = 'company-a'; fixture.index = 0; fixture.refIndex = 0; fixture.refs = []; fixture.effects = []; fixture.setters = [];
     fixture.states = [{ orgId: 'company-a', id: 'agent-a', agent: { id: 'agent-a' } }, 'idle', null, null];
     api.createTask.mockResolvedValue('task-a'); api.runTask.mockResolvedValue({ status: 'completed', queued: 0 });
+    api.claim.mockResolvedValue({taskId:'saved-ceo-task',created:true,status:'pending'});
     api.listAgents.mockResolvedValue([]);
     api.read.mockResolvedValue({ data: { status: 'completed', result: { report: 'Saved work' } }, error: null });
     api.eq.mockReturnValue({ eq: api.eq, maybeSingle: api.read }); api.select.mockReturnValue({ eq: api.eq }); api.from.mockReturnValue({ select: api.select });
+  });
+  it('autostarts a fresh CEO handoff once with the agent runner and no extra click',async()=>{
+    const worker='44444444-4444-4444-8444-444444444444';
+    const message='66666666-6666-4666-8666-666666666666';
+    const conversation='55555555-5555-4555-8555-555555555555';
+    const item={...offer,agentId:worker};
+    fixture.states[0]={orgId:'company-a',id:worker,agent:{id:worker,enabled:true,autonomy:'auto'}};
+    taskTree({messageId:message,conversationId:conversation,fresh:true,autopilotEnabled:true,planReady:true},item);
+    const onFresh=fixture.effects[fixture.effects.length-1];
+    onFresh();onFresh();
+    await vi.waitFor(()=>expect(api.claim).toHaveBeenCalledOnce());
+    await vi.waitFor(()=>expect(api.runTask).toHaveBeenCalledOnce());
+    expect(api.createTask).not.toHaveBeenCalled();
+    expect(api.claim).toHaveBeenCalledWith(expect.objectContaining({
+      messageId:message,conversationId:conversation,agentId:worker,title:item.title
+    }));
+  });
+  it('does not re-run a saved handoff or automatically execute historical replies',async()=>{
+    const worker='44444444-4444-4444-8444-444444444444';
+    const message='66666666-6666-4666-8666-666666666666';
+    const item={...offer,agentId:worker};
+    const props={messageId:message,conversationId:'55555555-5555-4555-8555-555555555555',
+      fresh:true,autopilotEnabled:true,planReady:true};
+    fixture.states[0]={orgId:'company-a',id:worker,agent:{id:worker,enabled:true,autonomy:'auto'}};
+    api.claim.mockResolvedValue({taskId:'existing-work',created:false,status:'pending'});
+    taskTree(props,item);fixture.effects[fixture.effects.length-1]();
+    await vi.waitFor(()=>expect(api.claim).toHaveBeenCalledOnce());
+    expect(api.runTask).not.toHaveBeenCalled();
+    vi.clearAllMocks();
+    taskTree({...props,fresh:false},item);fixture.effects[fixture.effects.length-1]();
+    expect(api.claim).not.toHaveBeenCalled();expect(api.runTask).not.toHaveBeenCalled();
   });
   it('renders task, meeting and employee handover together', () => {
     const children = elements(CeoActions({ task: offer, ask: { agentId: 'agent-a', question: 'Explain' }, meet: { topic: 'Pricing', participants: ['agent-a'] }, app: { kind: 'gdrive_read', name: 'Google Drive · read', reason: 'Use approved briefs' } }));
@@ -106,7 +139,7 @@ describe('CEO action execution and combined offers', () => {
   it('does not start the old company task if the action closes during task creation', async () => {
     let finish!: (id: string) => void;
     api.createTask.mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
-    const tree = taskTree(); const cleanup = fixture.effects[fixture.effects.length - 1]() as () => void;
+    const tree = taskTree(); const cleanups = fixture.effects.map(effect=>effect()).filter((value):value is () => void=>typeof value==='function'); const cleanup=cleanups[cleanups.length-1]!;
     click(tree); cleanup(); finish('old-company-task');
     await Promise.resolve(); await Promise.resolve();
     expect(api.runTask).not.toHaveBeenCalled(); expect(api.read).not.toHaveBeenCalled();

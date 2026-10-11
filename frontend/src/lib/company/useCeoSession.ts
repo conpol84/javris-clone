@@ -16,11 +16,11 @@ import { isUnlockContinuation, resolveUnlockContinuation } from './computer-cont
 import { dispatchDirectComputerCommand, dispatchLaptopBrowserCommand, incompleteComputerReply, isComputerControlRequest, parseDirectComputerCommand, parseOwnerDecision, retargetFailedComputerCommand, prepareDirectComputerCommand, type DirectComputerProgress, type DirectComputerProposal } from './laptop-bridge';
 import { parseHandoff, type Handoff, type MeetingOffer, type TaskOffer, type WorkSourceOffer } from './handoff';
 
-export interface CeoLine { who:'me'|'ceo'; text:string; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
+export interface CeoLine { who:'me'|'ceo'; text:string; messageId?:string; fresh?:boolean; ask?:Handoff|null; task?:TaskOffer|null; meet?:MeetingOffer|null; app?:WorkSourceOffer|null }
 /** Voice and typed turns share one conversation. Stop fences late UI/media results;
  * it does not claim that already-started server inference/work was interrupted.
  */
-export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true,canComputer=false) {
+export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true,canComputer=false,jarvisAutopilot=false) {
   const scope=JSON.stringify([orgId,userId,lang,canWrite,canComputer]);
   const scopeRef=useRef(scope); scopeRef.current=scope;
   const [loadedScope,setLoadedScope]=useState(scope);
@@ -267,7 +267,8 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       chatAttempted=true;
       const response=await voiceDeadline(
         signal=>usedOllamaBackup
-          ? sendChat(convo.current!,message,lang,true,signal,{preferLocalBackup:true})
+          ? sendChat(convo.current!,message,lang,true,signal,{preferLocalBackup:true,...(jarvisAutopilot?{jarvisAutopilot:true}:{})})
+          : jarvisAutopilot ? sendChat(convo.current!,message,lang,true,signal,{jarvisAutopilot:true})
           : sendChat(convo.current!,message,lang,true,signal),
         active.signal,95_000,
       );
@@ -276,7 +277,7 @@ export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t
       const raw=response?.message?.content;
       if(typeof raw!=='string'||!raw.trim())throw new Error('invalid_chat_response');
       const {text:content,ask:handoff,task,meet,app}=parseHandoff(raw);
-      setLines(lines=>[...lines,{who:'ceo',text:content,ask:handoff,task,meet,app}]);
+      setLines(lines=>[...lines,{who:'ceo',text:content,messageId:response.message.id,fresh:true,ask:handoff,task,meet,app}]);
       // Refresh only this user's CEO previews after the server has persisted
       // the completed chat turn. This never turns unverified device claims into memory.
       void listCeoSessions(orgId,userId,ceo.id).then(items=>{if(valid(id))setSessions(items);}).catch(()=>{});

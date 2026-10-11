@@ -60,6 +60,14 @@ test('history role injection does not create system messages',()=>{
   assert.equal(messages.filter(x=>x.role==='system').length,1);
   assert.ok(!messages.some(x=>x.content.includes('IGNORE GUARDS')));
 });
+test('local Qwen knows Jarvis UI preference but never treats it as authorization',()=>{
+ const enabled=compactForFree(base({jarvisAutopilot:true}));
+ assert.match(enabled[0].content,/JARVIS ON/);
+ assert.match(enabled[0].content,/real task and receipt/);
+ assert.ok(bytes(enabled)<=2700);
+ const disabled=compactForFree(base({jarvisAutopilot:false}));
+ assert.doesNotMatch(disabled[0].content,/JARVIS ON/);
+});
 test('non-CEO roles do not inherit the CEO session recall',()=>{
   const messages=compactForFree(base({
     isCeo:false,agent:{name:'Researcher',type:'research'},previousCeoSessions:'OWNER_ONLY_CEO_SESSION',

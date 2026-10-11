@@ -303,6 +303,26 @@ for(const name of textHandlers){
   });
 }
 test('chat cannot act on another user conversation',async()=>{const {state,response}=await invoke('agent-chat',{foreignConversation:true});assert.equal(response.status,403);assert.equal(state.calls.length,0);});
+test('JARVIS preference affects CEO reasoning only and never grants execution rights',async()=>{
+ const enabled=await invoke('agent-chat',{agentType:'ceo'},{jarvis_autopilot:true});
+ assert.equal(enabled.response.status,200);
+ const prompt=JSON.parse(enabled.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.match(prompt,/JARVIS AUTOPILOT IS ON/);
+ assert.match(prompt,/grants ZERO permissions/);
+ const ordinary=await invoke('agent-chat',{agentType:'ceo'});
+ assert.equal(ordinary.response.status,200);
+ const normalPrompt=JSON.parse(ordinary.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.doesNotMatch(normalPrompt,/JARVIS AUTOPILOT IS ON/);
+ for(const invalid of ['on',1,null]){
+  const rejected=await invoke('agent-chat',{agentType:'ceo'},{jarvis_autopilot:invalid});
+  assert.equal(rejected.response.status,400);
+  assert.equal(rejected.state.calls.length,0);
+ }
+ const nonCeo=await invoke('agent-chat',{agentType:'research'},{jarvis_autopilot:true});
+ assert.equal(nonCeo.response.status,200);
+ const specialistPrompt=JSON.parse(nonCeo.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.doesNotMatch(specialistPrompt,/JARVIS AUTOPILOT IS ON/);
+});
 test('agent-chat requires a client request id before any write or inference',async()=>{
   const {state,response}=await invoke('agent-chat',{}, {request_id:undefined});
   assert.equal(response.status,400);assert.equal(state.calls.length,0);assert.equal(state.writes.length,0);

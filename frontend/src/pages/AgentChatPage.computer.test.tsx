@@ -24,6 +24,9 @@ vi.mock('../lib/company/usePlan', () => ({
   usePlanUsageState: () => ({ status: 'ready', loading: false,
     plan: { plan: { id: fixture.plan }, status: fixture.planStatus }, retry: vi.fn() }),
 }));
+// Test native computer Stop/consent behavior independently of the new
+// per-user preference hook's internal storage subscription hooks.
+vi.mock('../lib/company/useJarvisMode',()=>({useJarvisMode:()=>({enabled:false,setEnabled:vi.fn()})}));
 vi.mock('../lib/company/labels', () => ({ agentLabel: () => ({ name: 'CEO' }) }));
 vi.mock('../lib/company/voice', () => ({ unlockAudio: vi.fn(), speak: vi.fn(), listenSmart: listen }));
 vi.mock('../lib/company/runner', async original => ({ ...await original<typeof import('../lib/company/runner')>(), sendChat }));

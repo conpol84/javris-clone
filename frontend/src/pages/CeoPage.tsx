@@ -2,6 +2,9 @@ import { VoiceProfileControl } from '../components/voice/VoiceProfileControl';
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router';
 import { CeoActions } from '../components/company/CeoActions';
+import { JarvisModeControl } from '../components/company/JarvisModeControl';
+import { useJarvisMode } from '../lib/company/useJarvisMode';
+import { usePlanUsageState } from '../lib/company/usePlan';
 import { CeoSessionHistory } from '../components/company/CeoSessionHistory';
 import { Mic, Square, Send, Volume2, VolumeX } from 'lucide-react';
 import type { Satellite } from '../components/scenes/HologramScene';
@@ -40,9 +43,11 @@ export function CeoPage() {
   const { t, lang } = i18n;
   const { current, user } = useCompanyAuth();
   const orgId = current?.organization.id ?? '';
+  const jarvis=useJarvisMode(orgId,user?.id);
+  const planState=usePlanUsageState(orgId||undefined);
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role),jarvis.enabled);
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
     sessions, activeSessionId, historyLoading, historyError, computerProgress, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
@@ -89,6 +94,8 @@ export function CeoPage() {
         </div>
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
+      {ceo && canWrite && user?.id && <JarvisModeControl enabled={jarvis.enabled}
+        onToggle={jarvis.setEnabled} lang={lang} disabled={planState.status!=='ready'}/>}
       <VoiceProfileControl />
 
       {!ceo ? (
@@ -199,7 +206,10 @@ export function CeoPage() {
                 <li key={i} className="fb-row min-w-0 break-words [overflow-wrap:anywhere] p-3 text-sm" style={l.who === 'me' ? { borderColor: 'var(--fb-border-strong)' } : undefined}>
                   <div className="fb-dim mb-1 text-[11px]">{l.who === 'me' ? t('ceo.you') : name}</div>
                   {l.text}
-                  <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app} />
+                  <CeoActions ask={l.ask} task={l.task} meet={l.meet} app={l.app}
+                    messageId={l.messageId} conversationId={activeSessionId??undefined}
+                    fresh={l.fresh===true} autopilotEnabled={jarvis.enabled}
+                    planReady={planState.status==='ready'} />
                 </li>
               ))}
             </ul>

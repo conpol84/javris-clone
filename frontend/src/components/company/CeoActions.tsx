@@ -13,16 +13,23 @@ import { useRunScope } from '../../lib/company/useRunScope';
 import { cleanTaskResult } from '../../lib/company/taskResult';
 import { WRITER_ROLES, type AgentRow, type TaskResult } from '../../lib/company/types';
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
+import { claimJarvisDelegation } from '../../lib/company/jarvis-delegation';
+import { canAutostartJarvisDelegation } from '../../lib/company/jarvis-autopilot';
 import { AskButton } from './AskButton';
 import { ReportView } from './ReportView';
 import { ComputerExecutionView } from './ComputerExecutionView';
 
 /** What the CEO offers under its reply: employee hand-over, task, meeting or work-source setup. */
-export function CeoActions({ ask, task, meet, app }: { ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null; app?: WorkSourceOffer | null }) {
+export function CeoActions({ ask, task, meet, app, messageId, conversationId, fresh = false, autopilotEnabled = false, planReady = false }: {
+ ask?: Handoff | null; task?: TaskOffer | null; meet?: MeetingOffer | null; app?: WorkSourceOffer | null;
+ messageId?: string;conversationId?: string;fresh?: boolean;autopilotEnabled?: boolean;planReady?: boolean;
+}) {
   const { current, user } = useCompanyAuth();
   return <>
     {ask && <AskButton ask={ask} />}
-    {task && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${task.agentId}:${task.title}:${task.details}`} offer={task} />}
+    {task && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${task.agentId}:${task.title}:${task.details}`}
+      offer={task} messageId={messageId} conversationId={conversationId} fresh={fresh}
+      autopilotEnabled={autopilotEnabled} planReady={planReady} />}
     {meet && <MeetButton offer={meet} />}
     {app && <WorkSourceButton offer={app} />}
   </>;
@@ -54,27 +61,44 @@ function useAgent(id: string) {
 }
 
 /** "Give it to <employee>": creates the task, runs it here and shows the finished work (slides, report or message). */
-function TaskButton({ offer }: { offer: TaskOffer }) {
+function TaskButton({ offer, messageId, conversationId, fresh, autopilotEnabled, planReady }: {
+ offer:TaskOffer;messageId?:string;conversationId?:string;fresh:boolean;autopilotEnabled:boolean;planReady:boolean;
+}) {
   const i18n = useI18n();
   const { t, lang } = i18n;
   const copy = useWorkspaceCopy();
   const { current, user } = useCompanyAuth();
   const agent = useAgent(offer.agentId);
-  const [phase, setPhase] = useState<'idle' | 'working' | 'running' | 'done' | 'awaiting_approval' | 'blocked' | 'failed'>('idle');
+  const [phase, setPhase] = useState<'idle' | 'working' | 'saved' | 'running' | 'done' | 'awaiting_approval' | 'blocked' | 'failed'>('idle');
   const [result, setResult] = useState<TaskResult | null>(null);
   const [acknowledgement, setAcknowledgement] = useState<RunOutcome | null>(null);
   const submitting = useRef(false);
-  const captureScope = useRunScope(`${current?.organization.id}:${user?.id}:${current?.role}:${offer.agentId}:${offer.title}:${offer.details}`);
-  if (!agent || !current || !user || !WRITER_ROLES.includes(current.role)) return null;
-  const name = agentLabel(agent, i18n).name;
+  const attemptedAutoMessage = useRef<string | null>(null);
+  const giveRef = useRef<() => Promise<void>>(async()=>{});
+  const captureScope = useRunScope(`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${offer.agentId}:${offer.title}:${offer.details}`);
+  const name = agent ? agentLabel(agent, i18n).name : 'Employee';
   const give = async () => {
-    if (submitting.current) return;
+    if (submitting.current || !agent || !current || !user || !WRITER_ROLES.includes(current.role)) return;
     const currentScope = captureScope();
     submitting.current = true;
     let created = false;
     setPhase('working');
     try {
-      const id = await createTask({ orgId: current.organization.id, userId: user.id, title: offer.title, description: offer.details, priority: 'normal', agentId: agent.id });
+      let id:string;
+      if(messageId && conversationId) {
+        // Same saved CEO message always identifies the same task; no silent
+        // re-execution after a lost response or component remount.
+        const claimed=await claimJarvisDelegation({
+          organizationId:current.organization.id,userId:user.id,
+          conversationId,messageId,agentId:agent.id,title:offer.title,details:offer.details,
+        });
+        id=claimed.taskId;
+        if(!currentScope())return;
+        if(!claimed.created){setPhase('saved');return;}
+      } else {
+        // Older legacy replies without durable message IDs remain MANUAL only.
+        id=await createTask({ orgId: current.organization.id, userId: user.id, title: offer.title, description: offer.details, priority: 'normal', agentId: agent.id });
+      }
       if (!currentScope()) return;
       created = true;
       let outcome;
@@ -127,6 +151,19 @@ function TaskButton({ offer }: { offer: TaskOffer }) {
       submitting.current = false;
     }
   };
+  // Autopilot affects only a newly saved CEO reply and a specialist already
+  // configured for autonomous execution. It does NOT override API tool policy.
+  const autoReady=canAutostartJarvisDelegation({
+    modeEnabled:autopilotEnabled,freshResponse:fresh,messageId,
+    role:current?.role??'viewer',companyPlanReady:planReady,agent,
+  })&&!!conversationId;
+  giveRef.current=give;
+  useEffect(()=>{
+    if(!autoReady||!messageId||attemptedAutoMessage.current===messageId)return;
+    attemptedAutoMessage.current=messageId;
+    void giveRef.current();
+  },[autoReady,messageId]);
+  if (!agent || !current || !user || !WRITER_ROLES.includes(current.role)) return null;
   return (
     <div className="mt-2 flex flex-col gap-2">
       <div className="fb-dim text-[12px]">{copy('ctTask', { name })}: <span className="text-[var(--fb-text)]">{offer.title}</span></div>
@@ -135,6 +172,10 @@ function TaskButton({ offer }: { offer: TaskOffer }) {
           <Play size={14} /> {copy('ctGive', { name })}
         </button>
       )}
+      {phase === 'saved' && <span role="status" className="fb-dim text-[12px]">
+        {lang==='el'?'Η εργασία υπάρχει ήδη. Δεν την εκτελώ δεύτερη φορά.':'This task already exists. It will not be executed a second time.'}
+        {' '}<Link className="underline" to="/tasks">{copy('ctInTasks')}</Link>
+      </span>}
       {phase === 'working' && <span className="fb-dim inline-flex items-center gap-1.5 text-[12px]" aria-live="polite"><Loader2 size={14} className="animate-spin" /> {copy('ctWorking', { name })}</span>}
       {phase === 'running' && <div role="status" aria-live="polite" className="fb-dim text-[12px]">
         {acknowledgement ? runOutcomeNotice(t, acknowledgement).text : t('run.pending')} <Link className="underline" to="/tasks">{copy('ctInTasks')}</Link>
