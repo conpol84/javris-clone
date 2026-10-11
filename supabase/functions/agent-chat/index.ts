@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
   const userClient = createClient(url, anon, { global: { headers: { Authorization: auth } } });
   const { data: who } = await userClient.auth.getUser();
   let user: { id: string; email?: string | null } | null = who?.user ?? null;
-  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; prefer_local_backup?: boolean; system_user_id?: string; request_id?: string; action?: string; computer_job_id?: string } = {};
+  let body: { conversation_id?: string; message?: string; lang?: string; voice?: boolean; prefer_local_backup?: boolean; jarvis_autopilot?:boolean; system_user_id?: string; request_id?: string; action?: string; computer_job_id?: string } = {};
   try { body = await req.json(); } catch { return json(400, { error: 'bad_request' }); }
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json(400, { error: 'bad_request' });
   // Server-to-server (the owner writing from Telegram): the scheduler secret plus the person it acts for.
@@ -90,6 +90,7 @@ Deno.serve(async (req) => {
     return json(400, { error: 'bad_request' });
   }
   if (body.prefer_local_backup !== undefined && typeof body.prefer_local_backup !== 'boolean') return json(400, { error: 'bad_request' });
+  if (body.jarvis_autopilot !== undefined && typeof body.jarvis_autopilot !== 'boolean') return json(400, { error: 'bad_request' });
   if (computerJournal && body.prefer_local_backup === true) return json(400, { error: 'bad_request' });
   if (text.length > MAX_MESSAGE) return json(413, { error: 'too_long' });
   if(computerJournal&&(!body.computer_job_id||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(body.computer_job_id)))return json(400,{error:'bad_request'});
@@ -314,6 +315,7 @@ Deno.serve(async (req) => {
     agent.system_prompt || `You are ${agent.name}, an AI employee.`,
     roleEvidenceInstructions(agent.type),
     ...(isCeo ? [ceoOperatingPolicy()] : []),
+    ...(isCeo && body.jarvis_autopilot===true ? ['JARVIS AUTOPILOT IS ON for this user interface. Your fresh TASK handoffs may start via an Auto-configured employee without an additional button click. Do the most useful authorized work; answer directly when you can. Never claim that the work began or finished without a real durable task/receipt. This UI preference grants ZERO permissions: all tool scope, cost, company and Stop rules still apply.'] : []),
     ...(String(agent.owner_instructions ?? '').trim() ? [`OWNER INSTRUCTIONS FOR YOUR WORKING STYLE (follow these unless they conflict with safety or the current request):\n${String(agent.owner_instructions).trim().slice(0, 4000)}`] : []),
     `Company: ${org?.name ?? ''}. ${profile.goal ? `Current goal: ${profile.goal}.` : ''} ${profile.summary ? `About the company: ${profile.summary}` : ''} ${profile.industry ? `Industry: ${profile.industry}.` : ''}`,
     ...(memoryBlock ? [memoryBlock] : []),
@@ -346,7 +348,8 @@ Deno.serve(async (req) => {
   const focus = focusBriefing(tk as BriefTask[], names, text);
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
-  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions }) : [];
+  const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions,
+        jarvisAutopilot:isCeo&&body.jarvis_autopilot===true, jarvisAutopilot:isCeo&&body.jarvis_autopilot===true }) : [];
   let reservedUsd = 0;
   try {
     if (!own && !localCeoSelected && !free && gateway) {
