@@ -362,7 +362,7 @@ Deno.serve(async (req) => {
   const asked = focus ? `${text}\n\n[Records for this question, from the company's own data. Answer from them; never say you have no access:]\n${focus}` : text;
   const routedMessages = [{ role: 'system', content: system }, ...past, { role: 'user', content: asked }];
   const freeMessages = (localCeoSelected || free) ? compactForFree({ agent, org, profile, snapshot, voice: body.voice === true, lang, past, text, isCeo, memoryBlock, previousCeoSessions, knowledgeBlock, previousAgentSessions,
-        jarvisAutopilot:jarvisPromptAllowed, jarvisAutopilot:jarvisPromptAllowed }) : [];
+        jarvisAutopilot:jarvisPromptAllowed }) : [];
   let reservedUsd = 0;
   try {
     if (!own && !localCeoSelected && !free && gateway) {
