@@ -19,6 +19,7 @@ import { useCeoSession } from '../lib/company/useCeoSession';
 import { computerProgressLabel } from '../lib/company/laptop-bridge';
 import { WRITER_ROLES } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/jarvis-visual-system.css';
 import '../styles/voice-experience.css';
 
 const QUICK = ['report', 'urgent', 'team', 'spend', 'next', 'results'] as const;
