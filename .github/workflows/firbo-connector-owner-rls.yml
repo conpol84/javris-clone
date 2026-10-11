@@ -1,0 +1,42 @@
+name: FIRBO connector owner-only RLS real PostgreSQL acceptance
+
+on:
+  push:
+    branches:
+      - codex/firbo-connector-owner-rls-20261011
+  pull_request:
+    branches:
+      - codex/firbo-workflow-recovery-20261011
+    paths:
+      - 'supabase/migrations/20261011030500_connector_owner_read_isolation.sql'
+      - 'tests/firbo/sql/connector_owner_read_staging_rls.sql'
+      - '.github/workflows/firbo-connector-owner-rls.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  owner-isolation:
+    name: Deny cross-owner computer/device reads in PostgreSQL 16
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact candidate head (no persisted token)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Start isolated local PostgreSQL 16
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-16 postgresql-client-16
+          sudo pg_ctlcluster 16 main start || sudo pg_ctlcluster 16 main status
+          sudo -u postgres psql --version
+      - name: Run exact migration and two-user/two-tenant real-RLS acceptance
+        run: |
+          sudo -u postgres psql -X -v ON_ERROR_STOP=1 -d postgres \
+            -f tests/firbo/sql/connector_owner_read_staging_rls.sql
+      - name: Report tested exact SHA
+        run: |
+          echo "RLS acceptance exact source SHA: $GITHUB_SHA"
+          git rev-parse HEAD
