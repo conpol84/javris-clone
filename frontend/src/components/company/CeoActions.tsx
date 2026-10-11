@@ -15,6 +15,8 @@ import { WRITER_ROLES, type AgentRow, type TaskResult } from '../../lib/company/
 import { useWorkspaceCopy } from '../../lib/company/workspaceCopy';
 import { claimJarvisDelegation } from '../../lib/company/jarvis-delegation';
 import { canAutostartJarvisDelegation } from '../../lib/company/jarvis-autopilot';
+import { JARVIS_SERVER_MODE } from '../../lib/company/jarvis-server-mode';
+import { JarvisServerTaskReceipt } from './JarvisServerTaskReceipt';
 import { AskButton } from './AskButton';
 import { ReportView } from './ReportView';
 import { ComputerExecutionView } from './ComputerExecutionView';
@@ -27,13 +29,17 @@ export function CeoActions({ ask, task, meet, app, messageId, conversationId, qu
   const { current, user } = useCompanyAuth();
   return <>
     {ask && <AskButton ask={ask} />}
-    {task && queuedTaskId && (
+    {task && JARVIS_SERVER_MODE && current?.organization.id && user?.id && conversationId && messageId && (
+      <JarvisServerTaskReceipt orgId={current.organization.id} userId={user.id}
+        conversationId={conversationId} messageId={messageId}/>
+    )}
+    {task && !JARVIS_SERVER_MODE && queuedTaskId && (
       <div role="status" className="fb-dim mt-2 text-xs">
         {user?.id ? 'JARVIS task saved on the server. Check execution and result in Tasks.' : 'Task saved.'}
         {' '}<Link to="/tasks" className="underline">{'Tasks'}</Link>
       </div>
     )}
-    {task && !queuedTaskId && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${task.agentId}:${task.title}:${task.details}`}
+    {task && !JARVIS_SERVER_MODE && !queuedTaskId && <TaskButton key={`${current?.organization.id}:${user?.id}:${current?.role}:${messageId??''}:${task.agentId}:${task.title}:${task.details}`}
       offer={task} messageId={messageId} conversationId={conversationId} fresh={fresh}
       autopilotEnabled={autopilotEnabled} planReady={planReady} />}
     {meet && <MeetButton offer={meet} />}
