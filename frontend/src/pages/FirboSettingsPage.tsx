@@ -5,6 +5,7 @@ import { useI18n } from '../i18n/I18nProvider';
 import type { TKey } from '../i18n/locales/en';
 import { getBase } from '../lib/api';
 import { useCompanyAuth } from '../lib/company/AuthProvider';
+import { usePlatformAdmin } from '../lib/company/admin';
 import { useAppStore } from '../lib/store';
 import { Avatar, PageHeader, Pill, Segmented } from '../components/ui/kit';
 import '../styles/firbo.css';
@@ -16,6 +17,7 @@ const THEMES = [{ id: 'light' }, { id: 'dark' }, { id: 'system' }] as const;
 export function FirboSettingsPage() {
   const { t } = useI18n();
   const { current, user, signOut } = useCompanyAuth();
+  const isPlatformAdmin=usePlatformAdmin();
   const theme = useAppStore((s) => s.settings.theme);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const api = getBase();
@@ -71,7 +73,7 @@ export function FirboSettingsPage() {
             </div>
           </Panel>
 
-          <Panel title={t('settings.server')}>
+          {isPlatformAdmin && <Panel title={t('settings.server')}>
             <p className="fb-muted text-sm">{t('settings.serverText')}</p>
             {row(t('settings.apiAddress'), apiHost || t('settings.notConfigured'))}
             {GATEWAY_DASHBOARD && (
@@ -79,7 +81,7 @@ export function FirboSettingsPage() {
                 {t('gw.openDashboard')} →
               </a>
             )}
-          </Panel>
+          </Panel>}
         </div>
 
         <p className="fb-dim text-center text-xs">Firbo AI · © {new Date().getFullYear()}</p>
