@@ -36,7 +36,6 @@ export function AgentChatPage() {
   const orgId = current?.organization.id ?? '';
   const planState = usePlanUsageState(orgId || undefined);
   const jarvis = useJarvisMode(orgId,user?.id);
-  const [freshJarvisMessageId,setFreshJarvisMessageId]=useState<string|null>(null);
   const agentAvailable = (a:AgentRow) => planState.status === 'ready' && !!planState.plan &&
     (!isPremium(a.slug) || (planState.plan.plan.id !== 'free' && ['active','trialing'].includes(planState.plan.status)));
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
@@ -97,6 +96,9 @@ export function AgentChatPage() {
 
   // Put through by the CEO: open (or start) the chat with that employee, the question ready to send.
   const [listLoaded, setListLoaded] = useState(false);
+  // Appended after original chat state hooks; legacy physical-Stop tests keep
+  // exactly the original state ordering and real users share one scope.
+  const [freshJarvisMessageId,setFreshJarvisMessageId]=useState<string|null>(null);
   useEffect(() => {
     if (!askAgent || !listLoaded || !user || !orgId || planState.status !== 'ready') return;
     const agent = agents.find((a) => a.id === askAgent && a.enabled && agentAvailable(a));
