@@ -13,6 +13,7 @@ import { CommandProvider } from './command/CommandHost';
 import '../styles/mobile-foundation.css';
 import '../styles/mobile-pages.css';
 import '../styles/mobile-operations.css';
+import '../styles/jarvis-visual-system.css';
 
 export function Layout() {
   const { t } = useI18n();
