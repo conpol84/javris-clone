@@ -14,6 +14,8 @@ import { usePlanUsageState } from '../lib/company/usePlan';
 import { RunError, runErrorText, sendChat, type ChatMessage } from '../lib/company/runner';
 import { parseHandoff } from '../lib/company/handoff';
 import { CeoActions } from '../components/company/CeoActions';
+import { JarvisModeControl } from '../components/company/JarvisModeControl';
+import { useJarvisMode } from '../lib/company/useJarvisMode';
 import { useWorkspaceCopy } from '../lib/company/workspaceCopy';
 import { agentColor } from '../lib/company/status';
 import { listenSmart, speak, unlockAudio, type VoiceError } from '../lib/company/voice';
@@ -33,6 +35,8 @@ export function AgentChatPage() {
   const [params, setParams] = useSearchParams();
   const orgId = current?.organization.id ?? '';
   const planState = usePlanUsageState(orgId || undefined);
+  const jarvis = useJarvisMode(orgId,user?.id);
+  const [freshJarvisMessageId,setFreshJarvisMessageId]=useState<string|null>(null);
   const agentAvailable = (a:AgentRow) => planState.status === 'ready' && !!planState.plan &&
     (!isPremium(a.slug) || (planState.plan.plan.id !== 'free' && ['active','trialing'].includes(planState.plan.status)));
   const canWrite = WRITER_ROLES.includes(current?.role ?? 'viewer');
@@ -78,6 +82,7 @@ export function AgentChatPage() {
   const voiceScopeRef = useRef(voiceScope); voiceScopeRef.current = voiceScope;
   useEffect(() => {
     pendingComputer.current = null;
+    setFreshJarvisMessageId(null);
     computerRun.current?.abort(); computerRun.current = null; setComputerRunning(false); setComputerProgress(null);
     setListening(false); setInterim(''); setSending(false);
     return () => { computerRun.current?.abort(); stopListen.current(); voiceTurn.current?.cancel(); };
@@ -205,6 +210,7 @@ export function AgentChatPage() {
     const msg = (override ?? text).trim();
     if (!msg || !active || sending || !canWrite) return;
     const scopeAtSend = voiceScope;
+    setFreshJarvisMessageId(null);
     setComputerProgress(null);
     unlockAudio();
     setSending(true);
@@ -319,6 +325,7 @@ export function AgentChatPage() {
       }
       const out = await sendChat(active.id, msg, lang, effectiveSpeakOn);
       if (voiceScopeRef.current !== scopeAtSend) return;
+      setFreshJarvisMessageId(out.message.id);
       setMessages((m) => [...m.filter((x) => x.id !== temp.id), out.user_message, out.message]);
       void reloadList();
       speakReply(parseHandoff(out.message.content).text);
@@ -466,6 +473,12 @@ export function AgentChatPage() {
                 <div className="fb-dim truncate text-[11px]">{activeAgent?.model}</div>
               </div>
             </header>
+            {activeIsCeo && canWrite && user?.id && (
+              <div className="px-4 pt-2">
+                <JarvisModeControl enabled={jarvis.enabled} onToggle={jarvis.setEnabled}
+                  lang={lang} disabled={sending||planState.status!=='ready'}/>
+              </div>
+            )}
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4">
               {messages.length === 0 && <p className="fb-dim text-center text-sm">{t('chat.say', { agent: nameOf(activeAgent) })}</p>}
               {messages.map((m) => {
@@ -483,7 +496,10 @@ export function AgentChatPage() {
                         <MessageSquare size={14} /> {copy('aAsk', { name: nameOf(askTo) })}
                       </button>
                     )}
-                    {m.role === 'assistant' && (task || meet || app) && <CeoActions task={task} meet={meet} app={app} />}
+                    {m.role === 'assistant' && (task || meet || app) &&
+                      <CeoActions task={task} meet={meet} app={app} messageId={m.id}
+                        conversationId={active.id} fresh={m.id===freshJarvisMessageId}
+                        autopilotEnabled={jarvis.enabled} planReady={planState.status==='ready'}/>}
                   </div>
                 </div>
                 );
