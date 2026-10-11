@@ -174,7 +174,7 @@ export interface ChatMessage {
 }
 
 /** One chat turn with an AI employee through the agent-chat Edge Function. */
-export async function sendChat(conversationId: string, message: string, lang: string, voice = false, signal?: AbortSignal, options?: { preferLocalBackup?: boolean;jarvisAutopilot?:boolean }): Promise<{ user_message: ChatMessage; message: ChatMessage }> {
+export async function sendChat(conversationId: string, message: string, lang: string, voice = false, signal?: AbortSignal, options?: { preferLocalBackup?: boolean;jarvisAutopilot?:boolean }): Promise<{ user_message: ChatMessage; message: ChatMessage; jarvis_autopilot?: { mode:'server';task_id:string;created:boolean;status:string } }> {
   const { data, error } = await requireClient().functions.invoke('agent-chat', { body: { conversation_id: conversationId, message, lang, request_id: crypto.randomUUID(), ...(voice ? { voice: true } : {}), ...(options?.preferLocalBackup === true ? { prefer_local_backup: true } : {}), ...(options?.jarvisAutopilot===true?{jarvis_autopilot:true}:{}) }, signal });
   if (error) {
     let code: RunErrorCode = 'unknown';
@@ -190,5 +190,5 @@ export async function sendChat(conversationId: string, message: string, lang: st
     }
     throw new RunError(code, reason);
   }
-  return data as { user_message: ChatMessage; message: ChatMessage };
+  return data as { user_message: ChatMessage; message: ChatMessage; jarvis_autopilot?: { mode:'server';task_id:string;created:boolean;status:string } };
 }
