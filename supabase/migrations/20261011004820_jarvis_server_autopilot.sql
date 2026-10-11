@@ -74,7 +74,7 @@ create policy "jarvis clients only own user turns" on public.messages
     role='user'
     and exists (
       select 1 from public.conversations c
-      where c.id=conversation_id and c.organization_id=organization_id
+      where c.id=public.messages.conversation_id and c.organization_id=public.messages.organization_id
         and c.user_id=(select auth.uid()) and c.status='active'
     )
   );
