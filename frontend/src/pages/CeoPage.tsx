@@ -47,7 +47,7 @@ export function CeoPage() {
   const planState=usePlanUsageState(orgId||undefined);
   const role = current?.role ?? 'viewer';
   const canWrite = WRITER_ROLES.includes(role);
-  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role));
+  const session = useCeoSession(orgId, user?.id, lang, t, t('ceo.briefing'), canWrite, ['owner','admin'].includes(role),jarvis.enabled);
   const { ceo, state, lines, interim, voiceStatus, voiceLog, sendNow, muted, setMuted, handsFree, setHandsFree, canTalk, ask, listen, stop, briefing,
     sessions, activeSessionId, historyLoading, historyError, computerProgress, openSession, newSession, retryHistory } = session;
   const [text, setText] = useState('');
