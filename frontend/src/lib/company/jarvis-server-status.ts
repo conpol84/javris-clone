@@ -21,6 +21,11 @@ export function trustedJarvisTaskView(row:unknown,orgId:string,userId:string,
     return null;
  const result=task.result&&typeof task.result==='object'&&!Array.isArray(task.result)
    ? task.result as Record<string,unknown>:{};
- return{status:task.status,reportAvailable:task.status==='completed'
-   &&!result.reconcile_required && typeof result.report==='string' && result.report.length>0};
+ const needsReview=result.reconcile_required===true || (result.computer_execution!==undefined
+  &&result.computer_execution!==null
+  &&typeof result.computer_execution==='object'
+  &&(result.computer_execution as Record<string,unknown>).verified_success!==true);
+ return{status:task.status,needsReview,reportAvailable:task.status==='completed'
+   &&!needsReview &&result.verified_success!==false
+   &&typeof result.report==='string'&&result.report.length>0};
 }
