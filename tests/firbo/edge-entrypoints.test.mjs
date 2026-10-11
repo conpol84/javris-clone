@@ -19,6 +19,8 @@ const CONVO='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 const CLAIM='ffffffff-ffff-4fff-8fff-ffffffffffff';
 const CHAT_REQUEST='11111111-1111-4111-8111-111111111111';
 const ACCOUNTING='22222222-2222-4222-8222-222222222222';
+const JARVIS_EMPLOYEE='99999999-9999-4999-8999-999999999999';
+const JARVIS_MESSAGE='88888888-8888-4888-8888-888888888888';
 const root = new URL('../../',import.meta.url);
 const originalFetch=globalThis.fetch, originalDeno=globalThis.Deno;
 const temp=await mkdtemp(join(tmpdir(),'firbo-edge-tests-'));
@@ -46,6 +48,7 @@ function fixture(options={}) {
     LLM_DEFAULT:'openai:test-model',LLM_FALLBACK:'openai:backup-model',OPENAI_API_KEY:'direct-secret',...options.env}};
   const user={id:USER,email:'owner@example.test'};
   const task={id:TASK,organization_id:ORG,title:options.taskTitle??'Review test task',description:'Do not send anything without approval.',status:options.taskStatus??(options.mission?'running':'pending'),priority:'normal',assigned_agent_id:AGENT,result:options.result??null,
+    ...(options.serverJarvisTask?{created_by:USER,metadata:{source:'jarvis_autopilot_server_v1',dispatch_state:options.dispatchState??'claimed'}}:{}),
     ...(options.mission?{kind:'mission',metadata:{}}:{})};
   const agent={id:AGENT,name:'Test agent',type:options.agentType??(options.mission?'ceo':'custom'),model:options.model??'auto',enabled:!options.disabled,temperature:0.4,monthly_budget_usd:options.monthlyBudget??10,system_prompt:'Work safely.',owner_instructions:options.ownerInstructions??'',autonomy:options.autonomy??'supervised',agent_tools:options.tools??[],
     ...(options.mission?{slug:'ceo'}:{})};
@@ -58,7 +61,7 @@ function fixture(options={}) {
         state.computerResult=payload.result;
         return{data:{id:TASK,organization_id:ORG,status:'running',run_claim:CLAIM,result:payload.result},error:null};
       }
-      if(table==='messages')return{data:options.messageError?null:{id:'saved',...payload},error:options.messageError?{message:'db failure'}:null};
+      if(table==='messages')return{data:options.messageError?null:{id:options.savedAssistantId&&payload.role==='assistant'?options.savedAssistantId:'saved',...payload},error:options.messageError?{message:'db failure'}:null};
       if(table==='tasks'&&op==='update'&&payload.result?.reconcile_required===true) {
         if(options.reconciliationWriteThrows)throw new Error('transport unavailable');
         return {data:options.reconciliationWriteConflict?null:{id:TASK,organization_id:ORG,status:'running',run_claim:CLAIM,result:payload.result},error:options.reconciliationWriteError?{message:'database unavailable'}:null};
@@ -84,6 +87,9 @@ function fixture(options={}) {
     if(table==='organization_members')return{data:options.noMembership?null:{role:options.role??'owner'},count:options.adminMember?1:0,error:null};
     if(table==='agents'){
       assert.ok(filters.some(([k,v])=>k==='organization_id'&&v===ORG),'agent read must be bound to verified organization');
+      if(options.jarvisEmployee&&single&&selection?.includes('autonomy')
+        &&filters.some(([k,v])=>k==='id'&&v===JARVIS_EMPLOYEE))
+        return{data:{id:JARVIS_EMPLOYEE,slug:'research',name:'Research',enabled:true,autonomy:'auto'},error:null};
       if(options.mission&&!single)return{data:options.foreignAgent||options.disabled?[]:[agent],error:null};
       return{data:options.foreignAgent?null:{...agent,...(selection?.includes('autonomy')&&state.rpcs?.some(r=>r.fn==='claim_task_run')?{autonomy:options.freshAutonomy??agent.autonomy,enabled:options.freshAgentEnabled??agent.enabled}:{})},error:null};
     }
@@ -123,6 +129,7 @@ function fixture(options={}) {
     }
     if(table==='usage_events')return{data:options.memberSpendRows??(options.spent?[{cost_usd:options.spent}]:[]),count:options.count??0,error:options.budgetError?{message:'db unavailable'}:null};
     if(table==='company_memory_publications')return{data:options.companyMemoryPublications??[],error:null};
+    if(table==='jarvis_autopilot_settings')return{data:options.serverJarvisGrant?{enabled:true}:null,error:options.serverGrantError?{message:'unavailable'}:null};
     if(table==='memories')return{data:(options.memories??[]).map(m=>({...m,user_id:m.user_id===undefined?USER:m.user_id})),error:null};
     if(table==='messages'){
       // Current chat history, old CEO snippets and exact job-ID lookup must
@@ -196,7 +203,10 @@ function fixture(options={}) {
         if(options.publishResponseLost)return{data:null,error:{message:'response lost after commit'}};
         return{data:{id:TASK,organization_id:ORG,status:args.p_status,run_claim:CLAIM,queued:args.p_approvals.length},error:null};
       }
-      if(fn==='match_knowledge')return{data:options.knowledgeHits??[],error:null};
+      if(fn==='admit_jarvis_autopilot_task')return options.jarvisAdmissionDenied
+         ? {data:null,error:{message:'quota or revoked'}}
+         : {data:{task_id:options.savedAssistantId??JARVIS_MESSAGE,created:true,status:'pending'},error:null};
+       if(fn==='match_knowledge')return{data:options.knowledgeHits??[],error:null};
       if(fn==='provider_key_for_runtime')return{data:options.ownKey??null,error:null};
       return{data:100,error:options.planError?{message:'db failure'}:null};
     },
@@ -322,6 +332,45 @@ test('JARVIS preference affects CEO reasoning only and never grants execution ri
  assert.equal(nonCeo.response.status,200);
  const specialistPrompt=JSON.parse(nonCeo.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
  assert.doesNotMatch(specialistPrompt,/JARVIS AUTOPILOT IS ON/);
+});
+test('JARVIS server ON requires the stored personal grant, not just a browser flag',async()=>{
+ const marker='Answer\\n\\n[[task:'+JARVIS_EMPLOYEE+']] Compare sectors\\nCite public sources.';
+ const base={agentType:'ceo',env:{FIRBO_JARVIS_SERVER_AUTOPILOT:'on'},savedAssistantId:JARVIS_MESSAGE,jarvisEmployee:true};
+ const off=await invoke('agent-chat',{...base,serverJarvisGrant:false,chatReplies:[marker]},{jarvis_autopilot:true});
+ assert.equal(off.response.status,200);
+ assert.ok(!off.body.jarvis_autopilot,'a UI preference cannot authorize a server task');
+ assert.equal(off.state.rpcs.filter(x=>x.fn==='admit_jarvis_autopilot_task').length,0);
+ const offPrompt=JSON.parse(off.state.calls.find(c=>String(c.url).endsWith('/chat/completions')).init.body).messages[0].content;
+ assert.doesNotMatch(offPrompt,/JARVIS AUTOPILOT IS ON/);
+ const on=await invoke('agent-chat',{...base,serverJarvisGrant:true,chatReplies:[marker]},{jarvis_autopilot:true});
+ assert.equal(on.response.status,200);
+ assert.deepEqual(on.body.jarvis_autopilot,{mode:'server',task_id:JARVIS_MESSAGE,created:true,status:'pending'});
+ const claim=on.state.rpcs.find(x=>x.fn==='admit_jarvis_autopilot_task');
+ assert.ok(claim,'saved CEO message was not admitted through the server-only RPC');
+ assert.deepEqual(claim.args,{p_org:ORG,p_owner:USER,p_conversation:CONVO,
+  p_message:JARVIS_MESSAGE,p_agent:JARVIS_EMPLOYEE,p_title:'Compare sectors',p_details:'Cite public sources.'});
+ assert.equal(on.state.writes.filter(x=>x.table==='tasks').length,0,'chat cannot directly start tasks outside RPC');
+ const denied=await invoke('agent-chat',{...base,serverJarvisGrant:true,chatReplies:[marker],jarvisAdmissionDenied:true},{jarvis_autopilot:true});
+ assert.equal(denied.response.status,200);
+ assert.ok(!denied.body.jarvis_autopilot,'failed admission never announces work as queued');
+});
+test('JARVIS runner refuses no grant, missing queue claim and disabled gate before paid work',async()=>{
+ for(const options of [
+   {serverJarvisGrant:false,dispatchState:'claimed'},
+   {serverJarvisGrant:true,dispatchState:'new'},
+   {serverJarvisGrant:true,dispatchState:'claimed',env:{FIRBO_JARVIS_SERVER_AUTOPILOT:'off'}},
+ ]){
+   const env={FIRBO_JARVIS_SERVER_AUTOPILOT:'on',...options.env};
+   const r=await invoke('agent-runner',{serverJarvisTask:true,autonomy:'auto',...options,env});
+   assert.equal(r.response.status,403);
+   assert.equal(r.body.error,'jarvis_not_authorized');
+   assert.equal(r.state.calls.length,0);
+   assert.ok(!r.state.rpcs?.some(x=>x.fn==='claim_task_run'));
+ }
+ const good=await invoke('agent-runner',{serverJarvisTask:true,autonomy:'auto',
+   serverJarvisGrant:true,env:{FIRBO_JARVIS_SERVER_AUTOPILOT:'on'}});
+ assert.equal(good.response.status,200);
+ assert.equal(good.state.rpcs.filter(x=>x.fn==='claim_task_run').length,1);
 });
 test('agent-chat requires a client request id before any write or inference',async()=>{
   const {state,response}=await invoke('agent-chat',{}, {request_id:undefined});
