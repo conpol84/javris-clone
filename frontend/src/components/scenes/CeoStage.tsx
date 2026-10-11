@@ -8,15 +8,15 @@ import { SceneFallbackBoundary } from './SceneFallbackBoundary';
 import { HoloHead } from './HoloHead';
 import { Label3D } from './OfficeScene';
 import type { HoloState, Satellite } from './HologramScene';
-import { supportsWebGL, usePrefersReducedMotion } from './webgl';
+import { supportsWebGL, usePrefersReducedMotion, useScenePerformance } from './webgl';
 
 const COLORS: Record<HoloState, string> = { idle: '#22d3ee', listening: '#34d399', thinking: '#a78bfa', speaking: '#67e8f9' };
 
 /** The AI at the end of the room: a real head scan rendered as a living hologram on a floating screen. */
-function AiHead({ state, motion }: { state: HoloState; motion: number }) {
+function AiHead({ state, motion, pointCount }: { state: HoloState; motion: number; pointCount:number }) {
   return (
     <group position={[0, 0.55, -4.1]} scale={2.25}>
-      <HoloHead state={state} motion={motion} />
+      <HoloHead state={state} motion={motion} pointCount={pointCount} />
     </group>
   );
 }
@@ -96,8 +96,8 @@ function Viewer({ state, motion }: { state:HoloState; motion:number }) {
 }
 
 /** Agent cards floating around the screen, tied to the AI head with glowing lines and travelling pulses. */
-function Cards({ items, state, motion }: { items: Satellite[]; state: HoloState; motion: number }) {
-  const shown = items.slice(0, 8);
+function Cards({ items, state, motion, maxItems = 8 }: { items: Satellite[]; state: HoloState; motion: number; maxItems?:number }) {
+  const shown = items.slice(0,maxItems);
   const slots: [number, number, number][] = [
     [-5.9, 1.9, -2.6], [5.9, 1.9, -2.6], [-6.4, 0.2, -3.1], [6.4, 0.2, -3.1],
     [-6.0, -1.5, -2.6], [6.0, -1.5, -2.6], [-3.9, 3.2, -3.6], [3.9, 3.2, -3.6],
@@ -168,31 +168,33 @@ function ZoomDriver({ level }: { level: number }) {
 
 export function CeoStage({ state, satellites, labels }: { state: HoloState; satellites: Satellite[]; labels: { noWebgl: string } }) {
   const reduced = usePrefersReducedMotion();
+  const {compact,visible}=useScenePerformance();
   const [zoom, setZoom] = useState(0.35);
   const [failed, setFailed] = useState(false);
-  const motion = reduced ? 0 : 1;
+  // The CEO remains expressive without constant large head/camera movement.
+  const motion = reduced ? 0 : compact ? 0.45 : 0.74;
   const fallback = <div className="fb-muted grid h-full place-items-center p-6 text-center text-sm" data-holo-state={state}>{labels.noWebgl}</div>;
   if (failed || !supportsWebGL()) return fallback;
   return (
-    <div data-holo-state={state} className="relative h-full w-full" style={{ height: "100%", width: "100%" }}>
+    <div data-holo-state={state} data-jarvis-scene="ceo" data-scene-quality={compact ? "mobile" : "desktop"} className="relative h-full w-full" style={{ height: "100%", width: "100%" }}>
     <SceneFallbackBoundary fallback={fallback}>
-    <Canvas camera={{ position: [0, 0.4, 6.2], fov: 52 }} dpr={[1, 2]} gl={{ alpha: true, antialias: true }}>
-      <Stars count={800} radius={16} spread={24} speed={reduced ? 0 : 0.01} size={0.08} />
+    <Canvas key={compact ? "compact" : "full"} camera={{ position: [0, 0.4, 6.2], fov: 52 }} dpr={[1, compact ? 1 : 1.5]} frameloop={visible ? "always" : "never"} gl={{ alpha: true, antialias: !compact, powerPreference:compact ? "low-power" : "high-performance" }}>
+      <Stars count={compact ? 140 : 650} radius={16} spread={24} speed={reduced ? 0 : 0.01} size={0.08} />
       <Screen motion={motion} />
       <SceneFallbackBoundary fallback={null} onFailure={() => setFailed(true)}>
       <Suspense fallback={null}>
-        <AiHead state={state} motion={motion} />
+        <AiHead state={state} motion={motion} pointCount={compact ? 3900 : 12500} />
       </Suspense>
       </SceneFallbackBoundary>
-      <Cards items={satellites} state={state} motion={motion} />
+      <Cards items={satellites} state={state} motion={motion} maxItems={compact ? 4 : 8} />
       <Floor />
       <Viewer state={state} motion={motion} />
-      <Glow strength={1.15} threshold={0.18} vignette />
+      {!compact && !reduced && <Glow strength={0.8} threshold={0.18} vignette />}
       <ZoomDriver level={zoom} />
-      <OrbitControls target={zoom > 0.6 ? [0, 0.9, -3.6] : [0, 0, -2]} enablePan={false} enableZoom minDistance={3.2} maxDistance={12} minPolarAngle={Math.PI / 2.6} maxPolarAngle={Math.PI / 1.85} minAzimuthAngle={-0.55} maxAzimuthAngle={0.55} enableDamping />
+      <OrbitControls target={zoom > 0.6 ? [0, 0.9, -3.6] : [0, 0, -2]} enablePan={false} enableRotate={!compact} enableZoom={!compact} minDistance={3.2} maxDistance={12} minPolarAngle={Math.PI / 2.6} maxPolarAngle={Math.PI / 1.85} minAzimuthAngle={-0.55} maxAzimuthAngle={0.55} enableDamping />
     </Canvas>
     </SceneFallbackBoundary>
-    <div className="absolute end-3 top-1/2 flex -translate-y-1/2 flex-col gap-1.5" role="group">
+    <div className="absolute end-2 bottom-3 flex gap-1.5 sm:end-3 sm:top-1/2 sm:bottom-auto sm:-translate-y-1/2 sm:flex-col" role="group">
       {[
         { icon: <Plus size={15} />, to: Math.min(1, zoom + 0.2), label: '+' },
         { icon: <Focus size={15} />, to: 0.95, label: 'face' },
