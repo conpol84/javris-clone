@@ -4,7 +4,7 @@ import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Person } from './Person';
 import { resolvePersona, type Persona } from '../../lib/company/persona';
-import { supportsWebGL, usePrefersReducedMotion } from './webgl';
+import { supportsWebGL, usePrefersReducedMotion, useScenePerformance } from './webgl';
 
 export interface MissionNode {
   id: string;
@@ -223,12 +223,13 @@ function World({ nodes, steps, missionStatus, labels, motion }: MissionSceneProp
 
 export function MissionScene(props: MissionSceneProps) {
   const reduced = usePrefersReducedMotion();
+  const {compact,visible}=useScenePerformance();
   if (!supportsWebGL()) {
     return <div className="fb-muted grid h-full place-items-center p-6 text-center text-sm">{props.labels.noWebgl}</div>;
   }
   return (
-    <Canvas camera={{ position: [0, 7.2, 8.6], fov: 44 }} dpr={[1, 1.75]} gl={{ antialias: true }} style={{ background: 'transparent' }}>
-      <World {...props} motion={reduced ? 0 : 1} />
+    <Canvas key={compact ? "compact" : "full"} camera={{ position: [0, 7.2, 8.6], fov: 44 }} dpr={[1,compact ? 1 : 1.5]} frameloop={visible ? "always" : "never"} gl={{antialias:!compact,powerPreference:compact ? "low-power" : "high-performance"}} style={{background:"transparent",touchAction:compact ? "pan-y" : "auto"}}>
+      <World {...props} motion={reduced ? 0 : compact ? 0.45 : 0.85} />
       <Glow />
     </Canvas>
   );
