@@ -20,7 +20,7 @@ export interface CeoLine { who:'me'|'ceo'; text:string; messageId?:string; fresh
 /** Voice and typed turns share one conversation. Stop fences late UI/media results;
  * it does not claim that already-started server inference/work was interrupted.
  */
-export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true,canComputer=false) {
+export function useCeoSession(orgId:string,userId:string|undefined,lang:string,t:(key:TKey,vars?:Record<string,string|number>)=>string,briefingText:string,canWrite=true,canComputer=false,jarvisAutopilot=false) {
   const scope=JSON.stringify([orgId,userId,lang,canWrite,canComputer]);
   const scopeRef=useRef(scope); scopeRef.current=scope;
   const [loadedScope,setLoadedScope]=useState(scope);
