@@ -8,7 +8,7 @@ export interface JarvisTaskView {
  result?:unknown;metadata?:Record<string,unknown>|null;
 }
 export function trustedJarvisTaskView(row:unknown,orgId:string,userId:string,
-  conversationId:string,messageId:string):{status:string;reportAvailable:boolean}|null {
+  conversationId:string,messageId:string):{status:string;reportAvailable:boolean;needsReview:boolean}|null {
  if(!UUID.test(orgId)||!UUID.test(userId)||!UUID.test(conversationId)||!UUID.test(messageId)
     ||!row||typeof row!=='object'||Array.isArray(row))return null;
  const task=row as Partial<JarvisTaskView>;
