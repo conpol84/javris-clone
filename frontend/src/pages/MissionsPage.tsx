@@ -18,6 +18,7 @@ import { resolvePersona } from '../lib/company/persona';
 import { agentColor } from '../lib/company/status';
 import { WRITER_ROLES, type AgentRow } from '../lib/company/types';
 import '../styles/firbo.css';
+import '../styles/jarvis-visual-system.css';
 
 const MissionScene = lazy(() => import('../components/scenes/MissionScene'));
 
