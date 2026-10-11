@@ -34,7 +34,9 @@ export function connectedAppContext(
   for(const candidate of raw.slice(0,100) as ConnectedAppRow[]) {
     if(!candidate||typeof candidate!=='object')continue;
     const kind=safeKind(candidate.kind);
-    if(!kind||!['active','error'].includes(String(candidate.status)))continue;
+    // Unknown DB-defined kinds are not approved provider capabilities. Never
+    // surface their untrusted labels in prompts or mark them as connected.
+    if(!kind||!names.has(kind)||!['active','error'].includes(String(candidate.status)))continue;
     const mine=candidate.created_by===ownerId;
     if(!mine&&!isCompanyManager)continue;
     configured.add(kind);
