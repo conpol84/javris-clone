@@ -48,7 +48,8 @@ export function JarvisServerTaskReceipt({orgId,userId,conversationId,messageId}:
  const effective=state.key===key?state:{key,phase:'checking' as const,detail:null};
  const label=effective.phase==='found'&&effective.detail
   ? text[effective.detail.status as keyof typeof text]??text.unavailable
-  :text[effective.phase];
+  : effective.phase==='checking'?text.checking
+    :effective.phase==='missing'?text.missing:text.unavailable;
  return <div role="status" aria-live="polite" className="fb-dim mt-2 text-xs" data-jarvis-task-receipt>
    {label}{' '}
    {effective.detail?.reportAvailable?text.report+' ':''}
