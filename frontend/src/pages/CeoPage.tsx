@@ -97,7 +97,7 @@ export function CeoPage() {
         <p className="fb-muted mt-1 max-w-2xl text-sm">{t('ceo.intro')}</p>
       </header>
       {ceo && canWrite && user?.id && <JarvisModeControl enabled={jarvis.enabled}
-        onToggle={jarvis.setEnabled} lang={lang} disabled={planState.status!=='ready'||jarvis.loading||jarvis.saving}/>}
+        onToggle={jarvis.setEnabled} lang={lang} disabled={planState.status!=='ready'||jarvis.loading||jarvis.saving||jarvis.error} unavailable={jarvis.error} onRetry={jarvis.retry}/>}
       <VoiceProfileControl />
 
       {!ceo ? (
