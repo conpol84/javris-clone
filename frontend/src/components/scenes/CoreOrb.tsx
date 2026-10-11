@@ -174,7 +174,7 @@ export function CoreOrb({ satellites = [], className, onSelect }: { satellites?:
           gl={{ antialias: !lightweight, alpha: true, powerPreference: lightweight ? 'low-power' : 'high-performance' }}
           frameloop="always"
         >
-          <Scene state={hologramState(voice.phase)} satellites={satellites} motion={1} pointCount={presentation.pointCount} onSelect={onSelect} onFailure={() => setFailed(true)} />
+          <Scene state={hologramState(voice.phase)} satellites={satellites} motion={lightweight ? 0.65 : 0.85} pointCount={presentation.pointCount} onSelect={onSelect} onFailure={() => setFailed(true)} />
           {presentation.bloom ? <Glow /> : null}
         </Canvas>
       </SceneFallbackBoundary>}
