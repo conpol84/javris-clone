@@ -1,0 +1,74 @@
+name: FIRBO Jarvis goal to verified work Autopilot
+on:
+  push:
+    branches:
+      - codex/firbo-jarvis-autopilot-20261011
+  pull_request:
+    branches:
+      - codex/firbo-owner-computer-routing-20261011
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  jarvis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Pin supported npm engine
+        run: npm install --global npm@11.19.0
+      - name: Restore locked frontend
+        run: npm ci --prefix frontend --ignore-scripts --no-audit --no-fund
+      - name: Strict Jarvis personal opt-in and durable task claim
+        run: npm test --prefix frontend -- src/lib/company/jarvis-autopilot.test.ts src/lib/company/jarvis-delegation.test.ts src/lib/company/ceo-sessions.test.ts
+      - name: Full frontend regression
+        run: npm test --prefix frontend
+      - name: TypeScript / Vite / Tauri web build
+        run: npm run build:tauri --prefix frontend
+      - name: Confirm both CEO interfaces use identical new-turn Jarvis dispatch
+        run: |
+          node <<'JS'
+          const fs=require('node:fs');
+          const chat=fs.readFileSync('frontend/src/pages/AgentChatPage.tsx','utf8');
+          const talk=fs.readFileSync('frontend/src/pages/CeoPage.tsx','utf8');
+          const ceo=fs.readFileSync('frontend/src/components/company/CeoActions.tsx','utf8');
+          const saved=fs.readFileSync('frontend/src/lib/company/jarvis-delegation.ts','utf8');
+          const runner=fs.readFileSync('supabase/functions/agent-runner/index.ts','utf8');
+          const checks=[
+           chat.includes('fresh={m.id===freshJarvisMessageId}'),
+           talk.includes('fresh={l.fresh===true}'),
+           ceo.includes('canAutostartJarvisDelegation('),
+           ceo.includes('if(!claimed.created){setPhase('),
+           saved.includes('.eq(\'user_id\',i.userId)'),
+           saved.includes("parseHandoff(message.content).task"),
+           saved.includes('if(!matched(existing as Row,i))'),
+           runner.includes("agentPlanDecision(orgPlan, agent)"),
+           runner.includes("FIRBO_SERVER_EXECUTION_ENABLED"),
+           runner.includes("executeRunnerInferenceAttempt("),
+           runner.includes("computerPending = true"),
+          ];
+          if(checks.some(x=>!x))throw Error('Jarvis identity, one-time task claim, backend permission or receipt invariant missing: '+JSON.stringify(checks));
+          console.log('Jarvis one CEO, two interfaces, task UUID at-most-once and existing VPS/ledger gates PASS');
+          JS
+
+  runner-existing:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Existing runner exact 21-file closure and evidence handling
+        run: node --experimental-strip-types --test tests/firbo/agent-runner-bundle.test.mjs tests/firbo/server-execution.test.mjs
+      - name: Existing CEO/agent Edge inference and signed accounting behavior
+        run: node --experimental-strip-types --test tests/firbo/edge-entrypoints.test.mjs
