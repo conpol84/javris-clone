@@ -4,7 +4,7 @@ import {useI18n} from '../../i18n/I18nProvider';
 import {requireClient} from '../../lib/company/client';
 import {trustedJarvisTaskView} from '../../lib/company/jarvis-server-status';
 
-type Detail={status:string;reportAvailable:boolean}|null;
+type Detail={status:string;reportAvailable:boolean;needsReview:boolean}|null;
 const words:Record<string,{checking:string;missing:string;unavailable:string;pending:string;running:string;awaiting_approval:string;completed:string;failed:string;blocked:string;cancelled:string;report:string;tasks:string}>={
  en:{checking:'Checking server task…',missing:'No autonomous task was saved.',unavailable:'Task status cannot be verified.',pending:'Task queued on server.',running:'Task running on server.',awaiting_approval:'Task requires action in Inbox.',completed:'Task reports completed. Review its evidence.',failed:'Task failed. Review its error.',blocked:'Task blocked or needs reconciliation.',cancelled:'Task cancelled.',report:'Report is available.',tasks:'View Tasks'},
  el:{checking:'Έλεγχος εργασίας στον server…',missing:'Δεν αποθηκεύτηκε αυτόνομη εργασία.',unavailable:'Δεν επιβεβαιώθηκε η κατάσταση της εργασίας.',pending:'Η εργασία βρίσκεται στην ουρά του server.',running:'Η εργασία εκτελείται στον server.',awaiting_approval:'Χρειάζεται ενέργεια στο Inbox.',completed:'Η εργασία αναφέρει ολοκλήρωση. Έλεγξε τα στοιχεία.',failed:'Η εργασία απέτυχε. Έλεγξε το σφάλμα.',blocked:'Η εργασία μπλοκαρίστηκε ή χρειάζεται συμφωνία.',cancelled:'Η εργασία ακυρώθηκε.',report:'Υπάρχει αποθηκευμένη αναφορά.',tasks:'Άνοιγμα Tasks'},
@@ -47,7 +47,7 @@ export function JarvisServerTaskReceipt({orgId,userId,conversationId,messageId}:
  },[key,orgId,userId,conversationId,messageId]);
  const effective=state.key===key?state:{key,phase:'checking' as const,detail:null};
  const label=effective.phase==='found'&&effective.detail
-  ? text[effective.detail.status as keyof typeof text]??text.unavailable
+  ? effective.detail.needsReview ? text.blocked : (text[effective.detail.status as keyof typeof text]??text.unavailable)
   : effective.phase==='checking'?text.checking
     :effective.phase==='missing'?text.missing:text.unavailable;
  return <div role="status" aria-live="polite" className="fb-dim mt-2 text-xs" data-jarvis-task-receipt>
