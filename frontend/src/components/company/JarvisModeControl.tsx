@@ -1,5 +1,4 @@
 import { Zap } from 'lucide-react';
-import type { SupportedLanguage } from '../../i18n/I18nProvider';
 
 const copy={
  en:['Jarvis Autopilot','Ready for autonomous work','Off — review each handoff','New work can start without another click, only with an auto-enabled employee and existing permissions. Stop and audit remain available.'],
