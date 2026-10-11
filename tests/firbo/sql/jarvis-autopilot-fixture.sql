@@ -54,4 +54,4 @@ insert into public.conversations values
  '44444444-4444-4444-8444-444444444444','active');
 insert into public.messages values
  ('77777777-7777-4777-8777-777777777777','33333333-3333-4333-8333-333333333333','66666666-6666-4666-8666-666666666666',
- 'assistant','I will delegate:\n[[task:55555555-5555-4555-8555-555555555555]] Compare sector trends\nReturn public sources.');
+ 'assistant',E'I will delegate:\n[[task:55555555-5555-4555-8555-555555555555]] Compare sector trends\nReturn public sources.');
